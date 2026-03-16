@@ -1,0 +1,35 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["typescript", "import", "unicorn"],
+	"ignorePatterns": ["dist/"],
+	"categories": {
+		"correctness": "error",
+		"suspicious": "warn",
+		"style": "off",
+		"pedantic": "off",
+		"perf": "warn"
+	},
+	"rules": {
+		"no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+		"no-var": "error",
+		"prefer-const": "error",
+		"eqeqeq": "error",
+		"no-console": "warn",
+		"no-empty": "warn",
+		"no-useless-catch": "error",
+		"no-useless-constructor": "error",
+		"prefer-template": "warn",
+		"no-await-in-loop": "off",
+		"no-control-regex": "off",
+
+		"typescript/no-explicit-any": "warn",
+
+		"import/no-duplicates": "error",
+		"import/no-self-import": "error",
+
+		"unicorn/no-useless-spread": "warn",
+		"unicorn/prefer-optional-catch-binding": "warn",
+		"unicorn/no-array-sort": "off",
+		"unicorn/consistent-function-scoping": "warn"
+	}
+}

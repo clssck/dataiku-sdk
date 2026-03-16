@@ -1,0 +1,17 @@
+{
+	"indentWidth": 1,
+	"useTabs": true,
+	"lineWidth": 100,
+	"newLineKind": "lf",
+	"typescript": {
+		"quoteStyle": "preferDouble",
+		"semiColons": "always",
+		"trailingCommas": "always"
+	},
+	"json": {},
+	"excludes": ["dist/", "node_modules/"],
+	"plugins": [
+		"https://plugins.dprint.dev/typescript-0.95.4.wasm",
+		"https://plugins.dprint.dev/json-0.19.4.wasm"
+	]
+}

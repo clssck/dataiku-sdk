@@ -1,0 +1,39 @@
+{
+	"name": "dataiku-sdk",
+	"version": "0.1.0",
+	"description": "Dataiku DSS SDK and CLI for programmatic access to DSS REST APIs",
+	"type": "module",
+	"workspaces": ["packages/*"],
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"bin": {
+		"dss": "bin/dss.js"
+	},
+	"files": [
+		"dist/",
+		"bin/dss.js"
+	],
+	"engines": {
+		"bun": ">=1.0"
+	},
+	"scripts": {
+		"build": "tsc",
+		"prepublishOnly": "tsc",
+		"check": "tsc --noEmit",
+		"lint": "oxlint src/",
+		"lint:fix": "oxlint --fix src/",
+		"format": "dprint fmt",
+		"format:check": "dprint check",
+		"test": "bun test"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.2.14",
+		"dprint": "^0.53.0",
+		"oxlint": "^1.55.0",
+		"typescript": "^5.8.0"
+	},
+	"dependencies": {
+		"@dataiku/types": "workspace:*",
+		"@sinclair/typebox": "^0.34.48"
+	}
+}

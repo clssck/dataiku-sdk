@@ -1,0 +1,3 @@
+#!/bin/sh
+SDK_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$SDK_DIR/node_modules/.bin/tsx" "$SDK_DIR/src/cli.ts" "$@"
