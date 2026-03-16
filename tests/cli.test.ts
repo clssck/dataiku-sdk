@@ -2,18 +2,20 @@ import { describe, expect, it, } from "bun:test";
 import { execFile, } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync, } from "node:fs";
 import { tmpdir, } from "node:os";
-import { join, } from "node:path";
+import { dirname, join, resolve, } from "node:path";
+import { fileURLToPath, } from "node:url";
 import { promisify, } from "node:util";
 
 const exec = promisify(execFile,);
-const SDK_ROOT = "/home/coder/shared/dataiku-sdk";
+const SDK_ROOT = resolve(dirname(fileURLToPath(import.meta.url,),), "..",);
 const CLI_PATH = join(SDK_ROOT, "src/cli.ts",);
+const BUN = process.execPath;
 
 async function dss(
 	args: string[],
 	opts: { cwd?: string; env?: NodeJS.ProcessEnv; } = {},
 ): Promise<{ stdout: string; stderr: string; }> {
-	return exec("bun", ["run", CLI_PATH, ...args,], {
+	return exec(BUN, ["run", CLI_PATH, ...args,], {
 		cwd: opts.cwd ?? SDK_ROOT,
 		env: opts.env ?? process.env,
 	},);
