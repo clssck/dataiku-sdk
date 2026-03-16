@@ -1,7 +1,7 @@
 /**
- * Re-export all schemas, types, and validation helpers from @dataiku/types.
- * The types package owns the TypeBox schema definitions.
- * SDK consumers can import directly from @dataiku/types or from this SDK.
+ * Re-export all schemas, types, and validation helpers from the types package.
+ * The types package (packages/types/) owns the TypeBox schema definitions.
+ * SDK consumers get everything through this re-export.
  */
 export {
 	BuildModeSchema,
@@ -52,7 +52,7 @@ export {
 	SqlQueryResponseSchema,
 	SqlQueryResultSchema,
 	SqlQuerySchemaSchema,
-} from "@dataiku/types";
+} from "../packages/types/src/index.js";
 
 export type {
 	BuildMode,
@@ -91,4 +91,4 @@ export type {
 	SqlQueryResponse,
 	SqlQueryResult,
 	SqlQuerySchema,
-} from "@dataiku/types";
+} from "../packages/types/src/index.js";

@@ -4,21 +4,22 @@
 	"description": "Dataiku DSS SDK and CLI for programmatic access to DSS REST APIs",
 	"type": "module",
 	"workspaces": ["packages/*"],
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
+	"main": "dist/src/index.js",
+	"types": "dist/src/index.d.ts",
 	"bin": {
 		"dss": "bin/dss.js"
 	},
 	"files": [
 		"dist/",
-		"bin/dss.js"
+		"bin/dss.js",
+		"packages/types/dist/"
 	],
 	"engines": {
 		"bun": ">=1.0"
 	},
 	"scripts": {
-		"build": "tsc",
-		"prepublishOnly": "tsc",
+		"build": "tsc && cd packages/types && npx tsc",
+		"prepublishOnly": "bun run build",
 		"check": "tsc --noEmit",
 		"lint": "oxlint src/",
 		"lint:fix": "oxlint --fix src/",
@@ -33,7 +34,11 @@
 		"typescript": "^5.8.0"
 	},
 	"dependencies": {
-		"@dataiku/types": "workspace:*",
 		"@sinclair/typebox": "^0.34.48"
+	},
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/clssck/dataiku-sdk.git"
 	}
 }

@@ -1,2 +1,2 @@
 #!/usr/bin/env bun
-import "../dist/cli.js";
+import "../dist/src/cli.js";
