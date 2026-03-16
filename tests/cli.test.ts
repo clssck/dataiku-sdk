@@ -13,7 +13,7 @@ async function dss(
 	args: string[],
 	opts: { cwd?: string; env?: NodeJS.ProcessEnv; } = {},
 ): Promise<{ stdout: string; stderr: string; }> {
-	return exec("npx", ["tsx", CLI_PATH, ...args,], {
+	return exec("bun", ["run", CLI_PATH, ...args,], {
 		cwd: opts.cwd ?? SDK_ROOT,
 		env: opts.env ?? process.env,
 	},);
@@ -64,24 +64,32 @@ describe("CLI missing credentials", () => {
 });
 
 describe("CLI .env loading", () => {
-	it("loads .env from CWD so credentials error becomes connection error", async () => {
+	it("loads .env from CWD and uses those credentials", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-env-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		writeFileSync(
 			join(tmpDir, ".env",),
-			"DATAIKU_URL=http://test.invalid\nDATAIKU_API_KEY=fake-key\n",
+			"DATAIKU_URL=http://127.0.0.1:1\nDATAIKU_API_KEY=fake-key-from-env\n",
 		);
 		try {
+			// Explicitly clear env vars so only the .env file provides them.
+			// Use port 1 to guarantee fast connection refusal.
 			await dss(["project", "list",], {
 				cwd: tmpDir,
-				env: { PATH: process.env.PATH, HOME: process.env.HOME, },
+				env: {
+					PATH: process.env.PATH,
+					HOME: process.env.HOME,
+					DATAIKU_URL: "",
+					DATAIKU_API_KEY: "",
+				},
 			},);
-			throw new Error("should have failed with connection error",);
+			throw new Error("should have failed",);
 		} catch (e: unknown) {
 			const err = e as { stderr?: string; stdout?: string; message?: string; };
 			const output = `${err.stderr ?? ""}${err.stdout ?? ""}${err.message ?? ""}`;
-			// The .env was loaded, so we should NOT see "DATAIKU_URL is required"
+			// Should NOT say credentials are missing — .env was loaded
 			expect(output,).not.toContain("DATAIKU_URL is required",);
+			expect(output,).not.toContain("DATAIKU_API_KEY is required",);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
