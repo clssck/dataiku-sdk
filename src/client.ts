@@ -41,9 +41,11 @@ export interface DataikuClientConfig {
 	requestTimeoutMs?: number;
 	/** Max retry attempts for idempotent requests (default 4, capped at 10) */
 	retryMaxAttempts?: number;
+	/** Emit HTTP request/response logs to stderr for CLI debugging. */
+	verbose?: boolean;
 	/**
 	 * Called when an API response fails schema validation but data is still usable.
-	 * Default: logs to console.warn. Set to a throwing function for strict mode.
+	 * Default: writes to stderr. Set to a throwing function for strict mode.
 	 * @param method - resource method that triggered the warning (e.g. "datasets.list")
 	 * @param errors - human-readable validation error strings
 	 */
@@ -55,7 +57,9 @@ export interface DataikuClientConfig {
 /* ------------------------------------------------------------------ */
 
 function defaultValidationWarning(method: string, errors: string[],): void {
-	console.warn(`[dataiku-sdk] Schema validation warning in ${method}:\n  ${errors.join("\n  ",)}`,);
+	process.stderr.write(
+		`[dataiku-sdk] Schema validation warning in ${method}:\n  ${errors.join("\n  ",)}\n`,
+	);
 }
 
 function sleep(ms: number,): Promise<void> {
@@ -104,6 +108,7 @@ export class DataikuClient {
 	private readonly defaultProjectKey: string | undefined;
 	private readonly requestTimeoutMs: number;
 	private readonly retryMaxAttempts: number;
+	private readonly verbose: boolean;
 	private readonly onValidationWarning: (method: string, errors: string[],) => void;
 
 	/* Resource namespaces — lazily initialized to break circular imports */
@@ -166,6 +171,7 @@ export class DataikuClient {
 
 		const rawMax = config.retryMaxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
 		this.retryMaxAttempts = Math.min(Math.max(1, rawMax,), MAX_RETRY_ATTEMPTS_CAP,);
+		this.verbose = config.verbose === true;
 		this.onValidationWarning = config.onValidationWarning ?? defaultValidationWarning;
 	}
 
@@ -272,6 +278,10 @@ export class DataikuClient {
 		};
 	}
 
+	private logVerbose(message: string,): void {
+		if (this.verbose) process.stderr.write(`[dss] ${message}\n`,);
+	}
+
 	/* ---- public: schema-validated parsing ---- */
 
 	/**
@@ -306,6 +316,9 @@ export class DataikuClient {
 
 	private async parseJsonResponse<T,>(res: Response,): Promise<T> {
 		const text = await res.text();
+		// SAFETY: Empty 2xx responses from DSS are surfaced to callers as undefined
+		// cast to T. This keeps existing call sites stable, but callers that rely on
+		// an object shape must guard explicitly before dereferencing the result.
 		if (!text) return undefined as T;
 		try {
 			return JSON.parse(text,) as T;
@@ -329,14 +342,18 @@ export class DataikuClient {
 
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 			let timedOut = false;
+			const startedAt = Date.now();
 			const controller = new AbortController();
 			const timeout = setTimeout(() => {
 				timedOut = true;
 				controller.abort();
 			}, this.requestTimeoutMs,);
 
+			this.logVerbose(`${method} ${url}`,);
+
 			try {
 				const res = await fetch(url, { ...init, method, signal: controller.signal, },);
+				this.logVerbose(`${method} ${url} → ${res.status} (${Date.now() - startedAt}ms)`,);
 				if (!res.ok) {
 					const text = await res.text();
 					const canRetry = retryEnabled && attempt < maxAttempts && isTransientError(res.status, text,);
@@ -368,6 +385,7 @@ export class DataikuClient {
 					: error instanceof Error
 					? error.message
 					: "Unknown transport error";
+				this.logVerbose(`${method} ${url} → ERROR (${Date.now() - startedAt}ms) ${detail}`,);
 				const statusText = timedOut ? "Request Timeout" : "Network Error";
 				throw new DataikuError(
 					0,

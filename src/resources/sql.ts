@@ -1,5 +1,21 @@
+import { DataikuError, } from "../errors.js";
 import type { SqlQueryResponse, SqlQueryResult, } from "../schemas.js";
 import { BaseResource, } from "./base.js";
+
+const UNSUPPORTED_SQL_DATASET_CONNECTION_DETAIL = "neither of sql nor hdfs type";
+
+function isUnsupportedSqlDatasetConnectionError(error: unknown,): error is DataikuError {
+	if (!(error instanceof DataikuError)) return false;
+	const detail = `${error.statusText}\n${error.body}\n${error.message}`.toLowerCase();
+	return detail.includes(UNSUPPORTED_SQL_DATASET_CONNECTION_DETAIL,);
+}
+
+function buildUnsupportedSqlDatasetConnectionMessage(datasetFullName?: string,): string {
+	const subject = datasetFullName
+		? `Dataset "${datasetFullName}" uses a connection that DSS does not support for direct SQL queries.`
+		: "This query uses a connection that DSS does not support for direct SQL queries.";
+	return `${subject} Use --connection with a SQL-compatible connection instead.`;
+}
 
 export class SqlResource extends BaseResource {
 	/**
@@ -16,7 +32,10 @@ export class SqlResource extends BaseResource {
 		postQueries?: string[];
 		type?: string;
 	},): Promise<SqlQueryResult> {
-		return this.client.post<SqlQueryResult>(`/public/api/sql/queries`, opts,);
+		return this.client.post<SqlQueryResult>("/public/api/sql/queries/", {
+			...opts,
+			type: opts.type ?? "sql",
+		},);
 	}
 
 	/**
@@ -53,9 +72,17 @@ export class SqlResource extends BaseResource {
 		postQueries?: string[];
 		type?: string;
 	},): Promise<SqlQueryResponse> {
-		const { queryId, schema, } = await this.startQuery(opts,);
-		const rows = await this.streamResults(queryId,);
-		await this.finishStreaming(queryId,);
-		return { queryId, schema, rows, };
+		const queryOpts = { ...opts, type: opts.type ?? "sql", };
+		try {
+			const { queryId, schema, } = await this.startQuery(queryOpts,);
+			const rows = await this.streamResults(queryId,);
+			await this.finishStreaming(queryId,);
+			return { queryId, schema, rows, };
+		} catch (error) {
+			if (!isUnsupportedSqlDatasetConnectionError(error,)) throw error;
+			throw new Error(buildUnsupportedSqlDatasetConnectionMessage(queryOpts.datasetFullName,), {
+				cause: error,
+			},);
+		}
 	}
 }

@@ -385,8 +385,8 @@ export const JupyterNotebookSummarySchema = Type.Object({
 	language: Type.String(),
 	kernelSpec: Type.Optional(Type.Object({
 		name: Type.String(),
-		display_name: Type.String(),
-		language: Type.String(),
+		display_name: Type.Optional(Type.String(),),
+		language: Type.Optional(Type.String(),),
 	}, { additionalProperties: true, },),),
 }, { additionalProperties: true, },);
 export type JupyterNotebookSummary = Static<typeof JupyterNotebookSummarySchema>;

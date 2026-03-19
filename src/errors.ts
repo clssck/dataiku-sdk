@@ -71,6 +71,19 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 		};
 	}
 
+	const isServerPermissionLike = status >= 500
+		&& (lowerBody.includes("not allowed to access",)
+			|| lowerBody.includes("access denied",)
+			|| (lowerBody.includes("permission",)
+				&& (lowerBody.includes("cannot use",) || lowerBody.includes("not allowed",))));
+	if (isServerPermissionLike) {
+		return {
+			category: "forbidden",
+			retryable: false,
+			retryHint: "Check API key validity and project permissions for the requested action.",
+		};
+	}
+
 	if (status === 404) {
 		const isHtmlGatewayResponse = lowerBody.includes("<!doctype html>",);
 		return {

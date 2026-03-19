@@ -57,6 +57,29 @@ describe("classifyDataikuError", () => {
 		});
 	});
 
+	describe("500 + permission-like", () => {
+		it("classifies code env permission failures as forbidden", () => {
+			const result = classifyDataikuError(
+				500,
+				"Cannot use code env foo because of permission restrictions",
+			);
+			expect(result.category,).toBe("forbidden",);
+			expect(result.retryable,).toBe(false,);
+		});
+
+		it("classifies access-denied server errors as forbidden", () => {
+			const result = classifyDataikuError(500, "User is not allowed to access this dataset",);
+			expect(result.category,).toBe("forbidden",);
+			expect(result.retryable,).toBe(false,);
+		});
+
+		it("keeps validation-like 500s classified as validation", () => {
+			const result = classifyDataikuError(500, "Invalid permissions payload",);
+			expect(result.category,).toBe("validation",);
+			expect(result.retryable,).toBe(false,);
+		});
+	});
+
 	describe("404", () => {
 		it("classifies 404 as not_found", () => {
 			const result = classifyDataikuError(404, "not found",);

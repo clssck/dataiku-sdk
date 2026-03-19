@@ -267,6 +267,16 @@ describe("JupyterNotebookSummary", () => {
 		expect(parseSchema(JupyterNotebookSummarySchema, data,),).toEqual(data,);
 	});
 
+	it("accepts kernelSpec with only required name", () => {
+		const data = {
+			name: "nb1",
+			projectKey: "P",
+			language: "python",
+			kernelSpec: { name: "python3", },
+		};
+		expect(parseSchema(JupyterNotebookSummarySchema, data,),).toEqual(data,);
+	});
+
 	it("throws when language is missing", () => {
 		expect(
 			() => parseSchema(JupyterNotebookSummarySchema, { name: "nb1", projectKey: "P", },),

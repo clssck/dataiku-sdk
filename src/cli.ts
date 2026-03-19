@@ -22,6 +22,105 @@ function json(v: string | boolean | undefined,): Record<string, unknown> | undef
 	return JSON.parse(v,) as Record<string, unknown>;
 }
 
+type OutputFormat = "json" | "quiet" | "tsv";
+
+function jsonInput(flags: Record<string, string | boolean>,): Record<string, unknown> | undefined {
+	if (flags["stdin"] === true) {
+		return JSON.parse(readFileSync(0, "utf-8",),) as Record<string, unknown>;
+	}
+	if (typeof flags["data-file"] === "string") {
+		return JSON.parse(readFileSync(flags["data-file"], "utf-8",),) as Record<string, unknown>;
+	}
+	if (typeof flags["data"] === "string") {
+		return JSON.parse(flags["data"],) as Record<string, unknown>;
+	}
+	return undefined;
+}
+
+async function resolveFolderId(
+	client: DataikuClient,
+	nameOrId: string,
+	flags: Record<string, string | boolean>,
+): Promise<string> {
+	return client.folders.resolveId(nameOrId, flags["project-key"] as string | undefined,);
+}
+
+function formatLineDiff(
+	remoteName: string,
+	localPath: string,
+	remoteContent: string,
+	localContent: string,
+): string {
+	if (localContent === remoteContent) {
+		return "No differences.";
+	}
+
+	const localLines = localContent.split("\n",);
+	const remoteLines = remoteContent.split("\n",);
+	const lines: string[] = [`--- remote:${remoteName}`, `+++ local:${localPath}`, "",];
+	const maxLen = Math.max(localLines.length, remoteLines.length,);
+
+	for (let i = 0; i < maxLen; i++) {
+		const remoteLine = remoteLines[i];
+		const localLine = localLines[i];
+		if (remoteLine === localLine) continue;
+
+		if (remoteLine !== undefined && localLine !== undefined) {
+			lines.push(`@@ line ${String(i + 1,)} @@`,);
+			lines.push(`- ${remoteLine}`,);
+			lines.push(`+ ${localLine}`,);
+			continue;
+		}
+
+		if (remoteLine !== undefined) {
+			lines.push(`- ${remoteLine}`,);
+			continue;
+		}
+
+		lines.push(`+ ${localLine}`,);
+	}
+
+	return lines.join("\n",);
+}
+
+function parseOutputFormat(v: string | boolean | undefined,): OutputFormat {
+	if (v === undefined) return "json";
+	if (v === "json" || v === "quiet" || v === "tsv") return v;
+	throw new UsageError(`Invalid --format value: ${String(v,)}. Use json, tsv, or quiet.`,);
+}
+
+function writeCommandResult(result: unknown, format: OutputFormat,): void {
+	if (result === undefined || result === null) {
+		if (format !== "quiet") {
+			process.stdout.write(`${JSON.stringify({ ok: true, }, null, 2,)}\n`,);
+		}
+		return;
+	}
+	if (typeof result === "string") {
+		if (format !== "quiet") {
+			process.stdout.write(result,);
+			if (!result.endsWith("\n",)) process.stdout.write("\n",);
+		}
+		return;
+	}
+	if (format === "quiet") return;
+	if (
+		format === "tsv"
+		&& Array.isArray(result,)
+		&& result.every((item,) => item !== null && typeof item === "object" && !Array.isArray(item,))
+	) {
+		const items = result as Record<string, unknown>[];
+		if (items.length === 0) return;
+		const keys = Object.keys(items[0],);
+		process.stdout.write(`${keys.join("\t",)}\n`,);
+		for (const item of items) {
+			process.stdout.write(`${keys.map((key,) => String(item[key] ?? "",)).join("\t",)}\n`,);
+		}
+		return;
+	}
+	process.stdout.write(`${JSON.stringify(result, null, 2,)}\n`,);
+}
+
 // ---------------------------------------------------------------------------
 // Arg parsing
 // ---------------------------------------------------------------------------
@@ -171,14 +270,17 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		},
 		update: {
 			handler: (c, a, f,) => {
-				requireArgs(a, 1, "dss dataset update <name> --data '{...}'",);
-				const data = json(f["data"],);
+				requireArgs(a, 1, "dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin]",);
+				const data = jsonInput(f,);
 				if (!data) {
-					throw new UsageError("--data is required. Usage: dss dataset update <name> --data '{...}'",);
+					throw new UsageError(
+						"--data, --data-file, or --stdin is required. Usage: dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin]",
+					);
 				}
 				return c.datasets.update(a[0], data, f["project-key"] as string | undefined,);
 			},
-			usage: "dss dataset update <name> --data '{...}' [--project-key KEY]",
+			usage:
+				"dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
 		},
 	},
 
@@ -208,38 +310,80 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				requireArgs(a, 1, "dss recipe download <name>",);
 				return c.recipes.download(a[0], {
 					outputPath: f["output"] as string | undefined,
+					projectKey: f["project-key"] as string | undefined,
 				},);
 			},
-			usage: "dss recipe download <name> [--output PATH]",
+			usage: "dss recipe download <name> [--output PATH] [--project-key KEY]",
+		},
+		"download-code": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss recipe download-code <name>",);
+				return c.recipes.downloadCode(a[0], {
+					outputPath: f["output"] as string | undefined,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage: "dss recipe download-code <name> [--output PATH] [--project-key KEY]",
 		},
 		create: {
 			handler: (c, _a, f,) => {
 				const type = f["type"] as string;
 				if (!type) {
-					throw new UsageError("--type is required. Usage: dss recipe create --type TYPE --input DS",);
+					throw new UsageError(
+						"--type is required. Usage: dss recipe create --type TYPE --input DS --output DS",
+					);
+				}
+				const outputDataset = f["output"] as string | undefined;
+				if (!outputDataset) {
+					throw new UsageError(
+						"--output is required. Usage: dss recipe create --type TYPE --input DS --output DS",
+					);
 				}
 				return c.recipes.create({
 					type,
 					name: f["name"] as string | undefined,
 					inputDatasets: f["input"] ? [f["input"] as string,] : undefined,
-					outputDataset: f["output"] as string | undefined,
+					outputDataset,
 					outputConnection: f["output-connection"] as string | undefined,
 					projectKey: f["project-key"] as string | undefined,
 				},);
 			},
 			usage:
-				"dss recipe create --type TYPE --input DS [--output DS] [--output-connection CONN] [--project-key KEY]",
+				"dss recipe create --type TYPE --input DS --output DS [--output-connection CONN] [--project-key KEY]",
 		},
+		diff: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss recipe diff <name> --file PATH",);
+				const filePath = f["file"] as string | undefined;
+				if (!filePath) {
+					throw new UsageError("--file is required. Usage: dss recipe diff <name> --file PATH",);
+				}
+				const result = await c.recipes.get(a[0], {
+					includePayload: true,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+				if (!result.payload) {
+					throw new Error(`Recipe "${a[0]}" has no code payload to diff.`,);
+				}
+				const localContent = readFileSync(filePath, "utf-8",);
+				return formatLineDiff(a[0], filePath, result.payload, localContent,);
+			},
+			usage: "dss recipe diff <name> --file PATH [--project-key KEY]",
+		},
+
 		update: {
 			handler: (c, a, f,) => {
-				requireArgs(a, 1, "dss recipe update <name> --data '{...}'",);
-				const data = json(f["data"],);
+				requireArgs(a, 1, "dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin]",);
+				const data = jsonInput(f,);
 				if (!data) {
-					throw new UsageError("--data is required. Usage: dss recipe update <name> --data '{...}'",);
+					throw new UsageError(
+						"--data, --data-file, or --stdin is required. Usage: dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin]",
+					);
 				}
 				return c.recipes.update(a[0], data, f["project-key"] as string | undefined,);
 			},
-			usage: "dss recipe update <name> --data '{...}' [--project-key KEY]",
+			usage:
+				"dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
 		},
 	},
 
@@ -349,14 +493,17 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		},
 		update: {
 			handler: (c, a, f,) => {
-				requireArgs(a, 1, "dss scenario update <id> --data '{...}'",);
-				const data = json(f["data"],);
+				requireArgs(a, 1, "dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin]",);
+				const data = jsonInput(f,);
 				if (!data) {
-					throw new UsageError("--data is required. Usage: dss scenario update <id> --data '{...}'",);
+					throw new UsageError(
+						"--data, --data-file, or --stdin is required. Usage: dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin]",
+					);
 				}
 				return c.scenarios.update(a[0], data, f["project-key"] as string | undefined,);
 			},
-			usage: "dss scenario update <id> --data '{...}' [--project-key KEY]",
+			usage:
+				"dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
 		},
 	},
 
@@ -366,41 +513,56 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			usage: "dss folder list [--project-key KEY]",
 		},
 		get: {
-			handler: (c, a, f,) => {
-				requireArgs(a, 1, "dss folder get <id>",);
-				return c.folders.get(a[0], f["project-key"] as string | undefined,);
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss folder get <name-or-id>",);
+				return c.folders.get(
+					await resolveFolderId(c, a[0], f,),
+					f["project-key"] as string | undefined,
+				);
 			},
-			usage: "dss folder get <id> [--project-key KEY]",
+			usage: "dss folder get <name-or-id> [--project-key KEY]",
 		},
 		contents: {
-			handler: (c, a, _f,) => {
-				requireArgs(a, 1, "dss folder contents <id>",);
-				return c.folders.contents(a[0],);
-			},
-			usage: "dss folder contents <id>",
-		},
-		download: {
-			handler: (c, a, f,) => {
-				requireArgs(a, 2, "dss folder download <id> <path>",);
-				return c.folders.download(a[0], a[1], {
-					localPath: f["output"] as string | undefined,
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss folder contents <name-or-id>",);
+				return c.folders.contents(await resolveFolderId(c, a[0], f,), {
+					projectKey: f["project-key"] as string | undefined,
 				},);
 			},
-			usage: "dss folder download <id> <path> [--output PATH]",
+			usage: "dss folder contents <name-or-id> [--project-key KEY]",
+		},
+		download: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 2, "dss folder download <name-or-id> <path>",);
+				return c.folders.download(await resolveFolderId(c, a[0], f,), a[1], {
+					localPath: f["output"] as string | undefined,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage: "dss folder download <name-or-id> <path> [--output PATH] [--project-key KEY]",
 		},
 		upload: {
-			handler: (c, a, f,) => {
-				requireArgs(a, 3, "dss folder upload <id> <path> <localPath>",);
-				return c.folders.upload(a[0], a[1], a[2], f["project-key"] as string | undefined,);
+			handler: async (c, a, f,) => {
+				requireArgs(a, 3, "dss folder upload <name-or-id> <path> <localPath>",);
+				return c.folders.upload(
+					await resolveFolderId(c, a[0], f,),
+					a[1],
+					a[2],
+					f["project-key"] as string | undefined,
+				);
 			},
-			usage: "dss folder upload <id> <path> <localPath> [--project-key KEY]",
+			usage: "dss folder upload <name-or-id> <path> <localPath> [--project-key KEY]",
 		},
 		"delete-file": {
-			handler: (c, a, f,) => {
-				requireArgs(a, 2, "dss folder delete-file <id> <path>",);
-				return c.folders.deleteFile(a[0], a[1], f["project-key"] as string | undefined,);
+			handler: async (c, a, f,) => {
+				requireArgs(a, 2, "dss folder delete-file <name-or-id> <path>",);
+				return c.folders.deleteFile(
+					await resolveFolderId(c, a[0], f,),
+					a[1],
+					f["project-key"] as string | undefined,
+				);
 			},
-			usage: "dss folder delete-file <id> <path> [--project-key KEY]",
+			usage: "dss folder delete-file <name-or-id> <path> [--project-key KEY]",
 		},
 	},
 
@@ -414,8 +576,11 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				c.variables.set({
 					standard: json(f["standard"],),
 					local: json(f["local"],),
+					replace: f["replace"] === true,
+					projectKey: f["project-key"] as string | undefined,
 				},),
-			usage: 'dss variable set --standard \'{"k":"v"}\' --local \'{"k":"v"}\'',
+			usage:
+				'dss variable set --standard \'{"k":"v"}\' --local \'{"k":"v"}\' [--replace] [--project-key KEY]',
 		},
 	},
 
@@ -532,21 +697,35 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		},
 		"save-jupyter": {
 			handler: (c, a, f,) => {
-				requireArgs(a, 1, "dss notebook save-jupyter <name> --data '{...}'",);
-				const data = json(f["data"],);
-				if (!data) throw new UsageError("--data is required (notebook JSON content)",);
+				requireArgs(
+					a,
+					1,
+					"dss notebook save-jupyter <name> [--data '{...}' | --data-file PATH | --stdin]",
+				);
+				const data = jsonInput(f,);
+				if (!data) {
+					throw new UsageError(
+						"--data, --data-file, or --stdin is required (notebook JSON content).",
+					);
+				}
 				return c.notebooks.saveJupyter(a[0], data as never, f["project-key"] as string | undefined,);
 			},
-			usage: "dss notebook save-jupyter <name> --data '{...}' [--project-key KEY]",
+			usage:
+				"dss notebook save-jupyter <name> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
 		},
 		"save-sql": {
 			handler: (c, a, f,) => {
-				requireArgs(a, 1, "dss notebook save-sql <id> --data '{...}'",);
-				const data = json(f["data"],);
-				if (!data) throw new UsageError("--data is required (SQL notebook content JSON)",);
+				requireArgs(a, 1, "dss notebook save-sql <id> [--data '{...}' | --data-file PATH | --stdin]",);
+				const data = jsonInput(f,);
+				if (!data) {
+					throw new UsageError(
+						"--data, --data-file, or --stdin is required (SQL notebook content JSON).",
+					);
+				}
 				return c.notebooks.saveSql(a[0], data as never, f["project-key"] as string | undefined,);
 			},
-			usage: "dss notebook save-sql <id> --data '{...}' [--project-key KEY]",
+			usage:
+				"dss notebook save-sql <id> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
 		},
 		"clear-sql-history": {
 			handler: (c, a, f,) => {
@@ -576,6 +755,8 @@ function printTopLevelHelp(): void {
 		"  --url URL            Dataiku DSS base URL (env: DATAIKU_URL)",
 		"  --api-key KEY        API key              (env: DATAIKU_API_KEY)",
 		"  --project-key KEY    Default project key   (env: DATAIKU_PROJECT_KEY)",
+		"  --format FORMAT      Output format: json|tsv|quiet",
+		"  --verbose            Log HTTP requests to stderr",
 		"  --help               Show help",
 		"",
 		"Resources:",
@@ -728,11 +909,13 @@ async function main(): Promise<void> {
 		url,
 		apiKey,
 		projectKey: (flags["project-key"] as string | undefined) ?? process.env.DATAIKU_PROJECT_KEY,
+		verbose: flags["verbose"] === true,
 	},);
 
 	const args = positional.slice(2,);
+	const format = parseOutputFormat(flags["format"],);
 	const result = await actionMeta.handler(client, args, flags,);
-	process.stdout.write(`${JSON.stringify(result, null, 2,)}\n`,);
+	writeCommandResult(result, format,);
 }
 
 main().catch((err: unknown,) => {
@@ -748,7 +931,7 @@ main().catch((err: unknown,) => {
 		};
 		if (err.retryHint) payload.retryHint = err.retryHint;
 		process.stderr.write(`${JSON.stringify(payload, null, 2,)}\n`,);
-		process.exit(1,);
+		process.exit(err.category === "transient" ? 3 : 2,);
 	}
 	const message = err instanceof Error ? err.message : String(err,);
 	process.stderr.write(`${JSON.stringify({ error: message, }, null, 2,)}\n`,);

@@ -33,6 +33,15 @@ export class FoldersResource extends BaseResource {
 		return this.client.safeParse(FolderSummaryArraySchema, raw, "folders.list",);
 	}
 
+	async resolveId(nameOrId: string, projectKey?: string,): Promise<string> {
+		const folders = await this.list(projectKey,);
+		if (folders.some((folder,) => folder.id === nameOrId)) {
+			return nameOrId;
+		}
+		const match = folders.find((folder,) => folder.name === nameOrId);
+		return match?.id ?? nameOrId;
+	}
+
 	async get(folderId: string, projectKey?: string,): Promise<FolderDetails> {
 		const fEnc = encodeURIComponent(folderId,);
 		const raw = await this.client.get<unknown>(

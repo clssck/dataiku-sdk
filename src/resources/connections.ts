@@ -68,7 +68,7 @@ export class ConnectionsResource extends BaseResource {
 	 * Infers available connections.
 	 *
 	 * - fast (default): fetches the connection name list and maps to ConnectionSummary.
-	 *   Falls back to rich mode on any failure.
+	 *   Falls back to rich mode on any failure or empty result set.
 	 * - rich: inspects project datasets to derive connection metadata
 	 *   (types, managed flag, db schemas).
 	 */
@@ -83,12 +83,16 @@ export class ConnectionsResource extends BaseResource {
 			return inferRichConnectionsFromDatasets(this.client, projectEnc,);
 		}
 
-		// fast — attempt name list, fall back to rich on any error
+		// fast — attempt name list, fall back to rich on any error or empty result
 		try {
 			const names = await this.list();
-			return names.map((name,) => ({ name, }));
+			if (names.length > 0) {
+				return names.map((name,) => ({ name, }));
+			}
 		} catch {
-			return inferRichConnectionsFromDatasets(this.client, projectEnc,);
+			// Fall through to rich inference.
 		}
+
+		return inferRichConnectionsFromDatasets(this.client, projectEnc,);
 	}
 }

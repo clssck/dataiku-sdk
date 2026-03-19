@@ -5,7 +5,7 @@ import { BaseResource, } from "./base.js";
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const MAX_POLL_INTERVAL_MS = 10_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
-const DEFAULT_MAX_LOG_LINES = 50;
+const DEFAULT_MAX_LOG_LINES = 500;
 
 const TERMINAL_STATES = new Set([
 	"DONE",
@@ -73,7 +73,8 @@ export class JobsResource extends BaseResource {
 
 	/**
 	 * Retrieve job log text.
-	 * Returns the last `maxLogLines` lines (default 50) from the tail.
+	 * Returns the last `maxLogLines` lines (default 500) from the tail.
+	 * Use `0` or `-1` to return the full log without truncation.
 	 */
 	async log(
 		jobId: string,
@@ -86,8 +87,12 @@ export class JobsResource extends BaseResource {
 		);
 		if (!log) return "";
 
-		const lines = log.split("\n",);
 		const limit = opts?.maxLogLines ?? DEFAULT_MAX_LOG_LINES;
+		if (limit === 0 || limit === -1) {
+			return log;
+		}
+
+		const lines = log.split("\n",);
 		if (lines.length > limit) {
 			return lines.slice(-limit,).join("\n",);
 		}

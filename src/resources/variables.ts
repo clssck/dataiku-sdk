@@ -12,8 +12,21 @@ export class VariablesResource extends BaseResource {
 	async set(opts: {
 		standard?: Record<string, unknown>;
 		local?: Record<string, unknown>;
+		replace?: boolean;
 		projectKey?: string;
 	},): Promise<ProjectVariables> {
+		const enc = this.enc(opts.projectKey,);
+
+		if (opts.replace === true) {
+			const replaced: ProjectVariables = {
+				standard: opts.standard ?? {},
+				local: opts.local ?? {},
+			};
+
+			await this.client.putVoid(`/public/api/projects/${enc}/variables/`, replaced,);
+			return replaced;
+		}
+
 		if (opts.standard === undefined && opts.local === undefined) {
 			throw new Error("At least one of standard or local must be provided",);
 		}
@@ -24,7 +37,6 @@ export class VariablesResource extends BaseResource {
 			local: { ...existing.local, ...opts.local, },
 		};
 
-		const enc = this.enc(opts.projectKey,);
 		await this.client.putVoid(`/public/api/projects/${enc}/variables/`, merged,);
 		return merged;
 	}

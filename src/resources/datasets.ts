@@ -458,12 +458,17 @@ export class DatasetsResource extends BaseResource {
 			}
 			: undefined;
 
+		const shouldGzip = filePath.endsWith(".gz",);
 		const nodeStream = Readable.fromWeb(res.body as unknown as import("stream/web").ReadableStream,);
 		const csvTransform = tsvToCsvTransform(downloadLimit, onHeader,);
-		const gzip = createGzip();
 		const fileOut = createWriteStream(filePath,);
 
-		await pipeline(nodeStream, csvTransform, gzip, fileOut,);
+		if (shouldGzip) {
+			const gzip = createGzip();
+			await pipeline(nodeStream, csvTransform, gzip, fileOut,);
+		} else {
+			await pipeline(nodeStream, csvTransform, fileOut,);
+		}
 
 		return filePath;
 	}

@@ -47,7 +47,12 @@ export class NotebooksResource extends BaseResource {
 		);
 	}
 
-	/** Delete a Jupyter notebook. */
+	/**
+	 * Delete a Jupyter notebook.
+	 *
+	 * DSS public APIs can delete notebooks but do not expose notebook creation, so
+	 * this can only target notebooks created outside this SDK (for example in the UI).
+	 */
 	async deleteJupyter(name: string, projectKey?: string,): Promise<void> {
 		const nameEnc = encodeURIComponent(name,);
 		await this.client.del(
@@ -55,12 +60,21 @@ export class NotebooksResource extends BaseResource {
 		);
 	}
 
-	/** Clear all cell outputs from a Jupyter notebook. */
+	/**
+	 * Clear all cell outputs from a Jupyter notebook.
+	 *
+	 * DSS public APIs do not expose a dedicated clear-outputs endpoint, so this
+	 * method fetches the notebook, strips outputs locally, and saves it back.
+	 */
 	async clearJupyterOutputs(name: string, projectKey?: string,): Promise<void> {
-		const nameEnc = encodeURIComponent(name,);
-		await this.client.del(
-			`/public/api/projects/${this.enc(projectKey,)}/jupyter-notebooks/${nameEnc}/outputs`,
-		);
+		const notebook = await this.getJupyter(name, projectKey,);
+		const clearedCells = notebook.cells.map((cell,) => ({
+			...cell,
+			outputs: [],
+			execution_count: null,
+		}));
+
+		await this.saveJupyter(name, { ...notebook, cells: clearedCells, }, projectKey,);
 	}
 
 	/** List running kernel sessions for a Jupyter notebook. */
@@ -72,7 +86,12 @@ export class NotebooksResource extends BaseResource {
 		return this.client.safeParse(NotebookSessionArraySchema, raw, "notebooks.sessionsJupyter",);
 	}
 
-	/** Unload (stop) a running Jupyter notebook session. */
+	/**
+	 * Unload (stop) a running Jupyter notebook session.
+	 *
+	 * DSS public APIs do not expose notebook or session creation, so this only
+	 * works for sessions started outside this SDK.
+	 */
 	async unloadJupyter(name: string, sessionId: string, projectKey?: string,): Promise<void> {
 		const nameEnc = encodeURIComponent(name,);
 		const sidEnc = encodeURIComponent(sessionId,);

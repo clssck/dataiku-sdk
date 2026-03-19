@@ -3,6 +3,7 @@ import { resolve, } from "node:path";
 import { DataikuError, } from "../errors.js";
 import { RecipeSummaryArraySchema, } from "../schemas.js";
 import type { RecipeCreateOptions, RecipeCreateResult, RecipeSummary, } from "../schemas.js";
+import { deepMerge, } from "../utils/deep-merge.js";
 import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
 
@@ -23,6 +24,17 @@ function asStringArray(value: unknown,): string[] | undefined {
 function asRecord(value: unknown,): Record<string, unknown> | undefined {
 	if (!value || typeof value !== "object" || Array.isArray(value,)) return undefined;
 	return value as Record<string, unknown>;
+}
+
+function inferRecipeCodeExtension(recipeType: unknown,): string {
+	const normalized = typeof recipeType === "string" ? recipeType.trim().toLowerCase() : "";
+	if (!normalized) return ".txt";
+	if (normalized.includes("python",) || normalized.includes("pyspark",)) return ".py";
+	if (normalized.includes("sql",)) return ".sql";
+	if (normalized === "r" || normalized.startsWith("r_",)) return ".R";
+	if (normalized.includes("scala",)) return ".scala";
+	if (normalized.includes("shell",)) return ".sh";
+	return ".txt";
 }
 
 // ---------------------------------------------------------------------------
@@ -62,7 +74,7 @@ export class RecipesResource extends BaseResource {
 	 * Get a recipe definition (and optionally its payload).
 	 * Returns the raw API response shape: `{ recipe, payload }`.
 	 */
-	get(
+	async get(
 		recipeName: string,
 		opts?: {
 			includePayload?: boolean;
@@ -78,7 +90,20 @@ export class RecipesResource extends BaseResource {
 		if (opts?.payloadMaxLines != null) params.set("payloadMaxLines", String(opts.payloadMaxLines,),);
 		const qs = params.toString();
 		const url = `/public/api/projects/${enc}/recipes/${rnEnc}${qs ? `?${qs}` : ""}`;
-		return this.client.get<{ recipe: Record<string, unknown>; payload?: string; }>(url,);
+		const result = await this.client.get<{ recipe: Record<string, unknown>; payload?: string; }>(
+			url,
+		);
+		const recipe = asRecord(result?.recipe,);
+		if (!result || !recipe) {
+			throw new DataikuError(
+				404,
+				"Not Found",
+				`Recipe "${recipeName}" not found in project "${
+					this.resolveProjectKey(opts?.projectKey,)
+				}" (DSS returned empty response).`,
+			);
+		}
+		return { ...result, recipe, };
 	}
 
 	/** Create a recipe, with optional output dataset provisioning and join configuration. */
@@ -300,7 +325,7 @@ export class RecipesResource extends BaseResource {
 
 	/**
 	 * Update a recipe by merging the patch into the current definition.
-	 * The `recipe` sub-object is spread-merged to preserve nested fields.
+	 * The `recipe` sub-object is deep-merged to preserve nested fields.
 	 */
 	async update(
 		recipeName: string,
@@ -316,15 +341,37 @@ export class RecipesResource extends BaseResource {
 		if (!currentRecipe) {
 			throw new Error(`Recipe "${recipeName}" was not found or returned an empty definition.`,);
 		}
-		const mergedRecipe = {
-			...currentRecipe,
-			...(data.recipe as object),
-		};
+		const mergedRecipe = deepMerge(currentRecipe, asRecord(data.recipe,) ?? {},);
 		const merged = { ...current, ...data, recipe: mergedRecipe, };
 		await this.client.put<Record<string, unknown>>(
 			`/public/api/projects/${enc}/recipes/${rnEnc}`,
 			merged,
 		);
+	}
+
+	/**
+	 * Download a recipe code payload to a local file.
+
+	 * Returns the path to the written file.
+	 */
+	async downloadCode(
+		recipeName: string,
+		opts?: { outputPath?: string; projectKey?: string; },
+	): Promise<string> {
+		const result = await this.get(recipeName, {
+			includePayload: true,
+			projectKey: opts?.projectKey,
+		},);
+		if (!result.payload) {
+			throw new Error(`Recipe "${recipeName}" has no code payload.`,);
+		}
+		const safeRecipeName = sanitizeFileName(recipeName, "recipe",);
+		const filePath = opts?.outputPath ?? resolve(
+			process.cwd(),
+			`${safeRecipeName}${inferRecipeCodeExtension(result.recipe.type,)}`,
+		);
+		await writeFile(filePath, result.payload, "utf-8",);
+		return filePath;
 	}
 
 	/** Delete a recipe. */
