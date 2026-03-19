@@ -350,10 +350,10 @@ export class RecipesResource extends BaseResource {
 	}
 
 	/**
-	 * Download a recipe code payload to a local file.
+    * Download a recipe code payload to a local file.
 
-	 * Returns the path to the written file.
-	 */
+    * Returns the path to the written file.
+    */
 	async downloadCode(
 		recipeName: string,
 		opts?: { outputPath?: string; projectKey?: string; },
@@ -372,6 +372,39 @@ export class RecipesResource extends BaseResource {
 		);
 		await writeFile(filePath, result.payload, "utf-8",);
 		return filePath;
+	}
+
+	/** Get only the code payload of a recipe as a raw string. */
+	async getPayload(
+		recipeName: string,
+		opts?: { projectKey?: string; },
+	): Promise<string> {
+		const result = await this.get(recipeName, {
+			includePayload: true,
+			projectKey: opts?.projectKey,
+		},);
+		if (!result.payload) {
+			throw new Error(`Recipe "${recipeName}" has no code payload.`,);
+		}
+		return result.payload;
+	}
+
+	/** Replace only the code payload of a recipe. */
+	async setPayload(
+		recipeName: string,
+		payload: string,
+		opts?: { projectKey?: string; },
+	): Promise<void> {
+		const current = await this.get(recipeName, {
+			includePayload: true,
+			projectKey: opts?.projectKey,
+		},);
+		const enc = this.enc(opts?.projectKey,);
+		const rnEnc = encodeURIComponent(recipeName,);
+		await this.client.put(`/public/api/projects/${enc}/recipes/${rnEnc}`, {
+			...current,
+			payload,
+		},);
 	}
 
 	/** Delete a recipe. */

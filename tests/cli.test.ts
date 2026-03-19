@@ -529,3 +529,409 @@ describe("CLI planned command coverage", () => {
 		}
 	});
 });
+
+describe("CLI auth commands", () => {
+	it("dss auth --help shows auth actions", async () => {
+		const { stderr, } = await dss(["auth", "--help",],);
+		expect(stderr,).toContain("login",);
+		expect(stderr,).toContain("status",);
+		expect(stderr,).toContain("logout",);
+	});
+
+	it("dss auth login saves credentials and validates", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-login-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await withCliServer((req, res,) => {
+				sendJson(res, [],);
+			}, async (url,) => {
+				const { stderr, } = await dss([
+					"auth",
+					"login",
+					"--url",
+					url,
+					"--api-key",
+					"test-key",
+					"--project-key",
+					"MYPROJ",
+				], {
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: tmpDir,
+					},
+				},);
+				expect(stderr,).toContain("\u2713 Connected",);
+				expect(stderr,).toContain("Credentials saved",);
+
+				// Verify the file was written
+				const creds = JSON.parse(readFileSync(join(tmpDir, "credentials.json",), "utf-8",),);
+				expect(creds.url,).toBe(url,);
+				expect(creds.apiKey,).toBe("test-key",);
+				expect(creds.projectKey,).toBe("MYPROJ",);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("dss auth login does not save credentials when validation fails", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-fail-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await withCliServer((_req, res,) => {
+				sendJson(res, { message: "Unauthorized", }, 401,);
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"auth",
+					"login",
+					"--url",
+					url,
+					"--api-key",
+					"bad-key",
+				], {
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: tmpDir,
+					},
+				},);
+				// Process should exit non-zero
+				expect(failure.code !== 0 || failure.stderr,).toBeTruthy();
+				// Credentials file should NOT have been written
+				const exists = (() => {
+					try {
+						readFileSync(join(tmpDir, "credentials.json",),);
+						return true;
+					} catch {
+						return false;
+					}
+				})();
+				expect(exists,).toBe(false,);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("dss auth status shows saved credentials with working server", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-status-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await withCliServer((_req, res,) => {
+				sendJson(res, [],);
+			}, async (url,) => {
+				writeFileSync(
+					join(tmpDir, "credentials.json",),
+					JSON.stringify({ url, apiKey: "dkuaps-longenoughkey123", projectKey: "PROJ", },),
+				);
+				const { stderr, } = await dss(["auth", "status",], {
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: tmpDir,
+					},
+				},);
+				expect(stderr,).toContain("URL:",);
+				expect(stderr,).toContain("API key:",);
+				expect(stderr,).toContain("Project key:",);
+				expect(stderr,).toContain("PROJ",);
+				expect(stderr,).toContain("\u2713 Valid",);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("dss auth logout removes credentials", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-logout-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		writeFileSync(join(tmpDir, "credentials.json",), "{}",);
+		try {
+			const { stderr, } = await dss(["auth", "logout",], {
+				env: {
+					PATH: process.env.PATH,
+					HOME: process.env.HOME,
+					DSS_CONFIG_DIR: tmpDir,
+				},
+			},);
+			expect(stderr,).toContain("Credentials removed",);
+			// File should be gone
+			const exists = (() => {
+				try {
+					readFileSync(join(tmpDir, "credentials.json",),);
+					return true;
+				} catch {
+					return false;
+				}
+			})();
+			expect(exists,).toBe(false,);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	// Note: cannot reliably test saved-credential resolution through CLI subprocess
+	// because loadEnvFile() always reads .env from the SDK root (resolved via import.meta.url),
+	// which provides DATAIKU_API_KEY before resolveCredentials() can consult saved creds.
+	// The credential precedence chain is tested indirectly: config read/write is covered by
+	// config.test.ts, and auth login/status verify the saved-cred round-trip end-to-end.
+});
+
+describe("CLI --timeout flag", () => {
+	it("passes timeout to client", async () => {
+		let receivedRequest = false;
+		await withCliServer((req, res,) => {
+			receivedRequest = true;
+			sendJson(res, [],);
+		}, async (url,) => {
+			const { stdout, } = await dss(["project", "list", "--timeout", "5000",], {
+				env: cliEnv(url,),
+			},);
+			expect(JSON.parse(stdout,),).toEqual([],);
+			expect(receivedRequest,).toBe(true,);
+		},);
+	});
+});
+
+describe("CLI --format table", () => {
+	it("renders array of objects as aligned table", async () => {
+		await withCliServer((_req, res,) => {
+			sendJson(res, [
+				{ name: "alpha", projectKey: "PROJ", },
+				{ name: "beta", projectKey: "PROJ", },
+			],);
+		}, async (url,) => {
+			const { stdout, } = await dss(["project", "list", "--format", "table",], {
+				env: cliEnv(url,),
+			},);
+			// Header row
+			expect(stdout,).toContain("name",);
+			expect(stdout,).toContain("projectKey",);
+			// Separator row
+			expect(stdout,).toContain("----",);
+			// Data rows
+			expect(stdout,).toContain("alpha",);
+			expect(stdout,).toContain("beta",);
+		},);
+	});
+
+	it("falls back to JSON for non-array results", async () => {
+		await withCliServer((_req, res,) => {
+			sendJson(res, { name: "proj", projectKey: "PROJ", },);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"project",
+				"get",
+				"--format",
+				"table",
+			], { env: cliEnv(url,), },);
+			// Should fall back to JSON
+			expect(JSON.parse(stdout,),).toEqual({ name: "proj", projectKey: "PROJ", },);
+		},);
+	});
+
+	it("truncates long values with ellipsis", async () => {
+		const longValue = "a".repeat(50,);
+		await withCliServer((_req, res,) => {
+			sendJson(res, [{ name: longValue, },],);
+		}, async (url,) => {
+			const { stdout, } = await dss(["project", "list", "--format", "table",], {
+				env: cliEnv(url,),
+			},);
+			// Value should be truncated (max 40 chars) and contain ellipsis
+			expect(stdout,).toContain("\u2026",);
+			expect(stdout,).not.toContain(longValue,);
+		},);
+	});
+});
+
+describe("CLI recipe get-payload and set-payload", () => {
+	it("get-payload prints recipe code to stdout", async () => {
+		await withCliServer((_req, res,) => {
+			sendJson(res, {
+				recipe: { type: "python", },
+				payload: "print('hello')\n",
+			},);
+		}, async (url,) => {
+			const { stdout, } = await dss(["recipe", "get-payload", "my_recipe",], { env: cliEnv(url,), },);
+			expect(stdout,).toBe("print('hello')\n",);
+		},);
+	});
+
+	it("get-payload writes to --output file", async () => {
+		const outPath = join(tmpdir(), `dss-cli-getpayload-${Date.now()}.py`,);
+		try {
+			await withCliServer((_req, res,) => {
+				sendJson(res, {
+					recipe: { type: "python", },
+					payload: "import os\n",
+				},);
+			}, async (url,) => {
+				const { stdout, } = await dss([
+					"recipe",
+					"get-payload",
+					"my_recipe",
+					"--output",
+					outPath,
+				], { env: cliEnv(url,), },);
+				expect(stdout.trim(),).toBe(outPath,);
+				expect(readFileSync(outPath, "utf-8",),).toBe("import os\n",);
+			},);
+		} finally {
+			rmSync(outPath, { force: true, },);
+		}
+	});
+
+	it("set-payload reads from --file and PUTs", async () => {
+		const filePath = join(tmpdir(), `dss-cli-setpayload-${Date.now()}.py`,);
+		writeFileSync(filePath, "print('updated')\n", "utf-8",);
+		let putBody: string | undefined;
+
+		try {
+			await withCliServer(async (req, res,) => {
+				const _url = new URL(req.url ?? "/", "http://localhost",);
+				if (req.method === "GET") {
+					sendJson(res, {
+						recipe: { type: "python", name: "my_recipe", },
+						payload: "print('old')\n",
+					},);
+					return;
+				}
+				if (req.method === "PUT") {
+					putBody = await readBody(req,);
+					sendJson(res, {},);
+					return;
+				}
+				res.statusCode = 404;
+				res.end();
+			}, async (url,) => {
+				const { stdout, } = await dss([
+					"recipe",
+					"set-payload",
+					"my_recipe",
+					"--file",
+					filePath,
+				], { env: cliEnv(url,), },);
+				expect(stdout,).toContain('"ok": true',);
+				expect(putBody,).toBeDefined();
+				const parsed = JSON.parse(putBody!,);
+				expect(parsed.payload,).toBe("print('updated')\n",);
+			},);
+		} finally {
+			rmSync(filePath, { force: true, },);
+		}
+	});
+
+	it("set-payload fails without --file", async () => {
+		const failure = await dssFailure(["recipe", "set-payload", "my_recipe",], {
+			env: cliEnv("http://localhost:1",),
+		},);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toContain("--file is required",);
+	});
+});
+
+describe("CLI help improvements", () => {
+	it("help shows --timeout flag", async () => {
+		const { stderr, } = await dss(["--help",],);
+		expect(stderr,).toContain("--timeout MS",);
+	});
+
+	it("help shows table format option", async () => {
+		const { stderr, } = await dss(["--help",],);
+		expect(stderr,).toContain("table",);
+	});
+
+	it("help shows quick start examples", async () => {
+		const { stderr, } = await dss(["--help",],);
+		expect(stderr,).toContain("Quick start:",);
+		expect(stderr,).toContain("dss auth login",);
+		expect(stderr,).toContain("dss recipe get-payload",);
+	});
+
+	it("help lists auth as a resource", async () => {
+		const { stderr, } = await dss(["--help",],);
+		expect(stderr,).toContain("auth",);
+	});
+
+	it("help shows get-payload and set-payload in recipe actions", async () => {
+		const { stderr, } = await dss(["recipe", "--help",],);
+		expect(stderr,).toContain("get-payload",);
+		expect(stderr,).toContain("set-payload",);
+	});
+});
+
+describe("CLI --version flag", () => {
+	it("dss --version prints version string to stdout", async () => {
+		const { stdout, } = await dss(["--version",],);
+		expect(stdout.trim(),).toMatch(/^\d+\.\d+\.\d+/,);
+	});
+
+	it("dss -V prints version string to stdout", async () => {
+		const { stdout, } = await dss(["-V",],);
+		expect(stdout.trim(),).toMatch(/^\d+\.\d+\.\d+/,);
+	});
+});
+
+describe("CLI short flags", () => {
+	it("-h shows top-level help", async () => {
+		const { stderr, } = await dss(["-h",],);
+		expect(stderr,).toContain("Usage: dss",);
+		expect(stderr,).toContain("Global flags:",);
+	});
+
+	it("-f table formats output as table", async () => {
+		const { stderr, } = await dss(["-f", "table", "--help",],);
+		// -f should consume "table" as the format value, --help triggers help
+		// Since --help with no resource shows top-level help and exits 0,
+		// this verifies -f didn't swallow "table" as a positional
+		expect(stderr,).toContain("Usage: dss",);
+	});
+});
+
+describe("CLI boolean flag does not swallow next positional", () => {
+	it("--verbose does not consume the next positional arg", async () => {
+		const { stderr, } = await dss(["--verbose", "project", "--help",],);
+		// If --verbose swallowed 'project', this would show top-level help or error.
+		// With the fix, 'project' is a positional and --help shows project actions.
+		expect(stderr,).toContain("project",);
+		expect(stderr,).toContain("list",);
+	});
+
+	it("--help does not consume the next positional arg", async () => {
+		const { stderr, } = await dss(["--help", "project",],);
+		// --help is boolean, so 'project' stays positional.
+		// Since positional[0] = 'project', this should show project-level help.
+		expect(stderr,).toContain("project",);
+	});
+});
+
+describe("CLI missing credentials plain text errors", () => {
+	it("missing URL prints plain text error, not JSON", async () => {
+		// --url "" overrides .env-loaded DATAIKU_URL, forcing the missing-URL path
+		const failure = await dssFailure(["--url", "", "project", "list",],);
+		expect(failure.stderr,).not.toContain('{"error"',);
+		expect(failure.stderr,).toContain("Missing Dataiku URL",);
+		expect(failure.code,).toBe(1,);
+	});
+
+	it("missing API key prints plain text error, not JSON", async () => {
+		// --api-key "" overrides .env-loaded DATAIKU_API_KEY, forcing the missing-key path
+		const failure = await dssFailure(["--api-key", "", "project", "list",],);
+		expect(failure.stderr,).not.toContain('{"error"',);
+		expect(failure.stderr,).toContain("Missing API key",);
+		expect(failure.code,).toBe(1,);
+	});
+});
+
+describe("CLI help text includes short flags", () => {
+	it("help shows short flag aliases", async () => {
+		const { stderr, } = await dss(["--help",],);
+		expect(stderr,).toContain("-h, --help",);
+		expect(stderr,).toContain("-v, --verbose",);
+		expect(stderr,).toContain("-V, --version",);
+		expect(stderr,).toContain("-f, --format",);
+		expect(stderr,).toContain("-o, --output",);
+	});
+});

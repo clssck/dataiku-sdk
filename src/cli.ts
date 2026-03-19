@@ -1,9 +1,20 @@
 #!/usr/bin/env node
 
 import { readFileSync, } from "node:fs";
+import { writeFile, } from "node:fs/promises";
 import { dirname, resolve, } from "node:path";
+import { createInterface, } from "node:readline";
+import { Writable, } from "node:stream";
 import { fileURLToPath, } from "node:url";
+import { validateCredentials, } from "./auth.js";
 import { DataikuClient, } from "./client.js";
+import {
+	deleteCredentials,
+	getCredentialsPath,
+	loadCredentials,
+	maskApiKey,
+	saveCredentials,
+} from "./config.js";
 import { DataikuError, } from "./errors.js";
 import type { BuildMode, } from "./schemas.js";
 
@@ -11,6 +22,14 @@ import type { BuildMode, } from "./schemas.js";
 // Utility helpers
 // ---------------------------------------------------------------------------
 
+const CLI_VERSION: string = (() => {
+	try {
+		const pkgPath = resolve(dirname(fileURLToPath(import.meta.url,),), "..", "package.json",);
+		return (JSON.parse(readFileSync(pkgPath, "utf-8",),) as { version: string; }).version;
+	} catch {
+		return "unknown";
+	}
+})();
 function num(v: string | boolean | undefined,): number | undefined {
 	if (typeof v !== "string") return undefined;
 	const n = Number(v,);
@@ -22,7 +41,7 @@ function json(v: string | boolean | undefined,): Record<string, unknown> | undef
 	return JSON.parse(v,) as Record<string, unknown>;
 }
 
-type OutputFormat = "json" | "quiet" | "tsv";
+type OutputFormat = "json" | "quiet" | "table" | "tsv";
 
 function jsonInput(flags: Record<string, string | boolean>,): Record<string, unknown> | undefined {
 	if (flags["stdin"] === true) {
@@ -85,8 +104,28 @@ function formatLineDiff(
 
 function parseOutputFormat(v: string | boolean | undefined,): OutputFormat {
 	if (v === undefined) return "json";
-	if (v === "json" || v === "quiet" || v === "tsv") return v;
-	throw new UsageError(`Invalid --format value: ${String(v,)}. Use json, tsv, or quiet.`,);
+	if (v === "json" || v === "quiet" || v === "table" || v === "tsv") return v;
+	throw new UsageError(`Invalid --format value: ${String(v,)}. Use json, tsv, table, or quiet.`,);
+}
+
+function writeTable(items: Record<string, unknown>[],): void {
+	if (items.length === 0) return;
+	const keys = Object.keys(items[0],);
+	const maxWidths = keys.map((k,) => {
+		const values = items.map((item,) => String(item[k] ?? "",));
+		return Math.min(40, Math.max(k.length, ...values.map((v,) => v.length),),);
+	},);
+	process.stdout.write(`${keys.map((k, i,) => k.padEnd(maxWidths[i],)).join("  ",)}\n`,);
+	process.stdout.write(`${maxWidths.map((w,) => "-".repeat(w,)).join("  ",)}\n`,);
+	for (const item of items) {
+		const row = keys.map((k, i,) => {
+			const val = String(item[k] ?? "",);
+			return (val.length > maxWidths[i]
+				? `${val.slice(0, maxWidths[i] - 1,)}\u2026`
+				: val).padEnd(maxWidths[i],);
+		},);
+		process.stdout.write(`${row.join("  ",)}\n`,);
+	}
 }
 
 function writeCommandResult(result: unknown, format: OutputFormat,): void {
@@ -104,11 +143,9 @@ function writeCommandResult(result: unknown, format: OutputFormat,): void {
 		return;
 	}
 	if (format === "quiet") return;
-	if (
-		format === "tsv"
-		&& Array.isArray(result,)
-		&& result.every((item,) => item !== null && typeof item === "object" && !Array.isArray(item,))
-	) {
+	const isArrayOfObjects = Array.isArray(result,)
+		&& result.every((item,) => item !== null && typeof item === "object" && !Array.isArray(item,));
+	if (format === "tsv" && isArrayOfObjects) {
 		const items = result as Record<string, unknown>[];
 		if (items.length === 0) return;
 		const keys = Object.keys(items[0],);
@@ -118,12 +155,26 @@ function writeCommandResult(result: unknown, format: OutputFormat,): void {
 		}
 		return;
 	}
+	if (format === "table" && isArrayOfObjects) {
+		writeTable(result as Record<string, unknown>[],);
+		return;
+	}
 	process.stdout.write(`${JSON.stringify(result, null, 2,)}\n`,);
 }
 
 // ---------------------------------------------------------------------------
 // Arg parsing
 // ---------------------------------------------------------------------------
+
+const BOOLEAN_FLAGS = new Set(["help", "verbose", "version", "stdin",],);
+
+const SHORT_FLAGS: Record<string, string> = {
+	h: "help",
+	v: "verbose",
+	V: "version",
+	f: "format",
+	o: "output",
+};
 
 interface ParsedArgs {
 	positional: string[];
@@ -145,13 +196,35 @@ function parseArgs(argv: string[],): ParsedArgs {
 			if (eqIdx !== -1) {
 				flags[arg.slice(2, eqIdx,)] = arg.slice(eqIdx + 1,);
 			} else {
-				const next = argv[i + 1];
-				if (next !== undefined && !next.startsWith("--",)) {
-					flags[arg.slice(2,)] = next;
-					i++;
+				const flagName = arg.slice(2,);
+				if (BOOLEAN_FLAGS.has(flagName,)) {
+					flags[flagName] = true;
 				} else {
-					flags[arg.slice(2,)] = true;
+					const next = argv[i + 1];
+					if (next !== undefined && !next.startsWith("-",)) {
+						flags[flagName] = next;
+						i++;
+					} else {
+						flags[flagName] = true;
+					}
 				}
+			}
+		} else if (arg.length === 2 && arg[0] === "-" && arg[1] !== "-") {
+			const long = SHORT_FLAGS[arg[1]!];
+			if (long) {
+				if (BOOLEAN_FLAGS.has(long,)) {
+					flags[long] = true;
+				} else {
+					const next = argv[i + 1];
+					if (next !== undefined && !next.startsWith("-",)) {
+						flags[long] = next;
+						i++;
+					} else {
+						flags[long] = true;
+					}
+				}
+			} else {
+				positional.push(arg,);
 			}
 		} else {
 			positional.push(arg,);
@@ -384,6 +457,32 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			},
 			usage:
 				"dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
+		},
+		"get-payload": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss recipe get-payload <name>",);
+				const payload = await c.recipes.getPayload(a[0], {
+					projectKey: f["project-key"] as string | undefined,
+				},);
+				if (typeof f["output"] === "string") {
+					await writeFile(f["output"], payload, "utf-8",);
+					return f["output"];
+				}
+				return payload;
+			},
+			usage: "dss recipe get-payload <name> [--output PATH] [--project-key KEY]",
+		},
+		"set-payload": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss recipe set-payload <name> --file PATH",);
+				const filePath = f["file"] as string;
+				if (!filePath) throw new UsageError("--file is required.",);
+				const content = readFileSync(filePath, "utf-8",);
+				await c.recipes.setPayload(a[0], content, {
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage: "dss recipe set-payload <name> --file PATH [--project-key KEY]",
 		},
 	},
 
@@ -745,22 +844,35 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 // Help
 // ---------------------------------------------------------------------------
 
-const RESOURCE_NAMES = Object.keys(commands,).sort();
+const RESOURCE_NAMES = [...Object.keys(commands,), "auth",].sort();
 
 function printTopLevelHelp(): void {
 	const lines = [
 		"Usage: dss <resource> <action> [args...] [--flags]",
 		"",
 		"Global flags:",
-		"  --url URL            Dataiku DSS base URL (env: DATAIKU_URL)",
-		"  --api-key KEY        API key              (env: DATAIKU_API_KEY)",
-		"  --project-key KEY    Default project key   (env: DATAIKU_PROJECT_KEY)",
-		"  --format FORMAT      Output format: json|tsv|quiet",
-		"  --verbose            Log HTTP requests to stderr",
-		"  --help               Show help",
+		"  -h, --help               Show help",
+		"  -v, --verbose            Log HTTP requests to stderr",
+		"  -V, --version            Show version",
+		"  -f, --format FORMAT      Output format: json|tsv|table|quiet",
+		"  -o, --output PATH        Write output to file (recipe get-payload)",
+		"      --url URL            Dataiku DSS base URL (env: DATAIKU_URL)",
+		"      --api-key KEY        API key              (env: DATAIKU_API_KEY)",
+		"      --project-key KEY    Default project key   (env: DATAIKU_PROJECT_KEY)",
+		"      --timeout MS         Request timeout in ms  (default: 30000)",
 		"",
 		"Resources:",
 		...RESOURCE_NAMES.map((r,) => `  ${r}`),
+		"",
+		"Quick start:",
+		"  dss auth login                         Save DSS credentials",
+		"  dss auth status                        Verify connection",
+		"  dss project list                       List accessible projects",
+		"  dss dataset list                       List datasets in default project",
+		"  dss dataset preview <name>             Preview dataset rows as CSV",
+		"  dss recipe get-payload <name>          Print recipe code to stdout",
+		"  dss recipe download-code <name>        Download recipe code to a file",
+		"  dss job log <id>                       View job log output",
 	];
 	process.stderr.write(`${lines.join("\n",)}\n`,);
 }
@@ -828,12 +940,155 @@ function loadEnvFile(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Auth commands (run before client creation)
+// ---------------------------------------------------------------------------
+
+const AUTH_ACTIONS: Record<string, {
+	handler: (flags: Record<string, string | boolean>,) => Promise<void>;
+	usage: string;
+}> = {
+	login: {
+		handler: async (flags,) => {
+			let { url, apiKey, projectKey, } = resolveCredentials(flags,);
+
+			if (!url || !apiKey) {
+				if (!process.stdin.isTTY) {
+					throw new UsageError(
+						"Missing --url and/or --api-key. Provide them as flags or run interactively.",
+					);
+				}
+				if (!url) url = await promptLine("DSS URL: ",);
+				if (!apiKey) apiKey = await promptSecret("API key: ",);
+				if (!projectKey) projectKey = (await promptLine("Project key (optional): ",)) || undefined;
+			}
+
+			if (!url) throw new UsageError("URL is required.",);
+			if (!apiKey) throw new UsageError("API key is required.",);
+			process.stderr.write("Validating credentials... ",);
+			const result = await validateCredentials(url, apiKey,);
+			if (!result.valid) {
+				process.stderr.write(`✗ Failed\n`,);
+				throw new DataikuError(
+					0,
+					"Authentication Failed",
+					result.error ?? "Credential validation failed",
+				);
+			}
+			process.stderr.write("\u2713 Connected\n",);
+
+			saveCredentials({ url, apiKey, projectKey, },);
+			process.stderr.write(`Credentials saved to ${getCredentialsPath()}\n`,);
+		},
+		usage: "dss auth login [--url URL] [--api-key KEY] [--project-key KEY]",
+	},
+	status: {
+		handler: async (_flags,) => {
+			const creds = loadCredentials();
+			if (!creds) {
+				process.stderr.write("No saved credentials. Run: dss auth login\n",);
+				return;
+			}
+			const lines = [
+				`URL:         ${creds.url}`,
+				`API key:     ${maskApiKey(creds.apiKey,)}`,
+				`Project key: ${creds.projectKey ?? "(not set)"}`,
+			];
+			for (const line of lines) process.stderr.write(`${line}\n`,);
+
+			const result = await validateCredentials(creds.url, creds.apiKey,);
+			if (result.valid) {
+				process.stderr.write("Connection:  \u2713 Valid\n",);
+			} else {
+				process.stderr.write(`Connection:  \u2717 Failed (${result.error ?? "unknown error"})\n`,);
+			}
+			process.stderr.write(`Config:      ${getCredentialsPath()}\n`,);
+		},
+		usage: "dss auth status",
+	},
+	logout: {
+		handler: async (_flags,) => {
+			deleteCredentials();
+			process.stderr.write("Credentials removed.\n",);
+		},
+		usage: "dss auth logout",
+	},
+};
+
+// ---------------------------------------------------------------------------
+// Interactive prompts
+// ---------------------------------------------------------------------------
+
+function promptLine(label: string,): Promise<string> {
+	return new Promise((res, rej,) => {
+		const rl = createInterface({ input: process.stdin, output: process.stderr, },);
+		rl.on("close", () => rej(new UsageError("Input closed before a value was provided.",),),);
+		rl.question(label, (answer,) => {
+			rl.close();
+			res(answer.trim(),);
+		},);
+	},);
+}
+
+function promptSecret(label: string,): Promise<string> {
+	return new Promise((res, rej,) => {
+		const muted = new Writable({
+			write(_chunk, _encoding, cb,) {
+				cb();
+			},
+		},);
+		const rl = createInterface({ input: process.stdin, output: muted, terminal: true, },);
+		rl.on("close", () => rej(new UsageError("Input closed before a value was provided.",),),);
+		process.stderr.write(label,);
+		rl.question("", (answer,) => {
+			rl.close();
+			process.stderr.write("\n",);
+			res(answer.trim(),);
+		},);
+	},);
+}
+
+// ---------------------------------------------------------------------------
+// Credential resolution
+// ---------------------------------------------------------------------------
+
+function resolveCredentials(flags: Record<string, string | boolean>,): {
+	url: string;
+	apiKey: string;
+	projectKey?: string;
+} {
+	let url = flags["url"] as string | undefined;
+	let apiKey = flags["api-key"] as string | undefined;
+	let projectKey = flags["project-key"] as string | undefined;
+
+	url ??= process.env.DATAIKU_URL;
+	apiKey ??= process.env.DATAIKU_API_KEY;
+	projectKey ??= process.env.DATAIKU_PROJECT_KEY;
+
+	if (!url || !apiKey) {
+		const saved = loadCredentials();
+		if (saved) {
+			url ??= saved.url;
+			apiKey ??= saved.apiKey;
+			projectKey ??= saved.projectKey;
+		}
+	}
+
+	return { url: url ?? "", apiKey: apiKey ?? "", projectKey, };
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
 	loadEnvFile();
 	const { positional, flags, } = parseArgs(process.argv.slice(2,),);
+
+	// --version
+	if (flags["version"] === true) {
+		process.stdout.write(`${CLI_VERSION}\n`,);
+		process.exit(0,);
+	}
 
 	// Top-level help
 	if (positional.length === 0 || (positional.length === 0 && flags["help"])) {
@@ -843,6 +1098,32 @@ async function main(): Promise<void> {
 	}
 
 	const resource = positional[0];
+
+	// Auth commands — dispatched before client creation
+	if (resource === "auth") {
+		const action = positional[1];
+		if (!action || flags["help"] === true) {
+			const lines = [
+				"Usage: dss auth <action> [--flags]",
+				"",
+				"Actions:",
+				...Object.entries(AUTH_ACTIONS,).map(
+					([name, meta,],) => `  ${name}  \u2192  ${meta.usage}`,
+				),
+			];
+			process.stderr.write(`${lines.join("\n",)}\n`,);
+			process.exit(flags["help"] === true ? 0 : 1,);
+		}
+		const authMeta = AUTH_ACTIONS[action];
+		if (!authMeta) {
+			process.stderr.write(
+				`Unknown action: auth ${action}\nAvailable: ${Object.keys(AUTH_ACTIONS,).join(", ",)}\n`,
+			);
+			process.exit(1,);
+		}
+		await authMeta.handler(flags,);
+		return;
+	}
 
 	// Unknown resource
 	if (!commands[resource]) {
@@ -884,32 +1165,26 @@ async function main(): Promise<void> {
 		process.exit(0,);
 	}
 
-	// Validate config
-	const url = (flags["url"] as string | undefined) ?? process.env.DATAIKU_URL ?? "";
-	const apiKey = (flags["api-key"] as string | undefined) ?? process.env.DATAIKU_API_KEY ?? "";
+	// Resolve credentials: flags > env > saved > .env
+	const { url, apiKey, projectKey, } = resolveCredentials(flags,);
 
 	if (!url) {
-		process.stderr.write(
-			`${
-				JSON.stringify({ error: "Missing Dataiku URL. Set DATAIKU_URL or pass --url.", }, null, 2,)
-			}\n`,
-		);
-		process.exit(1,);
+		throw new UsageError("Missing Dataiku URL. Set DATAIKU_URL, pass --url, or run: dss auth login",);
 	}
 	if (!apiKey) {
-		process.stderr.write(
-			`${
-				JSON.stringify({ error: "Missing API key. Set DATAIKU_API_KEY or pass --api-key.", }, null, 2,)
-			}\n`,
+		throw new UsageError(
+			"Missing API key. Set DATAIKU_API_KEY, pass --api-key, or run: dss auth login",
 		);
-		process.exit(1,);
 	}
+
+	const requestTimeoutMs = num(flags["timeout"],) ?? undefined;
 
 	const client = new DataikuClient({
 		url,
 		apiKey,
-		projectKey: (flags["project-key"] as string | undefined) ?? process.env.DATAIKU_PROJECT_KEY,
+		projectKey,
 		verbose: flags["verbose"] === true,
+		requestTimeoutMs,
 	},);
 
 	const args = positional.slice(2,);
