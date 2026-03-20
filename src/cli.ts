@@ -17,6 +17,7 @@ import {
 } from "./config.js";
 import { DataikuError, } from "./errors.js";
 import type { BuildMode, } from "./schemas.js";
+import { AGENTS, detectAgents, installSkill, } from "./skill.js";
 
 // ---------------------------------------------------------------------------
 // Utility helpers
@@ -166,7 +167,7 @@ function writeCommandResult(result: unknown, format: OutputFormat,): void {
 // Arg parsing
 // ---------------------------------------------------------------------------
 
-const BOOLEAN_FLAGS = new Set(["help", "verbose", "version", "stdin",],);
+const BOOLEAN_FLAGS = new Set(["help", "verbose", "version", "stdin", "global", "list-agents",],);
 
 const SHORT_FLAGS: Record<string, string> = {
 	h: "help",
@@ -844,7 +845,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 // Help
 // ---------------------------------------------------------------------------
 
-const RESOURCE_NAMES = [...Object.keys(commands,), "auth",].sort();
+const RESOURCE_NAMES = [...Object.keys(commands,), "auth", "install-skill",].sort();
 
 function printTopLevelHelp(): void {
 	const lines = [
@@ -873,6 +874,7 @@ function printTopLevelHelp(): void {
 		"  dss recipe get-payload <name>          Print recipe code to stdout",
 		"  dss recipe download-code <name>        Download recipe code to a file",
 		"  dss job log <id>                       View job log output",
+		"  dss install-skill                      Install agent skill for coding agents",
 	];
 	process.stderr.write(`${lines.join("\n",)}\n`,);
 }
@@ -1125,6 +1127,72 @@ async function main(): Promise<void> {
 		return;
 	}
 
+	// install-skill — dispatched before client creation
+	if (resource === "install-skill") {
+		if (flags["help"] === true) {
+			const lines = [
+				"Usage: dss install-skill [--global] [--agent NAME] [--list-agents]",
+				"",
+				"Install the dataiku-dss agent skill for detected coding agents.",
+				"",
+				"Flags:",
+				"  --global         Install to user-level global scope (default: project)",
+				"  --agent NAME     Target a specific agent: claude, codex, cursor, pi, omp",
+				"  --list-agents    Print detected agents and exit",
+			];
+			process.stderr.write(`${lines.join("\n",)}\n`,);
+			process.exit(0,);
+		}
+
+		const listOnly = flags["list-agents"] === true;
+		const agentFilter = typeof flags["agent"] === "string" ? flags["agent"] : undefined;
+		const isGlobal = flags["global"] === true;
+
+		// Resolve target agents
+		let targets;
+		if (agentFilter) {
+			const def = AGENTS[agentFilter];
+			if (!def) {
+				throw new UsageError(
+					`Unknown agent: ${agentFilter}. Available: ${Object.keys(AGENTS,).join(", ",)}`,
+				);
+			}
+			targets = [{ id: agentFilter, def, via: "flag" as const, },];
+		} else {
+			targets = detectAgents();
+		}
+
+		if (listOnly) {
+			if (targets.length === 0) {
+				process.stderr.write("No coding agents detected.\n",);
+			} else {
+				process.stderr.write("Detected agents:\n",);
+				for (const t of targets) {
+					process.stderr.write(`  ${t.id}  (${t.def.name}, via ${t.via})\n`,);
+				}
+			}
+			process.exit(0,);
+		}
+
+		if (targets.length === 0) {
+			throw new UsageError(
+				"No coding agents detected. Install one (claude, codex, cursor, pi, omp) or use --agent NAME.",
+			);
+		}
+
+		const scope = isGlobal ? "global" : "project";
+		process.stderr.write(`Installing dataiku-dss skill (${scope} scope):\n`,);
+		const results = installSkill(targets, { global: isGlobal, cwd: process.cwd(), },);
+
+		for (const r of results) {
+			process.stderr.write(`  ${r.agent}  \u2192  ${r.path}\n`,);
+		}
+		if (results.length > 0) {
+			process.stderr.write(`\nDone. ${results.length} skill(s) installed.\n`,);
+		}
+		return;
+	}
+
 	// Unknown resource
 	if (!commands[resource]) {
 		if (flags["help"]) {
@@ -1132,7 +1200,7 @@ async function main(): Promise<void> {
 			process.exit(0,);
 		}
 		process.stderr.write(
-			`Unknown resource: ${resource}\nAvailable: ${RESOURCE_NAMES.join(", ",)}\n`,
+			`Unknown resource: ${resource} \nAvailable: ${RESOURCE_NAMES.join(", ",)} \n`,
 		);
 		process.exit(1,);
 	}
@@ -1152,9 +1220,9 @@ async function main(): Promise<void> {
 	// Unknown action
 	if (!actionMeta) {
 		process.stderr.write(
-			`Unknown action: ${resource} ${action}\nAvailable actions for ${resource}: ${
+			`Unknown action: ${resource} ${action} \nAvailable actions for ${resource}: ${
 				Object.keys(commands[resource],).join(", ",)
-			}\n`,
+			} \n`,
 		);
 		process.exit(1,);
 	}
@@ -1195,7 +1263,7 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown,) => {
 	if (err instanceof UsageError) {
-		process.stderr.write(`${err.message}\n`,);
+		process.stderr.write(`${err.message} \n`,);
 		process.exit(1,);
 	}
 	if (err instanceof DataikuError) {
@@ -1205,10 +1273,10 @@ main().catch((err: unknown,) => {
 			retryable: err.retryable,
 		};
 		if (err.retryHint) payload.retryHint = err.retryHint;
-		process.stderr.write(`${JSON.stringify(payload, null, 2,)}\n`,);
+		process.stderr.write(`${JSON.stringify(payload, null, 2,)} \n`,);
 		process.exit(err.category === "transient" ? 3 : 2,);
 	}
 	const message = err instanceof Error ? err.message : String(err,);
-	process.stderr.write(`${JSON.stringify({ error: message, }, null, 2,)}\n`,);
+	process.stderr.write(`${JSON.stringify({ error: message, }, null, 2,)} \n`,);
 	process.exit(1,);
 },);

@@ -935,3 +935,89 @@ describe("CLI help text includes short flags", () => {
 		expect(stderr,).toContain("-o, --output",);
 	});
 });
+
+describe("CLI install-skill command", () => {
+	it("dss install-skill --help shows usage", async () => {
+		const { stderr, } = await dss(["install-skill", "--help",],);
+		expect(stderr,).toContain("Usage: dss install-skill",);
+		expect(stderr,).toContain("--global",);
+		expect(stderr,).toContain("--agent",);
+		expect(stderr,).toContain("--list-agents",);
+	});
+
+	it("dss install-skill --list-agents prints detected agents", async () => {
+		const { stderr, } = await dss(["install-skill", "--list-agents",],);
+		expect(stderr,).toContain("Detected agents:",);
+	});
+
+	it("dss install-skill --agent claude writes SKILL.md to project dir", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-skill-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			const { stderr, } = await dss(["install-skill", "--agent", "claude",], { cwd: tmpDir, },);
+			expect(stderr,).toContain("Installing dataiku-dss skill",);
+			expect(stderr,).toContain("claude",);
+			expect(stderr,).toContain("Done.",);
+
+			// Verify the file was written
+			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+			const content = readFileSync(skillPath, "utf-8",);
+			expect(content,).toContain("name: dataiku-dss",);
+			expect(content,).toContain("dss auth login",);
+			expect(content,).toContain("dss project list",);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("dss install-skill --agent codex writes to .codex/skills/", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-skill-codex-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await dss(["install-skill", "--agent", "codex",], { cwd: tmpDir, },);
+			const skillPath = join(tmpDir, ".codex", "skills", "dataiku-dss", "SKILL.md",);
+			const content = readFileSync(skillPath, "utf-8",);
+			expect(content,).toContain("name: dataiku-dss",);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("dss install-skill --agent cursor writes to .cursor/skills/", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-skill-cursor-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await dss(["install-skill", "--agent", "cursor",], { cwd: tmpDir, },);
+			const skillPath = join(tmpDir, ".cursor", "skills", "dataiku-dss", "SKILL.md",);
+			const content = readFileSync(skillPath, "utf-8",);
+			expect(content,).toContain("name: dataiku-dss",);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("dss install-skill is idempotent", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-skill-idem-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await dss(["install-skill", "--agent", "claude",], { cwd: tmpDir, },);
+			await dss(["install-skill", "--agent", "claude",], { cwd: tmpDir, },);
+			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+			const content = readFileSync(skillPath, "utf-8",);
+			expect(content,).toContain("name: dataiku-dss",);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("dss install-skill --agent unknown fails with UsageError", async () => {
+		const failure = await dssFailure(["install-skill", "--agent", "unknown",],);
+		expect(failure.stderr,).toContain("Unknown agent: unknown",);
+		expect(failure.code,).toBe(1,);
+	});
+
+	it("help lists install-skill in resources and quick start", async () => {
+		const { stderr, } = await dss(["--help",],);
+		expect(stderr,).toContain("install-skill",);
+	});
+});
