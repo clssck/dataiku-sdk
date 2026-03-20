@@ -17,7 +17,7 @@ import {
 } from "./config.js";
 import { DataikuError, } from "./errors.js";
 import type { BuildMode, } from "./schemas.js";
-import { AGENTS, detectAgents, installSkill, } from "./skill.js";
+import { AGENTS, detectAgents, findWorkspaceRoot, installSkill, } from "./skill.js";
 
 // ---------------------------------------------------------------------------
 // Utility helpers
@@ -1147,13 +1147,14 @@ async function main(): Promise<void> {
 	if (resource === "install-skill") {
 		if (flags["help"] === true) {
 			const lines = [
-				"Usage: dss install-skill [--global] [--agent NAME] [--list-agents]",
+				"Usage: dss install-skill [--global] [--agent NAME] [--target PATH] [--list-agents]",
 				"",
 				"Install the dataiku-dss agent skill for detected coding agents.",
 				"",
 				"Flags:",
 				"  --global         Install to user-level global scope (default: project)",
 				"  --agent NAME     Target a specific agent: claude, codex, cursor, pi, omp",
+				"  --target PATH    Project directory to install into (default: workspace root)",
 				"  --list-agents    Print detected agents and exit",
 			];
 			process.stderr.write(`${lines.join("\n",)}\n`,);
@@ -1163,6 +1164,7 @@ async function main(): Promise<void> {
 		const listOnly = flags["list-agents"] === true;
 		const agentFilter = typeof flags["agent"] === "string" ? flags["agent"] : undefined;
 		const isGlobal = flags["global"] === true;
+		const targetDir = typeof flags["target"] === "string" ? flags["target"] : undefined;
 
 		// Resolve target agents
 		let targets;
@@ -1197,8 +1199,9 @@ async function main(): Promise<void> {
 		}
 
 		const scope = isGlobal ? "global" : "project";
+		const cwd = targetDir ?? (isGlobal ? process.cwd() : findWorkspaceRoot(process.cwd(),));
 		process.stderr.write(`Installing dataiku-dss skill (${scope} scope):\n`,);
-		const results = installSkill(targets, { global: isGlobal, cwd: process.cwd(), },);
+		const results = installSkill(targets, { global: isGlobal, cwd, },);
 
 		for (const r of results) {
 			process.stderr.write(`  ${r.agent}  \u2192  ${r.path}\n`,);

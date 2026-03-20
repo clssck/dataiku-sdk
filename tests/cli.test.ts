@@ -1024,6 +1024,57 @@ describe("CLI install-skill command", () => {
 		expect(failure.code,).toBe(1,);
 	});
 
+	it("dss install-skill --target writes to specified directory", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-skill-target-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			const { stderr, } = await dss(["install-skill", "--agent", "claude", "--target", tmpDir,],);
+			expect(stderr,).toContain("Installing dataiku-dss skill",);
+			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+			const content = readFileSync(skillPath, "utf-8",);
+			expect(content,).toContain("name: dataiku-dss",);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("workspace detection finds .git parent for project installs", async () => {
+		// Create workspace/.git and workspace/sub/
+		const workspace = join(tmpdir(), `dss-cli-skill-ws-${Date.now()}`,);
+		const subdir = join(workspace, "sub",);
+		mkdirSync(join(workspace, ".git",), { recursive: true, },);
+		mkdirSync(subdir, { recursive: true, },);
+		try {
+			// Run from sub/ — should detect workspace/ as root via .git
+			await dss(["install-skill", "--agent", "claude",], { cwd: subdir, },);
+			// Skill should be at workspace/.claude/skills/... not sub/.claude/skills/...
+			const skillPath = join(workspace, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+			const content = readFileSync(skillPath, "utf-8",);
+			expect(content,).toContain("name: dataiku-dss",);
+		} finally {
+			rmSync(workspace, { recursive: true, force: true, },);
+		}
+	});
+
+	it("--target overrides workspace detection", async () => {
+		// Create workspace/.git and a separate target dir
+		const workspace = join(tmpdir(), `dss-cli-skill-override-${Date.now()}`,);
+		const target = join(tmpdir(), `dss-cli-skill-target2-${Date.now()}`,);
+		mkdirSync(join(workspace, ".git",), { recursive: true, },);
+		mkdirSync(target, { recursive: true, },);
+		try {
+			// Run from workspace/ but --target points elsewhere
+			await dss(["install-skill", "--agent", "claude", "--target", target,], { cwd: workspace, },);
+			// Skill should be at target, not workspace
+			const skillPath = join(target, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+			const content = readFileSync(skillPath, "utf-8",);
+			expect(content,).toContain("name: dataiku-dss",);
+		} finally {
+			rmSync(workspace, { recursive: true, force: true, },);
+			rmSync(target, { recursive: true, force: true, },);
+		}
+	});
+
 	it("help lists install-skill in resources and quick start", async () => {
 		const { stderr, } = await dss(["--help",],);
 		expect(stderr,).toContain("install-skill",);

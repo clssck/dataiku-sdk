@@ -1,7 +1,7 @@
 import { execFileSync, } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync, } from "node:fs";
 import { homedir, } from "node:os";
-import { join, } from "node:path";
+import { dirname, join, } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Agent definitions
@@ -238,6 +238,28 @@ export function detectAgents(): DetectedAgent[] {
 // ---------------------------------------------------------------------------
 // Skill installation
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Workspace root detection
+// ---------------------------------------------------------------------------
+
+const WORKSPACE_MARKERS = [".git", ".cursor", ".claude", ".codex", ".vscode",];
+
+/**
+ * Walk upward from startDir looking for common workspace markers.
+ * Returns the first directory containing a marker, or startDir if none found.
+ */
+export function findWorkspaceRoot(startDir: string,): string {
+	let dir = startDir;
+	for (let i = 0; i < 20; i++) {
+		for (const marker of WORKSPACE_MARKERS) {
+			if (existsSync(join(dir, marker,),)) return dir;
+		}
+		const parent = dirname(dir,);
+		if (parent === dir) break;
+		dir = parent;
+	}
+	return startDir;
+}
 
 export interface InstallResult {
 	agent: string;
