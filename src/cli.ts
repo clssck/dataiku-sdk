@@ -185,6 +185,11 @@ const SHORT_FLAGS: Record<string, string> = {
 	o: "output",
 };
 
+/** Long-flag aliases: these are normalized to the canonical name in parseArgs. */
+const FLAG_ALIASES: Record<string, string> = {
+	project: "project-key",
+};
+
 interface ParsedArgs {
 	positional: string[];
 	flags: Record<string, string | boolean>;
@@ -203,9 +208,10 @@ function parseArgs(argv: string[],): ParsedArgs {
 		if (arg.startsWith("--",)) {
 			const eqIdx = arg.indexOf("=",);
 			if (eqIdx !== -1) {
-				flags[arg.slice(2, eqIdx,)] = arg.slice(eqIdx + 1,);
+				const raw = arg.slice(2, eqIdx,);
+				flags[FLAG_ALIASES[raw] ?? raw] = arg.slice(eqIdx + 1,);
 			} else {
-				const flagName = arg.slice(2,);
+				const flagName = FLAG_ALIASES[arg.slice(2,)] ?? arg.slice(2,);
 				if (BOOLEAN_FLAGS.has(flagName,)) {
 					flags[flagName] = true;
 				} else {
@@ -641,13 +647,15 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		},
 		download: {
 			handler: async (c, a, f,) => {
-				requireArgs(a, 2, "dss folder download <name-or-id> <path>",);
+				requireArgs(a, 2, "dss folder download <name-or-id> <remote-path> [local-path]",);
+				const localPath = (a[2] as string | undefined) ?? (f["output"] as string | undefined);
 				return c.folders.download(await resolveFolderId(c, a[0], f,), a[1], {
-					localPath: f["output"] as string | undefined,
+					localPath,
 					projectKey: f["project-key"] as string | undefined,
 				},);
 			},
-			usage: "dss folder download <name-or-id> <path> [--output PATH] [--project-key KEY]",
+			usage:
+				"dss folder download <name-or-id> <remote-path> [local-path] [--output PATH] [--project-key KEY]",
 		},
 		upload: {
 			handler: async (c, a, f,) => {
