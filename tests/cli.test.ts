@@ -917,8 +917,15 @@ describe("CLI missing credentials plain text errors", () => {
 	});
 
 	it("missing API key prints plain text error, not JSON", async () => {
-		// --api-key "" overrides .env-loaded DATAIKU_API_KEY, forcing the missing-key path
-		const failure = await dssFailure(["--api-key", "", "project", "list",],);
+		// --url forces a URL, --api-key "" forces empty key — even without .env
+		const failure = await dssFailure([
+			"--url",
+			"http://localhost:1",
+			"--api-key",
+			"",
+			"project",
+			"list",
+		],);
 		expect(failure.stderr,).not.toContain('{"error"',);
 		expect(failure.stderr,).toContain("Missing API key",);
 		expect(failure.code,).toBe(1,);
@@ -945,9 +952,10 @@ describe("CLI install-skill command", () => {
 		expect(stderr,).toContain("--list-agents",);
 	});
 
-	it("dss install-skill --list-agents prints detected agents", async () => {
+	it("dss install-skill --list-agents exits cleanly", async () => {
+		// CI has no agents; local dev has some. Either way, exits 0.
 		const { stderr, } = await dss(["install-skill", "--list-agents",],);
-		expect(stderr,).toContain("Detected agents:",);
+		expect(stderr,).toMatch(/Detected agents:|No coding agents detected/,);
 	});
 
 	it("dss install-skill --agent claude writes SKILL.md to project dir", async () => {
