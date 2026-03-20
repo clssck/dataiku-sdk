@@ -38,6 +38,9 @@
 	"dependencies": {
 		"@sinclair/typebox": "^0.34.48"
 	},
+	"bundledDependencies": [
+		"@sinclair/typebox"
+	],
 	"license": "MIT",
 	"repository": {
 		"type": "git",

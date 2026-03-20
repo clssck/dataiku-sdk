@@ -25,8 +25,16 @@ import { AGENTS, detectAgents, installSkill, } from "./skill.js";
 
 const CLI_VERSION: string = (() => {
 	try {
-		const pkgPath = resolve(dirname(fileURLToPath(import.meta.url,),), "..", "package.json",);
-		return (JSON.parse(readFileSync(pkgPath, "utf-8",),) as { version: string; }).version;
+		let dir = dirname(fileURLToPath(import.meta.url,),);
+		for (let i = 0; i < 5; i++) {
+			const candidate = resolve(dir, "package.json",);
+			try {
+				return (JSON.parse(readFileSync(candidate, "utf-8",),) as { version: string; }).version;
+			} catch {
+				dir = dirname(dir,);
+			}
+		}
+		return "unknown";
 	} catch {
 		return "unknown";
 	}
@@ -1069,8 +1077,8 @@ function resolveCredentials(flags: Record<string, string | boolean>,): {
 	if (!url || !apiKey) {
 		const saved = loadCredentials();
 		if (saved) {
-			url ??= saved.url;
-			apiKey ??= saved.apiKey;
+			url ||= saved.url;
+			apiKey ||= saved.apiKey;
 			projectKey ??= saved.projectKey;
 		}
 	}
