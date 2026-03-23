@@ -60,7 +60,7 @@ dss auth login --url https://dss.example.com --api-key YOUR_KEY
 dss auth status                      # verify connection
 \`\`\`
 
-Credentials are saved to \`~/.dss/credentials.json\`. Alternatively set environment variables:
+Credentials are saved to \`~/.config/dataiku/credentials.json\`. Alternatively set environment variables:
 
 \`\`\`bash
 export DATAIKU_URL=https://dss.example.com
@@ -242,7 +242,7 @@ export function detectAgents(): DetectedAgent[] {
 // Workspace root detection
 // ---------------------------------------------------------------------------
 
-const WORKSPACE_MARKERS = [".git", ".cursor", ".claude", ".codex", ".vscode",];
+const WORKSPACE_MARKERS = [".git", ".cursor", ".claude", ".codex", ".pi", ".omp", ".vscode",];
 
 /**
  * Walk upward from startDir looking for common workspace markers.

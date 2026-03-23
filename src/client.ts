@@ -295,9 +295,10 @@ export class DataikuClient {
 	}
 
 	/**
-	 * Validate raw data against a TypeBox schema without throwing.
-	 * Always returns the data. On mismatch, fires onValidationWarning callback
-	 * with the method name and error details.
+	 * Validate raw data against a TypeBox schema without throwing, even when
+	 * mismatched values are not JSON-serializable. Always returns the original
+	 * data, and on mismatch emits onValidationWarning with the method name and
+	 * error details. If the callback throws, that error still propagates.
 	 */
 	safeParse<S extends TSchema,>(schema: S, data: unknown, method: string,): Static<S> {
 		const result: SafeParseResult<Static<S>> = safeParseSchema(schema, data,);

@@ -175,7 +175,18 @@ function writeCommandResult(result: unknown, format: OutputFormat,): void {
 // Arg parsing
 // ---------------------------------------------------------------------------
 
-const BOOLEAN_FLAGS = new Set(["help", "verbose", "version", "stdin", "global", "list-agents",],);
+const BOOLEAN_FLAGS = new Set([
+	"help",
+	"verbose",
+	"version",
+	"stdin",
+	"global",
+	"list-agents",
+	"include-raw",
+	"include-payload",
+	"include-logs",
+	"replace",
+],);
 
 const SHORT_FLAGS: Record<string, string> = {
 	h: "help",
@@ -189,6 +200,20 @@ const SHORT_FLAGS: Record<string, string> = {
 const FLAG_ALIASES: Record<string, string> = {
 	project: "project-key",
 };
+
+function isNegativeNumberToken(value: string,): boolean {
+	return value.startsWith("-",) && Number.isFinite(Number(value,),);
+}
+
+function requireFlagValue(
+	flagLabel: string,
+	next: string | undefined,
+): string {
+	if (next === undefined || (next.startsWith("-",) && !isNegativeNumberToken(next,))) {
+		throw new UsageError(`Flag ${flagLabel} requires a value.`,);
+	}
+	return next;
+}
 
 interface ParsedArgs {
 	positional: string[];
@@ -211,17 +236,14 @@ function parseArgs(argv: string[],): ParsedArgs {
 				const raw = arg.slice(2, eqIdx,);
 				flags[FLAG_ALIASES[raw] ?? raw] = arg.slice(eqIdx + 1,);
 			} else {
-				const flagName = FLAG_ALIASES[arg.slice(2,)] ?? arg.slice(2,);
+				const rawFlagName = arg.slice(2,);
+				const flagName = FLAG_ALIASES[rawFlagName] ?? rawFlagName;
 				if (BOOLEAN_FLAGS.has(flagName,)) {
 					flags[flagName] = true;
 				} else {
-					const next = argv[i + 1];
-					if (next !== undefined && !next.startsWith("-",)) {
-						flags[flagName] = next;
-						i++;
-					} else {
-						flags[flagName] = true;
-					}
+					const next = requireFlagValue(`--${rawFlagName}`, argv[i + 1],);
+					flags[flagName] = next;
+					i++;
 				}
 			}
 		} else if (arg.length === 2 && arg[0] === "-" && arg[1] !== "-") {
@@ -230,13 +252,9 @@ function parseArgs(argv: string[],): ParsedArgs {
 				if (BOOLEAN_FLAGS.has(long,)) {
 					flags[long] = true;
 				} else {
-					const next = argv[i + 1];
-					if (next !== undefined && !next.startsWith("-",)) {
-						flags[long] = next;
-						i++;
-					} else {
-						flags[long] = true;
-					}
+					const next = requireFlagValue(`-${arg[1]}`, argv[i + 1],);
+					flags[long] = next;
+					i++;
 				}
 			} else {
 				positional.push(arg,);
@@ -986,6 +1004,7 @@ const AUTH_ACTIONS: Record<string, {
 			const result = await validateCredentials(url, apiKey,);
 			if (!result.valid) {
 				process.stderr.write(`✗ Failed\n`,);
+				if (result.dataikuError) throw result.dataikuError;
 				throw new DataikuError(
 					0,
 					"Authentication Failed",

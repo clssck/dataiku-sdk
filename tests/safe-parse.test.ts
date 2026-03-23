@@ -15,10 +15,10 @@ describe("safeParseSchema", () => {
 	});
 
 	it("returns success=false with errors for invalid data", () => {
-		const data = { projectKey: 123, };
+		const data: unknown = { projectKey: 123, };
 		const result = safeParseSchema(ProjectSummarySchema, data,);
 		expect(result.success,).toBe(false,);
-		expect(result.data,).toEqual(data,);
+		expect(result.data as unknown,).toBe(data,);
 		if (!result.success) {
 			expect(result.errors.length,).toBeGreaterThan(0,);
 			expect(result.errors.some((e,) => e.includes("/projectKey",)),).toBe(true,);
@@ -47,6 +47,19 @@ describe("safeParseSchema", () => {
 			expect(result.errors.some((e,) => e.includes("/1",)),).toBe(true,);
 		}
 	});
+
+	it("does not throw while formatting bigint validation errors", () => {
+		const data: unknown = 1n;
+		const invoke = () => safeParseSchema(ProjectSummarySchema, data,);
+		expect(invoke,).not.toThrow();
+		const result = invoke();
+		expect(result.success,).toBe(false,);
+		expect(result.data as unknown,).toBe(data,);
+		if (!result.success) {
+			expect(result.errors.some((e,) => e.includes("1n",)),).toBe(true,);
+			expect(result.errors.some((e,) => e.includes("Expected",)),).toBe(true,);
+		}
+	});
 });
 
 describe("DataikuClient.safeParse", () => {
@@ -59,9 +72,9 @@ describe("DataikuClient.safeParse", () => {
 	});
 
 	it("returns data for invalid input (does not throw)", () => {
-		const data = { projectKey: 123, };
+		const data: unknown = { projectKey: 123, };
 		const result = client.safeParse(ProjectSummarySchema, data, "test.method",);
-		expect(result,).toEqual(data,);
+		expect(result as unknown,).toBe(data,);
 	});
 
 	it("fires onValidationWarning callback on mismatch", () => {
@@ -78,6 +91,27 @@ describe("DataikuClient.safeParse", () => {
 		expect(warnings,).toHaveLength(1,);
 		expect(warnings[0].method,).toBe("datasets.list",);
 		expect(warnings[0].errors.length,).toBeGreaterThan(0,);
+	});
+
+	it("warns on bigint mismatches without throwing", () => {
+		const warnings: { method: string; errors: string[]; }[] = [];
+		const data: unknown = 1n;
+		const warnClient = new DataikuClient({
+			url: "http://localhost:0",
+			apiKey: "test",
+			onValidationWarning: (method, errors,) => {
+				warnings.push({ method, errors, },);
+			},
+		},);
+
+		expect(() => {
+			const result = warnClient.safeParse(ProjectSummarySchema, data, "datasets.list",);
+			expect(result as unknown,).toBe(data,);
+		},).not.toThrow();
+		expect(warnings,).toHaveLength(1,);
+		expect(warnings[0].method,).toBe("datasets.list",);
+		expect(warnings[0].errors.some((e,) => e.includes("1n",)),).toBe(true,);
+		expect(warnings[0].errors.some((e,) => e.includes("Expected",)),).toBe(true,);
 	});
 
 	it("does not fire callback on valid data", () => {

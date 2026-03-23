@@ -2,6 +2,7 @@ import { describe, expect, it, } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
 import { validateCredentials, } from "../src/auth.js";
+import { DataikuError, } from "../src/errors.js";
 
 async function withServer(
 	handler: (req: IncomingMessage, res: ServerResponse,) => void,
@@ -56,6 +57,9 @@ describe("validateCredentials", () => {
 				expect(result.valid,).toBe(false,);
 				expect(typeof result.error,).toBe("string",);
 				expect(result.error,).toBeTruthy();
+				expect(result.dataikuError,).toBeInstanceOf(DataikuError,);
+				expect(result.dataikuError?.status,).toBe(401,);
+				expect(result.dataikuError?.category,).toBe("forbidden",);
 			},
 		);
 	});
@@ -77,6 +81,9 @@ describe("validateCredentials", () => {
 		const result = await validateCredentials("http://127.0.0.1:1", "test-key",);
 		expect(result.valid,).toBe(false,);
 		expect(typeof result.error,).toBe("string",);
+		expect(result.dataikuError,).toBeInstanceOf(DataikuError,);
+		expect(result.dataikuError?.status,).toBe(0,);
+		expect(result.dataikuError?.category,).toBe("transient",);
 	});
 
 	it("returns valid: false on server error", async () => {

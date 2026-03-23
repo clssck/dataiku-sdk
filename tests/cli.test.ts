@@ -596,8 +596,10 @@ describe("CLI auth commands", () => {
 						DSS_CONFIG_DIR: tmpDir,
 					},
 				},);
-				// Process should exit non-zero
-				expect(failure.code !== 0 || failure.stderr,).toBeTruthy();
+				// Process should exit as an API/auth failure, not transient transport.
+				expect(failure.code,).toBe(2,);
+				expect(failure.stderr,).toContain('"category": "forbidden"',);
+				expect(failure.stderr,).toContain("401 Unauthorized",);
 				// Credentials file should NOT have been written
 				const exists = (() => {
 					try {
@@ -907,6 +909,30 @@ describe("CLI boolean flag does not swallow next positional", () => {
 	});
 });
 
+describe("CLI flag value parsing", () => {
+	it("missing value for --target fails fast", async () => {
+		const failure = await dssFailure(["install-skill", "--target",],);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toContain("Flag --target requires a value.",);
+	});
+
+	it("--max-lines -1 is consumed as an option value", async () => {
+		const fullLog = `${
+			Array.from({ length: 600, }, (_value, index,) => `line-${String(index,)}`,).join("\n",)
+		}\n`;
+		await withCliServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(fullLog,);
+		}, async (url,) => {
+			const { stdout, } = await dss(["job", "log", "job-123", "--max-lines", "-1",], {
+				env: cliEnv(url,),
+			},);
+			expect(stdout,).toBe(fullLog,);
+		},);
+	});
+});
+
 describe("CLI missing credentials plain text errors", () => {
 	it("missing URL prints plain text error, not JSON", async () => {
 		// --url "" overrides .env-loaded DATAIKU_URL, forcing the missing-URL path
@@ -973,6 +999,7 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain("name: dataiku-dss",);
 			expect(content,).toContain("dss auth login",);
 			expect(content,).toContain("dss project list",);
+			expect(content,).toContain("~/.config/dataiku/credentials.json",);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
@@ -1049,6 +1076,36 @@ describe("CLI install-skill command", () => {
 			await dss(["install-skill", "--agent", "claude",], { cwd: subdir, },);
 			// Skill should be at workspace/.claude/skills/... not sub/.claude/skills/...
 			const skillPath = join(workspace, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+			const content = readFileSync(skillPath, "utf-8",);
+			expect(content,).toContain("name: dataiku-dss",);
+		} finally {
+			rmSync(workspace, { recursive: true, force: true, },);
+		}
+	});
+
+	it("workspace detection finds nested .pi parent for project installs", async () => {
+		const workspace = join(tmpdir(), `dss-cli-skill-pi-${Date.now()}`,);
+		const subdir = join(workspace, "nested", "deeper",);
+		mkdirSync(join(workspace, ".pi",), { recursive: true, },);
+		mkdirSync(subdir, { recursive: true, },);
+		try {
+			await dss(["install-skill", "--agent", "pi",], { cwd: subdir, },);
+			const skillPath = join(workspace, ".pi", "skills", "dataiku-dss", "SKILL.md",);
+			const content = readFileSync(skillPath, "utf-8",);
+			expect(content,).toContain("name: dataiku-dss",);
+		} finally {
+			rmSync(workspace, { recursive: true, force: true, },);
+		}
+	});
+
+	it("workspace detection finds nested .omp parent for project installs", async () => {
+		const workspace = join(tmpdir(), `dss-cli-skill-omp-${Date.now()}`,);
+		const subdir = join(workspace, "nested", "deeper",);
+		mkdirSync(join(workspace, ".omp", "agent",), { recursive: true, },);
+		mkdirSync(subdir, { recursive: true, },);
+		try {
+			await dss(["install-skill", "--agent", "omp",], { cwd: subdir, },);
+			const skillPath = join(workspace, ".omp", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
 			expect(content,).toContain("name: dataiku-dss",);
 		} finally {

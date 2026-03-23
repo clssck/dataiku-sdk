@@ -1,3 +1,5 @@
+import { describe, expect, it, } from "bun:test";
+
 import { mkdtempSync, readFileSync, rmSync, } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
@@ -94,6 +96,48 @@ describe("DatasetsResource.download", () => {
 		},);
 	});
 
+	it("emits validation warnings when downloaded columns do not match the header row", async () => {
+		const warnings: { method: string; errors: string[]; }[] = [];
+
+		await withTestServer((req, res,) => {
+			expect(req.method,).toBe("GET",);
+			expect(req.url,).toContain("/public/api/projects/TEST/datasets/sample/data/",);
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+			res.end("name\tcountry\nAlice\tFrance\n",);
+		}, async (url,) => {
+			const tempDir = mkdtempSync(join(tmpdir(), "dataiku-dataset-download-",),);
+			const outputPath = join(tempDir, "sample.csv",);
+
+			try {
+				const client = new DataikuClient({
+					url,
+					apiKey: "test-key",
+					projectKey: "TEST",
+					onValidationWarning: (method, errors,) => {
+						warnings.push({ method, errors, },);
+					},
+				},);
+
+				const writtenPath = await client.datasets.download("sample", {
+					outputPath,
+					validateColumns: [{ name: "name", }, { name: "city", },],
+				},);
+
+				expect(readFileSync(writtenPath, "utf8",),).toBe("name,country\nAlice,France\n",);
+			} finally {
+				rmSync(tempDir, { recursive: true, force: true, },);
+			}
+		},);
+
+		expect(warnings,).toEqual([
+			{
+				method: "datasets.download(sample)",
+				errors: ['Missing expected column: "city"', 'Unexpected column in stream: "country"',],
+			},
+		],);
+	});
+
 	it("keeps the default .csv.gz naming and gzip compression for directory outputs", async () => {
 		await withTestServer((req, res,) => {
 			expect(req.method,).toBe("GET",);
@@ -141,13 +185,11 @@ describe("NotebooksResource.clearJupyterOutputs", () => {
 					metadata: { collapsed: false, },
 					outputs: [{ output_type: "stream", text: ["hello\n",], },],
 					execution_count: 7,
-					id: "code-1",
 				},
 				{
 					cell_type: "markdown",
 					source: ["# Title\n",],
 					metadata: { tag: "intro", },
-					id: "md-1",
 				},
 			],
 		};

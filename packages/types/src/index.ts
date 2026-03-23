@@ -25,9 +25,58 @@ export type SafeParseResult<T,> = {
 };
 
 /**
- * Validate `data` against a TypeBox schema without throwing.
- * Always returns the data (cast as T) — on mismatch, includes human-readable
- * error strings so callers can warn instead of crash.
+ * Format invalid values for validation errors without throwing on BigInt, circular,
+ * function, symbol, or other non-JSON-serializable input.
+ */
+function formatInvalidValue(value: unknown,): string {
+	if (value === undefined) return "undefined";
+	if (typeof value === "bigint") return `${value.toString()}n`;
+	if (typeof value === "symbol") {
+		return value.description === undefined ? "Symbol()" : `Symbol(${value.description})`;
+	}
+	if (typeof value === "function") {
+		return value.name ? `[Function ${value.name}]` : "[Function anonymous]";
+	}
+
+	const seen = new WeakSet<object>();
+	try {
+		const json = JSON.stringify(
+			value,
+			(_key, nestedValue,) => {
+				if (typeof nestedValue === "bigint") return `${nestedValue.toString()}n`;
+				if (typeof nestedValue === "symbol") {
+					return nestedValue.description === undefined
+						? "Symbol()"
+						: `Symbol(${nestedValue.description})`;
+				}
+				if (typeof nestedValue === "function") {
+					return nestedValue.name
+						? `[Function ${nestedValue.name}]`
+						: "[Function anonymous]";
+				}
+				if (nestedValue !== null && typeof nestedValue === "object") {
+					if (seen.has(nestedValue,)) return "[Circular]";
+					seen.add(nestedValue,);
+				}
+				return nestedValue;
+			},
+		);
+		if (json !== undefined) return json;
+	} catch {
+		// Ignore serialization failures and fall back to a safer summary below.
+	}
+
+	try {
+		return Object.prototype.toString.call(value,);
+	} catch {
+		return "[Unformattable value]";
+	}
+}
+
+/**
+ * Validate `data` against a TypeBox schema without throwing, even when invalid
+ * values are not JSON-serializable. Always returns the original data (cast as T)
+ * and includes human-readable error strings so callers can warn instead of crash.
  */
 export function safeParseSchema<S extends TSchema,>(
 	schema: S,
@@ -37,7 +86,7 @@ export function safeParseSchema<S extends TSchema,>(
 		return { success: true, data: data as Static<S>, };
 	}
 	const errors = [...Value.Errors(schema, data,),].map(
-		(e,) => `${e.path}: ${e.message} (got ${JSON.stringify(e.value,)})`,
+		(e,) => `${e.path}: ${e.message} (got ${formatInvalidValue(e.value,)})`,
 	);
 	return { success: false, data: data as Static<S>, errors, };
 }
