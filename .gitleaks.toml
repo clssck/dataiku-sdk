@@ -1,0 +1,7 @@
+title = "gitleaks config"
+
+[allowlist]
+description = "Test fixtures — not real credentials"
+paths = [
+  '''tests/.*\.test\.ts''',
+]

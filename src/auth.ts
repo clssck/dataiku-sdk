@@ -7,9 +7,15 @@ export interface CredentialValidationResult {
 	dataikuError?: DataikuError;
 }
 
+export interface CredentialValidationOptions {
+	tlsRejectUnauthorized?: boolean;
+	caCertPath?: string;
+}
+
 export async function validateCredentials(
 	url: string,
 	apiKey: string,
+	options: CredentialValidationOptions = {},
 ): Promise<CredentialValidationResult> {
 	try {
 		const client = new DataikuClient({
@@ -17,6 +23,8 @@ export async function validateCredentials(
 			apiKey,
 			requestTimeoutMs: 10_000,
 			retryMaxAttempts: 1,
+			tlsRejectUnauthorized: options.tlsRejectUnauthorized,
+			caCertPath: options.caCertPath,
 		},);
 		await client.projects.list();
 		return { valid: true, };

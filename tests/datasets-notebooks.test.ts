@@ -6,6 +6,7 @@ import { type AddressInfo, } from "node:net";
 import { tmpdir, } from "node:os";
 import { join, resolve, } from "node:path";
 import { gunzipSync, } from "node:zlib";
+import { DataikuError, } from "../src/errors.js";
 import { DataikuClient, type JupyterNotebookContent, } from "../src/index.js";
 
 async function withTestServer(
@@ -54,6 +55,45 @@ async function readRequestBody(req: IncomingMessage,): Promise<string> {
 	}
 	return body;
 }
+
+describe("DatasetsResource.preview", () => {
+	it("returns CSV preview rows", async () => {
+		await withTestServer((req, res,) => {
+			expect(req.method,).toBe("GET",);
+			expect(req.url,).toContain(
+				"/public/api/projects/TEST/datasets/sample/data/?format=tsv-excel-header&limit=2",
+			);
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+			res.end("name\tcity\nAlice\tParis\nBob\tBerlin\n",);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const preview = await client.datasets.preview("sample", { maxRows: 2, },);
+			expect(preview,).toBe("name,city\nAlice,Paris\nBob,Berlin",);
+		},);
+	});
+
+	it("times out stalled preview bodies after headers", async () => {
+		await withTestServer((req, res,) => {
+			expect(req.method,).toBe("GET",);
+			expect(req.url,).toContain("/public/api/projects/TEST/datasets/sample/data/",);
+			res.writeHead(200, { "Content-Type": "text/tab-separated-values; charset=utf-8", },);
+			res.flushHeaders();
+			setTimeout(() => res.end("",), 200,);
+		}, async (url,) => {
+			const client = new DataikuClient({
+				url,
+				apiKey: "test-key",
+				projectKey: "TEST",
+				requestTimeoutMs: 50,
+			},);
+			const error = await client.datasets.preview("sample",).catch((caught: unknown,) => caught);
+			expect(error,).toBeInstanceOf(DataikuError,);
+			expect((error as DataikuError).status,).toBe(0,);
+			expect((error as Error).message,).toContain("timed out after 50ms",);
+		},);
+	});
+});
 
 describe("DatasetsResource.download", () => {
 	it("writes an uncompressed CSV when the output path ends in .csv", async () => {

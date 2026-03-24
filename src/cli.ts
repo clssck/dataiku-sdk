@@ -10,6 +10,7 @@ import { validateCredentials, } from "./auth.js";
 import { DataikuClient, } from "./client.js";
 import {
 	deleteCredentials,
+	type DssCredentials,
 	getCredentialsPath,
 	loadCredentials,
 	maskApiKey,
@@ -52,9 +53,18 @@ function json(v: string | boolean | undefined,): Record<string, unknown> | undef
 
 type OutputFormat = "json" | "quiet" | "table" | "tsv";
 
+type TlsSettings = Pick<DssCredentials, "tlsRejectUnauthorized" | "caCertPath">;
+
+const SQL_QUERY_USAGE =
+	"dss sql query [SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin] (--connection CONN | --dataset FULL_NAME) [--database DB] [--project-key KEY]";
+
+function readStdinText(): string {
+	return readFileSync(0, "utf-8",);
+}
+
 function jsonInput(flags: Record<string, string | boolean>,): Record<string, unknown> | undefined {
 	if (flags["stdin"] === true) {
-		return JSON.parse(readFileSync(0, "utf-8",),) as Record<string, unknown>;
+		return JSON.parse(readStdinText(),) as Record<string, unknown>;
 	}
 	if (typeof flags["data-file"] === "string") {
 		return JSON.parse(readFileSync(flags["data-file"], "utf-8",),) as Record<string, unknown>;
@@ -63,6 +73,77 @@ function jsonInput(flags: Record<string, string | boolean>,): Record<string, unk
 		return JSON.parse(flags["data"],) as Record<string, unknown>;
 	}
 	return undefined;
+}
+
+function parseTlsRejectUnauthorizedEnv(value: string | undefined,): boolean | undefined {
+	if (value === undefined) return undefined;
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "0" || normalized === "false" || normalized === "no") return false;
+	if (normalized === "1" || normalized === "true" || normalized === "yes") return true;
+	return undefined;
+}
+
+function resolveTlsSettings(
+	flags: Record<string, string | boolean>,
+	saved?: TlsSettings,
+): TlsSettings {
+	let tlsRejectUnauthorized = flags["insecure"] === true ? false : undefined;
+	let caCertPath = flags["ca-cert"] as string | undefined;
+
+	tlsRejectUnauthorized ??= parseTlsRejectUnauthorizedEnv(process.env.NODE_TLS_REJECT_UNAUTHORIZED,);
+	caCertPath ??= process.env.NODE_EXTRA_CA_CERTS;
+
+	if (tlsRejectUnauthorized === undefined) {
+		tlsRejectUnauthorized = saved?.tlsRejectUnauthorized;
+	}
+	caCertPath ??= saved?.caCertPath;
+
+	return { tlsRejectUnauthorized, caCertPath, };
+}
+
+function resolveSqlInput(args: string[], flags: Record<string, string | boolean>,): string {
+	const sources: Array<{ label: string; read: () => string; }> = [];
+
+	if (typeof flags["sql"] === "string") {
+		sources.push({
+			label: flags["sql"] === "-" ? "--sql -" : "--sql",
+			read: () => flags["sql"] === "-" ? readStdinText() : String(flags["sql"],),
+		},);
+	}
+	if (typeof flags["sql-file"] === "string") {
+		sources.push({
+			label: "--sql-file",
+			read: () => readFileSync(flags["sql-file"] as string, "utf-8",),
+		},);
+	}
+	if (flags["stdin"] === true) {
+		sources.push({ label: "--stdin", read: readStdinText, },);
+	}
+	if (args.length > 1) {
+		throw new UsageError(
+			`Expected at most one positional SQL argument. Quote the SQL or use --sql-file/--stdin.\nUsage: ${SQL_QUERY_USAGE}`,
+		);
+	}
+	if (args[0] !== undefined) {
+		sources.push({ label: "positional SQL", read: () => args[0], },);
+	}
+
+	if (sources.length === 0) {
+		throw new UsageError(`SQL input is required. Usage: ${SQL_QUERY_USAGE}`,);
+	}
+	if (sources.length > 1) {
+		throw new UsageError(
+			`Choose exactly one SQL input source: --sql, --sql-file, --stdin, or one positional SQL argument. Usage: ${SQL_QUERY_USAGE}`,
+		);
+	}
+
+	const query = sources[0]!.read();
+	if (query.trim().length === 0) {
+		throw new UsageError(
+			`SQL input from ${sources[0]!.label} must not be empty. Usage: ${SQL_QUERY_USAGE}`,
+		);
+	}
+	return query;
 }
 
 async function resolveFolderId(
@@ -180,6 +261,7 @@ const BOOLEAN_FLAGS = new Set([
 	"verbose",
 	"version",
 	"stdin",
+	"insecure",
 	"global",
 	"list-agents",
 	"include-raw",
@@ -199,6 +281,8 @@ const SHORT_FLAGS: Record<string, string> = {
 /** Long-flag aliases: these are normalized to the canonical name in parseArgs. */
 const FLAG_ALIASES: Record<string, string> = {
 	project: "project-key",
+	"skip-tls-verify": "insecure",
+	"extra-ca-certs": "ca-cert",
 };
 
 function isNegativeNumberToken(value: string,): boolean {
@@ -336,9 +420,10 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.datasets.preview(a[0], {
 					maxRows: num(f["max-rows"],),
 					projectKey: f["project-key"] as string | undefined,
+					timeoutMs: num(f["timeout"],),
 				},);
 			},
-			usage: "dss dataset preview <name> [--max-rows N] [--project-key KEY]",
+			usage: "dss dataset preview <name> [--max-rows N] [--project-key KEY] [--timeout MS]",
 		},
 		metadata: {
 			handler: (c, a, f,) => {
@@ -750,18 +835,24 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 	},
 	sql: {
 		query: {
-			handler: (c, _a, f,) => {
-				const query = f["sql"] as string;
-				if (!query) throw new UsageError("--sql is required. Usage: dss sql query --sql 'SELECT ...'",);
+			handler: (c, a, f,) => {
+				const query = resolveSqlInput(a, f,);
+				const connection = f["connection"] as string | undefined;
+				const datasetFullName = f["dataset"] as string | undefined;
+				if ((connection ? 1 : 0) + (datasetFullName ? 1 : 0) !== 1) {
+					throw new UsageError(
+						`Pass exactly one of --connection or --dataset. Usage: ${SQL_QUERY_USAGE}`,
+					);
+				}
 				return c.sql.query({
 					query,
-					connection: f["connection"] as string | undefined,
-					datasetFullName: f["dataset"] as string | undefined,
+					connection,
+					datasetFullName,
 					database: f["database"] as string | undefined,
+					projectKey: f["project-key"] as string | undefined,
 				},);
 			},
-			usage:
-				"dss sql query --sql 'SELECT ...' [--connection CONN] [--dataset FULL_NAME] [--database DB]",
+			usage: SQL_QUERY_USAGE,
 		},
 	},
 	notebook: {
@@ -895,6 +986,8 @@ function printTopLevelHelp(): void {
 		"      --api-key KEY        API key              (env: DATAIKU_API_KEY)",
 		"      --project-key KEY    Default project key   (env: DATAIKU_PROJECT_KEY)",
 		"      --timeout MS         Request timeout in ms  (default: 30000)",
+		"      --insecure           Disable TLS certificate verification",
+		"      --ca-cert PATH       Extra PEM CA bundle (env: NODE_EXTRA_CA_CERTS)",
 		"",
 		"Resources:",
 		...RESOURCE_NAMES.map((r,) => `  ${r}`),
@@ -985,6 +1078,7 @@ const AUTH_ACTIONS: Record<string, {
 }> = {
 	login: {
 		handler: async (flags,) => {
+			const tlsSettings = resolveTlsSettings(flags,);
 			let { url, apiKey, projectKey, } = resolveCredentials(flags,);
 
 			if (!url || !apiKey) {
@@ -1001,7 +1095,7 @@ const AUTH_ACTIONS: Record<string, {
 			if (!url) throw new UsageError("URL is required.",);
 			if (!apiKey) throw new UsageError("API key is required.",);
 			process.stderr.write("Validating credentials... ",);
-			const result = await validateCredentials(url, apiKey,);
+			const result = await validateCredentials(url, apiKey, tlsSettings,);
 			if (!result.valid) {
 				process.stderr.write(`✗ Failed\n`,);
 				if (result.dataikuError) throw result.dataikuError;
@@ -1011,36 +1105,40 @@ const AUTH_ACTIONS: Record<string, {
 					result.error ?? "Credential validation failed",
 				);
 			}
-			process.stderr.write("\u2713 Connected\n",);
+			process.stderr.write("✓ Connected\n",);
 
-			saveCredentials({ url, apiKey, projectKey, },);
+			saveCredentials({ url, apiKey, projectKey, ...tlsSettings, },);
 			process.stderr.write(`Credentials saved to ${getCredentialsPath()}\n`,);
 		},
-		usage: "dss auth login [--url URL] [--api-key KEY] [--project-key KEY]",
+		usage:
+			"dss auth login [--url URL] [--api-key KEY] [--project-key KEY] [--insecure] [--ca-cert PATH]",
 	},
 	status: {
-		handler: async (_flags,) => {
+		handler: async (flags,) => {
 			const creds = loadCredentials();
 			if (!creds) {
 				process.stderr.write("No saved credentials. Run: dss auth login\n",);
 				return;
 			}
+			const tlsSettings = resolveTlsSettings(flags, creds,);
 			const lines = [
 				`URL:         ${creds.url}`,
 				`API key:     ${maskApiKey(creds.apiKey,)}`,
 				`Project key: ${creds.projectKey ?? "(not set)"}`,
+				`TLS verify:  ${tlsSettings.tlsRejectUnauthorized === false ? "disabled" : "strict"}`,
+				`CA cert:     ${tlsSettings.caCertPath ?? "(default trust store)"}`,
 			];
 			for (const line of lines) process.stderr.write(`${line}\n`,);
 
-			const result = await validateCredentials(creds.url, creds.apiKey,);
+			const result = await validateCredentials(creds.url, creds.apiKey, tlsSettings,);
 			if (result.valid) {
-				process.stderr.write("Connection:  \u2713 Valid\n",);
+				process.stderr.write("Connection:  ✓ Valid\n",);
 			} else {
-				process.stderr.write(`Connection:  \u2717 Failed (${result.error ?? "unknown error"})\n`,);
+				process.stderr.write(`Connection:  ✗ Failed (${result.error ?? "unknown error"})\n`,);
 			}
 			process.stderr.write(`Config:      ${getCredentialsPath()}\n`,);
 		},
-		usage: "dss auth status",
+		usage: "dss auth status [--insecure] [--ca-cert PATH]",
 	},
 	logout: {
 		handler: async (_flags,) => {
@@ -1092,25 +1190,30 @@ function resolveCredentials(flags: Record<string, string | boolean>,): {
 	url: string;
 	apiKey: string;
 	projectKey?: string;
+	tlsRejectUnauthorized?: boolean;
+	caCertPath?: string;
 } {
 	let url = flags["url"] as string | undefined;
 	let apiKey = flags["api-key"] as string | undefined;
 	let projectKey = flags["project-key"] as string | undefined;
+	const saved = loadCredentials();
 
 	url ??= process.env.DATAIKU_URL;
 	apiKey ??= process.env.DATAIKU_API_KEY;
 	projectKey ??= process.env.DATAIKU_PROJECT_KEY;
 
-	if (!url || !apiKey) {
-		const saved = loadCredentials();
-		if (saved) {
-			url ||= saved.url;
-			apiKey ||= saved.apiKey;
-			projectKey ??= saved.projectKey;
-		}
+	if (saved) {
+		url ||= saved.url;
+		apiKey ||= saved.apiKey;
+		projectKey ??= saved.projectKey;
 	}
 
-	return { url: url ?? "", apiKey: apiKey ?? "", projectKey, };
+	return {
+		url: url ?? "",
+		apiKey: apiKey ?? "",
+		projectKey,
+		...resolveTlsSettings(flags, saved ?? undefined,),
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -1272,7 +1375,7 @@ async function main(): Promise<void> {
 	}
 
 	// Resolve credentials: flags > env > saved > .env
-	const { url, apiKey, projectKey, } = resolveCredentials(flags,);
+	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
 
 	if (!url) {
 		throw new UsageError("Missing Dataiku URL. Set DATAIKU_URL, pass --url, or run: dss auth login",);
@@ -1291,6 +1394,8 @@ async function main(): Promise<void> {
 		projectKey,
 		verbose: flags["verbose"] === true,
 		requestTimeoutMs,
+		tlsRejectUnauthorized,
+		caCertPath,
 	},);
 
 	const args = positional.slice(2,);

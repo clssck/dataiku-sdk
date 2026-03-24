@@ -7,6 +7,11 @@ import { SqlResource, } from "../src/resources/sql.js";
 class TestHttpClient {
 	constructor(private readonly baseUrl: string,) {}
 
+	async get<T = unknown,>(path: string,): Promise<T> {
+		const res = await fetch(`${this.baseUrl}${path}`,);
+		return this.parseJsonResponse<T>(res,);
+	}
+
 	async post<T = unknown,>(path: string, body?: unknown,): Promise<T> {
 		const res = await fetch(`${this.baseUrl}${path}`, {
 			method: "POST",
@@ -96,6 +101,29 @@ describe("SqlResource", () => {
 		},);
 	});
 
+	it("startQuery forwards database and projectKey when provided", async () => {
+		await withSqlServer(async (req, res,) => {
+			expect(req.url,).toBe("/public/api/sql/queries/",);
+			expect(await readJsonBody(req,),).toEqual({
+				query: "SELECT * FROM workbook",
+				connection: "ATHENA_CONN",
+				database: "analytics",
+				projectKey: "PROJECT",
+				type: "sql",
+			},);
+			res.setHeader("content-type", "application/json",);
+			res.end(JSON.stringify({ queryId: "q-db", hasResults: true, schema: [], },),);
+		}, async (sql,) => {
+			const result = await sql.startQuery({
+				query: "SELECT * FROM workbook",
+				connection: "ATHENA_CONN",
+				database: "analytics",
+				projectKey: "PROJECT",
+			},);
+			expect(result.queryId,).toBe("q-db",);
+		},);
+	});
+
 	it("startQuery preserves a caller-provided type", async () => {
 		await withSqlServer(async (req, res,) => {
 			expect(req.url,).toBe("/public/api/sql/queries/",);
@@ -110,12 +138,87 @@ describe("SqlResource", () => {
 		},);
 	});
 
+	it("query retries unsupported dataset queries via the dataset connection", async () => {
+		let startCalls = 0;
+		await withSqlServer(async (req, res,) => {
+			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+				startCalls += 1;
+				const body = await readJsonBody(req,);
+				if (startCalls === 1) {
+					expect(body,).toEqual({
+						query: "SELECT * FROM workbook LIMIT 5",
+						datasetFullName: "PROJECT.dataset_orders",
+						projectKey: "PROJECT",
+						type: "sql",
+					},);
+					res.statusCode = 400;
+					res.statusMessage = "Bad Request";
+					res.end("Connection is neither of SQL nor HDFS type",);
+					return;
+				}
+
+				expect(body,).toEqual({
+					query: "SELECT * FROM workbook LIMIT 5",
+					connection: "ATHENA_CONN",
+					database: "analytics",
+					projectKey: "PROJECT",
+					type: "sql",
+				},);
+				res.setHeader("content-type", "application/json",);
+				res.end(JSON.stringify({
+					queryId: "q-3",
+					hasResults: true,
+					schema: [{ name: "id", type: "int", },],
+				},),);
+				return;
+			}
+
+			if (req.method === "GET" && req.url === "/public/api/projects/PROJECT/datasets/dataset_orders") {
+				res.setHeader("content-type", "application/json",);
+				res.end(JSON.stringify({
+					name: "dataset_orders",
+					params: { connection: "ATHENA_CONN", schema: "analytics", },
+				},),);
+				return;
+			}
+
+			if (req.method === "GET" && req.url === "/public/api/sql/queries/q-3/stream?format=json") {
+				res.setHeader("content-type", "application/json",);
+				res.end("[[1],[2]]",);
+				return;
+			}
+
+			if (req.method === "GET" && req.url === "/public/api/sql/queries/q-3/finish-streaming") {
+				res.end("",);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (sql,) => {
+			const result = await sql.query({
+				query: "SELECT * FROM workbook LIMIT 5",
+				datasetFullName: "PROJECT.dataset_orders",
+				projectKey: "PROJECT",
+			},);
+			expect(result,).toEqual({
+				queryId: "q-3",
+				schema: [{ name: "id", type: "int", },],
+				rows: [[1,], [2,],],
+			},);
+		},);
+	});
+
 	it("query rewrites the unsupported dataset-connection error with the dataset name", async () => {
 		await withSqlServer(async (req, res,) => {
-			expect(req.url,).toBe("/public/api/sql/queries/",);
-			res.statusCode = 400;
-			res.statusMessage = "Bad Request";
-			res.end("Connection is neither of SQL nor HDFS type",);
+			if (req.url === "/public/api/sql/queries/") {
+				res.statusCode = 400;
+				res.statusMessage = "Bad Request";
+				res.end("Connection is neither of SQL nor HDFS type",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("dataset lookup failed",);
 		}, async (sql,) => {
 			await expect(sql.query({
 				query: "SELECT 1",

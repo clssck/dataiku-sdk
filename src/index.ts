@@ -2,7 +2,11 @@
 export { DataikuClient, type DataikuClientConfig, } from "./client.js";
 
 // Auth & Config
-export { validateCredentials, } from "./auth.js";
+export {
+	type CredentialValidationOptions,
+	type CredentialValidationResult,
+	validateCredentials,
+} from "./auth.js";
 export {
 	deleteCredentials,
 	type DssCredentials,

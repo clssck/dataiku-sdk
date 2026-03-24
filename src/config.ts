@@ -6,6 +6,8 @@ export interface DssCredentials {
 	url: string;
 	apiKey: string;
 	projectKey?: string;
+	tlsRejectUnauthorized?: boolean;
+	caCertPath?: string;
 }
 
 export function getConfigDir(): string {
@@ -39,6 +41,10 @@ export function loadCredentials(): DssCredentials | null {
 			url: obj.url as string,
 			apiKey: obj.apiKey as string,
 			projectKey: typeof obj.projectKey === "string" ? obj.projectKey : undefined,
+			tlsRejectUnauthorized: typeof obj.tlsRejectUnauthorized === "boolean"
+				? obj.tlsRejectUnauthorized
+				: undefined,
+			caCertPath: typeof obj.caCertPath === "string" ? obj.caCertPath : undefined,
 		};
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
@@ -49,8 +55,12 @@ export function loadCredentials(): DssCredentials | null {
 export function saveCredentials(creds: DssCredentials,): void {
 	const path = getCredentialsPath();
 	mkdirSync(dirname(path,), { recursive: true, },);
-	const data: Record<string, string> = { url: creds.url, apiKey: creds.apiKey, };
+	const data: Record<string, string | boolean> = { url: creds.url, apiKey: creds.apiKey, };
 	if (creds.projectKey) data.projectKey = creds.projectKey;
+	if (creds.tlsRejectUnauthorized !== undefined) {
+		data.tlsRejectUnauthorized = creds.tlsRejectUnauthorized;
+	}
+	if (creds.caCertPath) data.caCertPath = creds.caCertPath;
 	writeFileSync(path, `${JSON.stringify(data, null, 2,)}\n`, "utf-8",);
 	chmodSync(path, 0o600,);
 }

@@ -152,10 +152,12 @@ describe("CLI help output", () => {
 		expect(stderr,).toContain("list",);
 	});
 
-	it("dss --help lists global format and verbose flags", async () => {
+	it("dss --help lists global format and TLS flags", async () => {
 		const { stderr, } = await dss(["--help",],);
 		expect(stderr,).toContain("--format FORMAT",);
 		expect(stderr,).toContain("--verbose",);
+		expect(stderr,).toContain("--insecure",);
+		expect(stderr,).toContain("--ca-cert PATH",);
 	});
 
 	it("dss dataset --help lists update action", async () => {
@@ -306,6 +308,130 @@ describe("CLI execution behavior", () => {
 		const nested = capturedBody?.nested as Record<string, unknown> | undefined;
 		expect(nested?.preserved,).toBe(true,);
 		expect(nested?.added,).toBe("from-stdin",);
+	});
+
+	it("supports positional SQL input", async () => {
+		let capturedBody: Record<string, unknown> | undefined;
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+				capturedBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { queryId: "q-positional", hasResults: true, schema: [], },);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/sql/queries/q-positional/stream") {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "application/json",);
+				res.end("[]",);
+				return;
+			}
+			if (
+				req.method === "GET" && url.pathname === "/public/api/sql/queries/q-positional/finish-streaming"
+			) {
+				res.statusCode = 200;
+				res.end("",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			const { stdout, } = await dss(["sql", "query", "SELECT 1", "--connection", "CONN",], {
+				env: cliEnv(url,),
+			},);
+			expect(JSON.parse(stdout,),).toEqual({ queryId: "q-positional", schema: [], rows: [], },);
+		},);
+		expect(capturedBody,).toMatchObject({
+			query: "SELECT 1",
+			connection: "CONN",
+			projectKey: "TEST",
+		},);
+	});
+
+	it("supports --sql-file input", async () => {
+		let capturedBody: Record<string, unknown> | undefined;
+		const tmpFile = join(tmpdir(), `dss-cli-sql-${Date.now()}.sql`,);
+		writeFileSync(tmpFile, 'SELECT * FROM "analytics".orders LIMIT 5', "utf-8",);
+		try {
+			await withCliServer(async (req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+					capturedBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+					sendJson(res, { queryId: "q-file", hasResults: true, schema: [], },);
+					return;
+				}
+				if (req.method === "GET" && url.pathname === "/public/api/sql/queries/q-file/stream") {
+					res.statusCode = 200;
+					res.setHeader("Content-Type", "application/json",);
+					res.end("[]",);
+					return;
+				}
+				if (
+					req.method === "GET" && url.pathname === "/public/api/sql/queries/q-file/finish-streaming"
+				) {
+					res.statusCode = 200;
+					res.end("",);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("not found",);
+			}, async (url,) => {
+				const { stdout, } = await dss([
+					"sql",
+					"query",
+					"--sql-file",
+					tmpFile,
+					"--connection",
+					"CONN",
+				], { env: cliEnv(url,), },);
+				expect(JSON.parse(stdout,),).toEqual({ queryId: "q-file", schema: [], rows: [], },);
+			},);
+			expect(capturedBody?.query,).toBe('SELECT * FROM "analytics".orders LIMIT 5',);
+		} finally {
+			rmSync(tmpFile, { force: true, },);
+		}
+	});
+
+	it("supports SQL from stdin without losing double quotes", async () => {
+		let capturedBody: Record<string, unknown> | undefined;
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+				capturedBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { queryId: "q-stdin", hasResults: true, schema: [], },);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/sql/queries/q-stdin/stream") {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "application/json",);
+				res.end("[]",);
+				return;
+			}
+			if (
+				req.method === "GET" && url.pathname === "/public/api/sql/queries/q-stdin/finish-streaming"
+			) {
+				res.statusCode = 200;
+				res.end("",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			const { stdout, } = await dssWithInput(
+				["sql", "query", "--stdin", "--connection", "CONN",],
+				'SELECT * FROM "prod-icmc-dg-ilab-db".workbook LIMIT 5',
+				{ env: cliEnv(url,), },
+			);
+			expect(JSON.parse(stdout,),).toEqual({ queryId: "q-stdin", schema: [], rows: [], },);
+		},);
+		expect(capturedBody?.query,).toBe('SELECT * FROM "prod-icmc-dg-ilab-db".workbook LIMIT 5',);
+	});
+
+	it("requires exactly one SQL execution target", async () => {
+		const failure = await dssFailure(["sql", "query", "SELECT 1",], {
+			env: cliEnv("http://127.0.0.1:1",),
+		},);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toContain("Pass exactly one of --connection or --dataset",);
 	});
 
 	it("supports TSV and quiet output formats", async () => {
@@ -569,6 +695,42 @@ describe("CLI auth commands", () => {
 				expect(creds.url,).toBe(url,);
 				expect(creds.apiKey,).toBe("test-key",);
 				expect(creds.projectKey,).toBe("MYPROJ",);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("dss auth login saves TLS settings when provided", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-tls-${Date.now()}`,);
+		const caPath = join(tmpDir, "corp-ca.pem",);
+		mkdirSync(tmpDir, { recursive: true, },);
+		writeFileSync(caPath, "-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----\n", "utf-8",);
+		try {
+			await withCliServer((req, res,) => {
+				sendJson(res, [],);
+			}, async (url,) => {
+				const { stderr, } = await dss([
+					"auth",
+					"login",
+					"--url",
+					url,
+					"--api-key",
+					"test-key",
+					"--insecure",
+					"--ca-cert",
+					caPath,
+				], {
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: tmpDir,
+					},
+				},);
+				expect(stderr,).toContain("Credentials saved",);
+				const creds = JSON.parse(readFileSync(join(tmpDir, "credentials.json",), "utf-8",),);
+				expect(creds.tlsRejectUnauthorized,).toBe(false,);
+				expect(creds.caCertPath,).toBe(caPath,);
 			},);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);

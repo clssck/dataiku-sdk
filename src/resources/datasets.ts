@@ -196,41 +196,81 @@ function emitCsvLineWithLimit(
 	return false;
 }
 
+function buildPreviewTimeoutError(timeoutMs: number,): DataikuError {
+	return new DataikuError(
+		0,
+		"Request Timeout",
+		`Dataset preview timed out after ${timeoutMs}ms while waiting for rows.`,
+	);
+}
+
+async function readChunkWithTimeout(
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+	remainingMs: number,
+	timeoutMs: number,
+): Promise<Awaited<ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]>>> {
+	return new Promise((resolveChunk, rejectChunk,) => {
+		const timer = setTimeout(() => {
+			void reader.cancel(buildPreviewTimeoutError(timeoutMs,),).catch(() => {},);
+			rejectChunk(buildPreviewTimeoutError(timeoutMs,),);
+		}, remainingMs,);
+		reader.read().then(
+			(result,) => {
+				clearTimeout(timer,);
+				resolveChunk(result,);
+			},
+			(error,) => {
+				clearTimeout(timer,);
+				rejectChunk(error,);
+			},
+		);
+	},);
+}
+
 async function collectPreviewCsv(
 	body: ReadableStream<Uint8Array>,
 	maxDataRows: number,
+	timeoutMs: number,
 	onHeader?: (headerRow: string[],) => void,
 ): Promise<string> {
 	const state = createTsvStreamState();
 	const emittedRows = { value: 0, };
 	const lines: string[] = [];
 	let done = false;
+	const startedAt = Date.now();
+	const reader = body.getReader();
 
-	const nodeStream = Readable.fromWeb(body as unknown as import("stream/web").ReadableStream,);
-	for await (const chunk of nodeStream) {
-		if (done) break;
-		consumeTsvChunk(Buffer.from(chunk,).toString("utf-8",), state, (row,) => {
-			if (done) return;
-			done = emitCsvLineWithLimit(row, maxDataRows, emittedRows, (line,) => {
-				lines.push(line,);
-			}, onHeader,);
-		},);
-		if (done) {
-			nodeStream.destroy();
-			break;
+	try {
+		while (true) {
+			if (done) {
+				void reader.cancel().catch(() => {},);
+				break;
+			}
+			const remainingMs = timeoutMs - (Date.now() - startedAt);
+			if (remainingMs <= 0) throw buildPreviewTimeoutError(timeoutMs,);
+			const result = await readChunkWithTimeout(reader, remainingMs, timeoutMs,);
+			if (result.done) break;
+			consumeTsvChunk(Buffer.from(result.value,).toString("utf-8",), state, (row,) => {
+				if (done) return;
+				done = emitCsvLineWithLimit(row, maxDataRows, emittedRows, (line,) => {
+					lines.push(line,);
+				}, onHeader,);
+			},);
 		}
-	}
 
-	if (!done) {
-		flushTsvStream(state, (row,) => {
-			if (done) return;
-			done = emitCsvLineWithLimit(row, maxDataRows, emittedRows, (line,) => {
-				lines.push(line,);
-			}, onHeader,);
-		},);
-	}
+		if (!done) {
+			flushTsvStream(state, (row,) => {
+				if (done) return;
+				done = emitCsvLineWithLimit(row, maxDataRows, emittedRows, (line,) => {
+					lines.push(line,);
+				}, onHeader,);
+			},);
+		}
 
-	return lines.join("\n",);
+		return lines.join("\n",);
+	} finally {
+		reader.releaseLock();
+	}
 }
 
 function tsvToCsvTransform(
@@ -396,9 +436,11 @@ export class DatasetsResource extends BaseResource {
 			maxRows?: number;
 			projectKey?: string;
 			validateColumns?: { name: string; }[];
+			timeoutMs?: number;
 		},
 	): Promise<string> {
 		const maxRows = Math.max(1, Math.min(opts?.maxRows ?? 50, 500,),);
+		const timeoutMs = Math.max(1, opts?.timeoutMs ?? this.client.getRequestTimeoutMs(),);
 		const dsEnc = encodeURIComponent(datasetName,);
 		const res = await this.client.stream(
 			`/public/api/projects/${
@@ -413,7 +455,8 @@ export class DatasetsResource extends BaseResource {
 				}
 			}
 			: undefined;
-		return collectPreviewCsv(res.body as ReadableStream<Uint8Array>, maxRows, onHeader,);
+		if (!res.body) return "";
+		return collectPreviewCsv(res.body as ReadableStream<Uint8Array>, maxRows, timeoutMs, onHeader,);
 	}
 
 	/** Get dataset metadata (tags, custom fields, checklists). */

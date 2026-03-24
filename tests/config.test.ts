@@ -84,6 +84,20 @@ describe("credentials CRUD", () => {
 		expect(loaded!.projectKey,).toBe("PROJ",);
 	});
 
+	it("saveCredentials includes TLS settings when provided", () => {
+		const creds: DssCredentials = {
+			url: "https://dss.example.com",
+			apiKey: "dkuaps-test123",
+			tlsRejectUnauthorized: false,
+			caCertPath: "/tmp/corp-ca.pem",
+		};
+		saveCredentials(creds,);
+		const loaded = loadCredentials();
+		expect(loaded,).not.toBeNull();
+		expect(loaded!.tlsRejectUnauthorized,).toBe(false,);
+		expect(loaded!.caCertPath,).toBe("/tmp/corp-ca.pem",);
+	});
+
 	it("saveCredentials sets file permissions to 0o600 on Unix", () => {
 		if (process.platform === "win32") return;
 		saveCredentials({ url: "https://dss.example.com", apiKey: "key", },);

@@ -122,7 +122,9 @@ Use \`dss <resource> --help\` to see all actions and flags for any resource.
 -v, --verbose          log HTTP requests to stderr
     --project-key KEY  override default project for any command
     --timeout MS       request timeout (default: 30000)
-    --stdin            read JSON input from stdin
+    --insecure         disable TLS certificate verification
+    --ca-cert PATH     trust an extra PEM CA bundle
+    --stdin            read command input from stdin (JSON or SQL, depending on command)
 \`\`\`
 
 ## Gotchas

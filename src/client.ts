@@ -1,3 +1,6 @@
+import { readFileSync, } from "node:fs";
+import { getCACertificates, } from "node:tls";
+
 import { type Static, type TSchema, } from "@sinclair/typebox";
 import { Value, } from "@sinclair/typebox/value";
 import { type SafeParseResult, safeParseSchema, } from "./schemas.js";
@@ -43,6 +46,10 @@ export interface DataikuClientConfig {
 	retryMaxAttempts?: number;
 	/** Emit HTTP request/response logs to stderr for CLI debugging. */
 	verbose?: boolean;
+	/** Override TLS certificate verification for HTTPS requests. */
+	tlsRejectUnauthorized?: boolean;
+	/** Extra PEM CA bundle to trust in addition to Bun's default trust store. */
+	caCertPath?: string;
 	/**
 	 * Called when an API response fails schema validation but data is still usable.
 	 * Default: writes to stderr. Set to a throwing function for strict mode.
@@ -98,6 +105,33 @@ function buildRetryMetadata(
 	};
 }
 
+type FetchTlsOptions = {
+	rejectUnauthorized?: boolean;
+	ca?: string[];
+};
+
+function buildFetchTlsOptions(config: DataikuClientConfig,): FetchTlsOptions | undefined {
+	const rejectUnauthorized = config.tlsRejectUnauthorized;
+	const caCertPath = config.caCertPath?.trim();
+	if (rejectUnauthorized === undefined && !caCertPath) return undefined;
+
+	const tls: FetchTlsOptions = {};
+	if (rejectUnauthorized !== undefined) tls.rejectUnauthorized = rejectUnauthorized;
+
+	if (caCertPath) {
+		try {
+			tls.ca = [...getCACertificates("default",), readFileSync(caCertPath, "utf-8",),];
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error,);
+			throw new Error(`Unable to read CA certificate bundle at ${caCertPath}: ${message}`, {
+				cause: error,
+			},);
+		}
+	}
+
+	return tls;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Client                                                             */
 /* ------------------------------------------------------------------ */
@@ -109,6 +143,7 @@ export class DataikuClient {
 	private readonly requestTimeoutMs: number;
 	private readonly retryMaxAttempts: number;
 	private readonly verbose: boolean;
+	private readonly tlsOptions: FetchTlsOptions | undefined;
 	private readonly onValidationWarning: (method: string, errors: string[],) => void;
 
 	/* Resource namespaces — lazily initialized to break circular imports */
@@ -172,7 +207,12 @@ export class DataikuClient {
 		const rawMax = config.retryMaxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
 		this.retryMaxAttempts = Math.min(Math.max(1, rawMax,), MAX_RETRY_ATTEMPTS_CAP,);
 		this.verbose = config.verbose === true;
+		this.tlsOptions = buildFetchTlsOptions(config,);
 		this.onValidationWarning = config.onValidationWarning ?? defaultValidationWarning;
+	}
+
+	getRequestTimeoutMs(): number {
+		return this.requestTimeoutMs;
 	}
 
 	/* ---- public: project key resolution ---- */
@@ -353,7 +393,13 @@ export class DataikuClient {
 			this.logVerbose(`${method} ${url}`,);
 
 			try {
-				const res = await fetch(url, { ...init, method, signal: controller.signal, },);
+				const requestInit: RequestInit & { tls?: FetchTlsOptions; } = {
+					...init,
+					method,
+					signal: controller.signal,
+				};
+				if (this.tlsOptions) requestInit.tls = this.tlsOptions;
+				const res = await fetch(url, requestInit,);
 				this.logVerbose(`${method} ${url} → ${res.status} (${Date.now() - startedAt}ms)`,);
 				if (!res.ok) {
 					const text = await res.text();
