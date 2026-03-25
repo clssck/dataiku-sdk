@@ -341,6 +341,17 @@ export const ScenarioStatusSchema = Type.Object({
 }, { additionalProperties: true, },);
 export type ScenarioStatus = Static<typeof ScenarioStatusSchema>;
 
+export const ScenarioWaitResultSchema = Type.Object({
+	scenarioId: Type.String(),
+	runId: Type.String(),
+	outcome: Type.String(),
+	success: Type.Boolean(),
+	elapsedMs: Type.Number(),
+	pollCount: Type.Number(),
+	timedOut: Type.Optional(Type.Boolean(),),
+},);
+export type ScenarioWaitResult = Static<typeof ScenarioWaitResultSchema>;
+
 // ---------------------------------------------------------------------------
 // Folders
 // ---------------------------------------------------------------------------
