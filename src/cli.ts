@@ -268,6 +268,8 @@ const BOOLEAN_FLAGS = new Set([
 	"include-payload",
 	"include-logs",
 	"replace",
+	"dry-run",
+	"if-not-exists",
 ],);
 
 const SHORT_FLAGS: Record<string, string> = {
@@ -364,6 +366,8 @@ type CommandHandler = (
 interface CommandMeta {
 	handler: CommandHandler;
 	usage: string;
+	description?: string;
+	examples?: string[];
 }
 
 const commands: Record<string, Record<string, CommandMeta>> = {
@@ -371,18 +375,26 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		list: {
 			handler: (c,) => c.projects.list(),
 			usage: "dss project list",
+			description: "List all accessible projects.",
+			examples: ["dss project list", "dss project list -f table",],
 		},
 		get: {
 			handler: (c, _a, f,) => c.projects.get(f["project-key"] as string | undefined,),
 			usage: "dss project get [--project-key KEY]",
+			description: "Get project settings and metadata.",
+			examples: ["dss project get", "dss project get --project-key MYPROJ",],
 		},
 		metadata: {
 			handler: (c, _a, f,) => c.projects.metadata(f["project-key"] as string | undefined,),
 			usage: "dss project metadata [--project-key KEY]",
+			description: "Get project-level metadata (tags, labels, custom fields).",
+			examples: ["dss project metadata", "dss project metadata --project-key MYPROJ",],
 		},
 		flow: {
 			handler: (c, _a, f,) => c.projects.flow(f["project-key"] as string | undefined,),
 			usage: "dss project flow [--project-key KEY]",
+			description: "Get the raw flow graph (all datasets, recipes, and edges).",
+			examples: ["dss project flow", "dss project flow --project-key MYPROJ -f quiet",],
 		},
 		map: {
 			handler: (c, _a, f,) =>
@@ -392,6 +404,12 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					includeRaw: f["include-raw"] === true,
 				},),
 			usage: "dss project map [--max-nodes N] [--max-edges N] [--include-raw]",
+			description: "Get a summarized, truncated flow map.",
+			examples: [
+				"dss project map",
+				"dss project map --max-nodes 50 --max-edges 100",
+				"dss project map --include-raw",
+			],
 		},
 	},
 
@@ -399,6 +417,12 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		list: {
 			handler: (c, _a, f,) => c.datasets.list(f["project-key"] as string | undefined,),
 			usage: "dss dataset list [--project-key KEY]",
+			description: "List all datasets in a project.",
+			examples: [
+				"dss dataset list",
+				"dss dataset list -f table",
+				"dss dataset list --project-key MYPROJ",
+			],
 		},
 		get: {
 			handler: (c, a, f,) => {
@@ -406,6 +430,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.datasets.get(a[0], f["project-key"] as string | undefined,);
 			},
 			usage: "dss dataset get <name> [--project-key KEY]",
+			description: "Get full settings for a dataset.",
+			examples: ["dss dataset get orders", "dss dataset get orders --project-key MYPROJ",],
 		},
 		schema: {
 			handler: (c, a, f,) => {
@@ -413,6 +439,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.datasets.schema(a[0], f["project-key"] as string | undefined,);
 			},
 			usage: "dss dataset schema <name> [--project-key KEY]",
+			description: "Show the column schema of a dataset.",
+			examples: ["dss dataset schema orders", "dss dataset schema orders -f table",],
 		},
 		preview: {
 			handler: (c, a, f,) => {
@@ -424,6 +452,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: "dss dataset preview <name> [--max-rows N] [--project-key KEY] [--timeout MS]",
+			description: "Preview dataset rows.",
+			examples: ["dss dataset preview orders", "dss dataset preview orders --max-rows 5",],
 		},
 		metadata: {
 			handler: (c, a, f,) => {
@@ -431,6 +461,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.datasets.metadata(a[0], f["project-key"] as string | undefined,);
 			},
 			usage: "dss dataset metadata <name> [--project-key KEY]",
+			description: "Get dataset-level metadata.",
+			examples: ["dss dataset metadata orders",],
 		},
 		download: {
 			handler: (c, a, f,) => {
@@ -441,26 +473,46 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: "dss dataset download <name> [--output PATH] [--project-key KEY]",
+			description: "Download dataset contents as CSV.",
+			examples: ["dss dataset download orders", "dss dataset download orders --output ./data/",],
 		},
 		create: {
-			handler: (c, _a, f,) =>
-				c.datasets.create({
-					datasetName: f["name"] as string,
+			handler: async (c, _a, f,) => {
+				const pk = f["project-key"] as string | undefined;
+				const name = f["name"] as string;
+				if (f["if-not-exists"] === true) {
+					const list = await c.datasets.list(pk,);
+					const existing = list.find((d,) => d.name === name);
+					if (existing) return { exists: true, ...existing, };
+				}
+				return c.datasets.create({
+					datasetName: name,
 					connection: f["connection"] as string,
 					dsType: f["type"] as string,
-					projectKey: f["project-key"] as string | undefined,
-				},),
+					projectKey: pk,
+				},);
+			},
 			usage: "dss dataset create --name NAME --connection CONN --type TYPE [--project-key KEY]",
+			description: "Create a new dataset.",
+			examples: ["dss dataset create --name orders --connection filesystem --type Filesystem",],
 		},
 		delete: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss dataset delete <name>",);
-				return c.datasets.delete(a[0], f["project-key"] as string | undefined,);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					const current = await c.datasets.get(a[0], pk,);
+					return { dryRun: true, action: "delete", resource: "dataset", name: a[0], current, };
+				}
+				await c.datasets.delete(a[0], pk,);
+				return { deleted: a[0], resource: "dataset", };
 			},
 			usage: "dss dataset delete <name> [--project-key KEY]",
+			description: "Delete a dataset.",
+			examples: ["dss dataset delete orders",],
 		},
 		update: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin]",);
 				const data = jsonInput(f,);
 				if (!data) {
@@ -468,10 +520,16 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"--data, --data-file, or --stdin is required. Usage: dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin]",
 					);
 				}
-				return c.datasets.update(a[0], data, f["project-key"] as string | undefined,);
+				await c.datasets.update(a[0], data, f["project-key"] as string | undefined,);
+				return { updated: a[0], resource: "dataset", };
 			},
 			usage:
 				"dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
+			description: "Update dataset settings via JSON merge.",
+			examples: [
+				'dss dataset update orders --data \'{"tags":["production"]}\'',
+				"echo '{\"tags\":[]}' | dss dataset update orders --stdin",
+			],
 		},
 	},
 
@@ -479,6 +537,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		list: {
 			handler: (c, _a, f,) => c.recipes.list(f["project-key"] as string | undefined,),
 			usage: "dss recipe list [--project-key KEY]",
+			description: "List all recipes in a project.",
+			examples: ["dss recipe list", "dss recipe list -f table",],
 		},
 		get: {
 			handler: (c, a, f,) => {
@@ -488,13 +548,23 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: "dss recipe get <name> [--include-payload]",
+			description: "Get recipe settings.",
+			examples: ["dss recipe get compute_orders", "dss recipe get compute_orders --include-payload",],
 		},
 		delete: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss recipe delete <name>",);
-				return c.recipes.delete(a[0], f["project-key"] as string | undefined,);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					const current = await c.recipes.get(a[0],);
+					return { dryRun: true, action: "delete", resource: "recipe", name: a[0], current, };
+				}
+				await c.recipes.delete(a[0], pk,);
+				return { deleted: a[0], resource: "recipe", };
 			},
 			usage: "dss recipe delete <name> [--project-key KEY]",
+			description: "Delete a recipe.",
+			examples: ["dss recipe delete compute_orders",],
 		},
 		download: {
 			handler: (c, a, f,) => {
@@ -505,6 +575,11 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: "dss recipe download <name> [--output PATH] [--project-key KEY]",
+			description: "Download recipe definition as JSON.",
+			examples: [
+				"dss recipe download compute_orders",
+				"dss recipe download compute_orders -o recipe.json",
+			],
 		},
 		"download-code": {
 			handler: (c, a, f,) => {
@@ -515,9 +590,14 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: "dss recipe download-code <name> [--output PATH] [--project-key KEY]",
+			description: "Download the code payload of a recipe.",
+			examples: [
+				"dss recipe download-code compute_orders",
+				"dss recipe download-code compute_orders -o code.py",
+			],
 		},
 		create: {
-			handler: (c, _a, f,) => {
+			handler: async (c, _a, f,) => {
 				const type = f["type"] as string;
 				if (!type) {
 					throw new UsageError(
@@ -530,17 +610,29 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"--output is required. Usage: dss recipe create --type TYPE --input DS --output DS",
 					);
 				}
+				const name = f["name"] as string | undefined;
+				const pk = f["project-key"] as string | undefined;
+				if (f["if-not-exists"] === true && name) {
+					const list = await c.recipes.list(pk,);
+					const existing = list.find((r,) => r.name === name);
+					if (existing) return { exists: true, ...existing, };
+				}
 				return c.recipes.create({
 					type,
-					name: f["name"] as string | undefined,
+					name,
 					inputDatasets: f["input"] ? [f["input"] as string,] : undefined,
 					outputDataset,
 					outputConnection: f["output-connection"] as string | undefined,
-					projectKey: f["project-key"] as string | undefined,
+					projectKey: pk,
 				},);
 			},
 			usage:
 				"dss recipe create --type TYPE --input DS --output DS [--output-connection CONN] [--project-key KEY]",
+			description: "Create a new recipe.",
+			examples: [
+				"dss recipe create --type python --input orders --output orders_clean",
+				"dss recipe create --type python --input orders --output orders_clean --output-connection filesystem",
+			],
 		},
 		diff: {
 			handler: async (c, a, f,) => {
@@ -560,10 +652,12 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return formatLineDiff(a[0], filePath, result.payload, localContent,);
 			},
 			usage: "dss recipe diff <name> --file PATH [--project-key KEY]",
+			description: "Show differences between local file and remote recipe code.",
+			examples: ["dss recipe diff compute_orders --file code.py",],
 		},
 
 		update: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin]",);
 				const data = jsonInput(f,);
 				if (!data) {
@@ -571,10 +665,16 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"--data, --data-file, or --stdin is required. Usage: dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin]",
 					);
 				}
-				return c.recipes.update(a[0], data, f["project-key"] as string | undefined,);
+				await c.recipes.update(a[0], data, f["project-key"] as string | undefined,);
+				return { updated: a[0], resource: "recipe", };
 			},
 			usage:
 				"dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
+			description: "Update recipe settings via JSON merge.",
+			examples: [
+				"dss recipe update compute_orders --data-file settings.json",
+				"cat settings.json | dss recipe update compute_orders --stdin",
+			],
 		},
 		"get-payload": {
 			handler: async (c, a, f,) => {
@@ -589,6 +689,11 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return payload;
 			},
 			usage: "dss recipe get-payload <name> [--output PATH] [--project-key KEY]",
+			description: "Print the recipe code payload to stdout.",
+			examples: [
+				"dss recipe get-payload compute_orders",
+				"dss recipe get-payload compute_orders -o code.py",
+			],
 		},
 		"set-payload": {
 			handler: async (c, a, f,) => {
@@ -599,8 +704,11 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				await c.recipes.setPayload(a[0], content, {
 					projectKey: f["project-key"] as string | undefined,
 				},);
+				return { updated: a[0], resource: "recipe", file: filePath, };
 			},
 			usage: "dss recipe set-payload <name> --file PATH [--project-key KEY]",
+			description: "Upload recipe code from a local file.",
+			examples: ["dss recipe set-payload compute_orders --file code.py",],
 		},
 	},
 
@@ -608,6 +716,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		list: {
 			handler: (c, _a, f,) => c.jobs.list(f["project-key"] as string | undefined,),
 			usage: "dss job list [--project-key KEY]",
+			description: "List recent jobs.",
+			examples: ["dss job list", "dss job list -f table",],
 		},
 		get: {
 			handler: (c, a, f,) => {
@@ -615,6 +725,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.jobs.get(a[0], f["project-key"] as string | undefined,);
 			},
 			usage: "dss job get <id> [--project-key KEY]",
+			description: "Get job details.",
+			examples: ["dss job get JOB_ID",],
 		},
 		log: {
 			handler: (c, a, f,) => {
@@ -625,6 +737,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: "dss job log <id> [--activity NAME] [--max-lines N]",
+			description: "Get log output for a job.",
+			examples: ["dss job log JOB_ID", "dss job log JOB_ID --activity main --max-lines 200",],
 		},
 		build: {
 			handler: (c, a, f,) => {
@@ -634,6 +748,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: "dss job build <dataset> [--build-mode MODE]",
+			description: "Start a dataset build (returns immediately).",
+			examples: ["dss job build orders", "dss job build orders --build-mode RECURSIVE_BUILD",],
 		},
 		"build-and-wait": {
 			handler: (c, a, f,) => {
@@ -645,6 +761,12 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: "dss job build-and-wait <dataset> [--build-mode MODE] [--include-logs] [--timeout MS]",
+			description: "Build a dataset and wait for completion.",
+			examples: [
+				"dss job build-and-wait orders",
+				"dss job build-and-wait orders --include-logs",
+				"dss job build-and-wait orders --timeout 300000",
+			],
 		},
 		wait: {
 			handler: (c, a, f,) => {
@@ -655,6 +777,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: "dss job wait <id> [--include-logs] [--timeout MS]",
+			description: "Wait for an existing job to complete.",
+			examples: ["dss job wait JOB_ID", "dss job wait JOB_ID --include-logs --timeout 60000",],
 		},
 		abort: {
 			handler: (c, a, f,) => {
@@ -662,6 +786,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.jobs.abort(a[0], f["project-key"] as string | undefined,);
 			},
 			usage: "dss job abort <id> [--project-key KEY]",
+			description: "Abort a running job.",
+			examples: ["dss job abort JOB_ID",],
 		},
 	},
 
@@ -669,6 +795,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		list: {
 			handler: (c, _a, f,) => c.scenarios.list(f["project-key"] as string | undefined,),
 			usage: "dss scenario list [--project-key KEY]",
+			description: "List all scenarios in a project.",
+			examples: ["dss scenario list", "dss scenario list -f table",],
 		},
 		get: {
 			handler: (c, a, _f,) => {
@@ -676,6 +804,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.scenarios.get(a[0],);
 			},
 			usage: "dss scenario get <id>",
+			description: "Get scenario definition.",
+			examples: ["dss scenario get my_scenario",],
 		},
 		run: {
 			handler: (c, a, f,) => {
@@ -683,6 +813,23 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.scenarios.run(a[0], f["project-key"] as string | undefined,);
 			},
 			usage: "dss scenario run <id> [--project-key KEY]",
+			description: "Trigger a scenario run (returns immediately).",
+			examples: ["dss scenario run my_scenario",],
+		},
+		"run-and-wait": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss scenario run-and-wait <id>",);
+				return c.scenarios.runAndWait(a[0], {
+					timeoutMs: num(f["timeout"],),
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage: "dss scenario run-and-wait <id> [--timeout MS] [--project-key KEY]",
+			description: "Run a scenario and wait for completion.",
+			examples: [
+				"dss scenario run-and-wait my_scenario",
+				"dss scenario run-and-wait my_scenario --timeout 300000",
+			],
 		},
 		status: {
 			handler: (c, a, f,) => {
@@ -690,26 +837,48 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.scenarios.status(a[0], f["project-key"] as string | undefined,);
 			},
 			usage: "dss scenario status <id> [--project-key KEY]",
+			description: "Get the current run status of a scenario.",
+			examples: ["dss scenario status my_scenario",],
 		},
 		delete: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss scenario delete <id>",);
-				return c.scenarios.delete(a[0], f["project-key"] as string | undefined,);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					const current = await c.scenarios.get(a[0],);
+					return { dryRun: true, action: "delete", resource: "scenario", id: a[0], current, };
+				}
+				await c.scenarios.delete(a[0], pk,);
+				return { deleted: a[0], resource: "scenario", };
 			},
 			usage: "dss scenario delete <id> [--project-key KEY]",
+			description: "Delete a scenario.",
+			examples: ["dss scenario delete my_scenario",],
 		},
 		create: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 2, "dss scenario create <id> <name>",);
-				return c.scenarios.create(a[0], a[1], {
+				const pk = f["project-key"] as string | undefined;
+				if (f["if-not-exists"] === true) {
+					const list = await c.scenarios.list(pk,);
+					const existing = list.find((s,) => s.id === a[0]);
+					if (existing) return { exists: true, ...existing, };
+				}
+				await c.scenarios.create(a[0], a[1], {
 					scenarioType: f["type"] as "step_based" | "custom_python" | undefined,
-					projectKey: f["project-key"] as string | undefined,
+					projectKey: pk,
 				},);
+				return { created: a[0], name: a[1], resource: "scenario", };
 			},
 			usage: "dss scenario create <id> <name> [--type step_based|custom_python] [--project-key KEY]",
+			description: "Create a new scenario.",
+			examples: [
+				'dss scenario create my_scenario "My Scenario"',
+				'dss scenario create my_scenario "My Scenario" --type custom_python',
+			],
 		},
 		update: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin]",);
 				const data = jsonInput(f,);
 				if (!data) {
@@ -717,10 +886,13 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"--data, --data-file, or --stdin is required. Usage: dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin]",
 					);
 				}
-				return c.scenarios.update(a[0], data, f["project-key"] as string | undefined,);
+				await c.scenarios.update(a[0], data, f["project-key"] as string | undefined,);
+				return { updated: a[0], resource: "scenario", };
 			},
 			usage:
 				"dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
+			description: "Update scenario settings via JSON merge.",
+			examples: ["dss scenario update my_scenario --data-file settings.json",],
 		},
 	},
 
@@ -728,6 +900,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		list: {
 			handler: (c, _a, f,) => c.folders.list(f["project-key"] as string | undefined,),
 			usage: "dss folder list [--project-key KEY]",
+			description: "List managed folders in a project.",
+			examples: ["dss folder list", "dss folder list -f table",],
 		},
 		get: {
 			handler: async (c, a, f,) => {
@@ -738,6 +912,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				);
 			},
 			usage: "dss folder get <name-or-id> [--project-key KEY]",
+			description: "Get managed folder settings.",
+			examples: ["dss folder get my_folder",],
 		},
 		contents: {
 			handler: async (c, a, f,) => {
@@ -747,6 +923,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: "dss folder contents <name-or-id> [--project-key KEY]",
+			description: "List files in a managed folder.",
+			examples: ["dss folder contents my_folder",],
 		},
 		download: {
 			handler: async (c, a, f,) => {
@@ -759,29 +937,43 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			},
 			usage:
 				"dss folder download <name-or-id> <remote-path> [local-path] [--output PATH] [--project-key KEY]",
+			description: "Download a file from a managed folder.",
+			examples: [
+				"dss folder download my_folder /data/report.csv",
+				"dss folder download my_folder /data/report.csv ./report.csv",
+			],
 		},
 		upload: {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 3, "dss folder upload <name-or-id> <path> <localPath>",);
-				return c.folders.upload(
+				await c.folders.upload(
 					await resolveFolderId(c, a[0], f,),
 					a[1],
 					a[2],
 					f["project-key"] as string | undefined,
 				);
+				return { uploaded: a[1], folder: a[0], localPath: a[2], resource: "folder", };
 			},
 			usage: "dss folder upload <name-or-id> <path> <localPath> [--project-key KEY]",
+			description: "Upload a local file to a managed folder.",
+			examples: ["dss folder upload my_folder /data/report.csv ./report.csv",],
 		},
 		"delete-file": {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 2, "dss folder delete-file <name-or-id> <path>",);
-				return c.folders.deleteFile(
+				if (f["dry-run"] === true) {
+					return { dryRun: true, action: "delete-file", resource: "folder", folder: a[0], path: a[1], };
+				}
+				await c.folders.deleteFile(
 					await resolveFolderId(c, a[0], f,),
 					a[1],
 					f["project-key"] as string | undefined,
 				);
+				return { deleted: a[1], folder: a[0], resource: "folder", };
 			},
 			usage: "dss folder delete-file <name-or-id> <path> [--project-key KEY]",
+			description: "Delete a file from a managed folder.",
+			examples: ["dss folder delete-file my_folder /data/report.csv",],
 		},
 	},
 
@@ -789,6 +981,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		get: {
 			handler: (c, _a, f,) => c.variables.get(f["project-key"] as string | undefined,),
 			usage: "dss variable get [--project-key KEY]",
+			description: "Get project variables (standard and local).",
+			examples: ["dss variable get", "dss variable get --project-key MYPROJ",],
 		},
 		set: {
 			handler: (c, _a, f,) =>
@@ -799,7 +993,12 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					projectKey: f["project-key"] as string | undefined,
 				},),
 			usage:
-				'dss variable set --standard \'{"k":"v"}\' --local \'{"k":"v"}\' [--replace] [--project-key KEY]',
+				`dss variable set --standard '{"k":"v"}' --local '{"k":"v"}' [--replace] [--project-key KEY]`,
+			description: "Set project variables via JSON merge (or full replace with --replace).",
+			examples: [
+				'dss variable set --standard \'{"env":"staging"}\'',
+				"dss variable set --local '{\"debug\":true}' --replace",
+			],
 		},
 	},
 
@@ -807,6 +1006,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		list: {
 			handler: (c,) => c.connections.list(),
 			usage: "dss connection list",
+			description: "List all connection names.",
+			examples: ["dss connection list",],
 		},
 		infer: {
 			handler: (c, _a, f,) =>
@@ -814,6 +1015,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					mode: f["mode"] as "fast" | "rich" | undefined,
 				},),
 			usage: "dss connection infer [--mode fast|rich]",
+			description: "List connections with inferred types and metadata.",
+			examples: ["dss connection infer", "dss connection infer --mode rich",],
 		},
 	},
 
@@ -824,6 +1027,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					envLang: f["lang"] as "PYTHON" | "R" | undefined,
 				},),
 			usage: "dss code-env list [--lang LANG]",
+			description: "List code environments.",
+			examples: ["dss code-env list", "dss code-env list --lang PYTHON",],
 		},
 		get: {
 			handler: (c, a,) => {
@@ -831,6 +1036,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.codeEnvs.get(a[0], a[1],);
 			},
 			usage: "dss code-env get <lang> <name>",
+			description: "Get code environment details.",
+			examples: ["dss code-env get PYTHON my_env",],
 		},
 	},
 	sql: {
@@ -853,12 +1060,20 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: SQL_QUERY_USAGE,
+			description: "Run a SQL query against a DSS connection or dataset.",
+			examples: [
+				"dss sql query 'SELECT * FROM orders LIMIT 10' --connection my_pg",
+				"dss sql query --sql-file query.sql --connection my_pg",
+				"echo 'SELECT 1' | dss sql query --stdin --dataset MYPROJ.orders",
+			],
 		},
 	},
 	notebook: {
 		"list-jupyter": {
 			handler: (c, _a, f,) => c.notebooks.listJupyter(f["project-key"] as string | undefined,),
 			usage: "dss notebook list-jupyter [--project-key KEY]",
+			description: "List Jupyter notebooks.",
+			examples: ["dss notebook list-jupyter",],
 		},
 		"get-jupyter": {
 			handler: (c, a, _f,) => {
@@ -866,20 +1081,32 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.notebooks.getJupyter(a[0],);
 			},
 			usage: "dss notebook get-jupyter <name>",
+			description: "Get a Jupyter notebook.",
+			examples: ["dss notebook get-jupyter my_notebook",],
 		},
 		"delete-jupyter": {
-			handler: (c, a, _f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook delete-jupyter <name>",);
-				return c.notebooks.deleteJupyter(a[0],);
+				if (f["dry-run"] === true) {
+					const current = await c.notebooks.getJupyter(a[0],);
+					return { dryRun: true, action: "delete", resource: "jupyter-notebook", name: a[0], current, };
+				}
+				await c.notebooks.deleteJupyter(a[0],);
+				return { deleted: a[0], resource: "jupyter-notebook", };
 			},
 			usage: "dss notebook delete-jupyter <name>",
+			description: "Delete a Jupyter notebook.",
+			examples: ["dss notebook delete-jupyter my_notebook",],
 		},
 		"clear-jupyter-outputs": {
-			handler: (c, a, _f,) => {
+			handler: async (c, a, _f,) => {
 				requireArgs(a, 1, "dss notebook clear-jupyter-outputs <name>",);
-				return c.notebooks.clearJupyterOutputs(a[0],);
+				await c.notebooks.clearJupyterOutputs(a[0],);
+				return { cleared: a[0], resource: "jupyter-notebook", };
 			},
 			usage: "dss notebook clear-jupyter-outputs <name>",
+			description: "Clear all cell outputs from a Jupyter notebook.",
+			examples: ["dss notebook clear-jupyter-outputs my_notebook",],
 		},
 		"sessions-jupyter": {
 			handler: (c, a, _f,) => {
@@ -887,17 +1114,24 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.notebooks.listJupyterSessions(a[0],);
 			},
 			usage: "dss notebook sessions-jupyter <name>",
+			description: "List active kernel sessions for a Jupyter notebook.",
+			examples: ["dss notebook sessions-jupyter my_notebook",],
 		},
 		"unload-jupyter": {
-			handler: (c, a, _f,) => {
+			handler: async (c, a, _f,) => {
 				requireArgs(a, 2, "dss notebook unload-jupyter <name> <sessionId>",);
-				return c.notebooks.unloadJupyter(a[0], a[1],);
+				await c.notebooks.unloadJupyter(a[0], a[1],);
+				return { unloaded: a[0], sessionId: a[1], resource: "jupyter-notebook", };
 			},
 			usage: "dss notebook unload-jupyter <name> <sessionId>",
+			description: "Unload a Jupyter notebook kernel session.",
+			examples: ["dss notebook unload-jupyter my_notebook SESSION_ID",],
 		},
 		"list-sql": {
 			handler: (c, _a, f,) => c.notebooks.listSql(f["project-key"] as string | undefined,),
 			usage: "dss notebook list-sql [--project-key KEY]",
+			description: "List SQL notebooks.",
+			examples: ["dss notebook list-sql",],
 		},
 		"get-sql": {
 			handler: (c, a, _f,) => {
@@ -905,13 +1139,22 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.notebooks.getSql(a[0],);
 			},
 			usage: "dss notebook get-sql <id>",
+			description: "Get a SQL notebook.",
+			examples: ["dss notebook get-sql my_sql_notebook",],
 		},
 		"delete-sql": {
-			handler: (c, a, _f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook delete-sql <id>",);
-				return c.notebooks.deleteSql(a[0],);
+				if (f["dry-run"] === true) {
+					const current = await c.notebooks.getSql(a[0],);
+					return { dryRun: true, action: "delete", resource: "sql-notebook", id: a[0], current, };
+				}
+				await c.notebooks.deleteSql(a[0],);
+				return { deleted: a[0], resource: "sql-notebook", };
 			},
 			usage: "dss notebook delete-sql <id>",
+			description: "Delete a SQL notebook.",
+			examples: ["dss notebook delete-sql my_sql_notebook",],
 		},
 		"history-sql": {
 			handler: (c, a, _f,) => {
@@ -919,9 +1162,11 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.notebooks.getSqlHistory(a[0],);
 			},
 			usage: "dss notebook history-sql <id>",
+			description: "Get query history for a SQL notebook.",
+			examples: ["dss notebook history-sql my_sql_notebook",],
 		},
 		"save-jupyter": {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(
 					a,
 					1,
@@ -933,13 +1178,19 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"--data, --data-file, or --stdin is required (notebook JSON content).",
 					);
 				}
-				return c.notebooks.saveJupyter(a[0], data as never, f["project-key"] as string | undefined,);
+				await c.notebooks.saveJupyter(a[0], data as never, f["project-key"] as string | undefined,);
+				return { saved: a[0], resource: "jupyter-notebook", };
 			},
 			usage:
 				"dss notebook save-jupyter <name> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
+			description: "Save content to a Jupyter notebook.",
+			examples: [
+				"dss notebook save-jupyter my_notebook --data-file notebook.json",
+				"cat notebook.json | dss notebook save-jupyter my_notebook --stdin",
+			],
 		},
 		"save-sql": {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook save-sql <id> [--data '{...}' | --data-file PATH | --stdin]",);
 				const data = jsonInput(f,);
 				if (!data) {
@@ -947,21 +1198,30 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"--data, --data-file, or --stdin is required (SQL notebook content JSON).",
 					);
 				}
-				return c.notebooks.saveSql(a[0], data as never, f["project-key"] as string | undefined,);
+				await c.notebooks.saveSql(a[0], data as never, f["project-key"] as string | undefined,);
+				return { saved: a[0], resource: "sql-notebook", };
 			},
 			usage:
 				"dss notebook save-sql <id> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
+			description: "Save content to a SQL notebook.",
+			examples: ["dss notebook save-sql my_sql_notebook --data-file content.json",],
 		},
 		"clear-sql-history": {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook clear-sql-history <id>",);
-				return c.notebooks.clearSqlHistory(a[0], {
+				await c.notebooks.clearSqlHistory(a[0], {
 					cellId: f["cell-id"] as string | undefined,
 					numRunsToRetain: num(f["retain"],),
 					projectKey: f["project-key"] as string | undefined,
 				},);
+				return { cleared: a[0], resource: "sql-notebook", };
 			},
 			usage: "dss notebook clear-sql-history <id> [--cell-id CID] [--retain N] [--project-key KEY]",
+			description: "Clear query history for a SQL notebook.",
+			examples: [
+				"dss notebook clear-sql-history my_sql_notebook",
+				"dss notebook clear-sql-history my_sql_notebook --cell-id CELL1 --retain 5",
+			],
 		},
 	},
 };
@@ -985,7 +1245,10 @@ function printTopLevelHelp(): void {
 		"      --url URL            Dataiku DSS base URL (env: DATAIKU_URL)",
 		"      --api-key KEY        API key              (env: DATAIKU_API_KEY)",
 		"      --project-key KEY    Default project key   (env: DATAIKU_PROJECT_KEY)",
-		"      --timeout MS         Request timeout in ms  (default: 30000)",
+		"      --timeout MS         Operation timeout (build-and-wait, run-and-wait)",
+		"      --request-timeout MS HTTP request timeout in ms (default: 30000)",
+		"      --dry-run            Preview destructive actions without executing",
+		"      --if-not-exists      Skip create if resource already exists",
 		"      --insecure           Disable TLS certificate verification",
 		"      --ca-cert PATH       Extra PEM CA bundle (env: NODE_EXTRA_CA_CERTS)",
 		"",
@@ -1009,11 +1272,16 @@ function printTopLevelHelp(): void {
 function printResourceHelp(resource: string,): void {
 	const actions = commands[resource];
 	if (!actions) return;
+	const maxName = Math.max(...Object.keys(actions,).map((n,) => n.length),);
 	const lines = [
 		`Usage: dss ${resource} <action> [args...] [--flags]`,
 		"",
 		"Actions:",
-		...Object.entries(actions,).map(([name, meta,],) => `  ${name}  →  ${meta.usage}`),
+		...Object.entries(actions,).map(
+			([name, meta,],) => `  ${name.padEnd(maxName + 2,)}${meta.description ?? meta.usage}`,
+		),
+		"",
+		`Run 'dss ${resource} <action> --help' for details and examples.`,
 	];
 	process.stderr.write(`${lines.join("\n",)}\n`,);
 }
@@ -1021,7 +1289,14 @@ function printResourceHelp(resource: string,): void {
 function printActionHelp(resource: string, action: string,): void {
 	const meta = commands[resource]?.[action];
 	if (!meta) return;
-	process.stderr.write(`Usage: ${meta.usage}\n`,);
+	const lines: string[] = [];
+	if (meta.description) lines.push(meta.description, "",);
+	lines.push(`Usage: ${meta.usage}`,);
+	if (meta.examples && meta.examples.length > 0) {
+		lines.push("", "Examples:",);
+		for (const ex of meta.examples) lines.push(`  ${ex}`,);
+	}
+	process.stderr.write(`${lines.join("\n",)}\n`,);
 }
 
 // ---------------------------------------------------------------------------
@@ -1075,6 +1350,8 @@ function loadEnvFile(): void {
 const AUTH_ACTIONS: Record<string, {
 	handler: (flags: Record<string, string | boolean>,) => Promise<void>;
 	usage: string;
+	description?: string;
+	examples?: string[];
 }> = {
 	login: {
 		handler: async (flags,) => {
@@ -1112,13 +1389,18 @@ const AUTH_ACTIONS: Record<string, {
 		},
 		usage:
 			"dss auth login [--url URL] [--api-key KEY] [--project-key KEY] [--insecure] [--ca-cert PATH]",
+		description: "Save DSS credentials (interactive or via flags).",
+		examples: [
+			"dss auth login --url https://dss.example.com --api-key YOUR_KEY",
+			"dss auth login --url https://dss.example.com --api-key YOUR_KEY --project-key MYPROJ",
+		],
 	},
 	status: {
 		handler: async (flags,) => {
 			const creds = loadCredentials();
 			if (!creds) {
 				process.stderr.write("No saved credentials. Run: dss auth login\n",);
-				return;
+				process.exit(1,);
 			}
 			const tlsSettings = resolveTlsSettings(flags, creds,);
 			const lines = [
@@ -1135,10 +1417,14 @@ const AUTH_ACTIONS: Record<string, {
 				process.stderr.write("Connection:  ✓ Valid\n",);
 			} else {
 				process.stderr.write(`Connection:  ✗ Failed (${result.error ?? "unknown error"})\n`,);
+				process.stderr.write(`Config:      ${getCredentialsPath()}\n`,);
+				process.exit(1,);
 			}
 			process.stderr.write(`Config:      ${getCredentialsPath()}\n`,);
 		},
 		usage: "dss auth status [--insecure] [--ca-cert PATH]",
+		description: "Show saved credentials and verify the connection.",
+		examples: ["dss auth status",],
 	},
 	logout: {
 		handler: async (_flags,) => {
@@ -1146,6 +1432,8 @@ const AUTH_ACTIONS: Record<string, {
 			process.stderr.write("Credentials removed.\n",);
 		},
 		usage: "dss auth logout",
+		description: "Remove saved credentials.",
+		examples: ["dss auth logout",],
 	},
 };
 
@@ -1242,14 +1530,17 @@ async function main(): Promise<void> {
 	// Auth commands — dispatched before client creation
 	if (resource === "auth") {
 		const action = positional[1];
-		if (!action || flags["help"] === true) {
+		if (!action) {
+			const maxName = Math.max(...Object.keys(AUTH_ACTIONS,).map((n,) => n.length),);
 			const lines = [
 				"Usage: dss auth <action> [--flags]",
 				"",
 				"Actions:",
 				...Object.entries(AUTH_ACTIONS,).map(
-					([name, meta,],) => `  ${name}  \u2192  ${meta.usage}`,
+					([name, meta,],) => `  ${name.padEnd(maxName + 2,)}${meta.description ?? meta.usage}`,
 				),
+				"",
+				"Run 'dss auth <action> --help' for details and examples.",
 			];
 			process.stderr.write(`${lines.join("\n",)}\n`,);
 			process.exit(flags["help"] === true ? 0 : 1,);
@@ -1260,6 +1551,17 @@ async function main(): Promise<void> {
 				`Unknown action: auth ${action}\nAvailable: ${Object.keys(AUTH_ACTIONS,).join(", ",)}\n`,
 			);
 			process.exit(1,);
+		}
+		if (flags["help"] === true) {
+			const lines: string[] = [];
+			if (authMeta.description) lines.push(authMeta.description, "",);
+			lines.push(`Usage: ${authMeta.usage}`,);
+			if (authMeta.examples && authMeta.examples.length > 0) {
+				lines.push("", "Examples:",);
+				for (const ex of authMeta.examples) lines.push(`  ${ex}`,);
+			}
+			process.stderr.write(`${lines.join("\n",)}\n`,);
+			process.exit(0,);
 		}
 		await authMeta.handler(flags,);
 		return;
@@ -1334,6 +1636,34 @@ async function main(): Promise<void> {
 		return;
 	}
 
+	// commands — machine-readable introspection (no auth needed)
+	if (resource === "commands") {
+		const registry: Record<
+			string,
+			Record<string, { usage: string; description?: string; examples?: string[]; }>
+		> = {};
+		for (const [res, actions,] of Object.entries(commands,)) {
+			registry[res] = {};
+			for (const [act, meta,] of Object.entries(actions,)) {
+				registry[res][act] = {
+					usage: meta.usage,
+					description: meta.description,
+					examples: meta.examples,
+				};
+			}
+		}
+		registry["auth"] = {};
+		for (const [act, meta,] of Object.entries(AUTH_ACTIONS,)) {
+			registry["auth"][act] = {
+				usage: meta.usage,
+				description: meta.description,
+				examples: meta.examples,
+			};
+		}
+		process.stdout.write(`${JSON.stringify(registry, null, 2,)}\n`,);
+		process.exit(0,);
+	}
+
 	// Unknown resource
 	if (!commands[resource]) {
 		if (flags["help"]) {
@@ -1386,7 +1716,7 @@ async function main(): Promise<void> {
 		);
 	}
 
-	const requestTimeoutMs = num(flags["timeout"],) ?? undefined;
+	const requestTimeoutMs = num(flags["request-timeout"],) ?? num(flags["timeout"],) ?? undefined;
 
 	const client = new DataikuClient({
 		url,
@@ -1406,7 +1736,7 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown,) => {
 	if (err instanceof UsageError) {
-		process.stderr.write(`${err.message} \n`,);
+		process.stderr.write(`${JSON.stringify({ error: err.message, code: "usage", }, null, 2,)}\n`,);
 		process.exit(1,);
 	}
 	if (err instanceof DataikuError) {
