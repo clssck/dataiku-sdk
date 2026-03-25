@@ -229,7 +229,8 @@ describe("CLI execution behavior", () => {
 			res.end();
 		}, async (url,) => {
 			const { stdout, stderr, } = await dss(["dataset", "delete", "sample",], { env: cliEnv(url,), },);
-			expect(stdout,).toBe('{\n  "ok": true\n}\n',);
+			expect(stdout,).toContain('"deleted": "sample"',);
+			expect(stdout,).toContain('"resource": "dataset"',);
 			expect(stderr,).toBe("",);
 		},);
 	});
@@ -272,7 +273,7 @@ describe("CLI execution behavior", () => {
 					["dataset", "update", "sample", "--data-file", tmpFile,],
 					{ env: cliEnv(url,), },
 				);
-				expect(stdout,).toBe('{\n  "ok": true\n}\n',);
+				expect(stdout,).toContain('"updated": "sample"',);
 			},);
 			const nested = capturedBody?.nested as Record<string, unknown> | undefined;
 			expect(nested?.preserved,).toBe(true,);
@@ -303,7 +304,7 @@ describe("CLI execution behavior", () => {
 				JSON.stringify({ nested: { added: "from-stdin", }, },),
 				{ env: cliEnv(url,), },
 			);
-			expect(stdout,).toBe('{\n  "ok": true\n}\n',);
+			expect(stdout,).toContain('"updated": "sample"',);
 		},);
 		const nested = capturedBody?.nested as Record<string, unknown> | undefined;
 		expect(nested?.preserved,).toBe(true,);
@@ -977,7 +978,7 @@ describe("CLI recipe get-payload and set-payload", () => {
 					"--file",
 					filePath,
 				], { env: cliEnv(url,), },);
-				expect(stdout,).toContain('"ok": true',);
+				expect(stdout,).toContain('"updated": "my_recipe"',);
 				expect(putBody,).toBeDefined();
 				const parsed = JSON.parse(putBody!,);
 				expect(parsed.payload,).toBe("print('updated')\n",);
