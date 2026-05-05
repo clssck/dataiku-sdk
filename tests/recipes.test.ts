@@ -240,4 +240,81 @@ describe("RecipesResource", () => {
 			);
 		},);
 	});
+
+	it("pre-provisions filesystem outputs under a project path when output connection is explicit", async () => {
+		const requests: string[] = [];
+		let datasetCreateBody: Record<string, unknown> | undefined;
+		let recipeCreateBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [
+					{
+						name: "input_ds",
+						type: "Filesystem",
+						params: { connection: "s3_conn", },
+						managed: true,
+					},
+				],);
+				return;
+			}
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				datasetCreateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { name: "output_ds", },);
+				return;
+			}
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				recipeCreateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { name: "python_output_ds", },);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.create({
+				type: "python",
+				inputDatasets: ["input_ds",],
+				outputDataset: "output_ds",
+				outputConnection: "s3_conn",
+			},);
+
+			expect(result,).toEqual({
+				recipeName: "python_output_ds",
+				type: "python",
+				createdDatasets: ["output_ds",],
+				joinConfigured: false,
+				outputProvisioningFallbackUsed: false,
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/datasets/",
+			"POST /public/api/projects/TEST/datasets/",
+			"POST /public/api/projects/TEST/recipes/",
+		],);
+		expect(datasetCreateBody,).toMatchObject({
+			projectKey: "TEST",
+			name: "output_ds",
+			type: "Filesystem",
+			params: {
+				connection: "s3_conn",
+				path: "/dataiku/TEST/output_ds",
+				metastoreTableName: "output_ds",
+			},
+			managed: true,
+		},);
+		expect(recipeCreateBody,).toMatchObject({
+			recipePrototype: {
+				type: "python",
+				name: "python_output_ds",
+			},
+		},);
+	});
 });

@@ -206,6 +206,43 @@ describe("DatasetsResource.download", () => {
 	});
 });
 
+describe("DatasetsResource.create", () => {
+	it("uses a non-root project path for managed filesystem datasets", async () => {
+		let createBody: Record<string, unknown> | undefined;
+
+		await withTestServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				createBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify({ name: "output_ds", },),);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await client.datasets.create({
+				datasetName: "output_ds",
+				connection: "s3_conn",
+			},);
+		},);
+
+		expect(createBody,).toMatchObject({
+			projectKey: "TEST",
+			name: "output_ds",
+			type: "Filesystem",
+			params: {
+				connection: "s3_conn",
+				path: "/dataiku/TEST/output_ds",
+			},
+			managed: true,
+		},);
+	});
+});
+
 describe("NotebooksResource.clearJupyterOutputs", () => {
 	it("fetches the notebook, strips outputs, and saves the updated content", async () => {
 		const requests: string[] = [];

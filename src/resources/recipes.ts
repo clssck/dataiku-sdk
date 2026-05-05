@@ -167,15 +167,7 @@ export class RecipesResource extends BaseResource {
 		const createdDatasets: string[] = [];
 		let usedOutputProvisioningFallback = false;
 
-		try {
-			await createRecipe();
-		} catch (error) {
-			if (!shouldRetryRecipeCreateWithOutputProvisioning(error,)) {
-				throw error;
-			}
-			usedOutputProvisioningFallback = true;
-
-			// Fetch existing datasets to infer output connection and type
+		const provisionOutputDatasets = async (): Promise<void> => {
 			const existingDs = await this.client.get<
 				Array<{
 					name: string;
@@ -197,66 +189,77 @@ export class RecipesResource extends BaseResource {
 				}
 			}
 
-			if (outputConnection) {
-				const existingNames = new Set(existingDs.map((d,) => d.name),);
-				const connectionSample = existingDs.find(
-					(d,) => d.params?.connection === outputConnection && d.type,
-				);
-				const inferredOutputType = connectionSample?.type ?? "Filesystem";
+			if (!outputConnection) return;
 
-				const outputRoles = outputs as Record<string, { items?: Array<{ ref?: string; }>; }>;
-				for (const role of Object.values(outputRoles,)) {
-					for (const item of role.items ?? []) {
-						if (item.ref && !existingNames.has(item.ref,)) {
-							const datasetBody: Record<string, unknown> = inferredOutputType === "Filesystem"
-								? {
-									projectKey: pk,
-									name: item.ref,
-									type: inferredOutputType,
-									params: {
-										connection: outputConnection,
-										path: `\${projectKey}/${item.ref}`,
-									},
-									formatType: "csv",
-									formatParams: {
-										style: "excel",
-										charset: "utf8",
-										separator: "\t",
-										quoteChar: '"',
-										escapeChar: "\\",
-										dateSerializationFormat: "ISO",
-										arrayMapFormat: "json",
-										parseHeaderRow: true,
-										compress: "gz",
-									},
-									managed: true,
-								}
-								: {
-									projectKey: pk,
-									name: item.ref,
-									type: inferredOutputType,
-									params: {
-										connection: outputConnection,
-										mode: "table",
-										table: item.ref,
-										...(connectionSample?.params?.schema
-											? { schema: connectionSample.params.schema, }
-											: {}),
-										...(connectionSample?.params?.catalog
-											? { catalog: connectionSample.params.catalog, }
-											: {}),
-									},
-									managed: connectionSample?.managed ?? false,
-								};
+			const existingNames = new Set([...existingDs.map((d,) => d.name), ...createdDatasets,],);
+			const connectionSample = existingDs.find(
+				(d,) => d.params?.connection === outputConnection && d.type,
+			);
+			const inferredOutputType = connectionSample?.type ?? "Filesystem";
 
-							await this.client.post(`/public/api/projects/${enc}/datasets/`, datasetBody,);
-							existingNames.add(item.ref,);
-							createdDatasets.push(item.ref,);
+			const outputRoles = outputs as Record<string, { items?: Array<{ ref?: string; }>; }>;
+			for (const role of Object.values(outputRoles,)) {
+				for (const item of role.items ?? []) {
+					if (!item.ref || existingNames.has(item.ref,)) continue;
+
+					const datasetBody: Record<string, unknown> = inferredOutputType === "Filesystem"
+						? {
+							projectKey: pk,
+							name: item.ref,
+							type: inferredOutputType,
+							params: {
+								connection: outputConnection,
+								path: `/dataiku/${pk}/${item.ref}`,
+								metastoreTableName: item.ref,
+							},
+							formatType: "csv",
+							formatParams: {
+								style: "excel",
+								charset: "utf8",
+								separator: "\t",
+								quoteChar: '"',
+								escapeChar: "\\",
+								dateSerializationFormat: "ISO",
+								arrayMapFormat: "json",
+								parseHeaderRow: true,
+								compress: "gz",
+							},
+							managed: true,
 						}
-					}
+						: {
+							projectKey: pk,
+							name: item.ref,
+							type: inferredOutputType,
+							params: {
+								connection: outputConnection,
+								mode: "table",
+								table: item.ref,
+								...(connectionSample?.params?.schema
+									? { schema: connectionSample.params.schema, }
+									: {}),
+								...(connectionSample?.params?.catalog
+									? { catalog: connectionSample.params.catalog, }
+									: {}),
+							},
+							managed: connectionSample?.managed ?? false,
+						};
+
+					await this.client.post(`/public/api/projects/${enc}/datasets/`, datasetBody,);
+					existingNames.add(item.ref,);
+					if (!createdDatasets.includes(item.ref,)) createdDatasets.push(item.ref,);
 				}
 			}
+		};
 
+		try {
+			if (rawConnection) await provisionOutputDatasets();
+			await createRecipe();
+		} catch (error) {
+			if (!shouldRetryRecipeCreateWithOutputProvisioning(error,)) {
+				throw error;
+			}
+			usedOutputProvisioningFallback = true;
+			await provisionOutputDatasets();
 			await createRecipe();
 		}
 

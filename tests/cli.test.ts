@@ -1096,6 +1096,32 @@ describe("CLI flag value parsing", () => {
 	});
 });
 
+describe("CLI wait command exit codes", () => {
+	it("job wait exits non-zero when the wait result times out", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/jobs/job-timeout/",);
+			sendJson(res, {
+				baseStatus: {
+					def: { id: "job-timeout", type: "DATASET_BUILD", },
+					state: "RUNNING",
+				},
+				globalState: { done: 0, failed: 0, running: 1, total: 1, },
+			},);
+		}, async (url,) => {
+			const failure = await dssFailure(["job", "wait", "job-timeout", "--timeout", "10",], {
+				env: cliEnv(url,),
+			},);
+			expect(failure.code,).toBe(4,);
+			const payload = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(payload.success,).toBe(false,);
+			expect(payload.timedOut,).toBe(true,);
+			expect(payload.state,).toBe("RUNNING",);
+		},);
+	});
+});
+
 describe("CLI missing credentials plain text errors", () => {
 	it("missing URL prints plain text error, not JSON", async () => {
 		// --url "" overrides .env-loaded DATAIKU_URL, forcing the missing-URL path

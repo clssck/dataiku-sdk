@@ -9,8 +9,29 @@ describe("classifyDataikuError", () => {
 			expect(result.retryable,).toBe(true,);
 			expect(result.retryHint.length > 0,).toBeTruthy();
 		});
+
+		it("classifies TLS certificate failures with trust guidance", () => {
+			const result = classifyDataikuError(0, "unable to verify the first certificate",);
+			expect(result.category,).toBe("validation",);
+			expect(result.retryable,).toBe(false,);
+			expect(result.retryHint,).toContain("--ca-cert PATH",);
+			expect(result.retryHint,).toContain("NODE_EXTRA_CA_CERTS",);
+			expect(result.retryHint,).toContain("--insecure",);
+		});
 	});
 
+	describe("recipe creation diagnostics", () => {
+		it("classifies S3 SQL recipe input mismatch as validation with a fallback hint", () => {
+			const result = classifyDataikuError(
+				500,
+				"S3 dataset long_with_attribute_names is not associated to an Athena connection",
+			);
+			expect(result.category,).toBe("validation",);
+			expect(result.retryable,).toBe(false,);
+			expect(result.retryHint,).toContain("SQL/Athena-backed input datasets",);
+			expect(result.retryHint,).toContain("Python recipe",);
+		});
+	});
 	describe("500 + missing dataset root path", () => {
 		it("classifies missing root path as validation, not retryable", () => {
 			const result = classifyDataikuError(

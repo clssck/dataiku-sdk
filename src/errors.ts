@@ -21,8 +21,34 @@ export interface DataikuRetryMetadata {
 	timedOut: boolean;
 }
 
+const TLS_CERTIFICATE_HINT =
+	"TLS certificate verification failed. Trust the DSS/corporate CA with --ca-cert PATH or NODE_EXTRA_CA_CERTS; use --insecure only for temporary troubleshooting.";
+
+function isCertificateTrustFailure(lowerBody: string,): boolean {
+	return lowerBody.includes("unable to verify the first certificate",)
+		|| lowerBody.includes("unable to get local issuer certificate",)
+		|| lowerBody.includes("unable to verify leaf signature",)
+		|| lowerBody.includes("self-signed certificate",)
+		|| lowerBody.includes("certificate has expired",)
+		|| lowerBody.includes("cert_has_expired",)
+		|| lowerBody.includes("self_signed_cert_in_chain",)
+		|| lowerBody.includes("unable_to_verify_leaf_signature",)
+		|| lowerBody.includes("err_tls_cert_altname_invalid",)
+		|| (lowerBody.includes("certificate",) && lowerBody.includes("verify",));
+}
+
 export function classifyDataikuError(status: number, body: string,): DataikuErrorTaxonomy {
+	const lowerBody = body.toLowerCase();
+
 	if (status === 0) {
+		if (isCertificateTrustFailure(lowerBody,)) {
+			return {
+				category: "validation",
+				retryable: false,
+				retryHint: TLS_CERTIFICATE_HINT,
+			};
+		}
+
 		return {
 			category: "transient",
 			retryable: true,
@@ -30,11 +56,21 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 		};
 	}
 
-	const lowerBody = body.toLowerCase();
+	const isSqlInputConnectionMismatch = (status === 400 || status >= 500)
+		&& lowerBody.includes("s3 dataset",)
+		&& lowerBody.includes("athena connection",);
+	if (isSqlInputConnectionMismatch) {
+		return {
+			category: "validation",
+			retryable: false,
+			retryHint:
+				"SQL recipes require SQL/Athena-backed input datasets. Use a SQL-compatible input, associate the S3 dataset with Athena, or create a Python recipe for file/S3 inputs.",
+		};
+	}
+
 	const isMissingDatasetRootPath = status === 500
 		&& lowerBody.includes("root path of the dataset",)
 		&& lowerBody.includes("does not exist",);
-
 	if (isMissingDatasetRootPath) {
 		return {
 			category: "validation",

@@ -252,6 +252,19 @@ function writeCommandResult(result: unknown, format: OutputFormat,): void {
 	process.stdout.write(`${JSON.stringify(result, null, 2,)}\n`,);
 }
 
+function isFailedWaitResult(result: unknown,): boolean {
+	if (result === null || typeof result !== "object" || Array.isArray(result,)) return false;
+	const record = result as Record<string, unknown>;
+	return record.success === false
+		&& typeof record.elapsedMs === "number"
+		&& typeof record.pollCount === "number"
+		&& (typeof record.state === "string" || typeof record.outcome === "string");
+}
+
+function commandFailureExitCode(result: unknown,): number | undefined {
+	return isFailedWaitResult(result,) ? 4 : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Arg parsing
 // ---------------------------------------------------------------------------
@@ -1732,6 +1745,8 @@ async function main(): Promise<void> {
 	const format = parseOutputFormat(flags["format"],);
 	const result = await actionMeta.handler(client, args, flags,);
 	writeCommandResult(result, format,);
+	const failureExitCode = commandFailureExitCode(result,);
+	if (failureExitCode !== undefined) process.exit(failureExitCode,);
 }
 
 main().catch((err: unknown,) => {

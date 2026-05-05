@@ -373,7 +373,7 @@ function buildDatasetCreateBody(opts: {
 		type: opts.dsType,
 		params: {
 			connection: opts.connection,
-			path: `${opts.projectKey}/${opts.datasetName}`,
+			path: `/dataiku/${opts.projectKey}/${opts.datasetName}`,
 		},
 		formatType: opts.formatType ?? "csv",
 		formatParams: opts.formatParams ?? {
