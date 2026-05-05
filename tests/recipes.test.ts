@@ -99,6 +99,22 @@ describe("RecipesResource", () => {
 		);
 	});
 
+	it("omits payload unless includePayload is requested", async () => {
+		await withRecipeServer((req, res,) => {
+			expect(req.url,).toBe("/public/api/projects/TEST/recipes/with-payload",);
+			sendJson(res, {
+				recipe: { name: "with-payload", type: "python", },
+				payload: "print('large payload')\n",
+			},);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.get("with-payload",);
+			expect(result,).toEqual({
+				recipe: { name: "with-payload", type: "python", },
+			},);
+		},);
+	});
+
 	it("deep-merges nested recipe fields during update", async () => {
 		const currentRecipe = {
 			recipe: {
@@ -174,6 +190,25 @@ describe("RecipesResource", () => {
 					engine: "python",
 				},
 			},
+		},);
+	});
+
+	it("rejects recipe definition fields at the root of update payloads", async () => {
+		await withRecipeServer((_req, res,) => {
+			sendJson(res, {
+				recipe: {
+					name: "nested-recipe",
+					type: "python",
+					outputs: {},
+				},
+			},);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(client.recipes.update("nested-recipe", {
+				outputs: {
+					main: { items: [{ ref: "folder-id", appendMode: false, },], },
+				},
+			},),).rejects.toThrow('must be nested under "recipe"',);
 		},);
 	});
 
@@ -314,6 +349,131 @@ describe("RecipesResource", () => {
 			recipePrototype: {
 				type: "python",
 				name: "python_output_ds",
+			},
+		},);
+	});
+
+	it("creates managed-folder output recipes through a temporary dataset and patches the output", async () => {
+		const requests: string[] = [];
+		let tempDatasetBody: Record<string, unknown> | undefined;
+		let recipeCreateBody: Record<string, unknown> | undefined;
+		let recipeUpdateBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [
+					{
+						name: "input_ds",
+						type: "Filesystem",
+						params: { connection: "s3_conn", },
+						managed: true,
+					},
+				],);
+				return;
+			}
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				tempDatasetBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { name: "python_FOLDERID_folder_output_marker", },);
+				return;
+			}
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				recipeCreateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { name: "python_FOLDERID", },);
+				return;
+			}
+
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/recipes/python_FOLDERID"
+			) {
+				sendJson(res, {
+					recipe: {
+						name: "python_FOLDERID",
+						type: "python",
+						outputs: {
+							main: {
+								items: [{ ref: "python_FOLDERID_folder_output_marker", appendMode: false, },],
+							},
+						},
+					},
+				},);
+				return;
+			}
+
+			if (
+				req.method === "PUT" && url.pathname === "/public/api/projects/TEST/recipes/python_FOLDERID"
+			) {
+				recipeUpdateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { ok: true, },);
+				return;
+			}
+
+			if (
+				req.method === "DELETE"
+				&& url.pathname === "/public/api/projects/TEST/datasets/python_FOLDERID_folder_output_marker"
+			) {
+				sendJson(res, { ok: true, },);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.create({
+				type: "python",
+				inputDatasets: ["input_ds",],
+				outputFolder: "FOLDERID",
+				outputConnection: "s3_conn",
+			},);
+
+			expect(result,).toEqual({
+				recipeName: "python_FOLDERID",
+				type: "python",
+				createdDatasets: [],
+				joinConfigured: false,
+				outputProvisioningFallbackUsed: false,
+				outputFolder: "FOLDERID",
+				temporaryOutputDataset: "python_FOLDERID_folder_output_marker",
+				temporaryOutputDatasetDeleted: true,
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/datasets/",
+			"POST /public/api/projects/TEST/datasets/",
+			"POST /public/api/projects/TEST/recipes/",
+			"GET /public/api/projects/TEST/recipes/python_FOLDERID",
+			"PUT /public/api/projects/TEST/recipes/python_FOLDERID",
+			"DELETE /public/api/projects/TEST/datasets/python_FOLDERID_folder_output_marker",
+		],);
+		expect(tempDatasetBody,).toMatchObject({
+			name: "python_FOLDERID_folder_output_marker",
+			params: {
+				connection: "s3_conn",
+				path: "/dataiku/TEST/python_FOLDERID_folder_output_marker",
+			},
+		},);
+		expect(recipeCreateBody,).toMatchObject({
+			recipePrototype: {
+				outputs: {
+					main: {
+						items: [{ ref: "python_FOLDERID_folder_output_marker", appendMode: false, },],
+					},
+				},
+			},
+		},);
+		expect(recipeUpdateBody,).toMatchObject({
+			recipe: {
+				outputs: {
+					main: {
+						items: [{ ref: "FOLDERID", appendMode: false, },],
+					},
+				},
 			},
 		},);
 	});

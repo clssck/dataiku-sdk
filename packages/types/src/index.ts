@@ -235,6 +235,7 @@ export const RecipeCreateOptionsSchema = Type.Object({
 	joinOn: Type.Optional(Type.Union([Type.String(), Type.Array(Type.String(),),],),),
 	joinType: Type.Optional(Type.String(),),
 	projectKey: Type.Optional(Type.String(),),
+	outputFolder: Type.Optional(Type.String(),),
 },);
 export type RecipeCreateOptions = Static<typeof RecipeCreateOptionsSchema>;
 
@@ -244,6 +245,9 @@ export const RecipeCreateResultSchema = Type.Object({
 	createdDatasets: Type.Array(Type.String(),),
 	joinConfigured: Type.Boolean(),
 	outputProvisioningFallbackUsed: Type.Boolean(),
+	outputFolder: Type.Optional(Type.String(),),
+	temporaryOutputDataset: Type.Optional(Type.String(),),
+	temporaryOutputDatasetDeleted: Type.Optional(Type.Boolean(),),
 },);
 export type RecipeCreateResult = Static<typeof RecipeCreateResultSchema>;
 
@@ -355,6 +359,16 @@ export type ScenarioWaitResult = Static<typeof ScenarioWaitResultSchema>;
 // ---------------------------------------------------------------------------
 // Folders
 // ---------------------------------------------------------------------------
+
+export const FolderCreateOptionsSchema = Type.Object({
+	name: Type.String(),
+	type: Type.String(),
+	connection: Type.String(),
+	path: Type.Optional(Type.String(),),
+	params: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
+	projectKey: Type.Optional(Type.String(),),
+}, { additionalProperties: false, },);
+export type FolderCreateOptions = Static<typeof FolderCreateOptionsSchema>;
 
 export const FolderSummarySchema = Type.Object({
 	id: Type.String(),

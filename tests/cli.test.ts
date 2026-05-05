@@ -509,8 +509,10 @@ describe("CLI planned command coverage", () => {
 		},);
 
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("--output is required",);
-		expect(failure.stderr,).toContain("dss recipe create --type TYPE --input DS --output DS",);
+		expect(failure.stderr,).toContain("--output or --output-folder is required",);
+		expect(failure.stderr,).toContain(
+			"dss recipe create --type TYPE --input DS (--output DS | --output-folder FOLDER_ID)",
+		);
 	});
 
 	it("uses replace mode for variable set without fetching existing values", async () => {
@@ -911,6 +913,26 @@ describe("CLI --format table", () => {
 	});
 });
 
+describe("CLI recipe get", () => {
+	it("prints compact recipe settings when DSS returns a payload and --no-payload is set", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/recipes/my_recipe",);
+			expect(url.searchParams.get("includePayload",),).toBeNull();
+			sendJson(res, {
+				recipe: { name: "my_recipe", type: "python", },
+				payload: "print('large payload')\n",
+			},);
+		}, async (url,) => {
+			const { stdout, } = await dss(["recipe", "get", "my_recipe", "--no-payload",], {
+				env: cliEnv(url,),
+			},);
+			expect(JSON.parse(stdout,),).toEqual({
+				recipe: { name: "my_recipe", type: "python", },
+			},);
+		},);
+	});
+});
 describe("CLI recipe get-payload and set-payload", () => {
 	it("get-payload prints recipe code to stdout", async () => {
 		await withCliServer((_req, res,) => {
@@ -1092,6 +1114,62 @@ describe("CLI flag value parsing", () => {
 				env: cliEnv(url,),
 			},);
 			expect(stdout,).toBe(fullLog,);
+		},);
+	});
+});
+
+describe("CLI managed folder commands", () => {
+	it("folder create posts managed folder payload", async () => {
+		let requestBody: Record<string, unknown> | undefined;
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("POST",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/managedfolders/",);
+			requestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+			sendJson(res, { id: "folder-id", name: "exports", },);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"folder",
+				"create",
+				"--name",
+				"exports",
+				"--type",
+				"S3",
+				"--connection",
+				"s3_conn",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toEqual({ id: "folder-id", name: "exports", },);
+		},);
+
+		expect(requestBody,).toMatchObject({
+			name: "exports",
+			projectKey: "TEST",
+			type: "S3",
+			params: {
+				connection: "s3_conn",
+				path: "/dataiku/TEST/exports",
+			},
+		},);
+	});
+
+	it("job build supports managed folder targets", async () => {
+		let requestBody: Record<string, unknown> | undefined;
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("POST",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/jobs/",);
+			requestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+			sendJson(res, { id: "job-folder", },);
+		}, async (url,) => {
+			const { stdout, } = await dss(["job", "build", "folder-id", "--type", "MANAGED_FOLDER",], {
+				env: cliEnv(url,),
+			},);
+			expect(JSON.parse(stdout,),).toEqual({ jobId: "job-folder", },);
+		},);
+
+		expect(requestBody,).toEqual({
+			outputs: [{ projectKey: "TEST", id: "folder-id", type: "MANAGED_FOLDER", },],
+			type: "NON_RECURSIVE_FORCED_BUILD",
 		},);
 	});
 });

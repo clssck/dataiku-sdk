@@ -83,6 +83,37 @@ describe("FoldersResource.resolveId", () => {
 	});
 });
 
+describe("FoldersResource.create", () => {
+	it("posts managed folder creation payload with trailing slash and default project path", async () => {
+		let createBody: Record<string, unknown> | undefined;
+
+		await withDataikuServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("POST",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/managedfolders/",);
+			createBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
+			sendJson(res, { id: "folder-id", name: "exports", },);
+		}, async (client,) => {
+			const result = await client.folders.create({
+				name: "exports",
+				type: "S3",
+				connection: "s3_conn",
+			},);
+			expect(result,).toEqual({ id: "folder-id", name: "exports", },);
+		},);
+
+		expect(createBody,).toEqual({
+			name: "exports",
+			projectKey: "TEST",
+			type: "S3",
+			params: {
+				connection: "s3_conn",
+				path: "/dataiku/TEST/exports",
+			},
+		},);
+	});
+});
+
 describe("JobsResource.log", () => {
 	it("tails 500 lines by default and preserves activity filtering", async () => {
 		const fullLog = Array.from({ length: 600, }, (_value, index,) => `line ${index + 1}`,).join(
@@ -318,6 +349,82 @@ describe("JobsResource.buildAndWait", () => {
 			"POST /public/api/projects/TEST/jobs/",
 			"GET /public/api/projects/TEST/jobs/job-2/",
 			"GET /public/api/projects/TEST/jobs/job-2/log/?activity=prepare",
+		],);
+	});
+});
+
+describe("JobsResource.build", () => {
+	it("starts managed-folder builds with MANAGED_FOLDER output type", async () => {
+		let buildRequestBody: Record<string, unknown> | undefined;
+
+		await withDataikuServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("POST",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/jobs/",);
+			buildRequestBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
+			sendJson(res, { id: "job-folder", }, 200,);
+		}, async (client,) => {
+			const result = await client.jobs.build("folder-id", {
+				targetType: "MANAGED_FOLDER",
+				autoUpdateSchema: true,
+			},);
+			expect(result,).toEqual({ jobId: "job-folder", },);
+		},);
+
+		expect(buildRequestBody,).toEqual({
+			outputs: [{ projectKey: "TEST", id: "folder-id", type: "MANAGED_FOLDER", },],
+			type: "NON_RECURSIVE_FORCED_BUILD",
+		},);
+	});
+
+	it("builds and waits for managed-folder targets", async () => {
+		const requests: string[] = [];
+		let buildRequestBody: Record<string, unknown> | undefined;
+
+		await withDataikuServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/jobs/") {
+				buildRequestBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
+				sendJson(res, { id: "job-folder-wait", }, 200,);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-folder-wait/") {
+				sendJson(res, {
+					baseStatus: {
+						def: { id: "job-folder-wait", type: "MANAGED_FOLDER_BUILD", },
+						state: "DONE",
+					},
+					globalState: { done: 1, failed: 0, running: 0, total: 1, },
+				}, 200,);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (client,) => {
+			const result = await client.jobs.buildAndWait("folder-id", {
+				targetType: "MANAGED_FOLDER",
+				pollIntervalMs: 1,
+				timeoutMs: 5_000,
+			},);
+			expect(result,).toMatchObject({
+				success: true,
+				jobId: "job-folder-wait",
+				state: "DONE",
+				type: "MANAGED_FOLDER_BUILD",
+			},);
+		},);
+
+		expect(buildRequestBody,).toEqual({
+			outputs: [{ projectKey: "TEST", id: "folder-id", type: "MANAGED_FOLDER", },],
+			type: "NON_RECURSIVE_FORCED_BUILD",
+		},);
+		expect(requests,).toEqual([
+			"POST /public/api/projects/TEST/jobs/",
+			"GET /public/api/projects/TEST/jobs/job-folder-wait/",
 		],);
 	});
 });

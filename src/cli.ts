@@ -17,6 +17,7 @@ import {
 	saveCredentials,
 } from "./config.js";
 import { DataikuError, } from "./errors.js";
+import type { JobBuildTargetType, } from "./resources/jobs.js";
 import type { BuildMode, } from "./schemas.js";
 import { AGENTS, detectAgents, findWorkspaceRoot, installSkill, } from "./skill.js";
 
@@ -44,6 +45,16 @@ function num(v: string | boolean | undefined,): number | undefined {
 	if (typeof v !== "string") return undefined;
 	const n = Number(v,);
 	return Number.isFinite(n,) ? n : undefined;
+}
+
+function jobBuildTargetType(v: string | boolean | undefined,): JobBuildTargetType {
+	if (v === undefined) return "DATASET";
+	if (typeof v !== "string") {
+		throw new UsageError("Invalid --type value for job build. Use DATASET or MANAGED_FOLDER.",);
+	}
+	const normalized = v.trim().toUpperCase().replace(/-/g, "_",);
+	if (normalized === "DATASET" || normalized === "MANAGED_FOLDER") return normalized;
+	throw new UsageError("Invalid --type value for job build. Use DATASET or MANAGED_FOLDER.",);
 }
 
 function json(v: string | boolean | undefined,): Record<string, unknown> | undefined {
@@ -279,6 +290,7 @@ const BOOLEAN_FLAGS = new Set([
 	"list-agents",
 	"include-raw",
 	"include-payload",
+	"no-payload",
 	"include-logs",
 	"replace",
 	"dry-run",
@@ -557,12 +569,17 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: (c, a, f,) => {
 				requireArgs(a, 1, "dss recipe get <name>",);
 				return c.recipes.get(a[0], {
-					includePayload: f["include-payload"] === true,
+					includePayload: f["include-payload"] === true && f["no-payload"] !== true,
+					projectKey: f["project-key"] as string | undefined,
 				},);
 			},
-			usage: "dss recipe get <name> [--include-payload]",
-			description: "Get recipe settings.",
-			examples: ["dss recipe get compute_orders", "dss recipe get compute_orders --include-payload",],
+			usage: "dss recipe get <name> [--include-payload|--no-payload] [--project-key KEY]",
+			description: "Get compact recipe settings unless --include-payload is set.",
+			examples: [
+				"dss recipe get compute_orders",
+				"dss recipe get compute_orders --no-payload",
+				"dss recipe get compute_orders --include-payload",
+			],
 		},
 		delete: {
 			handler: async (c, a, f,) => {
@@ -614,14 +631,21 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				const type = f["type"] as string;
 				if (!type) {
 					throw new UsageError(
-						"--type is required. Usage: dss recipe create --type TYPE --input DS --output DS",
+						"--type is required. Usage: dss recipe create --type TYPE --input DS (--output DS | --output-folder FOLDER_ID)",
 					);
 				}
 				const outputDataset = f["output"] as string | undefined;
-				if (!outputDataset) {
+				const outputFolder = f["output-folder"] as string | undefined;
+				if (outputDataset && outputFolder) {
+					throw new UsageError("--output and --output-folder are mutually exclusive.",);
+				}
+				if (!outputDataset && !outputFolder) {
 					throw new UsageError(
-						"--output is required. Usage: dss recipe create --type TYPE --input DS --output DS",
+						"--output or --output-folder is required. Usage: dss recipe create --type TYPE --input DS (--output DS | --output-folder FOLDER_ID)",
 					);
+				}
+				if (outputFolder && !f["output-connection"]) {
+					throw new UsageError("--output-connection is required when using --output-folder.",);
 				}
 				const name = f["name"] as string | undefined;
 				const pk = f["project-key"] as string | undefined;
@@ -635,16 +659,19 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					name,
 					inputDatasets: f["input"] ? [f["input"] as string,] : undefined,
 					outputDataset,
+					outputFolder,
 					outputConnection: f["output-connection"] as string | undefined,
 					projectKey: pk,
 				},);
 			},
 			usage:
-				"dss recipe create --type TYPE --input DS --output DS [--output-connection CONN] [--project-key KEY]",
-			description: "Create a new recipe.",
+				"dss recipe create --type TYPE --input DS (--output DS | --output-folder FOLDER_ID) [--output-connection CONN] [--project-key KEY]",
+			description:
+				"Create a recipe with a dataset output, or use --output-folder with --output-connection for a managed-folder output.",
 			examples: [
 				"dss recipe create --type python --input orders --output orders_clean",
 				"dss recipe create --type python --input orders --output orders_clean --output-connection filesystem",
+				"dss recipe create --type python --input orders --output-folder LT7TUHJ8 --output-connection filesystem",
 			],
 		},
 		diff: {
@@ -683,9 +710,11 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			},
 			usage:
 				"dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
-			description: "Update recipe settings via JSON merge.",
+			description:
+				"Update recipe settings via JSON merge. Recipe definition fields must be nested under a top-level recipe key.",
 			examples: [
 				"dss recipe update compute_orders --data-file settings.json",
+				'dss recipe update compute_orders --data \'{"recipe":{"params":{"envSelection":{"envMode":"EXPLICIT_ENV","envName":"python39"}}}}\'',
 				"cat settings.json | dss recipe update compute_orders --stdin",
 			],
 		},
@@ -755,30 +784,38 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		},
 		build: {
 			handler: (c, a, f,) => {
-				requireArgs(a, 1, "dss job build <dataset>",);
+				requireArgs(a, 1, "dss job build <target>",);
 				return c.jobs.build(a[0], {
 					buildMode: f["build-mode"] as BuildMode | undefined,
+					targetType: jobBuildTargetType(f["type"],),
 				},);
 			},
-			usage: "dss job build <dataset> [--build-mode MODE]",
-			description: "Start a dataset build (returns immediately).",
-			examples: ["dss job build orders", "dss job build orders --build-mode RECURSIVE_BUILD",],
+			usage: "dss job build <target> [--type DATASET|MANAGED_FOLDER] [--build-mode MODE]",
+			description: "Start a dataset or managed-folder build (returns immediately).",
+			examples: [
+				"dss job build orders",
+				"dss job build orders --build-mode RECURSIVE_BUILD",
+				"dss job build LT7TUHJ8 --type MANAGED_FOLDER",
+			],
 		},
 		"build-and-wait": {
 			handler: (c, a, f,) => {
-				requireArgs(a, 1, "dss job build-and-wait <dataset>",);
+				requireArgs(a, 1, "dss job build-and-wait <target>",);
 				return c.jobs.buildAndWait(a[0], {
 					buildMode: f["build-mode"] as BuildMode | undefined,
 					includeLogs: f["include-logs"] === true,
 					timeoutMs: num(f["timeout"],),
+					targetType: jobBuildTargetType(f["type"],),
 				},);
 			},
-			usage: "dss job build-and-wait <dataset> [--build-mode MODE] [--include-logs] [--timeout MS]",
-			description: "Build a dataset and wait for completion.",
+			usage:
+				"dss job build-and-wait <target> [--type DATASET|MANAGED_FOLDER] [--build-mode MODE] [--include-logs] [--timeout MS]",
+			description: "Build a dataset or managed folder and wait for completion.",
 			examples: [
 				"dss job build-and-wait orders",
 				"dss job build-and-wait orders --include-logs",
 				"dss job build-and-wait orders --timeout 300000",
+				"dss job build-and-wait LT7TUHJ8 --type MANAGED_FOLDER",
 			],
 		},
 		wait: {
@@ -915,6 +952,32 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			usage: "dss folder list [--project-key KEY]",
 			description: "List managed folders in a project.",
 			examples: ["dss folder list", "dss folder list -f table",],
+		},
+		create: {
+			handler: (c, _a, f,) => {
+				const name = f["name"] as string | undefined;
+				const type = f["type"] as string | undefined;
+				const connection = f["connection"] as string | undefined;
+				if (!name || !type || !connection) {
+					throw new UsageError(
+						"--name, --type, and --connection are required. Usage: dss folder create --name NAME --type TYPE --connection CONN [--path PATH]",
+					);
+				}
+				return c.folders.create({
+					name,
+					type,
+					connection,
+					path: f["path"] as string | undefined,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss folder create --name NAME --type TYPE --connection CONN [--path PATH] [--project-key KEY]",
+			description: "Create a managed folder.",
+			examples: [
+				"dss folder create --name exports --type S3 --connection s3_connection",
+				"dss folder create --name exports --type S3 --connection s3_connection --path /dataiku/MYPROJ/exports",
+			],
 		},
 		get: {
 			handler: async (c, a, f,) => {

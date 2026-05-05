@@ -26,6 +26,12 @@ function asRecord(value: unknown,): Record<string, unknown> | undefined {
 	return value as Record<string, unknown>;
 }
 
+const RECIPE_DEFINITION_FIELDS = new Set(["params", "inputs", "outputs", "scriptSettings",],);
+
+function rootRecipeDefinitionFields(data: Record<string, unknown>,): string[] {
+	return Object.keys(data,).filter((key,) => RECIPE_DEFINITION_FIELDS.has(key,));
+}
+
 function inferRecipeCodeExtension(recipeType: unknown,): string {
 	const normalized = typeof recipeType === "string" ? recipeType.trim().toLowerCase() : "";
 	if (!normalized) return ".txt";
@@ -103,7 +109,7 @@ export class RecipesResource extends BaseResource {
 				}" (DSS returned empty response).`,
 			);
 		}
-		return { ...result, recipe, };
+		return opts?.includePayload ? { ...result, recipe, } : { recipe, };
 	}
 
 	/** Create a recipe, with optional output dataset provisioning and join configuration. */
@@ -112,12 +118,13 @@ export class RecipesResource extends BaseResource {
 		const enc = encodeURIComponent(pk,);
 
 		const { type, payload, outputConnection: rawConnection, joinType: rawJoinType, } = opts;
+		const outputFolder = asString(opts.outputFolder,);
 
 		// Build inputs/outputs from simple form (inputDatasets + outputDataset) or
 		// advanced form (inputs + outputs); both may coexist — simple form wins when
 		// the advanced form is absent.
 		const inputDatasets = asStringArray(opts.inputDatasets,);
-		const outputDataset = asString(opts.outputDataset,);
+		const requestedOutputDataset = asString(opts.outputDataset,);
 
 		let inputs: Record<string, unknown> | undefined = asRecord(opts.inputs,);
 		let outputs: Record<string, unknown> | undefined = asRecord(opts.outputs,);
@@ -129,6 +136,17 @@ export class RecipesResource extends BaseResource {
 				},
 			};
 		}
+
+		// Auto-generate name if not provided
+		const outputNameForDefaultRecipe = requestedOutputDataset ?? outputFolder;
+		const name = opts.name ?? (type && outputNameForDefaultRecipe
+			? `${type}_${outputNameForDefaultRecipe}`
+			: undefined);
+		const temporaryOutputDataset = outputFolder && !requestedOutputDataset && name
+			? `${name}_folder_output_marker`
+			: undefined;
+		const outputDataset = requestedOutputDataset ?? temporaryOutputDataset;
+
 		if (!outputs && outputDataset) {
 			outputs = {
 				main: {
@@ -137,12 +155,9 @@ export class RecipesResource extends BaseResource {
 			};
 		}
 
-		// Auto-generate name if not provided
-		const name = opts.name ?? (type && outputDataset ? `${type}_${outputDataset}` : undefined);
-
 		if (!type || !name || !inputs || !outputs) {
 			throw new Error(
-				"type and (inputDatasets + outputDataset) or (name + inputs + outputs) are required for create.",
+				"type and (inputDatasets + outputDataset/outputFolder) or (name + inputs + outputs) are required for create.",
 			);
 		}
 
@@ -317,12 +332,41 @@ export class RecipesResource extends BaseResource {
 			joinConfigured = true;
 		}
 
+		let temporaryOutputDatasetDeleted: boolean | undefined;
+		if (outputFolder) {
+			await this.update(name, {
+				recipe: {
+					outputs: {
+						main: {
+							items: [{ ref: outputFolder, appendMode: false, },],
+						},
+					},
+				},
+			}, pk,);
+
+			if (temporaryOutputDataset) {
+				try {
+					await this.client.del(
+						`/public/api/projects/${enc}/datasets/${encodeURIComponent(temporaryOutputDataset,)}`,
+					);
+					temporaryOutputDatasetDeleted = true;
+					const createdIndex = createdDatasets.indexOf(temporaryOutputDataset,);
+					if (createdIndex !== -1) createdDatasets.splice(createdIndex, 1,);
+				} catch {
+					temporaryOutputDatasetDeleted = false;
+				}
+			}
+		}
+
 		return {
 			recipeName: name,
 			type,
 			createdDatasets,
 			joinConfigured,
 			outputProvisioningFallbackUsed: usedOutputProvisioningFallback,
+			...(outputFolder ? { outputFolder, } : {}),
+			...(temporaryOutputDataset ? { temporaryOutputDataset, } : {}),
+			...(temporaryOutputDatasetDeleted !== undefined ? { temporaryOutputDatasetDeleted, } : {}),
 		};
 	}
 
@@ -343,6 +387,14 @@ export class RecipesResource extends BaseResource {
 		const currentRecipe = asRecord(current.recipe,);
 		if (!currentRecipe) {
 			throw new Error(`Recipe "${recipeName}" was not found or returned an empty definition.`,);
+		}
+		const misplacedRecipeFields = rootRecipeDefinitionFields(data,);
+		if (misplacedRecipeFields.length > 0) {
+			throw new Error(
+				`Recipe fields ${
+					misplacedRecipeFields.join(", ",)
+				} must be nested under "recipe". Example: {"recipe":{"outputs":{...},"params":{...}}}`,
+			);
 		}
 		const mergedRecipe = deepMerge(currentRecipe, asRecord(data.recipe,) ?? {},);
 		const merged = { ...current, ...data, recipe: mergedRecipe, };

@@ -2,7 +2,7 @@ import { createWriteStream, } from "node:fs";
 import { resolve, } from "node:path";
 import { Readable, } from "node:stream";
 import { pipeline, } from "node:stream/promises";
-import type { FolderDetails, FolderItem, FolderSummary, } from "../schemas.js";
+import type { FolderCreateOptions, FolderDetails, FolderItem, FolderSummary, } from "../schemas.js";
 import {
 	FolderDetailsSchema,
 	FolderItemArraySchema,
@@ -26,6 +26,25 @@ function inferDownloadFileName(remotePath: string,): string {
 // ---------------------------------------------------------------------------
 
 export class FoldersResource extends BaseResource {
+	async create(opts: FolderCreateOptions,): Promise<FolderDetails> {
+		const pk = this.resolveProjectKey(opts.projectKey,);
+		const path = opts.path?.trim() || `/dataiku/${pk}/${opts.name}`;
+		const raw = await this.client.post<unknown>(
+			`/public/api/projects/${encodeURIComponent(pk,)}/managedfolders/`,
+			{
+				name: opts.name,
+				projectKey: pk,
+				type: opts.type,
+				params: {
+					...opts.params,
+					connection: opts.connection,
+					path,
+				},
+			},
+		);
+		return this.client.safeParse(FolderDetailsSchema, raw, "folders.create",);
+	}
+
 	async list(projectKey?: string,): Promise<FolderSummary[]> {
 		const raw = await this.client.get<unknown>(
 			`/public/api/projects/${this.enc(projectKey,)}/managedfolders/`,

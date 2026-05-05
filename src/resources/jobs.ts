@@ -17,6 +17,8 @@ const TERMINAL_STATES = new Set([
 	"ERROR",
 ],);
 
+export type JobBuildTargetType = "DATASET" | "MANAGED_FOLDER";
+
 function isTerminalState(state: string | undefined,): boolean {
 	return TERMINAL_STATES.has((state ?? "").toUpperCase(),);
 }
@@ -100,24 +102,26 @@ export class JobsResource extends BaseResource {
 	}
 
 	/**
-	 * Start a dataset build job.
+	 * Start a build job for a dataset or managed folder.
 	 * Returns the new job's ID.
 	 */
 	async build(
-		datasetName: string,
+		targetId: string,
 		opts?: {
 			buildMode?: BuildMode;
 			autoUpdateSchema?: boolean;
 			projectKey?: string;
+			targetType?: JobBuildTargetType;
 		},
 	): Promise<{ jobId: string; }> {
 		const pk = this.resolveProjectKey(opts?.projectKey,);
 		const enc = encodeURIComponent(pk,);
+		const targetType = opts?.targetType ?? "DATASET";
 		const jobDef: Record<string, unknown> = {
-			outputs: [{ projectKey: pk, id: datasetName, type: "DATASET", },],
+			outputs: [{ projectKey: pk, id: targetId, type: targetType, },],
 			type: opts?.buildMode ?? "NON_RECURSIVE_FORCED_BUILD",
 		};
-		if (opts?.autoUpdateSchema) {
+		if (opts?.autoUpdateSchema && targetType === "DATASET") {
 			jobDef.autoUpdateSchemaBeforeEachRecipeRun = true;
 		}
 		const job = await this.client.post<{ id: string; }>(`/public/api/projects/${enc}/jobs/`, jobDef,);
@@ -125,11 +129,11 @@ export class JobsResource extends BaseResource {
 	}
 
 	/**
-	 * Build a dataset and wait for the job to reach a terminal state.
+	 * Build a dataset or managed folder and wait for the job to reach a terminal state.
 	 * Combines {@link build} then {@link wait}.
 	 */
 	async buildAndWait(
-		datasetName: string,
+		targetId: string,
 		opts?: {
 			buildMode?: BuildMode;
 			autoUpdateSchema?: boolean;
@@ -139,12 +143,14 @@ export class JobsResource extends BaseResource {
 			pollIntervalMs?: number;
 			timeoutMs?: number;
 			projectKey?: string;
+			targetType?: JobBuildTargetType;
 		},
 	): Promise<JobWaitResult> {
-		const { jobId, } = await this.build(datasetName, {
+		const { jobId, } = await this.build(targetId, {
 			buildMode: opts?.buildMode,
 			autoUpdateSchema: opts?.autoUpdateSchema,
 			projectKey: opts?.projectKey,
+			targetType: opts?.targetType,
 		},);
 		return this.wait(jobId, {
 			activity: opts?.activity,

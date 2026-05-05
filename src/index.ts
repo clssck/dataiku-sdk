@@ -30,7 +30,11 @@ export { CodeEnvsResource, } from "./resources/code-envs.js";
 export { ConnectionsResource, } from "./resources/connections.js";
 export { DatasetsResource, } from "./resources/datasets.js";
 export { FoldersResource, } from "./resources/folders.js";
-export { computeNextPollDelayMs, JobsResource, } from "./resources/jobs.js";
+export {
+	computeNextPollDelayMs,
+	type JobBuildTargetType,
+	JobsResource,
+} from "./resources/jobs.js";
 export { NotebooksResource, } from "./resources/notebooks.js";
 export { type FlowMapResult, ProjectsResource, } from "./resources/projects.js";
 export { RecipesResource, } from "./resources/recipes.js";
@@ -51,6 +55,7 @@ export {
 	DatasetSummaryArraySchema,
 	DatasetSummarySchema,
 	FlowMapOptionsSchema,
+	FolderCreateOptionsSchema,
 	FolderDetailsSchema,
 	FolderItemArraySchema,
 	FolderItemSchema,
@@ -103,6 +108,7 @@ export type {
 	DatasetSchema,
 	DatasetSummary,
 	FlowMapOptions,
+	FolderCreateOptions,
 	FolderDetails,
 	FolderItem,
 	FolderSummary,
