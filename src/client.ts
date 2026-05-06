@@ -10,6 +10,7 @@ import { classifyDataikuError, DataikuError, type DataikuRetryMetadata, } from "
 import { CodeEnvsResource, } from "./resources/code-envs.js";
 import { ConnectionsResource, } from "./resources/connections.js";
 import { DatasetsResource, } from "./resources/datasets.js";
+import { FlowZonesResource, } from "./resources/flow-zones.js";
 import { FoldersResource, } from "./resources/folders.js";
 import { JobsResource, } from "./resources/jobs.js";
 import { NotebooksResource, } from "./resources/notebooks.js";
@@ -153,6 +154,7 @@ export class DataikuClient {
 	private _jobs?: JobsResource;
 	private _scenarios?: ScenariosResource;
 	private _folders?: FoldersResource;
+	private _flowZones?: FlowZonesResource;
 	private _variables?: VariablesResource;
 	private _connections?: ConnectionsResource;
 	private _codeEnvs?: CodeEnvsResource;
@@ -176,6 +178,9 @@ export class DataikuClient {
 	}
 	get folders(): FoldersResource {
 		return (this._folders ??= new FoldersResource(this,));
+	}
+	get flowZones(): FlowZonesResource {
+		return (this._flowZones ??= new FlowZonesResource(this,));
 	}
 	get variables(): VariablesResource {
 		return (this._variables ??= new VariablesResource(this,));

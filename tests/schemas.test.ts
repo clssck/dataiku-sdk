@@ -7,6 +7,8 @@ import {
 	DatasetSchemaSchema,
 	DatasetSummaryArraySchema,
 	DatasetSummarySchema,
+	FlowZoneObjectTypeSchema,
+	FlowZoneSchema,
 	FolderSummarySchema,
 	JobSummarySchema,
 	JupyterNotebookSummarySchema,
@@ -141,6 +143,36 @@ describe("ScenarioSummary", () => {
 	it("throws when id is missing", () => {
 		expect(
 			() => parseSchema(ScenarioSummarySchema, { name: "Daily", },),
+		).toThrow();
+	});
+});
+
+describe("FlowZone", () => {
+	it("accepts valid zone data and preserves DSS-managed fields", () => {
+		const data = {
+			id: "zone-1",
+			name: "Exports",
+			color: "#2ab1ac",
+			items: [{ objectType: "DATASET", objectId: "orders", },],
+			position: { x: 10, y: 20, },
+		};
+		expect(parseSchema(FlowZoneSchema, data,),).toEqual(data,);
+	});
+
+	it("throws when required identifiers are missing", () => {
+		expect(
+			() => parseSchema(FlowZoneSchema, { name: "Exports", },),
+		).toThrow();
+	});
+
+	it("accepts supported flow object types", () => {
+		expect(parseSchema(FlowZoneObjectTypeSchema, "MANAGED_FOLDER",),).toBe("MANAGED_FOLDER",);
+		expect(parseSchema(FlowZoneObjectTypeSchema, "DATASET",),).toBe("DATASET",);
+	});
+
+	it("throws for unsupported flow object types", () => {
+		expect(
+			() => parseSchema(FlowZoneObjectTypeSchema, "UNKNOWN",),
 		).toThrow();
 	});
 });

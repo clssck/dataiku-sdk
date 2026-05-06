@@ -17,8 +17,9 @@ import {
 	saveCredentials,
 } from "./config.js";
 import { DataikuError, } from "./errors.js";
+import type { FlowZoneItemInput, } from "./resources/flow-zones.js";
 import type { JobBuildTargetType, } from "./resources/jobs.js";
-import type { BuildMode, } from "./schemas.js";
+import type { BuildMode, FlowZoneObjectType, } from "./schemas.js";
 import { AGENTS, detectAgents, findWorkspaceRoot, installSkill, } from "./skill.js";
 
 // ---------------------------------------------------------------------------
@@ -55,6 +56,96 @@ function jobBuildTargetType(v: string | boolean | undefined,): JobBuildTargetTyp
 	const normalized = v.trim().toUpperCase().replace(/-/g, "_",);
 	if (normalized === "DATASET" || normalized === "MANAGED_FOLDER") return normalized;
 	throw new UsageError("Invalid --type value for job build. Use DATASET or MANAGED_FOLDER.",);
+}
+
+function splitCsvFlag(v: string | boolean | undefined,): string[] {
+	if (typeof v !== "string") return [];
+	return v.split(",",).map((item,) => item.trim()).filter((item,) => item.length > 0);
+}
+
+function flowZoneId(value: string,): string {
+	const trimmed = value.trim();
+	if (!trimmed) throw new UsageError("Flow zone id must not be empty.",);
+	return trimmed;
+}
+
+function flowZoneName(value: string | boolean | undefined,): string {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new UsageError(
+			"--name is required. Usage: dss flow-zone create --name NAME [--color #RRGGBB]",
+		);
+	}
+	return value.trim();
+}
+
+function flowZoneColor(value: string | boolean | undefined,): string | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "string" || !/^#[0-9a-fA-F]{6}$/.test(value.trim(),)) {
+		throw new UsageError("--color must be a hex color like #2ab1ac.",);
+	}
+	return value.trim();
+}
+
+function flowZoneObjectType(value: string,): FlowZoneObjectType {
+	const normalized = value.trim().toUpperCase().replace(/-/g, "_",);
+	if (normalized === "FOLDER") return "MANAGED_FOLDER";
+	if (normalized === "MODEL_EVAL_STORE") return "MODEL_EVALUATION_STORE";
+	if (normalized === "KNOWLEDGE_BANK") return "RETRIEVABLE_KNOWLEDGE";
+	if (
+		normalized === "DATASET"
+		|| normalized === "MANAGED_FOLDER"
+		|| normalized === "SAVED_MODEL"
+		|| normalized === "RECIPE"
+		|| normalized === "MODEL_EVALUATION_STORE"
+		|| normalized === "STREAMING_ENDPOINT"
+		|| normalized === "LABELING_TASK"
+		|| normalized === "RETRIEVABLE_KNOWLEDGE"
+	) {
+		return normalized;
+	}
+	throw new UsageError(
+		`Invalid flow zone object type: ${value}. Use DATASET, RECIPE, MANAGED_FOLDER, SAVED_MODEL, MODEL_EVALUATION_STORE, STREAMING_ENDPOINT, LABELING_TASK, or RETRIEVABLE_KNOWLEDGE.`,
+	);
+}
+
+function addFlowZoneFlagItems(
+	items: FlowZoneItemInput[],
+	flags: Record<string, string | boolean>,
+	flagName: string,
+	objectType: FlowZoneObjectType,
+): void {
+	for (const objectId of splitCsvFlag(flags[flagName],)) {
+		items.push({ objectId, objectType, },);
+	}
+}
+
+function parseFlowZoneObject(value: string,): FlowZoneItemInput {
+	const parts = value.split(":",).map((part,) => part.trim()).filter((part,) => part.length > 0);
+	if (parts.length === 2) {
+		return { objectType: flowZoneObjectType(parts[0],), objectId: parts[1], };
+	}
+	if (parts.length === 3) {
+		return { projectKey: parts[0], objectType: flowZoneObjectType(parts[1],), objectId: parts[2], };
+	}
+	throw new UsageError(
+		`Invalid --object value: ${value}. Use TYPE:ID or PROJECT_KEY:TYPE:ID.`,
+	);
+}
+
+function flowZoneMoveItems(flags: Record<string, string | boolean>,): FlowZoneItemInput[] {
+	const items: FlowZoneItemInput[] = [];
+	addFlowZoneFlagItems(items, flags, "dataset", "DATASET",);
+	addFlowZoneFlagItems(items, flags, "recipe", "RECIPE",);
+	addFlowZoneFlagItems(items, flags, "folder", "MANAGED_FOLDER",);
+	addFlowZoneFlagItems(items, flags, "saved-model", "SAVED_MODEL",);
+	addFlowZoneFlagItems(items, flags, "model-evaluation-store", "MODEL_EVALUATION_STORE",);
+	addFlowZoneFlagItems(items, flags, "streaming-endpoint", "STREAMING_ENDPOINT",);
+	addFlowZoneFlagItems(items, flags, "labeling-task", "LABELING_TASK",);
+	addFlowZoneFlagItems(items, flags, "knowledge-bank", "RETRIEVABLE_KNOWLEDGE",);
+	for (const value of splitCsvFlag(flags["object"],)) {
+		items.push(parseFlowZoneObject(value,),);
+	}
+	return items;
 }
 
 function json(v: string | boolean | undefined,): Record<string, unknown> | undefined {
@@ -248,7 +339,10 @@ function writeCommandResult(result: unknown, format: OutputFormat,): void {
 		&& result.every((item,) => item !== null && typeof item === "object" && !Array.isArray(item,));
 	if (format === "tsv" && isArrayOfObjects) {
 		const items = result as Record<string, unknown>[];
-		if (items.length === 0) return;
+		if (items.length === 0) {
+			process.stdout.write("# no rows\n",);
+			return;
+		}
 		const keys = Object.keys(items[0],);
 		process.stdout.write(`${keys.join("\t",)}\n`,);
 		for (const item of items) {
@@ -257,7 +351,12 @@ function writeCommandResult(result: unknown, format: OutputFormat,): void {
 		return;
 	}
 	if (format === "table" && isArrayOfObjects) {
-		writeTable(result as Record<string, unknown>[],);
+		const items = result as Record<string, unknown>[];
+		if (items.length === 0) {
+			process.stdout.write("No rows\n",);
+			return;
+		}
+		writeTable(items,);
 		return;
 	}
 	process.stdout.write(`${JSON.stringify(result, null, 2,)}\n`,);
@@ -308,9 +407,73 @@ const SHORT_FLAGS: Record<string, string> = {
 /** Long-flag aliases: these are normalized to the canonical name in parseArgs. */
 const FLAG_ALIASES: Record<string, string> = {
 	project: "project-key",
+	dryrun: "dry-run",
 	"skip-tls-verify": "insecure",
 	"extra-ca-certs": "ca-cert",
 };
+
+const VALUE_FLAGS = new Set([
+	"activity",
+	"agent",
+	"api-key",
+	"build-mode",
+	"ca-cert",
+	"cell-id",
+	"color",
+	"connection",
+	"data",
+	"data-file",
+	"database",
+	"dataset",
+	"file",
+	"folder",
+	"format",
+	"input",
+	"knowledge-bank",
+	"labeling-task",
+	"lang",
+	"local",
+	"max-edges",
+	"max-lines",
+	"max-nodes",
+	"max-rows",
+	"mode",
+	"model-evaluation-store",
+	"name",
+	"object",
+	"output",
+	"output-connection",
+	"output-folder",
+	"path",
+	"project-key",
+	"recipe",
+	"request-timeout",
+	"retain",
+	"saved-model",
+	"sql",
+	"sql-file",
+	"standard",
+	"streaming-endpoint",
+	"target",
+	"timeout",
+	"type",
+	"url",
+],);
+
+const KNOWN_LONG_FLAGS = new Set([
+	...BOOLEAN_FLAGS,
+	...VALUE_FLAGS,
+	...Object.keys(FLAG_ALIASES,),
+	...Object.values(FLAG_ALIASES,),
+],);
+
+function normalizeLongFlag(rawFlagName: string,): string {
+	const flagName = FLAG_ALIASES[rawFlagName] ?? rawFlagName;
+	if (!KNOWN_LONG_FLAGS.has(rawFlagName,) && !KNOWN_LONG_FLAGS.has(flagName,)) {
+		throw new UsageError(`Unknown flag: --${rawFlagName}`,);
+	}
+	return flagName;
+}
 
 function isNegativeNumberToken(value: string,): boolean {
 	return value.startsWith("-",) && Number.isFinite(Number(value,),);
@@ -345,10 +508,11 @@ function parseArgs(argv: string[],): ParsedArgs {
 			const eqIdx = arg.indexOf("=",);
 			if (eqIdx !== -1) {
 				const raw = arg.slice(2, eqIdx,);
-				flags[FLAG_ALIASES[raw] ?? raw] = arg.slice(eqIdx + 1,);
+				const flagName = normalizeLongFlag(raw,);
+				flags[flagName] = arg.slice(eqIdx + 1,);
 			} else {
 				const rawFlagName = arg.slice(2,);
-				const flagName = FLAG_ALIASES[rawFlagName] ?? rawFlagName;
+				const flagName = normalizeLongFlag(rawFlagName,);
 				if (BOOLEAN_FLAGS.has(flagName,)) {
 					flags[flagName] = true;
 				} else {
@@ -368,7 +532,7 @@ function parseArgs(argv: string[],): ParsedArgs {
 					i++;
 				}
 			} else {
-				positional.push(arg,);
+				throw new UsageError(`Unknown flag: -${arg[1]}`,);
 			}
 		} else {
 			positional.push(arg,);
@@ -435,6 +599,103 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				"dss project map --max-nodes 50 --max-edges 100",
 				"dss project map --include-raw",
 			],
+		},
+	},
+
+	"flow-zone": {
+		list: {
+			handler: (c, _a, f,) => c.flowZones.list(f["project-key"] as string | undefined,),
+			usage: "dss flow-zone list [--project-key KEY]",
+			description: "List flow zones in a project.",
+			examples: ["dss flow-zone list", "dss flow-zone list -f table",],
+		},
+		get: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss flow-zone get <id>",);
+				return c.flowZones.get(flowZoneId(a[0],), f["project-key"] as string | undefined,);
+			},
+			usage: "dss flow-zone get <id> [--project-key KEY]",
+			description: "Get a flow zone by id.",
+			examples: ["dss flow-zone get ZONE_ID",],
+		},
+		create: {
+			handler: (c, _a, f,) =>
+				c.flowZones.create({
+					name: flowZoneName(f["name"],),
+					color: flowZoneColor(f["color"],),
+					projectKey: f["project-key"] as string | undefined,
+				},),
+			usage: "dss flow-zone create --name NAME [--color #RRGGBB] [--project-key KEY]",
+			description: "Create a flow zone.",
+			examples: [
+				"dss flow-zone create --name Exports",
+				"dss flow-zone create --name Exports --color '#2ab1ac'",
+			],
+		},
+		update: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss flow-zone update <id> [--name NAME] [--color #RRGGBB]",);
+				if (typeof f["name"] !== "string" && typeof f["color"] !== "string") {
+					throw new UsageError("--name and/or --color is required.",);
+				}
+				return c.flowZones.update(flowZoneId(a[0],), {
+					name: typeof f["name"] === "string" ? flowZoneName(f["name"],) : undefined,
+					color: flowZoneColor(f["color"],),
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage: "dss flow-zone update <id> [--name NAME] [--color #RRGGBB] [--project-key KEY]",
+			description: "Update flow zone settings.",
+			examples: ["dss flow-zone update ZONE_ID --name Exports --color '#2ab1ac'",],
+		},
+		delete: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss flow-zone delete <id>",);
+				const zoneId = flowZoneId(a[0],);
+				if (f["dry-run"] === true) {
+					const current = await c.flowZones.get(zoneId, f["project-key"] as string | undefined,);
+					return { dryRun: true, action: "delete", resource: "flow-zone", id: zoneId, current, };
+				}
+				await c.flowZones.delete(zoneId, f["project-key"] as string | undefined,);
+				return { deleted: zoneId, resource: "flow-zone", };
+			},
+			usage: "dss flow-zone delete <id> [--dry-run] [--project-key KEY]",
+			description: "Delete a flow zone. DSS moves zone items back to the default zone.",
+			examples: ["dss flow-zone delete ZONE_ID --dry-run", "dss flow-zone delete ZONE_ID",],
+		},
+		move: {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss flow-zone move <id> [--dataset DS] [--recipe R] [--folder F] [--object TYPE:ID]",
+				);
+				const items = flowZoneMoveItems(f,);
+				if (items.length === 0) {
+					throw new UsageError(
+						"At least one object is required. Use --dataset, --recipe, --folder, or --object TYPE:ID.",
+					);
+				}
+				return c.flowZones.moveItems(flowZoneId(a[0],), items, f["project-key"] as string | undefined,);
+			},
+			usage:
+				"dss flow-zone move <id> [--dataset DS[,DS2]] [--recipe R] [--folder F] [--object TYPE:ID] [--project-key KEY]",
+			description: "Move datasets, recipes, managed folders, or other flow objects into a zone.",
+			examples: [
+				"dss flow-zone move ZONE_ID --dataset orders",
+				"dss flow-zone move ZONE_ID --dataset raw_orders,clean_orders --recipe prepare_orders",
+				"dss flow-zone move ZONE_ID --folder FOLDER_ID",
+				"dss flow-zone move ZONE_ID --object SAVED_MODEL:model_id",
+			],
+		},
+		graph: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss flow-zone graph <id>",);
+				return c.flowZones.graph(flowZoneId(a[0],), f["project-key"] as string | undefined,);
+			},
+			usage: "dss flow-zone graph <id> [--project-key KEY]",
+			description: "Get the graph for a single flow zone.",
+			examples: ["dss flow-zone graph ZONE_ID",],
 		},
 	},
 

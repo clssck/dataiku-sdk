@@ -357,6 +357,55 @@ export const ScenarioWaitResultSchema = Type.Object({
 export type ScenarioWaitResult = Static<typeof ScenarioWaitResultSchema>;
 
 // ---------------------------------------------------------------------------
+// Flow zones
+// ---------------------------------------------------------------------------
+
+export const FlowZoneObjectTypeSchema = Type.Union([
+	Type.Literal("DATASET",),
+	Type.Literal("MANAGED_FOLDER",),
+	Type.Literal("SAVED_MODEL",),
+	Type.Literal("RECIPE",),
+	Type.Literal("MODEL_EVALUATION_STORE",),
+	Type.Literal("STREAMING_ENDPOINT",),
+	Type.Literal("LABELING_TASK",),
+	Type.Literal("RETRIEVABLE_KNOWLEDGE",),
+],);
+export type FlowZoneObjectType = Static<typeof FlowZoneObjectTypeSchema>;
+
+export const FlowZoneItemSchema = Type.Object({
+	objectId: Type.String(),
+	objectType: FlowZoneObjectTypeSchema,
+	projectKey: Type.Optional(Type.String(),),
+}, { additionalProperties: true, },);
+export type FlowZoneItem = Static<typeof FlowZoneItemSchema>;
+
+export const FlowZoneSchema = Type.Object({
+	id: Type.String(),
+	name: Type.String(),
+	color: Type.Optional(Type.String(),),
+	projectKey: Type.Optional(Type.String(),),
+	items: Type.Optional(Type.Array(FlowZoneItemSchema,),),
+	shared: Type.Optional(Type.Array(FlowZoneItemSchema,),),
+}, { additionalProperties: true, },);
+export type FlowZone = Static<typeof FlowZoneSchema>;
+
+export const FlowZoneArraySchema = Type.Array(FlowZoneSchema,);
+
+export const FlowZoneCreateOptionsSchema = Type.Object({
+	name: Type.String(),
+	color: Type.Optional(Type.String(),),
+	projectKey: Type.Optional(Type.String(),),
+}, { additionalProperties: false, },);
+export type FlowZoneCreateOptions = Static<typeof FlowZoneCreateOptionsSchema>;
+
+export const FlowZoneUpdateOptionsSchema = Type.Object({
+	name: Type.Optional(Type.String(),),
+	color: Type.Optional(Type.String(),),
+	projectKey: Type.Optional(Type.String(),),
+}, { additionalProperties: false, },);
+export type FlowZoneUpdateOptions = Static<typeof FlowZoneUpdateOptionsSchema>;
+
+// ---------------------------------------------------------------------------
 // Folders
 // ---------------------------------------------------------------------------
 

@@ -29,6 +29,7 @@ export {
 export { CodeEnvsResource, } from "./resources/code-envs.js";
 export { ConnectionsResource, } from "./resources/connections.js";
 export { DatasetsResource, } from "./resources/datasets.js";
+export { type FlowZoneItemInput, FlowZonesResource, } from "./resources/flow-zones.js";
 export { FoldersResource, } from "./resources/folders.js";
 export {
 	computeNextPollDelayMs,
@@ -55,6 +56,12 @@ export {
 	DatasetSummaryArraySchema,
 	DatasetSummarySchema,
 	FlowMapOptionsSchema,
+	FlowZoneArraySchema,
+	FlowZoneCreateOptionsSchema,
+	FlowZoneItemSchema,
+	FlowZoneObjectTypeSchema,
+	FlowZoneSchema,
+	FlowZoneUpdateOptionsSchema,
 	FolderCreateOptionsSchema,
 	FolderDetailsSchema,
 	FolderItemArraySchema,
@@ -108,6 +115,11 @@ export type {
 	DatasetSchema,
 	DatasetSummary,
 	FlowMapOptions,
+	FlowZone,
+	FlowZoneCreateOptions,
+	FlowZoneItem,
+	FlowZoneObjectType,
+	FlowZoneUpdateOptions,
 	FolderCreateOptions,
 	FolderDetails,
 	FolderItem,

@@ -1172,6 +1172,207 @@ describe("CLI managed folder commands", () => {
 			type: "NON_RECURSIVE_FORCED_BUILD",
 		},);
 	});
+
+	it("job build-and-wait supports managed folder targets", async () => {
+		const requests: string[] = [];
+		let requestBody: Record<string, unknown> | undefined;
+
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/jobs/") {
+				requestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { id: "job-folder-wait", },);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-folder-wait/") {
+				sendJson(res, {
+					baseStatus: {
+						def: { id: "job-folder-wait", type: "MANAGED_FOLDER_BUILD", },
+						state: "DONE",
+					},
+					globalState: { done: 1, failed: 0, running: 0, total: 1, },
+				},);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"job",
+				"build-and-wait",
+				"folder-id",
+				"--type",
+				"MANAGED_FOLDER",
+				"--timeout",
+				"5000",
+			], {
+				env: cliEnv(url,),
+			},);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				success: true,
+				jobId: "job-folder-wait",
+				state: "DONE",
+				type: "MANAGED_FOLDER_BUILD",
+			},);
+		},);
+
+		expect(requestBody,).toEqual({
+			outputs: [{ projectKey: "TEST", id: "folder-id", type: "MANAGED_FOLDER", },],
+			type: "NON_RECURSIVE_FORCED_BUILD",
+		},);
+		expect(requests,).toEqual([
+			"POST /public/api/projects/TEST/jobs/",
+			"GET /public/api/projects/TEST/jobs/job-folder-wait/",
+		],);
+	});
+});
+
+describe("CLI flow zone commands", () => {
+	it("flow-zone create posts zone payload", async () => {
+		let requestBody: Record<string, unknown> | undefined;
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("POST",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/flow/zones",);
+			requestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+			sendJson(res, { id: "zone-1", name: "Exports", color: "#cc0000", items: [], },);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"flow-zone",
+				"create",
+				"--name",
+				"Exports",
+				"--color",
+				"#cc0000",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toEqual({
+				id: "zone-1",
+				name: "Exports",
+				color: "#cc0000",
+				items: [],
+			},);
+		},);
+
+		expect(requestBody,).toEqual({ name: "Exports", color: "#cc0000", },);
+	});
+
+	it("flow-zone move posts comma-delimited object refs", async () => {
+		let requestBody: unknown;
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("POST",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/flow/zones/zone-1/add-items",);
+			requestBody = JSON.parse(await readBody(req,),);
+			sendJson(res, { id: "zone-1", name: "Exports", items: requestBody, },);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"flow-zone",
+				"move",
+				"zone-1",
+				"--dataset",
+				"raw_orders,clean_orders",
+				"--recipe",
+				"prepare_orders",
+				"--folder",
+				"folder-id",
+				"--object",
+				"OTHER:SAVED_MODEL:model-id",
+			], { env: cliEnv(url,), },);
+			const payload = JSON.parse(stdout,) as Record<string, unknown>;
+			expect(payload.items,).toEqual(requestBody,);
+		},);
+
+		expect(requestBody,).toEqual([
+			{ objectId: "raw_orders", objectType: "DATASET", },
+			{ objectId: "clean_orders", objectType: "DATASET", },
+			{ objectId: "prepare_orders", objectType: "RECIPE", },
+			{ objectId: "folder-id", objectType: "MANAGED_FOLDER", },
+			{ projectKey: "OTHER", objectType: "SAVED_MODEL", objectId: "model-id", },
+		],);
+	});
+
+	it("flow-zone create rejects invalid colors before calling DSS", async () => {
+		await withCliServer(() => {
+			throw new Error("server should not be called for invalid flow-zone color",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"flow-zone",
+				"create",
+				"--name",
+				"Exports",
+				"--color",
+				"red",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toContain("--color must be a hex color",);
+		},);
+	});
+
+	it("flow-zone get rejects empty zone ids before calling DSS", async () => {
+		await withCliServer(() => {
+			throw new Error("server should not be called for empty flow-zone id",);
+		}, async (url,) => {
+			const failure = await dssFailure(["flow-zone", "get", "",], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toContain("Flow zone id must not be empty",);
+		},);
+	});
+
+	it("rejects unknown long flags", async () => {
+		const failure = await dssFailure(["flow-zone", "list", "--wat", "yes",],);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toContain("Unknown flag: --wat",);
+	});
+
+	it("flow-zone delete accepts common dryrun alias", async () => {
+		const methods: string[] = [];
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			methods.push(`${req.method ?? "GET"} ${url.pathname}`,);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/flow/zones/zone-1",);
+			sendJson(res, { id: "zone-1", name: "Exports", items: [], },);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"flow-zone",
+				"delete",
+				"zone-1",
+				"--dryrun",
+			], { env: cliEnv(url,), },);
+			const payload = JSON.parse(stdout,) as Record<string, unknown>;
+			expect(payload.dryRun,).toBe(true,);
+		},);
+		expect(methods,).toEqual(["GET /public/api/projects/TEST/flow/zones/zone-1",],);
+	});
+
+	it("prints explicit empty states for table and tsv arrays", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/flow/zones",);
+			sendJson(res, [],);
+		}, async (url,) => {
+			const table = await dss(["flow-zone", "list", "-f", "table",], { env: cliEnv(url,), },);
+			expect(table.stdout,).toBe("No rows\n",);
+
+			const tsv = await dss(["flow-zone", "list", "-f", "tsv",], { env: cliEnv(url,), },);
+			expect(tsv.stdout,).toBe("# no rows\n",);
+		},);
+	});
+
+	it("flow-zone move requires at least one object", async () => {
+		await withCliServer(() => {
+			throw new Error("server should not be called for invalid flow-zone move usage",);
+		}, async (url,) => {
+			const failure = await dssFailure(["flow-zone", "move", "zone-1",], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toContain("At least one object is required",);
+		},);
+	});
 });
 
 describe("CLI wait command exit codes", () => {
