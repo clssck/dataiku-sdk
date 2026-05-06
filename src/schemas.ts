@@ -5,9 +5,16 @@
  */
 export {
 	BuildModeSchema,
+	CodeEnvActionResultSchema,
+	CodeEnvCreateOptionsSchema,
 	CodeEnvDetailsSchema,
+	CodeEnvPackageListSchema,
+	CodeEnvSetPackagesOptionsSchema,
 	CodeEnvSummaryArraySchema,
 	CodeEnvSummarySchema,
+	CodeEnvUpdatePackagesOptionsSchema,
+	CodeEnvUsageArraySchema,
+	CodeEnvWaitOptionsSchema,
 	ConnectionSummarySchema,
 	DatasetCreateOptionsSchema,
 	DatasetDetailsSchema,
@@ -64,8 +71,15 @@ export {
 
 export type {
 	BuildMode,
+	CodeEnvActionResult,
+	CodeEnvCreateOptions,
 	CodeEnvDetails,
+	CodeEnvPackageList,
+	CodeEnvSetPackagesOptions,
 	CodeEnvSummary,
+	CodeEnvUpdatePackagesOptions,
+	CodeEnvUsage,
+	CodeEnvWaitOptions,
 	ConnectionSummary,
 	DatasetCreateOptions,
 	DatasetDetails,

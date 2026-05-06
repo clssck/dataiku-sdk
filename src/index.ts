@@ -46,9 +46,16 @@ export { VariablesResource, } from "./resources/variables.js";
 // Schemas (TypeBox schema objects for runtime validation)
 export {
 	BuildModeSchema,
+	CodeEnvActionResultSchema,
+	CodeEnvCreateOptionsSchema,
 	CodeEnvDetailsSchema,
+	CodeEnvPackageListSchema,
+	CodeEnvSetPackagesOptionsSchema,
 	CodeEnvSummaryArraySchema,
 	CodeEnvSummarySchema,
+	CodeEnvUpdatePackagesOptionsSchema,
+	CodeEnvUsageArraySchema,
+	CodeEnvWaitOptionsSchema,
 	ConnectionSummarySchema,
 	DatasetCreateOptionsSchema,
 	DatasetDetailsSchema,
@@ -107,8 +114,15 @@ export type { SafeParseResult, } from "./schemas.js";
 // Types (inferred from schemas)
 export type {
 	BuildMode,
+	CodeEnvActionResult,
+	CodeEnvCreateOptions,
 	CodeEnvDetails,
+	CodeEnvPackageList,
+	CodeEnvSetPackagesOptions,
 	CodeEnvSummary,
+	CodeEnvUpdatePackagesOptions,
+	CodeEnvUsage,
+	CodeEnvWaitOptions,
 	ConnectionSummary,
 	DatasetCreateOptions,
 	DatasetDetails,

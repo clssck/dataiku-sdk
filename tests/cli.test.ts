@@ -1375,6 +1375,191 @@ describe("CLI flow zone commands", () => {
 	});
 });
 
+describe("CLI code-env management commands", () => {
+	it("code-env create posts deployment mode and params", async () => {
+		let requestBody: Record<string, unknown> | undefined;
+		let requestUrl: URL | undefined;
+
+		await withCliServer(async (req, res,) => {
+			requestUrl = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("POST",);
+			expect(requestUrl.pathname,).toBe("/public/api/admin/code-envs/PYTHON/omp_test_env",);
+			requestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+			sendJson(res, { messages: { success: true, }, },);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"code-env",
+				"create",
+				"PYTHON",
+				"omp_test_env",
+				"--deployment-mode",
+				"DESIGN_MANAGED",
+				"--python-interpreter",
+				"PYTHON311",
+				"--no-wait",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toEqual({ messages: { success: true, }, },);
+		},);
+
+		expect(requestUrl?.searchParams.get("wait",),).toBe("false",);
+		expect(requestBody,).toEqual({
+			pythonInterpreter: "PYTHON311",
+			deploymentMode: "DESIGN_MANAGED",
+		},);
+	});
+
+	it("code-env set-packages preserves definition fields", async () => {
+		const requests: string[] = [];
+		let updateBody: Record<string, unknown> | undefined;
+
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+
+			if (req.method === "GET" && url.pathname === "/public/api/admin/code-envs/PYTHON/omp_test_env") {
+				sendJson(res, {
+					envName: "omp_test_env",
+					envLang: "PYTHON",
+					specPackageList: "oldpkg",
+					desc: { installCorePackages: false, pythonInterpreter: "PYTHON311", },
+				},);
+				return;
+			}
+
+			if (req.method === "PUT" && url.pathname === "/public/api/admin/code-envs/PYTHON/omp_test_env") {
+				updateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { updated: true, },);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"code-env",
+				"set-packages",
+				"PYTHON",
+				"omp_test_env",
+				"--packages",
+				"tabulate\nopenpyxl>=3.1.5,<3.2",
+				"--install-core-packages",
+				"true",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toEqual({ updated: true, },);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/admin/code-envs/PYTHON/omp_test_env",
+			"PUT /public/api/admin/code-envs/PYTHON/omp_test_env",
+		],);
+		expect(updateBody,).toEqual({
+			envName: "omp_test_env",
+			envLang: "PYTHON",
+			specPackageList: "tabulate\nopenpyxl>=3.1.5,<3.2",
+			desc: { installCorePackages: true, pythonInterpreter: "PYTHON311", },
+		},);
+	});
+
+	it("code-env update-packages posts rebuild query flags", async () => {
+		let requestUrl: URL | undefined;
+
+		await withCliServer((req, res,) => {
+			requestUrl = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("POST",);
+			expect(requestUrl.pathname,).toBe("/public/api/admin/code-envs/PYTHON/omp_test_env/packages",);
+			sendJson(res, { messages: { success: true, }, },);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"code-env",
+				"update-packages",
+				"PYTHON",
+				"omp_test_env",
+				"--force-rebuild",
+				"--env-version",
+				"bundle-v1",
+				"--no-wait",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toEqual({ messages: { success: true, }, },);
+		},);
+
+		expect(requestUrl?.searchParams.get("forceRebuildEnv",),).toBe("true",);
+		expect(requestUrl?.searchParams.get("versionToUpdate",),).toBe("bundle-v1",);
+		expect(requestUrl?.searchParams.get("wait",),).toBe("false",);
+	});
+
+	it("code-env set-jupyter posts active and wait flags", async () => {
+		let requestUrl: URL | undefined;
+
+		await withCliServer((req, res,) => {
+			requestUrl = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("POST",);
+			expect(requestUrl.pathname,).toBe("/public/api/admin/code-envs/PYTHON/omp_test_env/jupyter",);
+			sendJson(res, { messages: { success: true, }, },);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"code-env",
+				"set-jupyter",
+				"PYTHON",
+				"omp_test_env",
+				"--active",
+				"false",
+				"--no-wait",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toEqual({ messages: { success: true, }, },);
+		},);
+
+		expect(requestUrl?.searchParams.get("active",),).toBe("false",);
+		expect(requestUrl?.searchParams.get("wait",),).toBe("false",);
+	});
+
+	it("code-env delete calls DSS with wait flag", async () => {
+		let requestUrl: URL | undefined;
+
+		await withCliServer((req, res,) => {
+			requestUrl = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("DELETE",);
+			expect(requestUrl.pathname,).toBe("/public/api/admin/code-envs/PYTHON/omp_test_env",);
+			sendJson(res, { messages: { success: true, }, },);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"code-env",
+				"delete",
+				"PYTHON",
+				"omp_test_env",
+				"--no-wait",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toEqual({
+				deleted: "omp_test_env",
+				envLang: "PYTHON",
+			},);
+		},);
+
+		expect(requestUrl?.searchParams.get("wait",),).toBe("false",);
+	});
+
+	it("code-env delete dry-run does not call DSS", async () => {
+		await withCliServer(() => {
+			throw new Error("server should not be called for code-env delete dry-run",);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"code-env",
+				"delete",
+				"PYTHON",
+				"omp_test_env",
+				"--dry-run",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toEqual({
+				dryRun: true,
+				action: "delete",
+				resource: "code-env",
+				envLang: "PYTHON",
+				envName: "omp_test_env",
+				wait: true,
+			},);
+		},);
+	});
+});
+
 describe("CLI wait command exit codes", () => {
 	it("job wait exits non-zero when the wait result times out", async () => {
 		await withCliServer((req, res,) => {

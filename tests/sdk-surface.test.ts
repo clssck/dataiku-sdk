@@ -71,7 +71,22 @@ const SDK_SURFACE: Array<
 	},
 	{ key: "variables", ctor: VariablesResource, methods: ["get", "set",], },
 	{ key: "connections", ctor: ConnectionsResource, methods: ["list", "infer",], },
-	{ key: "codeEnvs", ctor: CodeEnvsResource, methods: ["list", "get",], },
+	{
+		key: "codeEnvs",
+		ctor: CodeEnvsResource,
+		methods: [
+			"list",
+			"get",
+			"getDefinition",
+			"create",
+			"setDefinition",
+			"setPackages",
+			"updatePackages",
+			"setJupyterSupport",
+			"delete",
+			"listUsages",
+		],
+	},
 	{
 		key: "sql",
 		ctor: SqlResource,

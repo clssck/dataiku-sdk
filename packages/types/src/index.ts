@@ -489,6 +489,45 @@ export const CodeEnvDetailsSchema = Type.Object({
 },);
 export type CodeEnvDetails = Static<typeof CodeEnvDetailsSchema>;
 
+export const CodeEnvActionResultSchema = Type.Record(Type.String(), Type.Unknown(),);
+export type CodeEnvActionResult = Static<typeof CodeEnvActionResultSchema>;
+
+export const CodeEnvCreateOptionsSchema = Type.Object({
+	envLang: Type.String(),
+	envName: Type.String(),
+	deploymentMode: Type.String(),
+	params: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
+	wait: Type.Optional(Type.Boolean(),),
+}, { additionalProperties: false, },);
+export type CodeEnvCreateOptions = Static<typeof CodeEnvCreateOptionsSchema>;
+
+export const CodeEnvPackageListSchema = Type.Union([
+	Type.String(),
+	Type.Array(Type.String(),),
+],);
+export type CodeEnvPackageList = Static<typeof CodeEnvPackageListSchema>;
+
+export const CodeEnvSetPackagesOptionsSchema = Type.Object({
+	packages: CodeEnvPackageListSchema,
+	installCorePackages: Type.Optional(Type.Boolean(),),
+}, { additionalProperties: false, },);
+export type CodeEnvSetPackagesOptions = Static<typeof CodeEnvSetPackagesOptionsSchema>;
+
+export const CodeEnvUpdatePackagesOptionsSchema = Type.Object({
+	forceRebuildEnv: Type.Optional(Type.Boolean(),),
+	versionToUpdate: Type.Optional(Type.String(),),
+	wait: Type.Optional(Type.Boolean(),),
+}, { additionalProperties: false, },);
+export type CodeEnvUpdatePackagesOptions = Static<typeof CodeEnvUpdatePackagesOptionsSchema>;
+
+export const CodeEnvWaitOptionsSchema = Type.Object({
+	wait: Type.Optional(Type.Boolean(),),
+}, { additionalProperties: false, },);
+export type CodeEnvWaitOptions = Static<typeof CodeEnvWaitOptionsSchema>;
+
+export const CodeEnvUsageArraySchema = Type.Array(CodeEnvActionResultSchema,);
+export type CodeEnvUsage = CodeEnvActionResult;
+
 // ---------------------------------------------------------------------------
 // Jupyter Notebooks
 // ---------------------------------------------------------------------------
