@@ -162,3 +162,29 @@
   }
 }
 ```
+
+## Agent Ergonomics Phase 1.5.E Verification (2026-05-07)
+
+```json
+{
+  "phase": "1.5.E report JSON errors",
+  "status": "verified",
+  "changes": [
+    "Added --report-json and DSS_REPORT_JSON support for stable stderr error envelopes.",
+    "Mapped usage, validation, permission, transient, and internal failures to stable machine-readable codes.",
+    "Added report-json help output that returns the same registry entry exposed by dss commands."
+  ],
+  "verification": {
+    "focused": "bun test tests/cli.test.ts tests/cli-surface.test.ts tests/sdk-surface.test.ts tests/schemas.test.ts -> 168 pass, 0 fail",
+    "typecheck": "bun run check -> pass",
+    "format": "bun run format:check -> pass",
+    "lint": "bun run lint -> pass with pre-existing no-underscore-dangle warnings in src/client.ts",
+    "build": "bun run build -> pass"
+  },
+  "cleanup": {
+    "required": false,
+    "verified": true,
+    "notes": "No DSS mutations were performed for report-json verification."
+  }
+}
+```

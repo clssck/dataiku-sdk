@@ -16,7 +16,7 @@ import {
 	maskApiKey,
 	saveCredentials,
 } from "./config.js";
-import { DataikuError, } from "./errors.js";
+import { DataikuError, dataikuErrorCode, type StableErrorCode, } from "./errors.js";
 import type { FlowZoneItemInput, } from "./resources/flow-zones.js";
 import type { JobBuildTargetType, } from "./resources/jobs.js";
 import type { BuildMode, FlowZoneObjectType, } from "./schemas.js";
@@ -57,11 +57,17 @@ function num(v: string | boolean | undefined,): number | undefined {
 function jobBuildTargetType(v: string | boolean | undefined,): JobBuildTargetType {
 	if (v === undefined) return "DATASET";
 	if (typeof v !== "string") {
-		throw new UsageError("Invalid --type value for job build. Use DATASET or MANAGED_FOLDER.",);
+		throw new UsageError(
+			"Invalid --type value for job build. Use DATASET or MANAGED_FOLDER.",
+			"invalid_enum",
+		);
 	}
 	const normalized = v.trim().toUpperCase().replace(/-/g, "_",);
 	if (normalized === "DATASET" || normalized === "MANAGED_FOLDER") return normalized;
-	throw new UsageError("Invalid --type value for job build. Use DATASET or MANAGED_FOLDER.",);
+	throw new UsageError(
+		"Invalid --type value for job build. Use DATASET or MANAGED_FOLDER.",
+		"invalid_enum",
+	);
 }
 
 function splitCsvFlag(v: string | boolean | undefined,): string[] {
@@ -111,6 +117,7 @@ function flowZoneObjectType(value: string,): FlowZoneObjectType {
 	}
 	throw new UsageError(
 		`Invalid flow zone object type: ${value}. Use DATASET, RECIPE, MANAGED_FOLDER, SAVED_MODEL, MODEL_EVALUATION_STORE, STREAMING_ENDPOINT, LABELING_TASK, or RETRIEVABLE_KNOWLEDGE.`,
+		"invalid_enum",
 	);
 }
 
@@ -205,7 +212,7 @@ function parseBooleanOption(
 	const normalized = value.trim().toLowerCase();
 	if (["1", "true", "yes", "y", "on",].includes(normalized,)) return true;
 	if (["0", "false", "no", "n", "off",].includes(normalized,)) return false;
-	throw new UsageError(`${flagName} must be true or false.`,);
+	throw new UsageError(`${flagName} must be true or false.`, "invalid_enum",);
 }
 
 function codeEnvWait(flags: Record<string, string | boolean>,): boolean {
@@ -612,6 +619,7 @@ const BOOLEAN_FLAGS = new Set([
 	"if-not-exists",
 	"if-exists",
 	"json",
+	"report-json",
 	"no-wait",
 	"force-rebuild",
 	"continue-on-error",
@@ -711,7 +719,7 @@ const KNOWN_LONG_FLAGS = new Set([
 function normalizeLongFlag(rawFlagName: string,): string {
 	const flagName = FLAG_ALIASES[rawFlagName] ?? rawFlagName;
 	if (!KNOWN_LONG_FLAGS.has(rawFlagName,) && !KNOWN_LONG_FLAGS.has(flagName,)) {
-		throw new UsageError(`Unknown flag: --${rawFlagName}`,);
+		throw new UsageError(`Unknown flag: --${rawFlagName}`, "unknown_flag",);
 	}
 	return flagName;
 }
@@ -725,7 +733,7 @@ function requireFlagValue(
 	next: string | undefined,
 ): string {
 	if (next === undefined || (next.startsWith("-",) && !isNegativeNumberToken(next,))) {
-		throw new UsageError(`Flag ${flagLabel} requires a value.`,);
+		throw new UsageError(`Flag ${flagLabel} requires a value.`, "missing_required_flag",);
 	}
 	return next;
 }
@@ -773,7 +781,7 @@ function parseArgs(argv: string[],): ParsedArgs {
 					i++;
 				}
 			} else {
-				throw new UsageError(`Unknown flag: -${arg[1]}`,);
+				throw new UsageError(`Unknown flag: -${arg[1]}`, "unknown_flag",);
 			}
 		} else {
 			positional.push(arg,);
@@ -3181,15 +3189,23 @@ function printActionHelp(resource: string, action: string,): void {
 // ---------------------------------------------------------------------------
 
 class UsageError extends Error {
-	constructor(message: string,) {
+	readonly code: StableErrorCode;
+	readonly hint?: string;
+
+	constructor(message: string, code: StableErrorCode = "usage_error", hint?: string,) {
 		super(message,);
 		this.name = "UsageError";
+		this.code = code;
+		this.hint = hint;
 	}
 }
 
 function requireArgs(args: string[], count: number, usage: string,): void {
 	if (args.length < count) {
-		throw new UsageError(`Expected ${count} argument(s), got ${args.length}.\nUsage: ${usage}`,);
+		throw new UsageError(
+			`Expected ${count} argument(s), got ${args.length}.\nUsage: ${usage}`,
+			"missing_required_arg",
+		);
 	}
 }
 
@@ -3756,7 +3772,7 @@ const PROJECT_SCOPED_RESOURCES = new Set([
 	"wiki",
 ],);
 
-const GLOBAL_AGENT_FLAGS = ["help", "json", "verbose",];
+const GLOBAL_AGENT_FLAGS = ["help", "json", "report-json", "verbose",];
 const AUTHENTICATED_AGENT_FLAGS = ["url", "api-key", "request-timeout", "insecure", "ca-cert",];
 const COMMANDS_USAGE = "dss commands [--json]";
 const COMMANDS_DESCRIPTION = "Print the machine-readable command registry for agent planning.";
@@ -4851,6 +4867,151 @@ function resolveCredentials(flags: Record<string, string | boolean>,): {
 	};
 }
 
+interface ErrorReportEnvelope {
+	code: StableErrorCode;
+	category: "usage" | "dss" | "internal";
+	message: string;
+	hint?: string;
+	resource?: string;
+	action?: string;
+	projectKey?: string;
+	requestId?: string;
+	status?: number;
+	retryable?: boolean;
+	details?: Record<string, unknown>;
+}
+
+let currentCommandContext: { resource?: string; action?: string; projectKey?: string; } = {};
+
+function isReportJsonRequested(): boolean {
+	return process.env.DSS_REPORT_JSON === "1"
+		|| process.argv.slice(2,).some((arg,) =>
+			arg === "--report-json" || arg.startsWith("--report-json=",)
+		);
+}
+
+function rawFlagValue(argv: string[], flagName: string,): string | undefined {
+	const longFlag = `--${flagName}`;
+	for (let index = 0; index < argv.length; index++) {
+		const arg = argv[index];
+		if (arg === longFlag) {
+			const next = argv[index + 1];
+			return next && !next.startsWith("-",) ? next : undefined;
+		}
+		if (arg.startsWith(`${longFlag}=`,)) return arg.slice(longFlag.length + 1,);
+	}
+	return undefined;
+}
+
+function rawCommandContext(): { resource?: string; action?: string; projectKey?: string; } {
+	const argv = process.argv.slice(2,);
+	const positionals: string[] = [];
+	for (let index = 0; index < argv.length; index++) {
+		const arg = argv[index];
+		if (arg === "--") {
+			positionals.push(...argv.slice(index + 1,),);
+			break;
+		}
+		if (arg.startsWith("--",)) {
+			const name = arg.slice(2,).split("=",)[0] ?? "";
+			const canonical = FLAG_ALIASES[name] ?? name;
+			if (!arg.includes("=",) && VALUE_FLAGS.has(canonical,)) index++;
+			continue;
+		}
+		if (arg.length === 2 && arg[0] === "-" && arg[1] !== "-") {
+			const long = SHORT_FLAGS[arg[1]!];
+			if (long && VALUE_FLAGS.has(long,)) index++;
+			continue;
+		}
+		positionals.push(arg,);
+	}
+	return {
+		resource: currentCommandContext.resource ?? positionals[0],
+		action: currentCommandContext.action ?? positionals[1],
+		projectKey: currentCommandContext.projectKey
+			?? rawFlagValue(argv, "project-key",)
+			?? rawFlagValue(argv, "project",)
+			?? process.env.DATAIKU_PROJECT_KEY,
+	};
+}
+
+function requestIdFromBody(body: string,): string | undefined {
+	try {
+		const parsed = JSON.parse(body,) as Record<string, unknown>;
+		const value = parsed.requestId ?? parsed.request_id ?? parsed.errorId;
+		return typeof value === "string" && value.length > 0 ? value : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function buildErrorReport(err: unknown,): ErrorReportEnvelope {
+	const context = rawCommandContext();
+	if (err instanceof UsageError) {
+		return {
+			code: err.code,
+			category: "usage",
+			message: err.message,
+			...(err.hint ? { hint: err.hint, } : {}),
+			...context,
+		};
+	}
+	if (err instanceof DataikuError) {
+		return {
+			code: dataikuErrorCode(err.category,),
+			category: "dss",
+			message: err.message,
+			hint: err.retryHint,
+			status: err.status,
+			retryable: err.retryable,
+			requestId: requestIdFromBody(err.body,),
+			details: {
+				dssCategory: err.category,
+				statusText: err.statusText,
+				body: err.body,
+				...(err.retry ? { retry: err.retry, } : {}),
+			},
+			...context,
+		};
+	}
+	const message = err instanceof Error ? err.message : String(err,);
+	return {
+		code: "internal_error",
+		category: "internal",
+		message,
+		...context,
+	};
+}
+
+function writeErrorReport(err: unknown,): void {
+	process.stderr.write(`${JSON.stringify(buildErrorReport(err,), null, 2,)}\n`,);
+}
+
+function commandRegistryEntry(resource: string, action: string,): CommandRegistryEntry | undefined {
+	return buildCommandRegistry()[resource]?.[action];
+}
+
+function writeReportHelp(resource: string, action: string,): void {
+	const entry = commandRegistryEntry(resource, action,);
+	if (entry) {
+		process.stderr.write(`${JSON.stringify(entry, null, 2,)}\n`,);
+		return;
+	}
+	process.stderr.write(`${
+		JSON.stringify(
+			{
+				code: "usage_error",
+				category: "usage",
+				message: `No registry entry for ${resource} ${action}.`,
+				resource,
+				action,
+			},
+			null,
+			2,
+		)
+	}\n`,);
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -4873,11 +5034,19 @@ async function main(): Promise<void> {
 	}
 
 	const resource = positional[0];
+	currentCommandContext = {
+		resource,
+		action: positional[1],
+		projectKey: typeof flags["project-key"] === "string"
+			? flags["project-key"]
+			: process.env.DATAIKU_PROJECT_KEY,
+	};
 
 	if (resource === "doctor") {
 		const action = positional[1];
 		if (flags["help"] === true) {
-			printActionHelp("doctor", "run",);
+			if (flags["report-json"] === true) writeReportHelp("doctor", "run",);
+			else printActionHelp("doctor", "run",);
 			process.exit(0,);
 		}
 		if (action !== undefined && action !== "run") {
@@ -4908,20 +5077,29 @@ async function main(): Promise<void> {
 		}
 		const authMeta = AUTH_ACTIONS[action];
 		if (!authMeta) {
+			if (flags["report-json"] === true) {
+				throw new UsageError(
+					`Unknown action: auth ${action}. Available: ${Object.keys(AUTH_ACTIONS,).join(", ",)}`,
+				);
+			}
 			process.stderr.write(
 				`Unknown action: auth ${action}\nAvailable: ${Object.keys(AUTH_ACTIONS,).join(", ",)}\n`,
 			);
 			process.exit(1,);
 		}
 		if (flags["help"] === true) {
-			const lines: string[] = [];
-			if (authMeta.description) lines.push(authMeta.description, "",);
-			lines.push(`Usage: ${authMeta.usage}`,);
-			if (authMeta.examples && authMeta.examples.length > 0) {
-				lines.push("", "Examples:",);
-				for (const ex of authMeta.examples) lines.push(`  ${ex}`,);
+			if (flags["report-json"] === true) {
+				writeReportHelp("auth", action,);
+			} else {
+				const lines: string[] = [];
+				if (authMeta.description) lines.push(authMeta.description, "",);
+				lines.push(`Usage: ${authMeta.usage}`,);
+				if (authMeta.examples && authMeta.examples.length > 0) {
+					lines.push("", "Examples:",);
+					for (const ex of authMeta.examples) lines.push(`  ${ex}`,);
+				}
+				process.stderr.write(`${lines.join("\n",)}\n`,);
 			}
-			process.stderr.write(`${lines.join("\n",)}\n`,);
 			process.exit(0,);
 		}
 		await authMeta.handler(flags,);
@@ -4932,20 +5110,24 @@ async function main(): Promise<void> {
 	if (resource === "install-skill") {
 		const installSkillAction = positional[1];
 		if (flags["help"] === true) {
-			const lines = [
-				`Usage: ${INSTALL_SKILL_USAGE}`,
-				"",
-				INSTALL_SKILL_DESCRIPTION,
-				"",
-				"Flags:",
-				"  --global         Install to user-level global scope (default: project)",
-				"  --agent NAME     Target a specific agent: claude, codex, cursor, pi, omp",
-				"  --target PATH    Project directory to install into (default: workspace root)",
-				"  --list-agents    Print detected agents and exit",
-				"  --dry-run        Print planned skill installs without writing files",
-				"  --plan           Print planned skill installs without writing files",
-			];
-			process.stderr.write(`${lines.join("\n",)}\n`,);
+			if (flags["report-json"] === true) {
+				writeReportHelp("install-skill", "run",);
+			} else {
+				const lines = [
+					`Usage: ${INSTALL_SKILL_USAGE}`,
+					"",
+					INSTALL_SKILL_DESCRIPTION,
+					"",
+					"Flags:",
+					"  --global         Install to user-level global scope (default: project)",
+					"  --agent NAME     Target a specific agent: claude, codex, cursor, pi, omp",
+					"  --target PATH    Project directory to install into (default: workspace root)",
+					"  --list-agents    Print detected agents and exit",
+					"  --dry-run        Print planned skill installs without writing files",
+					"  --plan           Print planned skill installs without writing files",
+				];
+				process.stderr.write(`${lines.join("\n",)}\n`,);
+			}
 			process.exit(0,);
 		}
 		if (installSkillAction !== undefined && installSkillAction !== "run") {
@@ -5039,15 +5221,19 @@ async function main(): Promise<void> {
 	if (resource === "commands") {
 		const action = positional[1];
 		if (flags["help"] === true) {
-			const lines = [
-				`Usage: ${COMMANDS_USAGE}`,
-				"",
-				COMMANDS_DESCRIPTION,
-				"",
-				"Examples:",
-				...COMMANDS_EXAMPLES.map((example,) => `  ${example}`),
-			];
-			process.stderr.write(`${lines.join("\n",)}\n`,);
+			if (flags["report-json"] === true) {
+				writeReportHelp("commands", "run",);
+			} else {
+				const lines = [
+					`Usage: ${COMMANDS_USAGE}`,
+					"",
+					COMMANDS_DESCRIPTION,
+					"",
+					"Examples:",
+					...COMMANDS_EXAMPLES.map((example,) => `  ${example}`),
+				];
+				process.stderr.write(`${lines.join("\n",)}\n`,);
+			}
 			process.exit(0,);
 		}
 		if (action !== undefined && action !== "run") {
@@ -5060,15 +5246,19 @@ async function main(): Promise<void> {
 	if (resource === "cleanup") {
 		const action = positional[1];
 		if (flags["help"] === true) {
-			const lines = [
-				`Usage: ${CLEANUP_USAGE}`,
-				"",
-				CLEANUP_DESCRIPTION,
-				"",
-				"Examples:",
-				...CLEANUP_EXAMPLES.map((example,) => `  ${example}`),
-			];
-			process.stderr.write(`${lines.join("\n",)}\n`,);
+			if (flags["report-json"] === true) {
+				writeReportHelp("cleanup", "run",);
+			} else {
+				const lines = [
+					`Usage: ${CLEANUP_USAGE}`,
+					"",
+					CLEANUP_DESCRIPTION,
+					"",
+					"Examples:",
+					...CLEANUP_EXAMPLES.map((example,) => `  ${example}`),
+				];
+				process.stderr.write(`${lines.join("\n",)}\n`,);
+			}
 			process.exit(0,);
 		}
 		if (action !== undefined && action !== "run") {
@@ -5084,6 +5274,9 @@ async function main(): Promise<void> {
 		if (flags["help"]) {
 			printTopLevelHelp();
 			process.exit(0,);
+		}
+		if (flags["report-json"] === true) {
+			throw new UsageError(`Unknown resource: ${resource}. Available: ${RESOURCE_NAMES.join(", ",)}`,);
 		}
 		process.stderr.write(
 			`Unknown resource: ${resource} \nAvailable: ${RESOURCE_NAMES.join(", ",)} \n`,
@@ -5105,6 +5298,13 @@ async function main(): Promise<void> {
 
 	// Unknown action
 	if (!actionMeta) {
+		if (flags["report-json"] === true) {
+			throw new UsageError(
+				`Unknown action: ${resource} ${action}. Available actions for ${resource}: ${
+					Object.keys(commands[resource],).join(", ",)
+				}`,
+			);
+		}
 		process.stderr.write(
 			`Unknown action: ${resource} ${action} \nAvailable actions for ${resource}: ${
 				Object.keys(commands[resource],).join(", ",)
@@ -5115,7 +5315,8 @@ async function main(): Promise<void> {
 
 	// Action-level help
 	if (flags["help"] === true) {
-		printActionHelp(resource, action,);
+		if (flags["report-json"] === true) writeReportHelp(resource, action,);
+		else printActionHelp(resource, action,);
 		process.exit(0,);
 	}
 
@@ -5127,6 +5328,7 @@ async function main(): Promise<void> {
 	}
 	// Resolve credentials: flags > env > saved > .env
 	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
+	currentCommandContext.projectKey = projectKey;
 
 	if (!url) {
 		throw new UsageError("Missing Dataiku URL. Set DATAIKU_URL, pass --url, or run: dss auth login",);
@@ -5165,6 +5367,12 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown,) => {
+	if (isReportJsonRequested()) {
+		writeErrorReport(err,);
+		if (err instanceof UsageError) process.exit(1,);
+		if (err instanceof DataikuError) process.exit(err.category === "transient" ? 3 : 2,);
+		process.exit(2,);
+	}
 	if (err instanceof UsageError) {
 		process.stderr.write(`${JSON.stringify({ error: err.message, code: "usage", }, null, 2,)}\n`,);
 		process.exit(1,);

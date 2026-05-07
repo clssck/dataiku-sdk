@@ -5,6 +5,34 @@ export type DataikuErrorCategory =
 	| "transient"
 	| "unknown";
 
+export type StableErrorCode =
+	| "usage_error"
+	| "unknown_flag"
+	| "missing_required_arg"
+	| "missing_required_flag"
+	| "invalid_enum"
+	| "not_found"
+	| "permission_denied"
+	| "validation_failed"
+	| "transient"
+	| "long_running_failure"
+	| "internal_error";
+
+export function dataikuErrorCode(category: DataikuErrorCategory,): StableErrorCode {
+	switch (category) {
+		case "not_found":
+			return "not_found";
+		case "forbidden":
+			return "permission_denied";
+		case "validation":
+			return "validation_failed";
+		case "transient":
+			return "transient";
+		case "unknown":
+			return "internal_error";
+	}
+}
+
 export interface DataikuErrorTaxonomy {
 	category: DataikuErrorCategory;
 	retryable: boolean;

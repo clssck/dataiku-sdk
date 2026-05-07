@@ -171,6 +171,22 @@ describe("CLI help output", () => {
 		expect(stderr,).toContain("save-jupyter",);
 		expect(stderr,).toContain("clear-sql-history",);
 	});
+
+	it("prints command registry help when --report-json is set", async () => {
+		const { stderr, } = await dss(["dataset", "list", "--help", "--report-json",],);
+		const help = JSON.parse(stderr,) as {
+			resource?: string;
+			action?: string;
+			usage?: string;
+			flags?: unknown[];
+		};
+		expect(help,).toMatchObject({
+			resource: "dataset",
+			action: "list",
+			usage: "dss dataset list [--project-key KEY]",
+		},);
+		expect(Array.isArray(help.flags,),).toBe(true,);
+	});
 });
 
 describe("CLI missing credentials", () => {
@@ -189,6 +205,71 @@ describe("CLI missing credentials", () => {
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
+	});
+
+	it("emits stable report JSON for usage errors", async () => {
+		const failure = await dssFailure(["flow-zone", "list", "--wat", "yes", "--report-json",], {
+			env: {
+				...process.env,
+				DATAIKU_PROJECT_KEY: "TEST",
+				DATAIKU_URL: "http://127.0.0.1:9",
+				DATAIKU_API_KEY: "test-key",
+			},
+		},);
+		expect(failure.code,).toBe(1,);
+		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			code: "unknown_flag",
+			category: "usage",
+			resource: "flow-zone",
+			action: "list",
+			projectKey: "TEST",
+		},);
+		expect(report.message,).toContain("Unknown flag: --wat",);
+	});
+
+	it("emits stable report JSON for missing positional arguments", async () => {
+		const failure = await dssFailure(["scenario", "delete", "--report-json",], {
+			env: {
+				...process.env,
+				DATAIKU_PROJECT_KEY: "TEST",
+				DATAIKU_URL: "http://127.0.0.1:9",
+				DATAIKU_API_KEY: "test-key",
+			},
+		},);
+		expect(failure.code,).toBe(1,);
+		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			code: "missing_required_arg",
+			category: "usage",
+			resource: "scenario",
+			action: "delete",
+			projectKey: "TEST",
+		},);
+		expect(report.message,).toContain("Expected 1 argument(s), got 0",);
+	});
+
+	it("emits stable report JSON for DSS permission errors", async () => {
+		await withCliServer((_req, res,) => {
+			sendJson(res, { message: "Access denied", requestId: "req-123", }, 403,);
+		}, async (url,) => {
+			const failure = await dssFailure(["scenario", "list", "--report-json",], {
+				env: cliEnv(url,),
+			},);
+			expect(failure.code,).toBe(2,);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "permission_denied",
+				category: "dss",
+				resource: "scenario",
+				action: "list",
+				projectKey: "TEST",
+				requestId: "req-123",
+				status: 403,
+				retryable: false,
+			},);
+			expect(report.message,).toContain("Access denied",);
+		},);
 	});
 });
 
