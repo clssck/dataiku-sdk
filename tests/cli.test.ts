@@ -3570,4 +3570,109 @@ describe("CLI agent-readiness mutation contracts", () => {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
 	});
+
+	it("records cleanup ledger entries for successful creates", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-ledger-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		try {
+			await withCliServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/scenarios/") {
+					sendJson(res, {},);
+					return;
+				}
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${url.pathname}`,);
+			}, async (url,) => {
+				await dss([
+					"scenario",
+					"create",
+					"cleanup_test",
+					"Cleanup Test",
+					"--record-cleanup",
+					ledgerPath,
+				], { env: cliEnv(url,), },);
+			},);
+			const lines = readFileSync(ledgerPath, "utf-8",).trim().split("\n",);
+			expect(lines,).toHaveLength(1,);
+			const entry = JSON.parse(lines[0],) as {
+				action?: string;
+				resource?: string;
+				id?: string;
+				cleanup?: { argv?: string[]; };
+			};
+			expect(entry,).toMatchObject({
+				action: "create",
+				resource: "scenario",
+				id: "cleanup_test",
+				cleanup: {
+					argv: ["scenario", "delete", "cleanup_test", "--if-exists", "--project-key", "TEST",],
+				},
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("applies cleanup ledgers in reverse order", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-apply-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		const entries = [
+			{
+				ts: "2026-05-07T00:00:00.000Z",
+				action: "create",
+				resource: "scenario",
+				id: "first",
+				projectKey: "TEST",
+				cleanup: { argv: ["scenario", "delete", "first", "--if-exists", "--project-key", "TEST",], },
+			},
+			{
+				ts: "2026-05-07T00:00:01.000Z",
+				action: "create",
+				resource: "scenario",
+				id: "second",
+				projectKey: "TEST",
+				cleanup: { argv: ["scenario", "delete", "second", "--if-exists", "--project-key", "TEST",], },
+			},
+		];
+		writeFileSync(ledgerPath, `${entries.map((entry,) => JSON.stringify(entry,)).join("\n",)}\n`,);
+		const deleted: string[] = [];
+		try {
+			await withCliServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				const match = url.pathname.match(/^\/public\/api\/projects\/TEST\/scenarios\/([^/]+)\/$/,);
+				if (req.method === "GET" && match) {
+					sendJson(res, { id: match[1], name: match[1], },);
+					return;
+				}
+				if (req.method === "DELETE" && match) {
+					deleted.push(match[1]!,);
+					sendJson(res, {},);
+					return;
+				}
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${url.pathname}`,);
+			}, async (url,) => {
+				const applied = JSON.parse(
+					(await dss(["cleanup", "--file", ledgerPath, "--apply",], { env: cliEnv(url,), },)).stdout,
+				) as { applied?: boolean; failures?: unknown[]; };
+				expect(applied.applied,).toBe(true,);
+				expect(applied.failures,).toEqual([],);
+			},);
+			expect(deleted,).toEqual(["second", "first",],);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("reports missing cleanup ledger files as usage errors", async () => {
+		const missingPath = join(tmpdir(), `dss-missing-ledger-${Date.now()}.jsonl`,);
+		const failure = await dssFailure(["cleanup", "--file", missingPath,], {
+			env: { PATH: process.env.PATH, HOME: process.env.HOME, },
+		},);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toContain("Could not read cleanup ledger",);
+	});
 });

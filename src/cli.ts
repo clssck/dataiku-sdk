@@ -21,6 +21,11 @@ import type { FlowZoneItemInput, } from "./resources/flow-zones.js";
 import type { JobBuildTargetType, } from "./resources/jobs.js";
 import type { BuildMode, FlowZoneObjectType, } from "./schemas.js";
 import { AGENTS, detectAgents, findWorkspaceRoot, installSkill, } from "./skill.js";
+import {
+	appendCleanupLedgerEntry,
+	type CleanupLedgerEntry,
+	readCleanupLedger,
+} from "./utils/cleanup-ledger.js";
 import { deepMerge, } from "./utils/deep-merge.js";
 
 // ---------------------------------------------------------------------------
@@ -440,6 +445,146 @@ function encodedProjectEndpointForPlan(projectKey: string, suffix: string,): str
 	return `/public/api/projects/${encodeURIComponent(projectKey,)}${suffix}`;
 }
 
+function stringField(record: Record<string, unknown>, fields: string[],): string | undefined {
+	for (const field of fields) {
+		const value = record[field];
+		if (typeof value === "string" && value.length > 0) return value;
+	}
+	return undefined;
+}
+
+function projectArg(projectKey: string | undefined,): string[] {
+	return projectKey ? ["--project-key", projectKey,] : [];
+}
+
+function resultRecord(result: unknown,): Record<string, unknown> {
+	return result !== null && typeof result === "object" && !Array.isArray(result,)
+		? result as Record<string, unknown>
+		: {};
+}
+
+function cleanupLedgerEntry(
+	resource: string,
+	action: string,
+	args: string[],
+	flags: Record<string, string | boolean>,
+	result: unknown,
+	projectKey: string | undefined,
+): CleanupLedgerEntry | undefined {
+	if (!(action.startsWith("create",) || action === "upload")) return undefined;
+	const record = resultRecord(result,);
+	if (record.skipped !== undefined) return undefined;
+	const project = flags["project-key"] as string | undefined ?? projectKey;
+	const withProject = projectArg(project,);
+	const ts = new Date().toISOString();
+	const base = { ts, action, resource, ...(project ? { projectKey: project, } : {}), };
+	switch (`${resource}.${action}`) {
+		case "dataset.create": {
+			const name = stringField(record, ["created", "name",],) ?? flags["name"] as string | undefined;
+			if (!name) return undefined;
+			return {
+				...base,
+				name,
+				cleanup: { argv: ["dataset", "delete", name, "--if-exists", ...withProject,], },
+			};
+		}
+		case "recipe.create": {
+			const name = stringField(record, ["created", "recipeName", "name",],)
+				?? flags["name"] as string | undefined;
+			if (!name) return undefined;
+			return {
+				...base,
+				name,
+				cleanup: { argv: ["recipe", "delete", name, "--if-exists", ...withProject,], },
+			};
+		}
+		case "scenario.create": {
+			const id = args[0];
+			return {
+				...base,
+				id,
+				name: args[1],
+				cleanup: { argv: ["scenario", "delete", id, "--if-exists", ...withProject,], },
+			};
+		}
+		case "flow-zone.create": {
+			const id = stringField(record, ["created", "id",],);
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				name: flags["name"] as string | undefined,
+				cleanup: { argv: ["flow-zone", "delete", id, "--if-exists", ...withProject,], },
+			};
+		}
+		case "wiki.create": {
+			const article =
+				record.article && typeof record.article === "object" && !Array.isArray(record.article,)
+					? record.article as Record<string, unknown>
+					: {};
+			const id = stringField(record, ["created",],) ?? stringField(article, ["id",],);
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				name: flags["name"] as string | undefined,
+				cleanup: { argv: ["wiki", "delete", id, "--if-exists", ...withProject,], },
+			};
+		}
+		case "dashboard.create": {
+			const id = stringField(record, ["created", "id",],);
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				name: flags["name"] as string | undefined,
+				cleanup: { argv: ["dashboard", "delete", id, "--if-exists", ...withProject,], },
+			};
+		}
+		case "insight.create": {
+			const id = stringField(record, ["created", "id",],);
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				name: flags["name"] as string | undefined,
+				cleanup: { argv: ["insight", "delete", id, "--if-exists", ...withProject,], },
+			};
+		}
+		case "data-quality.create-rule": {
+			const ruleId = stringField(record, ["id", "created",],);
+			if (!ruleId) return undefined;
+			return {
+				...base,
+				id: ruleId,
+				name: args[0],
+				cleanup: {
+					argv: ["data-quality", "delete-rule", args[0], ruleId, "--if-exists", ...withProject,],
+				},
+			};
+		}
+		case "code-env.create": {
+			const lang = args[0];
+			const name = args[1];
+			return {
+				...base,
+				id: `${lang}:${name}`,
+				name,
+				cleanup: { argv: ["code-env", "delete", lang, name, "--if-exists",], },
+			};
+		}
+		case "folder.upload":
+			return {
+				...base,
+				name: args[0],
+				path: args[1],
+				cleanup: { argv: ["folder", "delete-file", args[0], args[1], ...withProject,], },
+			};
+		default:
+			return undefined;
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Arg parsing
 // ---------------------------------------------------------------------------
@@ -459,6 +604,7 @@ const BOOLEAN_FLAGS = new Set([
 	"replace",
 	"dry-run",
 	"plan",
+	"apply",
 	"capabilities",
 	"fast",
 	"include-all-partitions",
@@ -468,6 +614,7 @@ const BOOLEAN_FLAGS = new Set([
 	"json",
 	"no-wait",
 	"force-rebuild",
+	"continue-on-error",
 ],);
 
 const SHORT_FLAGS: Record<string, string> = {
@@ -538,6 +685,7 @@ const VALUE_FLAGS = new Set([
 	"request-timeout",
 	"params",
 	"results-per-page",
+	"record-cleanup",
 	"rule-id",
 	"poll-interval",
 	"python-interpreter",
@@ -2956,7 +3104,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 // Help
 // ---------------------------------------------------------------------------
 
-const RESOURCE_NAMES = [...Object.keys(commands,), "auth", "commands", "install-skill",].sort();
+const RESOURCE_NAMES = [...Object.keys(commands,), "auth", "cleanup", "commands", "install-skill",]
+	.sort();
 
 function printTopLevelHelp(): void {
 	const lines = [
@@ -3613,11 +3762,17 @@ const COMMANDS_USAGE = "dss commands [--json]";
 const COMMANDS_DESCRIPTION = "Print the machine-readable command registry for agent planning.";
 const COMMANDS_EXAMPLES = ["dss commands", "dss commands --json",];
 const INSTALL_SKILL_USAGE =
-	"dss install-skill [--global] [--agent NAME] [--target PATH] [--list-agents] [--dry-run]";
+	"dss install-skill [--global] [--agent NAME] [--target PATH] [--list-agents] [--dry-run] [--plan]";
 const INSTALL_SKILL_DESCRIPTION = "Install the dataiku-dss agent skill for detected coding agents.";
 const INSTALL_SKILL_EXAMPLES = [
 	"dss install-skill --list-agents",
 	"dss install-skill --agent omp --dry-run",
+];
+const CLEANUP_USAGE = "dss cleanup --file PATH [--dry-run|--apply] [--continue-on-error]";
+const CLEANUP_DESCRIPTION = "Replay cleanup ledger entries in reverse order.";
+const CLEANUP_EXAMPLES = [
+	"dss cleanup --file cleanup.jsonl",
+	"dss cleanup --file cleanup.jsonl --apply",
 ];
 
 function uniqueStrings(values: string[],): string[] {
@@ -3786,6 +3941,11 @@ function cleanupCommandFromDeleteUsage(resource: string, action: string,): strin
 	return base;
 }
 
+function supportsCleanupLedger(resource: string, action: string,): boolean {
+	return cleanupCommandFromDeleteUsage(resource, action,) !== undefined
+		|| `${resource}.${action}` === "folder.upload";
+}
+
 function inferDestructiveLevel(
 	sideEffect: CommandSideEffect,
 	action: string,
@@ -3837,10 +3997,12 @@ function buildRegistryEntry(
 	const asyncKind = inferAsyncKind(resource, action,);
 	const mutatesDss = sideEffect === "write" && resource !== "auth" && resource !== "install-skill";
 	const supportsPlan = mutatesDss || sideEffect === "write";
+	const supportsCleanup = supportsCleanupLedger(resource, action,);
 	const usageFlags = extractUsageFlags(meta.usage,);
 	const flags = uniqueStrings([
 		...usageFlags,
 		...(supportsPlan ? ["plan",] : []),
+		...(supportsCleanup ? ["record-cleanup",] : []),
 		...GLOBAL_AGENT_FLAGS,
 		...(requiresAuth ? AUTHENTICATED_AGENT_FLAGS : []),
 		...(requiresProject ? ["project-key",] : []),
@@ -3912,6 +4074,14 @@ function buildCommandRegistry(): Record<string, Record<string, CommandRegistryEn
 			usage: INSTALL_SKILL_USAGE,
 			description: INSTALL_SKILL_DESCRIPTION,
 			examples: INSTALL_SKILL_EXAMPLES,
+		},),
+	};
+	registry.cleanup = {
+		run: buildRegistryEntry("cleanup", "run", {
+			handler: async () => undefined,
+			usage: CLEANUP_USAGE,
+			description: CLEANUP_DESCRIPTION,
+			examples: CLEANUP_EXAMPLES,
 		},),
 	};
 	registry.auth = {};
@@ -4530,6 +4700,90 @@ function buildMutationPlan(
 	},);
 }
 
+async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
+	result: Record<string, unknown>;
+	exitCode: number;
+}> {
+	const filePath = flags["file"];
+	if (typeof filePath !== "string" || filePath.trim().length === 0) {
+		throw new UsageError(`--file is required. Usage: ${CLEANUP_USAGE}`,);
+	}
+	let entries: CleanupLedgerEntry[];
+	try {
+		entries = await readCleanupLedger(filePath,);
+	} catch (error) {
+		throw new UsageError(
+			`Could not read cleanup ledger: ${error instanceof Error ? error.message : String(error,)}`,
+		);
+	}
+	const ordered: CleanupLedgerEntry[] = [];
+	for (let index = entries.length - 1; index >= 0; index--) ordered.push(entries[index]!,);
+	const steps = ordered.map((entry, index,) => ({
+		index,
+		resource: entry.resource,
+		action: entry.action,
+		id: entry.id,
+		name: entry.name,
+		path: entry.path,
+		projectKey: entry.projectKey,
+		cleanup: entry.cleanup,
+	}));
+	if (flags["apply"] !== true) {
+		return { result: { dryRun: true, steps, }, exitCode: 0, };
+	}
+
+	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
+	if (!url) {
+		throw new UsageError("Missing Dataiku URL. Set DATAIKU_URL, pass --url, or run: dss auth login",);
+	}
+	if (!apiKey) {
+		throw new UsageError(
+			"Missing API key. Set DATAIKU_API_KEY, pass --api-key, or run: dss auth login",
+		);
+	}
+	const requestTimeoutMs = num(flags["request-timeout"],) ?? num(flags["timeout"],) ?? undefined;
+	const client = new DataikuClient({
+		url,
+		apiKey,
+		projectKey,
+		verbose: flags["verbose"] === true,
+		requestTimeoutMs,
+		tlsRejectUnauthorized,
+		caCertPath,
+	},);
+
+	const applied: Array<Record<string, unknown>> = [];
+	const failures: Array<Record<string, unknown>> = [];
+	for (const [index, entry,] of ordered.entries()) {
+		try {
+			const parsed = parseArgs(entry.cleanup.argv,);
+			const [resource, action, ...args] = parsed.positional;
+			if (!resource || !action || !commands[resource]?.[action]) {
+				throw new UsageError(`Invalid cleanup argv: ${entry.cleanup.argv.join(" ",)}`,);
+			}
+			const result = await commands[resource][action].handler(client, args, parsed.flags,);
+			applied.push({ index, cleanup: entry.cleanup, result, },);
+		} catch (error) {
+			const failure = {
+				index,
+				cleanup: entry.cleanup,
+				error: error instanceof Error ? error.message : String(error,),
+			};
+			failures.push(failure,);
+			if (flags["continue-on-error"] !== true) {
+				return {
+					result: { applied: true, steps, results: applied, failures, },
+					exitCode: 2,
+				};
+			}
+		}
+	}
+	return {
+		result: { applied: true, steps, results: applied, failures, },
+		exitCode: failures.length > 0 ? 2 : 0,
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Interactive prompts
 // ---------------------------------------------------------------------------
@@ -4803,6 +5057,28 @@ async function main(): Promise<void> {
 		return;
 	}
 
+	if (resource === "cleanup") {
+		const action = positional[1];
+		if (flags["help"] === true) {
+			const lines = [
+				`Usage: ${CLEANUP_USAGE}`,
+				"",
+				CLEANUP_DESCRIPTION,
+				"",
+				"Examples:",
+				...CLEANUP_EXAMPLES.map((example,) => `  ${example}`),
+			];
+			process.stderr.write(`${lines.join("\n",)}\n`,);
+			process.exit(0,);
+		}
+		if (action !== undefined && action !== "run") {
+			throw new UsageError(`Usage: ${CLEANUP_USAGE}`,);
+		}
+		const { result, exitCode, } = await runCleanup(flags,);
+		writeCommandResult(result,);
+		process.exit(exitCode,);
+	}
+
 	// Unknown resource
 	if (!commands[resource]) {
 		if (flags["help"]) {
@@ -4873,7 +5149,16 @@ async function main(): Promise<void> {
 		caCertPath,
 	},);
 
+	if (typeof flags["record-cleanup"] === "string" && flags["dry-run"] !== true) {
+		if (!supportsCleanupLedger(resource, action,)) {
+			throw new UsageError(`--record-cleanup is not supported for ${resource} ${action}.`,);
+		}
+	}
 	const result = await actionMeta.handler(client, args, flags,);
+	if (typeof flags["record-cleanup"] === "string" && flags["dry-run"] !== true) {
+		const entry = cleanupLedgerEntry(resource, action, args, flags, result, projectKey,);
+		if (entry) await appendCleanupLedgerEntry(flags["record-cleanup"], entry,);
+	}
 	writeCommandResult(result,);
 	const failureExitCode = commandFailureExitCode(result,);
 	if (failureExitCode !== undefined) process.exit(failureExitCode,);

@@ -132,3 +132,33 @@
   }
 }
 ```
+
+## Agent Ergonomics Phase 1.5.D Verification (2026-05-07)
+
+```json
+{
+  "phase": "1.5.D cleanup ledger",
+  "status": "verified",
+  "changes": [
+    "Added append-only JSONL cleanup ledger utilities.",
+    "Added --record-cleanup for supported create/upload workflows and a top-level dss cleanup command.",
+    "Implemented reverse-order in-process cleanup application with dry-run default and continue-on-error support."
+  ],
+  "verification": {
+    "focused": "bun test tests/cli.test.ts tests/cli-surface.test.ts tests/sdk-surface.test.ts tests/schemas.test.ts -> 164 pass, 0 fail",
+    "typecheck": "bun run check -> pass",
+    "format": "bun run format:check -> pass",
+    "lint": "bun run lint -> pass with pre-existing no-underscore-dangle warnings in src/client.ts",
+    "build": "bun run build -> pass",
+    "integration": "bun run test:integration -> 4 pass, 1 skip, 0 fail",
+    "rigorous": "bun run test:integration:rigorous -> 50 pass, 5 skip, 0 fail",
+    "rigorousMutating": "bun run test:integration:rigorous:mutating -> 55 pass, 0 fail",
+    "liveSmoke": "Created disposable scenario with --record-cleanup, ran dss cleanup --apply, then scenario list verified the id absent"
+  },
+  "cleanup": {
+    "required": true,
+    "verified": true,
+    "notes": "Temporary live-smoke scenario was removed by dss cleanup --apply and the temporary local ledger directory was removed."
+  }
+}
+```
