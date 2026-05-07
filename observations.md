@@ -219,3 +219,43 @@
   }
 }
 ```
+
+## Agent Ergonomics Phase 1.5 Final Verification (2026-05-07)
+
+```json
+{
+  "phase": "1.5 final",
+  "status": "complete",
+  "commits": [
+    "a43ce69 feat(doctor): report capability probes",
+    "ca59eb4 feat(cli): enrich command registry",
+    "4b54c25 feat(cli): add mutation planning",
+    "f8cc808 feat(cli): add cleanup ledger",
+    "6ef2926 feat(cli): report JSON errors",
+    "e43fc18 feat(cli): discover safe fixtures"
+  ],
+  "verification": {
+    "focused": "bun test tests/cli.test.ts tests/cli-surface.test.ts tests/sdk-surface.test.ts tests/schemas.test.ts -> 171 pass, 0 fail",
+    "typecheck": "bun run check -> pass",
+    "format": "bun run format:check -> pass",
+    "lint": "bun run lint -> pass with pre-existing no-underscore-dangle warnings in src/client.ts",
+    "build": "bun run build -> pass",
+    "integration": "bun run test:integration -> 4 pass, 1 skip, 0 fail",
+    "rigorous": "bun run test:integration:rigorous -> 51 pass, 5 skip, 0 fail",
+    "rigorousMutating": "bun run test:integration:rigorous:mutating -> 56 pass, 0 fail",
+    "liveSmokes": {
+      "doctorCapabilities": "dss doctor --capabilities returned populated fixtures and yes permissions for all probed capabilities",
+      "registry": "dss commands --json returned cleanupCommand for dataset.create, scenario.create, flow-zone.create and longRunningFailure=4 for job.build",
+      "planning": "dss scenario run BUILDDASHBOARD --plan and dss job build transactions_joined --plan returned POST endpoints without execution",
+      "cleanupLedger": "Created OMP_FINAL_CLEANUP_1778161714404 with --record-cleanup, ran dss cleanup --apply, and scenario list verified it absent",
+      "reportJson": "dss flow-zone list --wat yes --report-json returned code=unknown_flag",
+      "fixtures": "dss fixtures --json returned projectKey=TUT_PIVOT_TABLES and safeDataset=transactions_joined"
+    }
+  },
+  "cleanup": {
+    "required": true,
+    "verified": true,
+    "notes": "The final disposable scenario was removed by dss cleanup --apply; no known DSS residue remains."
+  }
+}
+```
