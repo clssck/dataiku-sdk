@@ -188,3 +188,34 @@
   }
 }
 ```
+
+## Agent Ergonomics Phase 1.5.F Verification (2026-05-07)
+
+```json
+{
+  "phase": "1.5.F fixture discovery",
+  "status": "verified",
+  "changes": [
+    "Added dss fixtures --json with default safe type allowlist Filesystem,Inline and configurable --allow-types.",
+    "Returned doctor fixture defaults, safeDataset, safeManagedFolder, safeJupyterNotebook, and unsafe rejection reasons.",
+    "Updated rigorous integration coverage to discover fixtures once and use safeManagedFolder unless DATAIKU_TEST_FOLDER_ID overrides it.",
+    "Stopped treating command-specific --timeout as the HTTP request timeout; --request-timeout remains the HTTP-level control."
+  ],
+  "verification": {
+    "focused": "bun test tests/cli.test.ts tests/cli-surface.test.ts tests/sdk-surface.test.ts tests/schemas.test.ts -> 171 pass, 0 fail",
+    "typecheck": "bun run check -> pass",
+    "format": "bun run format:check -> pass",
+    "lint": "bun run lint -> pass with pre-existing no-underscore-dangle warnings in src/client.ts",
+    "build": "bun run build -> pass",
+    "integration": "bun run test:integration -> 4 pass, 1 skip, 0 fail",
+    "rigorous": "bun run test:integration:rigorous -> 51 pass, 5 skip, 0 fail",
+    "rigorousMutating": "bun run test:integration:rigorous:mutating -> 56 pass, 0 fail",
+    "liveSmoke": "dss fixtures --json returned safeDataset=transactions_joined for project TUT_PIVOT_TABLES"
+  },
+  "cleanup": {
+    "required": false,
+    "verified": true,
+    "notes": "Fixture discovery is read-only; no DSS artifacts were created."
+  }
+}
+```

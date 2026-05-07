@@ -743,6 +743,184 @@ describe("CLI execution behavior", () => {
 		},);
 	});
 
+	it("fixtures discovers safe defaults and rejected candidates", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			if (url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [
+					{ name: "warehouse", type: "BigQuery", },
+					{ name: "orders", type: "Filesystem", },
+				],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/recipes/") {
+				sendJson(res, [{ name: "prepare_orders", type: "python", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/scenarios/") {
+				sendJson(res, [{ id: "daily_build", name: "Daily build", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/flow/zones") {
+				sendJson(res, [{ id: "zone_a", name: "Zone A", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [
+					{ id: "folder_remote", name: "Remote", type: "S3", },
+					{ id: "folder_safe", name: "Safe", type: "Inline", },
+				],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/jupyter-notebooks/") {
+				sendJson(res, [
+					{ name: "_system", projectKey: "TEST", language: "python", },
+					{ name: "analysis", projectKey: "TEST", language: "python", },
+				],);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected request ${url.pathname}`,);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss(["fixtures", "--json", "--project-key", "TEST",], {
+				env: cliEnv(url,),
+			},);
+			expect(stderr,).toBe("",);
+			const result = JSON.parse(stdout,) as {
+				projectKey: string;
+				allowTypes: string[];
+				fixtures: Record<string, string | null>;
+				safeDataset: { name?: string; type?: string; } | null;
+				safeManagedFolder: { id?: string; type?: string; } | null;
+				safeJupyterNotebook: { name?: string; } | null;
+				unsafe: Record<string, Array<Record<string, unknown>>>;
+			};
+			expect(result.projectKey,).toBe("TEST",);
+			expect(result.allowTypes,).toEqual(["Filesystem", "Inline",],);
+			expect(result.fixtures,).toEqual({
+				defaultDataset: "warehouse",
+				defaultRecipe: "prepare_orders",
+				defaultScenario: "daily_build",
+				defaultFlowZone: "zone_a",
+				defaultManagedFolder: "folder_remote",
+				defaultJupyterNotebook: "_system",
+			},);
+			expect(result.safeDataset,).toMatchObject({ name: "orders", type: "Filesystem", },);
+			expect(result.safeManagedFolder,).toMatchObject({ id: "folder_safe", type: "Inline", },);
+			expect(result.safeJupyterNotebook,).toMatchObject({ name: "analysis", },);
+			expect(result.unsafe.datasets,).toEqual([{
+				name: "warehouse",
+				type: "BigQuery",
+				reason: "type=BigQuery",
+			},],);
+			expect(result.unsafe.managedFolders,).toEqual([{
+				id: "folder_remote",
+				name: "Remote",
+				type: "S3",
+				reason: "type=S3",
+			},],);
+			expect(result.unsafe.jupyterNotebooks,).toEqual([{
+				name: "_system",
+				reason: "name starts with _",
+			},],);
+		},);
+	});
+
+	it("fixtures honors the allow-types filter", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			if (url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [{ name: "warehouse", type: "BigQuery", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/recipes/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/scenarios/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/flow/zones") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "folder_safe", name: "Safe", type: "Filesystem", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/jupyter-notebooks/") {
+				sendJson(res, [{ name: "analysis", projectKey: "TEST", language: "python", },],);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected request ${url.pathname}`,);
+		}, async (url,) => {
+			const result = JSON.parse(
+				(await dss(["fixtures", "--json", "--project-key", "TEST", "--allow-types", "BigQuery",], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as {
+				allowTypes: string[];
+				safeDataset: { name?: string; } | null;
+				safeManagedFolder: { id?: string; } | null;
+				unsafe: { managedFolders?: Array<Record<string, unknown>>; };
+			};
+			expect(result.allowTypes,).toEqual(["BigQuery",],);
+			expect(result.safeDataset,).toMatchObject({ name: "warehouse", },);
+			expect(result.safeManagedFolder,).toBeNull();
+			expect(result.unsafe.managedFolders,).toEqual([
+				{ id: "folder_safe", name: "Safe", type: "Filesystem", reason: "type=Filesystem", },
+			],);
+		},);
+	});
+
+	it("fixtures returns null when no safe candidate exists", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			if (url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [{ name: "warehouse", type: "BigQuery", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/recipes/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/scenarios/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/flow/zones") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "folder_remote", name: "Remote", type: "S3", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/jupyter-notebooks/") {
+				sendJson(res, [{ name: "_system", projectKey: "TEST", language: "python", },],);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected request ${url.pathname}`,);
+		}, async (url,) => {
+			const result = JSON.parse(
+				(await dss(["fixtures", "--json", "--project-key", "TEST",], { env: cliEnv(url,), },)).stdout,
+			) as {
+				safeDataset: unknown;
+				safeManagedFolder: unknown;
+				safeJupyterNotebook: unknown;
+			};
+			expect(result.safeDataset,).toBeNull();
+			expect(result.safeManagedFolder,).toBeNull();
+			expect(result.safeJupyterNotebook,).toBeNull();
+		},);
+	});
+
 	it("doctor returns JSON and nonzero exit for missing credentials", async () => {
 		const failure = await dssFailure(["doctor",], {
 			env: {

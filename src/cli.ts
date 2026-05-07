@@ -648,6 +648,7 @@ const VALUE_FLAGS = new Set([
 	"build-mode",
 	"ca-cert",
 	"cell-id",
+	"allow-types",
 	"color",
 	"connection",
 	"content",
@@ -3112,7 +3113,14 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 // Help
 // ---------------------------------------------------------------------------
 
-const RESOURCE_NAMES = [...Object.keys(commands,), "auth", "cleanup", "commands", "install-skill",]
+const RESOURCE_NAMES = [
+	...Object.keys(commands,),
+	"auth",
+	"cleanup",
+	"commands",
+	"fixtures",
+	"install-skill",
+]
 	.sort();
 
 function printTopLevelHelp(): void {
@@ -3364,6 +3372,26 @@ interface DoctorFixtures {
 	defaultJupyterNotebook: string | null;
 }
 
+interface FixtureReject {
+	id?: string;
+	name?: string;
+	type?: string;
+	reason: string;
+}
+
+interface FixtureDiscoveryResult {
+	projectKey: string;
+	allowTypes: string[];
+	fixtures: DoctorFixtures;
+	safeDataset: Record<string, unknown> | null;
+	safeManagedFolder: Record<string, unknown> | null;
+	safeJupyterNotebook: Record<string, unknown> | null;
+	unsafe: {
+		datasets: FixtureReject[];
+		managedFolders: FixtureReject[];
+		jupyterNotebooks: FixtureReject[];
+	};
+}
 interface DoctorEnvironment {
 	projectKey?: string;
 	dssVersion?: string;
@@ -3464,6 +3492,32 @@ function missingProjectPermission(): {
 	};
 }
 
+function recordsFromUnknownArray(items: unknown[],): Array<Record<string, unknown>> {
+	return items.filter((item,) =>
+		item !== null && typeof item === "object" && !Array.isArray(item,)
+	) as Array<
+		Record<string, unknown>
+	>;
+}
+
+function doctorFixturesFromLists(
+	datasets: unknown[],
+	recipes: unknown[],
+	scenarios: unknown[],
+	flowZones: unknown[],
+	folders: unknown[],
+	jupyterNotebooks: unknown[],
+): DoctorFixtures {
+	return {
+		defaultDataset: firstStringField(datasets, ["name",],),
+		defaultRecipe: firstStringField(recipes, ["name",],),
+		defaultScenario: firstStringField(scenarios, ["id",],),
+		defaultFlowZone: firstStringField(flowZones, ["id",],),
+		defaultManagedFolder: firstStringField(folders, ["id",],),
+		defaultJupyterNotebook: firstStringField(jupyterNotebooks, ["name",],),
+	};
+}
+
 async function discoverDoctorFixtures(
 	client: DataikuClient,
 	projectKey: string,
@@ -3483,13 +3537,106 @@ async function discoverDoctorFixtures(
 		client.folders.list(projectKey,),
 		client.notebooks.listJupyter(projectKey,),
 	],);
+	return doctorFixturesFromLists(
+		datasets,
+		recipes,
+		scenarios,
+		flowZones,
+		folders,
+		jupyterNotebooks,
+	);
+}
+
+const DEFAULT_FIXTURE_ALLOW_TYPES = ["Filesystem", "Inline",];
+
+function fixtureAllowTypes(flags: Record<string, string | boolean>,): string[] {
+	const configured = splitCsvFlag(flags["allow-types"],);
+	return configured.length > 0 ? configured : DEFAULT_FIXTURE_ALLOW_TYPES;
+}
+
+function isAllowedFixtureType(type: string | undefined, allowTypes: string[],): boolean {
+	if (!type) return false;
+	const normalized = type.trim().toLowerCase();
+	return allowTypes.some((allowed,) => allowed.trim().toLowerCase() === normalized);
+}
+
+function fixtureReject(record: Record<string, unknown>, reason: string,): FixtureReject {
 	return {
-		defaultDataset: firstStringField(datasets, ["name",],),
-		defaultRecipe: firstStringField(recipes, ["name",],),
-		defaultScenario: firstStringField(scenarios, ["id",],),
-		defaultFlowZone: firstStringField(flowZones, ["id",],),
-		defaultManagedFolder: firstStringField(folders, ["id",],),
-		defaultJupyterNotebook: firstStringField(jupyterNotebooks, ["name",],),
+		...(stringField(record, ["id",],) ? { id: stringField(record, ["id",],), } : {}),
+		...(stringField(record, ["name",],) ? { name: stringField(record, ["name",],), } : {}),
+		...(stringField(record, ["type",],) ? { type: stringField(record, ["type",],), } : {}),
+		reason,
+	};
+}
+
+function firstSafeTypedFixture(
+	items: unknown[],
+	allowTypes: string[],
+): { safe: Record<string, unknown> | null; unsafe: FixtureReject[]; } {
+	const unsafe: FixtureReject[] = [];
+	for (const record of recordsFromUnknownArray(items,)) {
+		const type = stringField(record, ["type",],);
+		if (isAllowedFixtureType(type, allowTypes,)) return { safe: record, unsafe, };
+		unsafe.push(fixtureReject(record, `type=${type ?? "missing"}`,),);
+	}
+	return { safe: null, unsafe, };
+}
+
+function firstSafeJupyterNotebook(
+	items: unknown[],
+): { safe: Record<string, unknown> | null; unsafe: FixtureReject[]; } {
+	const unsafe: FixtureReject[] = [];
+	for (const record of recordsFromUnknownArray(items,)) {
+		const name = stringField(record, ["name",],);
+		if (name && !name.startsWith("_",)) return { safe: record, unsafe, };
+		unsafe.push(fixtureReject(record, name ? "name starts with _" : "missing name",),);
+	}
+	return { safe: null, unsafe, };
+}
+
+async function discoverFixtureReport(
+	client: DataikuClient,
+	projectKey: string,
+	flags: Record<string, string | boolean>,
+): Promise<FixtureDiscoveryResult> {
+	const allowTypes = fixtureAllowTypes(flags,);
+	const [
+		datasets,
+		recipes,
+		scenarios,
+		flowZones,
+		folders,
+		jupyterNotebooks,
+	] = await Promise.all([
+		client.datasets.list(projectKey,),
+		client.recipes.list(projectKey,),
+		client.scenarios.list(projectKey,),
+		client.flowZones.list(projectKey,),
+		client.folders.list(projectKey,),
+		client.notebooks.listJupyter(projectKey,),
+	],);
+	const dataset = firstSafeTypedFixture(datasets, allowTypes,);
+	const folder = firstSafeTypedFixture(folders, allowTypes,);
+	const notebook = firstSafeJupyterNotebook(jupyterNotebooks,);
+	return {
+		projectKey,
+		allowTypes,
+		fixtures: doctorFixturesFromLists(
+			datasets,
+			recipes,
+			scenarios,
+			flowZones,
+			folders,
+			jupyterNotebooks,
+		),
+		safeDataset: dataset.safe,
+		safeManagedFolder: folder.safe,
+		safeJupyterNotebook: notebook.safe,
+		unsafe: {
+			datasets: dataset.unsafe,
+			managedFolders: folder.unsafe,
+			jupyterNotebooks: notebook.unsafe,
+		},
 	};
 }
 
@@ -3601,7 +3748,7 @@ async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
 	let accessibleProjects: unknown[] | undefined;
 
 	if (credentialsOk) {
-		const requestTimeoutMs = num(flags["request-timeout"],) ?? num(flags["timeout"],) ?? undefined;
+		const requestTimeoutMs = num(flags["request-timeout"],);
 		const client = new DataikuClient({
 			url,
 			apiKey,
@@ -3655,7 +3802,7 @@ async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
 
 	const result: DoctorResult = { ok: checks.every((check,) => check.ok), checks, context, };
 	if (flags["capabilities"] === true && credentialsOk) {
-		const requestTimeoutMs = num(flags["request-timeout"],) ?? num(flags["timeout"],) ?? undefined;
+		const requestTimeoutMs = num(flags["request-timeout"],);
 		const client = new DataikuClient({
 			url,
 			apiKey,
@@ -3670,6 +3817,40 @@ async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
 		Object.assign(result, await doctorCapabilities(client, projectKey, accessibleProjects, flags,),);
 	}
 	return { result, exitCode: result.ok ? 0 : 2, };
+}
+
+async function runFixtures(
+	flags: Record<string, string | boolean>,
+): Promise<FixtureDiscoveryResult> {
+	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
+	if (!url) {
+		throw new UsageError("Missing Dataiku URL. Set DATAIKU_URL, pass --url, or run: dss auth login",);
+	}
+	if (!apiKey) {
+		throw new UsageError(
+			"Missing API key. Set DATAIKU_API_KEY, pass --api-key, or run: dss auth login",
+		);
+	}
+	if (!projectKey) {
+		throw new UsageError(
+			"Missing project key. Set DATAIKU_PROJECT_KEY, pass --project-key, or run: dss auth login",
+			"missing_required_flag",
+		);
+	}
+
+	currentCommandContext.projectKey = projectKey;
+	const requestTimeoutMs = num(flags["request-timeout"],);
+	const client = new DataikuClient({
+		url,
+		apiKey,
+		projectKey,
+		verbose: flags["verbose"] === true,
+		requestTimeoutMs,
+		retryMaxAttempts: 1,
+		tlsRejectUnauthorized,
+		caCertPath,
+	},);
+	return discoverFixtureReport(client, projectKey, flags,);
 }
 
 type CommandSideEffect = "read" | "write" | "auth";
@@ -3763,6 +3944,7 @@ const PROJECT_SCOPED_RESOURCES = new Set([
 	"flow-zone",
 	"insight",
 	"folder",
+	"fixtures",
 	"job",
 	"notebook",
 	"recipe",
@@ -3789,6 +3971,12 @@ const CLEANUP_DESCRIPTION = "Replay cleanup ledger entries in reverse order.";
 const CLEANUP_EXAMPLES = [
 	"dss cleanup --file cleanup.jsonl",
 	"dss cleanup --file cleanup.jsonl --apply",
+];
+const FIXTURES_USAGE = "dss fixtures [--json] [--project-key KEY] [--allow-types CSV]";
+const FIXTURES_DESCRIPTION = "Discover safe live-test fixtures for agent workflows.";
+const FIXTURES_EXAMPLES = [
+	"dss fixtures --json",
+	"dss fixtures --json --allow-types Filesystem,Inline",
 ];
 
 function uniqueStrings(values: string[],): string[] {
@@ -3860,7 +4048,7 @@ function extractPositionals(usage: string,): string[] {
 
 function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "auth") return "auth";
-	if (resource === "doctor" || resource === "commands") return "read";
+	if (resource === "doctor" || resource === "commands" || resource === "fixtures") return "read";
 	if (resource === "install-skill") return "write";
 	if (resource === "data-quality" && action === "compute") return "write";
 	if (READ_ACTIONS.has(action,)) return "read";
@@ -4098,6 +4286,14 @@ function buildCommandRegistry(): Record<string, Record<string, CommandRegistryEn
 			usage: CLEANUP_USAGE,
 			description: CLEANUP_DESCRIPTION,
 			examples: CLEANUP_EXAMPLES,
+		},),
+	};
+	registry.fixtures = {
+		run: buildRegistryEntry("fixtures", "run", {
+			handler: async () => undefined,
+			usage: FIXTURES_USAGE,
+			description: FIXTURES_DESCRIPTION,
+			examples: FIXTURES_EXAMPLES,
 		},),
 	};
 	registry.auth = {};
@@ -4757,7 +4953,7 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 			"Missing API key. Set DATAIKU_API_KEY, pass --api-key, or run: dss auth login",
 		);
 	}
-	const requestTimeoutMs = num(flags["request-timeout"],) ?? num(flags["timeout"],) ?? undefined;
+	const requestTimeoutMs = num(flags["request-timeout"],);
 	const client = new DataikuClient({
 		url,
 		apiKey,
@@ -5269,6 +5465,33 @@ async function main(): Promise<void> {
 		process.exit(exitCode,);
 	}
 
+	if (resource === "fixtures") {
+		const action = positional[1];
+		currentCommandContext.action = "run";
+		if (flags["help"] === true) {
+			if (flags["report-json"] === true) {
+				writeReportHelp("fixtures", "run",);
+			} else {
+				const lines = [
+					`Usage: ${FIXTURES_USAGE}`,
+					"",
+					FIXTURES_DESCRIPTION,
+					"",
+					"Examples:",
+					...FIXTURES_EXAMPLES.map((example,) => `  ${example}`),
+				];
+				process.stderr.write(`${lines.join("\n",)}\n`,);
+			}
+			process.exit(0,);
+		}
+		if (action !== undefined && action !== "run") {
+			throw new UsageError(`Usage: ${FIXTURES_USAGE}`,);
+		}
+		const result = await runFixtures(flags,);
+		writeCommandResult(result,);
+		return;
+	}
+
 	// Unknown resource
 	if (!commands[resource]) {
 		if (flags["help"]) {
@@ -5339,7 +5562,7 @@ async function main(): Promise<void> {
 		);
 	}
 
-	const requestTimeoutMs = num(flags["request-timeout"],) ?? num(flags["timeout"],) ?? undefined;
+	const requestTimeoutMs = num(flags["request-timeout"],);
 
 	const client = new DataikuClient({
 		url,

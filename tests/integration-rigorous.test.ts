@@ -71,6 +71,40 @@ function parseCliJson(result: DssRawResult, label: string,): unknown {
 	return parseJsonOutput(result.stdout,);
 }
 
+type RigorousFixtures = {
+	projectKey?: string;
+	fixtures?: Record<string, string | null>;
+	safeDataset?: Record<string, unknown> | null;
+	safeManagedFolder?: Record<string, unknown> | null;
+	safeJupyterNotebook?: Record<string, unknown> | null;
+	unsafe?: Record<string, unknown>;
+};
+
+let rigorousFixturesPromise: Promise<RigorousFixtures> | undefined;
+
+function fixtureString(value: unknown, fields: string[],): string | undefined {
+	if (value === null || typeof value !== "object" || Array.isArray(value,)) return undefined;
+	const record = value as Record<string, unknown>;
+	for (const field of fields) {
+		const candidate = record[field];
+		if (typeof candidate === "string" && candidate.length > 0) return candidate;
+	}
+	return undefined;
+}
+
+async function rigorousFixtures(): Promise<RigorousFixtures> {
+	rigorousFixturesPromise ??= (async () => {
+		const result = await dssRaw([
+			"fixtures",
+			"--json",
+			"--project-key",
+			process.env.DATAIKU_PROJECT_KEY!,
+		],);
+		return parseCliJson(result, "fixtures",) as RigorousFixtures;
+	})();
+	return rigorousFixturesPromise;
+}
+
 function expectResultShape(
 	value: unknown,
 	shape: ReadOnlyCommandCase["resultShape"],
@@ -209,6 +243,39 @@ describeIntegration("Rigorous integration: CLI discoverability and local validat
 },);
 
 describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () => {
+	it("discovers fixture candidates for live smoke tests", async () => {
+		const fixtures = await rigorousFixtures();
+		expect(fixtures.projectKey, "fixtures projectKey",).toBe(process.env.DATAIKU_PROJECT_KEY,);
+		expect(fixtures.fixtures, "fixtures block",).toBeDefined();
+		if (!fixtures.safeDataset) {
+			addFinding({
+				id: "fixtures-no-safe-dataset",
+				category: "automation-risk",
+				status: "skipped",
+				severity: "medium",
+				command: "fixtures --json",
+				observed: "dss fixtures did not discover a safeDataset candidate.",
+				expected:
+					"At least one Filesystem or Inline dataset is available for safe read-only live smoke tests.",
+				suggestedAction:
+					"Create a small Filesystem or Inline dataset fixture, or pass --allow-types for the playground.",
+			},);
+		} else {
+			expect(fixtureString(fixtures.safeDataset, ["name",],), "safeDataset name",).toBeDefined();
+		}
+		if (!fixtures.safeJupyterNotebook) {
+			addFinding({
+				id: "fixtures-no-safe-jupyter",
+				category: "automation-risk",
+				status: "skipped",
+				severity: "low",
+				command: "fixtures --json",
+				observed: "dss fixtures did not discover a non-underscore Jupyter notebook candidate.",
+				expected: "A non-system Jupyter notebook is available when notebook smoke tests need one.",
+			},);
+		}
+	});
+
 	for (const entry of readOnlyCommandCases) {
 		it(`checks ${entry.id} JSON output contract`, async () => {
 			if (entry.featureProbe) {
@@ -640,8 +707,10 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 		expect(restored,).toEqual(before,);
 	});
 
-	it("guards managed-folder file workflow behind explicit folder id", async () => {
-		const folderId = process.env.DATAIKU_TEST_FOLDER_ID;
+	it("guards managed-folder file workflow behind fixture discovery", async () => {
+		const fixtures = await rigorousFixtures();
+		const folderId = process.env.DATAIKU_TEST_FOLDER_ID
+			?? fixtureString(fixtures.safeManagedFolder, ["id",],);
 		if (!folderId) {
 			addFinding({
 				id: "folder-file-workflow-needs-test-folder",
@@ -649,11 +718,11 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				status: "skipped",
 				severity: "medium",
 				observed:
-					"No DATAIKU_TEST_FOLDER_ID was configured for safe upload/download/delete-file testing.",
+					"No DATAIKU_TEST_FOLDER_ID was configured and dss fixtures did not discover a safeManagedFolder candidate.",
 				expected:
-					"A `folder create` + `folder delete` lifecycle would let tests create disposable managed folders without preconfigured fixtures.",
+					"A safe managed-folder fixture is discoverable automatically, while DATAIKU_TEST_FOLDER_ID remains an override.",
 				suggestedAction:
-					"Add managed-folder delete support or configure DATAIKU_TEST_FOLDER_ID for file lifecycle tests.",
+					"Create a Filesystem or Inline managed folder fixture, pass --allow-types if appropriate, or configure DATAIKU_TEST_FOLDER_ID.",
 			},);
 			return;
 		}
