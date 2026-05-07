@@ -497,16 +497,168 @@ describe("CLI execution behavior", () => {
 				ok: boolean;
 				checks: Array<{ name: string; ok: boolean; }>;
 				context: Record<string, unknown>;
+				permissions?: unknown;
 			};
 			expect(result.ok,).toBe(true,);
 			expect(result.context.hasUrl,).toBe(true,);
 			expect(result.context.hasApiKey,).toBe(true,);
 			expect(result.context.projectKey,).toBe("TEST",);
+			expect(result.permissions,).toBeUndefined();
 			expect(result.checks.map((check,) => [check.name, check.ok,]),).toEqual([
 				["credentials_present", true,],
 				["connectivity", true,],
 				["default_project", true,],
 			],);
+		},);
+	});
+
+	it("doctor capabilities report permissions, fixtures, and environment", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			if (url.pathname === "/public/api/projects/") {
+				sendJson(res, [{ projectKey: "TEST", name: "Test Project", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/") {
+				sendJson(res, { projectKey: "TEST", name: "Test Project", },);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/variables/") {
+				res.statusCode = 500;
+				res.end("temporary variable probe failure",);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [{ name: "orders", type: "Filesystem", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/recipes/") {
+				sendJson(res, [{ name: "prepare_orders", type: "python", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/scenarios/") {
+				sendJson(res, [{ id: "daily_build", name: "Daily build", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/flow/zones") {
+				sendJson(res, [{ id: "zone_a", name: "Zone A", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "folder_a", name: "Folder A", type: "Filesystem", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/jobs/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/jupyter-notebooks/") {
+				sendJson(res, [{ name: "analysis", projectKey: "TEST", language: "python", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/connections/get-names/") {
+				sendJson(res, ["filesystem_managed",],);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected request ${url.pathname}`,);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss(["doctor", "--project-key", "TEST", "--capabilities",], {
+				env: {
+					...cliEnv(url,),
+					RUN_DATAIKU_INTEGRATION_MUTATING: "1",
+					RUN_DATAIKU_INTEGRATION_VARIABLES: "true",
+				},
+			},);
+			expect(stderr,).toBe("",);
+			const result = JSON.parse(stdout,) as {
+				ok: boolean;
+				permissions: Record<string, string>;
+				permissionDetails?: Record<string, unknown>;
+				fixtures: Record<string, string | null>;
+				environment: {
+					projectKey?: string;
+					integrationFlags: Record<string, boolean>;
+				};
+			};
+			expect(result.ok,).toBe(true,);
+			expect(result.permissions.canListProjects,).toBe("yes",);
+			expect(result.permissions.canReadProject,).toBe("yes",);
+			expect(result.permissions.canMutateProject,).toBe("unknown",);
+			expect(result.permissionDetails?.canMutateProject,).toBeDefined();
+			expect(result.fixtures,).toEqual({
+				defaultDataset: "orders",
+				defaultRecipe: "prepare_orders",
+				defaultScenario: "daily_build",
+				defaultFlowZone: "zone_a",
+				defaultManagedFolder: "folder_a",
+				defaultJupyterNotebook: "analysis",
+			},);
+			expect(result.environment.projectKey,).toBe("TEST",);
+			expect(result.environment.integrationFlags.mutating,).toBe(true,);
+			expect(result.environment.integrationFlags.variables,).toBe(true,);
+			expect(result.environment.integrationFlags.bundles,).toBe(false,);
+		},);
+	});
+
+	it("doctor capabilities fast mode omits fixture discovery", async () => {
+		let datasetFixtureRequested = false;
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			if (url.pathname === "/public/api/projects/") {
+				sendJson(res, [{ projectKey: "TEST", name: "Test Project", },],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/") {
+				sendJson(res, { projectKey: "TEST", name: "Test Project", },);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/variables/") {
+				sendJson(res, { standard: {}, local: {}, },);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/jobs/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/scenarios/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/jupyter-notebooks/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/connections/get-names/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/datasets/") {
+				datasetFixtureRequested = true;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected request ${url.pathname}`,);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss([
+				"doctor",
+				"--project-key",
+				"TEST",
+				"--capabilities",
+				"--fast",
+			], {
+				env: cliEnv(url,),
+			},);
+			expect(stderr,).toBe("",);
+			const result = JSON.parse(stdout,) as Record<string, unknown>;
+			expect(result.permissions,).toBeDefined();
+			expect(result.fixtures,).toBeUndefined();
+			expect(datasetFixtureRequested,).toBe(false,);
 		},);
 	});
 

@@ -423,6 +423,8 @@ const BOOLEAN_FLAGS = new Set([
 	"include-logs",
 	"replace",
 	"dry-run",
+	"capabilities",
+	"fast",
 	"include-all-partitions",
 	"wait",
 	"if-not-exists",
@@ -659,9 +661,9 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 	doctor: {
 		run: {
 			handler: async (_c, _a, f,) => (await runDoctor(f,)).result,
-			usage: "dss doctor [--project-key KEY]",
+			usage: "dss doctor [--project-key KEY] [--capabilities] [--fast]",
 			description: "Run JSON diagnostics for DSS credentials, connectivity, and project access.",
-			examples: ["dss doctor", "dss doctor --project-key MYPROJ",],
+			examples: ["dss doctor", "dss doctor --project-key MYPROJ", "dss doctor --capabilities --fast",],
 		},
 	},
 
@@ -3122,6 +3124,41 @@ interface DoctorCheck {
 	details?: Record<string, unknown>;
 }
 
+type PermissionStatus = "yes" | "no" | "unknown";
+
+type DoctorPermissionKey =
+	| "canListProjects"
+	| "canReadProject"
+	| "canMutateProject"
+	| "canCreateFolder"
+	| "canRunJobs"
+	| "canCreateScenario"
+	| "canSaveJupyter"
+	| "canMutateConnection";
+
+type DoctorPermissions = Record<DoctorPermissionKey, PermissionStatus>;
+
+interface DoctorFixtures {
+	defaultDataset: string | null;
+	defaultRecipe: string | null;
+	defaultScenario: string | null;
+	defaultFlowZone: string | null;
+	defaultManagedFolder: string | null;
+	defaultJupyterNotebook: string | null;
+}
+
+interface DoctorEnvironment {
+	projectKey?: string;
+	dssVersion?: string;
+	instanceTime?: string;
+	integrationFlags: {
+		mutating: boolean;
+		variables: boolean;
+		bundles: boolean;
+		apiServices: boolean;
+	};
+}
+
 interface DoctorResult {
 	ok: boolean;
 	checks: DoctorCheck[];
@@ -3132,6 +3169,10 @@ interface DoctorResult {
 		tlsVerify: "strict" | "disabled";
 		caCert: "default" | "custom";
 	};
+	permissions?: DoctorPermissions;
+	permissionDetails?: Partial<Record<DoctorPermissionKey, Record<string, unknown>>>;
+	fixtures?: DoctorFixtures;
+	environment?: DoctorEnvironment;
 }
 
 function errorDetails(error: unknown,): Record<string, unknown> {
@@ -3144,6 +3185,177 @@ function errorDetails(error: unknown,): Record<string, unknown> {
 		};
 	}
 	return { message: error instanceof Error ? error.message : String(error,), };
+}
+
+function firstStringField(items: unknown[] | undefined, fields: string[],): string | null {
+	for (const item of items ?? []) {
+		if (item === null || typeof item !== "object" || Array.isArray(item,)) continue;
+		const record = item as Record<string, unknown>;
+		for (const field of fields) {
+			const value = record[field];
+			if (typeof value === "string" && value.trim().length > 0) return value;
+		}
+	}
+	return null;
+}
+
+function integrationFlag(name: string,): boolean {
+	const value = process.env[name];
+	return value === "1" || value?.toLowerCase() === "true";
+}
+
+function doctorEnvironment(projectKey?: string,): DoctorEnvironment {
+	return {
+		...(projectKey ? { projectKey, } : {}),
+		integrationFlags: {
+			mutating: integrationFlag("RUN_DATAIKU_INTEGRATION_MUTATING",),
+			variables: integrationFlag("RUN_DATAIKU_INTEGRATION_VARIABLES",),
+			bundles: integrationFlag("RUN_DATAIKU_INTEGRATION_BUNDLES",),
+			apiServices: integrationFlag("RUN_DATAIKU_INTEGRATION_API_SERVICES",),
+		},
+	};
+}
+
+function permissionStatusForError(error: unknown,): PermissionStatus {
+	if (error instanceof DataikuError) {
+		if (error.status === 401 || error.status === 403 || error.status === 404) return "no";
+		if (error.status === 0 || error.status >= 500 || error.category === "transient") return "unknown";
+		if (error.category === "forbidden" || error.category === "not_found") return "no";
+		return "unknown";
+	}
+	return "unknown";
+}
+
+async function probeDoctorPermission(
+	probe: () => Promise<unknown>,
+): Promise<{ status: PermissionStatus; details?: Record<string, unknown>; }> {
+	try {
+		await probe();
+		return { status: "yes", };
+	} catch (error) {
+		return { status: permissionStatusForError(error,), details: errorDetails(error,), };
+	}
+}
+
+function missingProjectPermission(): {
+	status: PermissionStatus;
+	details: Record<string, unknown>;
+} {
+	return {
+		status: "unknown",
+		details: { reason: "projectKey is required for this probe", },
+	};
+}
+
+async function discoverDoctorFixtures(
+	client: DataikuClient,
+	projectKey: string,
+): Promise<DoctorFixtures> {
+	const [
+		datasets,
+		recipes,
+		scenarios,
+		flowZones,
+		folders,
+		jupyterNotebooks,
+	] = await Promise.all([
+		client.datasets.list(projectKey,),
+		client.recipes.list(projectKey,),
+		client.scenarios.list(projectKey,),
+		client.flowZones.list(projectKey,),
+		client.folders.list(projectKey,),
+		client.notebooks.listJupyter(projectKey,),
+	],);
+	return {
+		defaultDataset: firstStringField(datasets, ["name",],),
+		defaultRecipe: firstStringField(recipes, ["name",],),
+		defaultScenario: firstStringField(scenarios, ["id",],),
+		defaultFlowZone: firstStringField(flowZones, ["id",],),
+		defaultManagedFolder: firstStringField(folders, ["id",],),
+		defaultJupyterNotebook: firstStringField(jupyterNotebooks, ["name",],),
+	};
+}
+
+async function doctorCapabilities(
+	client: DataikuClient,
+	projectKey: string | undefined,
+	accessibleProjects: unknown[] | undefined,
+	flags: Record<string, string | boolean>,
+): Promise<Pick<DoctorResult, "permissions" | "permissionDetails" | "fixtures" | "environment">> {
+	const probeProjectKey = projectKey ?? firstStringField(accessibleProjects, ["projectKey",],)
+		?? undefined;
+	const probes: Record<
+		DoctorPermissionKey,
+		() => Promise<{ status: PermissionStatus; details?: Record<string, unknown>; }>
+	> = {
+		canListProjects: () =>
+			probeDoctorPermission(async () => accessibleProjects ?? await client.projects.list()),
+		canReadProject: () =>
+			probeProjectKey
+				? probeDoctorPermission(() => client.projects.get(probeProjectKey,))
+				: Promise.resolve(missingProjectPermission(),),
+		canMutateProject: () =>
+			probeProjectKey
+				? probeDoctorPermission(() => client.variables.get(probeProjectKey,))
+				: Promise.resolve(missingProjectPermission(),),
+		canCreateFolder: () =>
+			probeProjectKey
+				? probeDoctorPermission(() => client.folders.list(probeProjectKey,))
+				: Promise.resolve(missingProjectPermission(),),
+		canRunJobs: () =>
+			probeProjectKey
+				? probeDoctorPermission(() => client.jobs.list(probeProjectKey,))
+				: Promise.resolve(missingProjectPermission(),),
+		canCreateScenario: () =>
+			probeProjectKey
+				? probeDoctorPermission(() => client.scenarios.list(probeProjectKey,))
+				: Promise.resolve(missingProjectPermission(),),
+		canSaveJupyter: () =>
+			probeProjectKey
+				? probeDoctorPermission(() => client.notebooks.listJupyter(probeProjectKey,))
+				: Promise.resolve(missingProjectPermission(),),
+		canMutateConnection: () => probeDoctorPermission(() => client.connections.list()),
+	};
+	const permissions = {} as DoctorPermissions;
+	const permissionDetails: Partial<Record<DoctorPermissionKey, Record<string, unknown>>> = {};
+	for (const key of Object.keys(probes,) as DoctorPermissionKey[]) {
+		const probe = await probes[key]();
+		permissions[key] = probe.status;
+		if (probe.details) permissionDetails[key] = probe.details;
+	}
+
+	const capabilityResult: Pick<
+		DoctorResult,
+		"permissions" | "permissionDetails" | "fixtures" | "environment"
+	> = {
+		permissions,
+		...(Object.keys(permissionDetails,).length > 0 ? { permissionDetails, } : {}),
+		environment: doctorEnvironment(projectKey,),
+	};
+
+	if (flags["fast"] !== true && probeProjectKey) {
+		try {
+			capabilityResult.fixtures = await discoverDoctorFixtures(client, probeProjectKey,);
+		} catch (error) {
+			capabilityResult.fixtures = {
+				defaultDataset: null,
+				defaultRecipe: null,
+				defaultScenario: null,
+				defaultFlowZone: null,
+				defaultManagedFolder: null,
+				defaultJupyterNotebook: null,
+			};
+			capabilityResult.permissionDetails = {
+				...capabilityResult.permissionDetails,
+				canReadProject: {
+					...capabilityResult.permissionDetails?.canReadProject,
+					fixtureDiscovery: errorDetails(error,),
+				},
+			};
+		}
+	}
+
+	return capabilityResult;
 }
 
 async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
@@ -3169,6 +3381,8 @@ async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
 			: "Missing Dataiku URL and/or API key. Set DATAIKU_URL/DATAIKU_API_KEY, pass flags, or run dss auth login.",
 	},);
 
+	let accessibleProjects: unknown[] | undefined;
+
 	if (credentialsOk) {
 		const requestTimeoutMs = num(flags["request-timeout"],) ?? num(flags["timeout"],) ?? undefined;
 		const client = new DataikuClient({
@@ -3183,6 +3397,7 @@ async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
 
 		try {
 			const projects = await client.projects.list();
+			accessibleProjects = projects;
 			checks.push({
 				name: "connectivity",
 				ok: true,
@@ -3221,7 +3436,22 @@ async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
 		}
 	}
 
-	const result = { ok: checks.every((check,) => check.ok), checks, context, };
+	const result: DoctorResult = { ok: checks.every((check,) => check.ok), checks, context, };
+	if (flags["capabilities"] === true && credentialsOk) {
+		const requestTimeoutMs = num(flags["request-timeout"],) ?? num(flags["timeout"],) ?? undefined;
+		const client = new DataikuClient({
+			url,
+			apiKey,
+			projectKey,
+			verbose: flags["verbose"] === true,
+			requestTimeoutMs,
+			retryMaxAttempts: 1,
+			tlsRejectUnauthorized,
+			caCertPath,
+		},);
+		result.environment = doctorEnvironment(projectKey,);
+		Object.assign(result, await doctorCapabilities(client, projectKey, accessibleProjects, flags,),);
+	}
 	return { result, exitCode: result.ok ? 0 : 2, };
 }
 
@@ -3616,7 +3846,7 @@ async function main(): Promise<void> {
 			process.exit(0,);
 		}
 		if (action !== undefined && action !== "run") {
-			throw new UsageError("Usage: dss doctor [--project-key KEY]",);
+			throw new UsageError("Usage: dss doctor [--project-key KEY] [--capabilities] [--fast]",);
 		}
 		const { result, exitCode, } = await runDoctor(flags,);
 		writeCommandResult(result,);

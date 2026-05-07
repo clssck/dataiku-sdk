@@ -45,3 +45,32 @@
   }
 }
 ```
+
+## Agent Ergonomics Phase 1.5.A Verification (2026-05-07)
+
+```json
+{
+  "phase": "1.5.A doctor capability report",
+  "status": "verified",
+  "changes": [
+    "Added dss doctor --capabilities permission probes with yes/no/unknown statuses and non-escalating per-probe details.",
+    "Added doctor fixture discovery for default datasets, recipes, scenarios, flow zones, managed folders, and Jupyter notebooks.",
+    "Added doctor environment integration flag reporting while preserving the default dss doctor output shape."
+  ],
+  "verification": {
+    "focused": "bun test tests/cli.test.ts tests/cli-surface.test.ts tests/sdk-surface.test.ts tests/schemas.test.ts -> 159 pass, 0 fail",
+    "typecheck": "bun run check -> pass",
+    "format": "bun run format:check -> pass after formatting edited files",
+    "lint": "bun run lint -> pass with pre-existing no-underscore-dangle warnings in src/client.ts",
+    "build": "bun run build -> pass",
+    "integration": "bun run test:integration -> 4 pass, 1 skip, 0 fail",
+    "rigorous": "bun run test:integration:rigorous -> 50 pass, 5 skip, 0 fail",
+    "rigorousMutating": "bun run test:integration:rigorous:mutating -> 55 pass, 0 fail",
+    "liveSmoke": "bun run src/cli.ts doctor --capabilities -> permissions included yes values; fixtures included defaultDataset=cardholder_info, defaultRecipe=compute_transactions_joined, defaultScenario=BUILDDASHBOARD"
+  },
+  "cleanup": {
+    "required": false,
+    "notes": "No disposable DSS artifacts were created for this sub-phase."
+  }
+}
+```
