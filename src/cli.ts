@@ -608,7 +608,22 @@ type CommandHandler = (
 	flags: Record<string, string | boolean>,
 ) => Promise<unknown>;
 
-interface CommandMeta {
+interface CommandPayloadSchema {
+	stdin?: boolean;
+	dataFlag?: boolean;
+	dataFileFlag?: boolean;
+	jsonShape?: "object" | "array";
+}
+
+interface CommandRegistryOverride {
+	requiredFlags?: string[];
+	optionalFlags?: string[];
+	payloadSchema?: CommandPayloadSchema;
+	examplePayload?: unknown;
+	cleanupCommand?: string;
+}
+
+interface CommandMeta extends CommandRegistryOverride {
 	handler: CommandHandler;
 	usage: string;
 	description?: string;
@@ -3467,6 +3482,14 @@ interface CommandInputContract {
 	dataFileFlag?: boolean;
 }
 
+interface CommandExitCodes {
+	ok: 0;
+	usage: 1;
+	error: 2;
+	transient: 3;
+	longRunningFailure?: 4;
+}
+
 interface CommandRegistryEntry {
 	resource: string;
 	action: string;
@@ -3485,6 +3508,13 @@ interface CommandRegistryEntry {
 	mutatesDss: boolean;
 	async: CommandAsyncKind;
 	idempotency: CommandIdempotency;
+	dryRun: boolean;
+	requiredFlags: string[];
+	optionalFlags: string[];
+	payloadSchema?: CommandPayloadSchema;
+	examplePayload?: unknown;
+	cleanupCommand?: string;
+	exitCodes: CommandExitCodes;
 	cleanupHint?: string;
 }
 
@@ -3561,6 +3591,53 @@ function flagKind(name: string,): "boolean" | "value" {
 	return BOOLEAN_FLAGS.has(name,) ? "boolean" : "value";
 }
 
+function registryKey(resource: string, action: string,): string {
+	return `${resource}.${action}`;
+}
+
+const EXPLICIT_REGISTRY_OVERRIDES: Record<string, CommandRegistryOverride> = {
+	"dashboard.create": {
+		examplePayload: { pages: [], },
+	},
+	"dashboard.update": {
+		examplePayload: { name: "Updated dashboard", },
+	},
+	"data-quality.create-rule": {
+		examplePayload: {
+			type: "RecordCountInRangeRule",
+			softMinimum: 1,
+			softMinimumEnabled: true,
+			displayName: "Has rows",
+		},
+	},
+	"data-quality.update-rule": {
+		examplePayload: { enabled: false, },
+	},
+	"dataset.update": {
+		examplePayload: { tags: ["production",], },
+	},
+	"insight.create": {
+		examplePayload: {
+			name: "Agent insight",
+			type: "chart",
+			listed: false,
+			params: {},
+		},
+	},
+	"insight.update": {
+		examplePayload: { listed: false, },
+	},
+	"recipe.update": {
+		examplePayload: { recipe: { params: {}, }, },
+	},
+	"scenario.update": {
+		examplePayload: { active: false, },
+	},
+	"wiki.update": {
+		examplePayload: { article: { name: "Updated article", }, },
+	},
+};
+
 function extractUsageFlags(usage: string,): string[] {
 	const flags: string[] = [];
 	for (const match of usage.matchAll(/--([a-z0-9-]+)/g,)) {
@@ -3635,6 +3712,43 @@ function inferInputContract(usage: string,): CommandInputContract {
 	};
 }
 
+function stripOptionalUsageGroups(usage: string,): string {
+	return usage.replace(/\[[^\]]*\]/g, " ",);
+}
+
+function extractRequiredUsageFlags(usage: string,): string[] {
+	return extractUsageFlags(stripOptionalUsageGroups(usage,),);
+}
+
+function inferPayloadSchema(
+	inputContract: CommandInputContract,
+): CommandPayloadSchema | undefined {
+	if (!inputContract.stdin && !inputContract.dataFlag && !inputContract.dataFileFlag) {
+		return undefined;
+	}
+	return { ...inputContract, jsonShape: "object", };
+}
+
+function inferExitCodes(asyncKind: CommandAsyncKind,): CommandExitCodes {
+	return {
+		ok: 0,
+		usage: 1,
+		error: 2,
+		transient: 3,
+		...(asyncKind !== "none" ? { longRunningFailure: 4 as const, } : {}),
+	};
+}
+
+function cleanupCommandFromDeleteUsage(resource: string, action: string,): string | undefined {
+	if (!action.startsWith("create",)) return undefined;
+	const deleteAction = action === "create-rule" ? "delete-rule" : "delete";
+	const deleteUsage = commands[resource]?.[deleteAction]?.usage;
+	if (!deleteUsage) return undefined;
+	const base = stripOptionalUsageGroups(deleteUsage,).replace(/\s+/g, " ",).trim();
+	if (deleteUsage.includes("--if-exists",)) return `${base} --if-exists`;
+	return base;
+}
+
 function inferDestructiveLevel(
 	sideEffect: CommandSideEffect,
 	action: string,
@@ -3684,13 +3798,29 @@ function buildRegistryEntry(
 	const sideEffect = inferSideEffect(resource, action,);
 	const destructive = inferDestructiveLevel(sideEffect, action,);
 	const asyncKind = inferAsyncKind(resource, action,);
+	const usageFlags = extractUsageFlags(meta.usage,);
 	const flags = uniqueStrings([
-		...extractUsageFlags(meta.usage,),
+		...usageFlags,
 		...GLOBAL_AGENT_FLAGS,
 		...(requiresAuth ? AUTHENTICATED_AGENT_FLAGS : []),
 		...(requiresProject ? ["project-key",] : []),
 	],);
+	const requiredFlags = meta.requiredFlags
+		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.requiredFlags
+		?? extractRequiredUsageFlags(meta.usage,);
+	const optionalFlags = meta.optionalFlags
+		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.optionalFlags
+		?? flags.filter((flag,) => !requiredFlags.includes(flag,));
+	const inputContract = inferInputContract(meta.usage,);
 	const cleanupHint = inferCleanupHint(resource, action,);
+	const payloadSchema = meta.payloadSchema
+		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.payloadSchema
+		?? inferPayloadSchema(inputContract,);
+	const examplePayload = meta.examplePayload
+		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.examplePayload;
+	const cleanupCommand = meta.cleanupCommand
+		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.cleanupCommand
+		?? cleanupCommandFromDeleteUsage(resource, action,);
 	return {
 		resource,
 		action,
@@ -3703,12 +3833,19 @@ function buildRegistryEntry(
 		requiresAuth,
 		requiresProject,
 		outputShape: inferOutputShape(resource, action,),
-		inputContract: inferInputContract(meta.usage,),
+		inputContract,
 		destructive,
 		producesLocalFile: meta.usage.includes("--output PATH",),
 		mutatesDss: sideEffect === "write" && resource !== "auth" && resource !== "install-skill",
 		async: asyncKind,
 		idempotency: inferIdempotency(sideEffect, action, meta.usage,),
+		dryRun: meta.usage.includes("--dry-run",),
+		requiredFlags: uniqueStrings(requiredFlags,),
+		optionalFlags: uniqueStrings(optionalFlags,),
+		...(payloadSchema ? { payloadSchema, } : {}),
+		...(examplePayload !== undefined ? { examplePayload, } : {}),
+		...(cleanupCommand ? { cleanupCommand, } : {}),
+		exitCodes: inferExitCodes(asyncKind,),
 		...(cleanupHint ? { cleanupHint, } : {}),
 	};
 }

@@ -25,6 +25,18 @@ type CommandRegistryEntry = {
 	mutatesDss: boolean;
 	async: "none" | "job" | "future";
 	idempotency: "safe" | "if-not-exists" | "if-exists" | "none";
+	dryRun: boolean;
+	requiredFlags: string[];
+	optionalFlags: string[];
+	payloadSchema?: {
+		stdin?: boolean;
+		dataFlag?: boolean;
+		dataFileFlag?: boolean;
+		jsonShape?: "object" | "array";
+	};
+	examplePayload?: unknown;
+	cleanupCommand?: string;
+	exitCodes: { ok: 0; usage: 1; error: 2; transient: 3; longRunningFailure?: 4; };
 	cleanupHint?: string;
 	requiresAuth: boolean;
 	requiresProject: boolean;
@@ -127,6 +139,12 @@ async function dss(args: string[],): Promise<{ stdout: string; stderr: string; }
 	},);
 }
 
+function expectedCleanupCommand(deleteUsage: string,): string {
+	const base = deleteUsage.replace(/\[[^\]]*\]/g, " ",).replace(/\s+/g, " ",).trim();
+	if (deleteUsage.includes("--if-exists",)) return `${base} --if-exists`;
+	return base;
+}
+
 describe("CLI command surface", () => {
 	it("exposes every supported resource/action in the machine-readable registry", async () => {
 		const { stdout, } = await dss(["commands",],);
@@ -168,31 +186,82 @@ describe("CLI command surface", () => {
 					["safe", "if-not-exists", "if-exists", "none",],
 					`${resource} ${action} idempotency`,
 				).toContain(meta?.idempotency,);
+				expect(typeof meta?.dryRun, `${resource} ${action} dryRun`,).toBe("boolean",);
+				expect(Array.isArray(meta?.requiredFlags,), `${resource} ${action} requiredFlags`,).toBe(true,);
+				expect(Array.isArray(meta?.optionalFlags,), `${resource} ${action} optionalFlags`,).toBe(true,);
+				for (const flag of meta?.requiredFlags ?? []) {
+					expect(
+						meta?.flags.some((registered,) => registered.name === flag),
+						`${resource} ${action} required flag ${flag} registered`,
+					).toBe(true,);
+				}
+				for (const flag of meta?.optionalFlags ?? []) {
+					expect(
+						meta?.flags.some((registered,) => registered.name === flag),
+						`${resource} ${action} optional flag ${flag} registered`,
+					).toBe(true,);
+				}
+				expect(meta?.exitCodes, `${resource} ${action} exitCodes`,).toEqual({
+					ok: 0,
+					usage: 1,
+					error: 2,
+					transient: 3,
+					...(meta?.async !== "none" ? { longRunningFailure: 4, } : {}),
+				},);
+			}
+		}
+
+		for (const [resource, actions,] of Object.entries(registry,)) {
+			for (const [action, meta,] of Object.entries(actions,)) {
+				if (!action.startsWith("create",)) continue;
+				const deleteAction = action === "create-rule" ? "delete-rule" : "delete";
+				const deleteMeta = registry[resource]?.[deleteAction];
+				if (!deleteMeta) continue;
+				expect(meta.cleanupCommand, `${resource} ${action} cleanupCommand`,).toBe(
+					expectedCleanupCommand(deleteMeta.usage,),
+				);
 			}
 		}
 
 		expect(registry.dataset.delete.sideEffect,).toBe("write",);
 		expect(registry.dataset.delete.requiresProject,).toBe(true,);
 		expect(registry.dataset.delete.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
+		expect(registry.dataset.delete.dryRun,).toBe(true,);
 		expect(registry.dataset.create.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
 		expect(registry.dataset.create.flags,).toContainEqual({
 			name: "if-not-exists",
 			kind: "boolean",
 		},);
+		expect(registry.dataset.create.requiredFlags,).toEqual(["name", "connection", "type",],);
+		expect(registry.dataset.create.optionalFlags,).toContain("dry-run",);
+		expect(registry.dataset.create.cleanupCommand,).toBe("dss dataset delete <name> --if-exists",);
 		expect(registry.dataset.create.idempotency,).toBe("if-not-exists",);
+		expect(registry.dataset.update.payloadSchema,).toEqual({
+			stdin: true,
+			dataFlag: true,
+			dataFileFlag: true,
+			jsonShape: "object",
+		},);
+		expect(registry.dataset.update.examplePayload,).toEqual({ tags: ["production",], },);
 		expect(registry.project.list.sideEffect,).toBe("read",);
 		expect(registry.project.list.requiresProject,).toBe(false,);
 		expect(registry.wiki.settings.sideEffect,).toBe("read",);
 		expect(registry.wiki.settings.requiresProject,).toBe(true,);
 		expect(registry.wiki.create.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
 		expect(registry.dashboard.create.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
+		expect(registry.dashboard.create.cleanupCommand,).toBe("dss dashboard delete <id> --if-exists",);
 		expect(registry.insight.create.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
+		expect(registry.insight.create.cleanupCommand,).toBe("dss insight delete <id> --if-exists",);
 		expect(registry["data-quality"].rules.sideEffect,).toBe("read",);
 		expect(registry["data-quality"].status.sideEffect,).toBe("read",);
 		expect(registry["data-quality"]["create-rule"].sideEffect,).toBe("write",);
+		expect(registry["data-quality"]["create-rule"].cleanupCommand,).toBe(
+			"dss data-quality delete-rule <dataset> <rule-id> --if-exists",
+		);
 		expect(registry["data-quality"].compute.sideEffect,).toBe("write",);
 		expect(registry.job.build.flags,).toContainEqual({ name: "wait", kind: "boolean", },);
 		expect(registry.job.build.async,).toBe("job",);
+		expect(registry.job.build.exitCodes.longRunningFailure,).toBe(4,);
 		expect(registry.job.build.destructive,).toBe("reversible",);
 		expect(registry["data-quality"]["project-status"].flags,).toContainEqual({
 			name: "only-monitored",

@@ -47,6 +47,8 @@ export type RegistryExpectations = {
 	destructive: RegistryDestructiveLevel;
 	mutatesDss: boolean;
 	async: RegistryAsyncKind;
+	dryRun: boolean;
+	exitCodes: { ok: 0; usage: 1; error: 2; transient: 3; longRunningFailure?: 4; };
 };
 
 export function registryExpectationsForReadOnlyCase(
@@ -58,6 +60,14 @@ export function registryExpectationsForReadOnlyCase(
 		destructive: "none",
 		mutatesDss: false,
 		async: entry.resource === "future" ? "future" : "none",
+		dryRun: false,
+		exitCodes: {
+			ok: 0,
+			usage: 1,
+			error: 2,
+			transient: 3,
+			...(entry.resource === "future" ? { longRunningFailure: 4 as const, } : {}),
+		},
 	};
 }
 

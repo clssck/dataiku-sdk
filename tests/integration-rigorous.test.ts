@@ -192,6 +192,10 @@ describeIntegration("Rigorous integration: CLI discoverability and local validat
 			expect(meta?.destructive, `${entry.id} destructive`,).toBe(expected.destructive,);
 			expect(meta?.mutatesDss, `${entry.id} mutatesDss`,).toBe(expected.mutatesDss,);
 			expect(meta?.async, `${entry.id} async`,).toBe(expected.async,);
+			expect(meta?.dryRun, `${entry.id} dryRun`,).toBe(expected.dryRun,);
+			expect(meta?.exitCodes, `${entry.id} exitCodes`,).toEqual(expected.exitCodes,);
+			expect(Array.isArray(meta?.requiredFlags,), `${entry.id} requiredFlags`,).toBe(true,);
+			expect(Array.isArray(meta?.optionalFlags,), `${entry.id} optionalFlags`,).toBe(true,);
 		}
 	});
 

@@ -74,3 +74,32 @@
   }
 }
 ```
+
+## Agent Ergonomics Phase 1.5.B Verification (2026-05-07)
+
+```json
+{
+  "phase": "1.5.B richer commands registry",
+  "status": "verified",
+  "changes": [
+    "Extended commands --json entries with dryRun, requiredFlags, optionalFlags, payloadSchema, examplePayload, cleanupCommand, and exitCodes.",
+    "Derived cleanupCommand from registered delete usages for create-shaped commands with cleanup support.",
+    "Extended registry surface and rigorous integration matrix assertions for the richer registry shape."
+  ],
+  "verification": {
+    "focused": "bun test tests/cli.test.ts tests/cli-surface.test.ts tests/sdk-surface.test.ts tests/schemas.test.ts -> 159 pass, 0 fail",
+    "typecheck": "bun run check -> pass",
+    "format": "bun run format:check -> pass",
+    "lint": "bun run lint -> pass with pre-existing no-underscore-dangle warnings in src/client.ts",
+    "build": "bun run build -> pass",
+    "integration": "bun run test:integration -> 4 pass, 1 skip, 0 fail",
+    "rigorous": "bun run test:integration:rigorous -> 50 pass, 5 skip, 0 fail",
+    "rigorousMutating": "bun run test:integration:rigorous:mutating -> 55 pass, 0 fail",
+    "liveSmoke": "bun run src/cli.ts commands --json -> dataset.create, scenario.create, and flow-zone.create cleanupCommand present; job.build exitCodes.longRunningFailure=4"
+  },
+  "cleanup": {
+    "required": false,
+    "notes": "No disposable DSS artifacts were created for this sub-phase."
+  }
+}
+```
