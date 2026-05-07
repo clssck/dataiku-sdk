@@ -259,3 +259,37 @@
   }
 }
 ```
+
+## Managed Folder Lifecycle Follow-up (2026-05-07)
+
+```json
+{
+  "scope": "managed folder update/delete",
+  "status": "verified_with_permission_limited_live_smoke",
+  "changes": [
+    "Added FoldersResource.update and FoldersResource.delete for PUT/DELETE /projects/{projectKey}/managedfolders/{folderId}.",
+    "Added dss folder update and dss folder delete with dry-run, plan, if-exists, report-json-compatible validation, and registry metadata.",
+    "Enabled cleanup ledger entries for dss folder create now that dss folder delete exists.",
+    "Updated CLI surface and SDK surface tests for the new managed-folder lifecycle methods."
+  ],
+  "verification": {
+    "officialDocs": "Dataiku REST docs list PUT and DELETE /projects/{projectKey}/managedfolders/{folderId}; delete warns associated recipes are removed.",
+    "focused": "bun test tests/cli.test.ts tests/cli-surface.test.ts tests/sdk-surface.test.ts tests/schemas.test.ts tests/folders-jobs.test.ts -> 185 pass, 0 fail",
+    "typecheck": "bun run check -> pass",
+    "format": "bun run format:check -> pass",
+    "lint": "bun run lint -> pass with pre-existing no-underscore-dangle warnings in src/client.ts",
+    "build": "bun run build -> pass",
+    "livePlan": "folder delete/update --plan returned managedfolders DELETE/PUT endpoints without DSS mutation",
+    "liveDryRun": "folder delete OMP_NONEXISTENT --dry-run --if-exists returned skipped/missing",
+    "liveMutating": "attempted disposable folder create on filesystem_managed; DSS returned 403 Forbidden: may not create a managed folder on connection filesystem_managed"
+  },
+  "cleanup": {
+    "required": false,
+    "verified": true,
+    "notes": "The live mutating folder create was rejected before artifact creation; no DSS folder cleanup was required."
+  },
+  "openRisks": [
+    "Configured playground API key can list/infer filesystem_managed but cannot create managed folders on that connection, so live PUT/DELETE was not exercised against a real disposable folder."
+  ]
+}
+```

@@ -8,6 +8,7 @@ import {
 	FolderItemArraySchema,
 	FolderSummaryArraySchema,
 } from "../schemas.js";
+import { deepMerge, } from "../utils/deep-merge.js";
 import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
 
@@ -69,6 +70,23 @@ export class FoldersResource extends BaseResource {
 		return this.client.safeParse(FolderDetailsSchema, raw, "folders.get",);
 	}
 
+	async update(
+		folderId: string,
+		data: Record<string, unknown>,
+		projectKey?: string,
+	): Promise<void> {
+		const fEnc = encodeURIComponent(folderId,);
+		const pkEnc = this.enc(projectKey,);
+		const current = await this.client.get<Record<string, unknown>>(
+			`/public/api/projects/${pkEnc}/managedfolders/${fEnc}`,
+		);
+		const merged = deepMerge(current, data,);
+		await this.client.put<Record<string, unknown>>(
+			`/public/api/projects/${pkEnc}/managedfolders/${fEnc}`,
+			merged,
+		);
+	}
+
 	async contents(folderId: string, opts?: { projectKey?: string; },): Promise<FolderItem[]> {
 		const fEnc = encodeURIComponent(folderId,);
 		const response = await this.client.get<unknown>(
@@ -112,6 +130,13 @@ export class FoldersResource extends BaseResource {
 		const pEnc = encodeURIComponent(normalizedPath,);
 		return this.client.del(
 			`/public/api/projects/${this.enc(projectKey,)}/managedfolders/${fEnc}/contents/${pEnc}`,
+		);
+	}
+
+	delete(folderId: string, projectKey?: string,): Promise<void> {
+		const fEnc = encodeURIComponent(folderId,);
+		return this.client.del(
+			`/public/api/projects/${this.enc(projectKey,)}/managedfolders/${fEnc}`,
 		);
 	}
 }

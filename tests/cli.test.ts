@@ -1598,6 +1598,110 @@ describe("CLI managed folder commands", () => {
 		},);
 	});
 
+	it("folder update dry-run previews a deep merge", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "folder-id", name: "exports", },],);
+				return;
+			}
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/folder-id"
+			) {
+				sendJson(res, {
+					id: "folder-id",
+					name: "exports",
+					type: "Filesystem",
+					params: { connection: "filesystem", path: "/dataiku/TEST/exports", },
+					tags: ["old",],
+				},);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const result = JSON.parse(
+				(await dss([
+					"folder",
+					"update",
+					"exports",
+					"--data",
+					'{"tags":["agent"],"params":{"custom":true}}',
+					"--dry-run",
+				], { env: cliEnv(url,), },)).stdout,
+			) as {
+				dryRun?: boolean;
+				folderId?: string;
+				next?: Record<string, unknown>;
+			};
+			expect(result.dryRun,).toBe(true,);
+			expect(result.folderId,).toBe("folder-id",);
+			expect(result.next,).toMatchObject({
+				id: "folder-id",
+				tags: ["agent",],
+				params: { connection: "filesystem", path: "/dataiku/TEST/exports", custom: true, },
+			},);
+		},);
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/managedfolders/",
+			"GET /public/api/projects/TEST/managedfolders/folder-id",
+		],);
+	});
+
+	it("folder delete supports if-exists and resolved names", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "folder-id", name: "exports", },],);
+				return;
+			}
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/folder-id"
+			) {
+				sendJson(res, { id: "folder-id", name: "exports", type: "Filesystem", },);
+				return;
+			}
+			if (
+				req.method === "DELETE" && url.pathname === "/public/api/projects/TEST/managedfolders/folder-id"
+			) {
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const result = JSON.parse(
+				(await dss(["folder", "delete", "exports", "--if-exists",], { env: cliEnv(url,), },)).stdout,
+			) as Record<string, unknown>;
+			expect(result,).toEqual({ deleted: "folder-id", resource: "folder", },);
+		},);
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/managedfolders/",
+			"GET /public/api/projects/TEST/managedfolders/folder-id",
+			"DELETE /public/api/projects/TEST/managedfolders/folder-id",
+		],);
+	});
+
+	it("folder delete plan is local and uses the managedfolders endpoint", async () => {
+		const result = JSON.parse(
+			(await dss(["folder", "delete", "folder-id", "--plan", "--project-key", "TEST",], {
+				env: { PATH: process.env.PATH, HOME: process.env.HOME, },
+			},)).stdout,
+		) as Record<string, unknown>;
+		expect(result,).toMatchObject({
+			plan: true,
+			resource: "folder",
+			action: "delete",
+			method: "DELETE",
+			endpoint: "/public/api/projects/TEST/managedfolders/folder-id",
+		},);
+	});
+
 	it("job build supports managed folder targets", async () => {
 		let requestBody: Record<string, unknown> | undefined;
 		await withCliServer(async (req, res,) => {

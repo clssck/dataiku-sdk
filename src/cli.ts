@@ -524,6 +524,16 @@ function cleanupLedgerEntry(
 				cleanup: { argv: ["flow-zone", "delete", id, "--if-exists", ...withProject,], },
 			};
 		}
+		case "folder.create": {
+			const id = stringField(record, ["created", "id",],) ?? flags["name"] as string | undefined;
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				name: flags["name"] as string | undefined,
+				cleanup: { argv: ["folder", "delete", id, "--if-exists", ...withProject,], },
+			};
+		}
 		case "wiki.create": {
 			const article =
 				record.article && typeof record.article === "object" && !Array.isArray(record.article,)
@@ -2465,6 +2475,71 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			usage: "dss folder get <name-or-id> [--project-key KEY]",
 			description: "Get managed folder settings.",
 			examples: ["dss folder get my_folder",],
+		},
+		update: {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss folder update <name-or-id> [--data '{...}' | --data-file PATH | --stdin]",
+				);
+				const data = jsonInput(f,);
+				if (!data) {
+					throw new UsageError(
+						"--data, --data-file, or --stdin is required. Usage: dss folder update <name-or-id> [--data '{...}' | --data-file PATH | --stdin]",
+					);
+				}
+				const pk = f["project-key"] as string | undefined;
+				const folderId = await resolveFolderId(c, a[0], f,);
+				if (f["dry-run"] === true) {
+					const current = await c.folders.get(folderId, pk,);
+					const next = deepMerge(current as unknown as Record<string, unknown>, data,);
+					return {
+						dryRun: true,
+						action: "update",
+						resource: "folder",
+						folder: a[0],
+						folderId,
+						current,
+						next,
+					};
+				}
+				await c.folders.update(folderId, data, pk,);
+				return { updated: folderId, resource: "folder", };
+			},
+			usage:
+				"dss folder update <name-or-id> [--data JSON | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
+			description: "Update managed folder settings by deep-merging a JSON patch.",
+			examples: [
+				'dss folder update exports --data \'{"tags":["agent"]}\' --dry-run',
+				"dss folder update exports --data-file folder-patch.json",
+			],
+		},
+		delete: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss folder delete <name-or-id>",);
+				const pk = f["project-key"] as string | undefined;
+				const folderId = await resolveFolderId(c, a[0], f,);
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() => c.folders.get(folderId, pk,));
+					if (!current) return skipResult("folder", folderId, "missing",);
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "delete",
+							resource: "folder",
+							folder: a[0],
+							folderId,
+							current,
+						};
+					}
+				}
+				await c.folders.delete(folderId, pk,);
+				return { deleted: folderId, resource: "folder", };
+			},
+			usage: "dss folder delete <name-or-id> [--if-exists] [--dry-run] [--project-key KEY]",
+			description: "Delete a managed folder.",
+			examples: ["dss folder delete exports --if-exists",],
 		},
 		contents: {
 			handler: async (c, a, f,) => {
@@ -4726,6 +4801,19 @@ function commandPlanShape(
 				payload: { name, type, connection, path: flags["path"] as string | undefined, projectKey, },
 			};
 		}
+		case "folder.update":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/managedfolders/${encodeURIComponent(id,)}`,),
+				identifiers: { folder: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "folder.delete":
+			return {
+				method: "DELETE",
+				endpoint: projectEndpoint(`/managedfolders/${encodeURIComponent(id,)}`,),
+				identifiers: { folder: id, },
+			};
 		case "folder.upload":
 			return {
 				method: "POST",

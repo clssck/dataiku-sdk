@@ -114,6 +114,61 @@ describe("FoldersResource.create", () => {
 	});
 });
 
+describe("FoldersResource.update", () => {
+	it("deep-merges current managed folder settings and PUTs the result", async () => {
+		const requests: string[] = [];
+		let updateBody: Record<string, unknown> | undefined;
+
+		await withDataikuServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+			if (req.method === "GET") {
+				expect(url.pathname,).toBe("/public/api/projects/TEST/managedfolders/folder-id",);
+				sendJson(res, {
+					id: "folder-id",
+					name: "exports",
+					type: "Filesystem",
+					params: { connection: "filesystem", path: "/dataiku/TEST/exports", },
+					tags: ["old",],
+				},);
+				return;
+			}
+			expect(req.method,).toBe("PUT",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/managedfolders/folder-id",);
+			updateBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
+			sendJson(res, { ok: true, },);
+		}, async (client,) => {
+			await client.folders.update("folder-id", { tags: ["agent",], params: { custom: true, }, },);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/managedfolders/folder-id",
+			"PUT /public/api/projects/TEST/managedfolders/folder-id",
+		],);
+		expect(updateBody,).toEqual({
+			id: "folder-id",
+			name: "exports",
+			type: "Filesystem",
+			params: { connection: "filesystem", path: "/dataiku/TEST/exports", custom: true, },
+			tags: ["agent",],
+		},);
+	});
+});
+
+describe("FoldersResource.delete", () => {
+	it("deletes a managed folder by id", async () => {
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("DELETE",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/managedfolders/folder-id",);
+			res.statusCode = 204;
+			res.end();
+		}, async (client,) => {
+			await client.folders.delete("folder-id",);
+		},);
+	});
+});
+
 describe("JobsResource.log", () => {
 	it("tails 500 lines by default and preserves activity filtering", async () => {
 		const fullLog = Array.from({ length: 600, }, (_value, index,) => `line ${index + 1}`,).join(
