@@ -143,10 +143,18 @@ async function sdkValue(kind: SdkParityKind, client: DataikuClient,): Promise<un
 			return client.connections.infer();
 		case "code-env-list":
 			return client.codeEnvs.list();
+		case "dashboard-list":
+			return client.dashboards.list();
+		case "insight-list":
+			return client.insights.list();
 		case "notebook-list-jupyter":
 			return client.notebooks.listJupyter();
 		case "notebook-list-sql":
 			return client.notebooks.listSql();
+		case "wiki-settings":
+			return client.wiki.settings();
+		case "wiki-list":
+			return client.wiki.list();
 	}
 }
 
@@ -178,7 +186,7 @@ describeIntegration("Rigorous integration: CLI discoverability and local validat
 
 describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () => {
 	for (const entry of readOnlyCommandCases) {
-		it(`checks ${entry.id} JSON and output contracts`, async () => {
+		it(`checks ${entry.id} JSON output contract`, async () => {
 			if (entry.featureProbe) {
 				addFinding({
 					id: `${entry.id}-feature-probe`,
@@ -195,25 +203,6 @@ describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () 
 			const jsonResult = await dssRaw(args,);
 			const cliJson = parseCliJson(jsonResult, entry.id,);
 			expectResultShape(cliJson, entry.resultShape, `${entry.id} result shape`,);
-
-			if (entry.formatChecks.quiet) {
-				const quiet = await dssRaw([...args, "-f", "quiet",],);
-				expect(quiet.code, `${entry.id} quiet exit`,).toBe(0,);
-				expect(quiet.stdout, `${entry.id} quiet stdout`,).toBe("",);
-				expect(quiet.stderr, `${entry.id} quiet stderr`,).toBe("",);
-			}
-
-			if (entry.formatChecks.table) {
-				const table = await dssRaw([...args, "-f", "table",],);
-				expect(table.code, `${entry.id} table exit\nstderr=${table.stderr}`,).toBe(0,);
-				expect(table.stdout.length, `${entry.id} table stdout`,).toBeGreaterThan(0,);
-			}
-
-			if (entry.formatChecks.tsv) {
-				const tsv = await dssRaw([...args, "-f", "tsv",],);
-				expect(tsv.code, `${entry.id} tsv exit\nstderr=${tsv.stderr}`,).toBe(0,);
-				expect(tsv.stdout.length, `${entry.id} tsv stdout`,).toBeGreaterThan(0,);
-			}
 		});
 
 		if (entry.sdkParity) {
@@ -310,6 +299,289 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			expect(await client.flowZones.list(),).not.toContainEqual(
 				expect.objectContaining({ id: created.id, },),
 			);
+		} finally {
+			await cleanup.run();
+		}
+	});
+
+	it("round-trips disposable wiki articles and dashboards through SDK and CLI", async () => {
+		const client = createClient();
+		const cleanup = createCleanupStack();
+		let articleId: string | undefined;
+		let dashboardId: string | undefined;
+
+		try {
+			const articleName = uniqueTestName("sdk_cli_it_wiki",);
+			const createdArticle = parseCliJson(
+				await dssRaw(["wiki", "create", "--name", articleName, "--content", "initial body",],),
+				"wiki create",
+			) as { article?: { id?: string; name?: string; }; payload?: string; };
+			articleId = createdArticle.article?.id;
+			expect(articleId, "created wiki article id",).toBeTruthy();
+			cleanup.defer(async () => {
+				if (articleId) await client.wiki.delete(articleId,).catch(() => undefined);
+			},);
+			expect(createdArticle.article?.name,).toBe(articleName,);
+			expect(createdArticle.payload,).toBe("initial body",);
+
+			const sdkArticle = await client.wiki.get(articleId!,);
+			expect(sdkArticle.payload,).toBe("initial body",);
+			const renamedArticle = await client.wiki.update(articleId!, {
+				name: `${articleName}_renamed`,
+				content: "updated body",
+			},);
+			expect(renamedArticle.article.name,).toBe(`${articleName}_renamed`,);
+			expect(renamedArticle.payload,).toBe("updated body",);
+			const cliArticle = parseCliJson(await dssRaw(["wiki", "get", articleId!,],), "wiki get",) as {
+				article?: { name?: string; };
+				payload?: string;
+			};
+			expect(cliArticle.article?.name,).toBe(`${articleName}_renamed`,);
+			expect(cliArticle.payload,).toBe("updated body",);
+
+			const wikiDeleteDryRun = parseCliJson(
+				await dssRaw(["wiki", "delete", articleId!, "--dry-run",],),
+				"wiki delete dry-run",
+			) as Record<string, unknown>;
+			expect(wikiDeleteDryRun.dryRun,).toBe(true,);
+			expect((await client.wiki.get(articleId!,)).article.id,).toBe(articleId,);
+			parseCliJson(await dssRaw(["wiki", "delete", articleId!,],), "wiki delete",);
+			const deletedArticleId = articleId;
+			articleId = undefined;
+			const remainingArticles = await client.wiki.list();
+			expect(remainingArticles.map((article,) => article.article.id),).not.toContain(
+				deletedArticleId,
+			);
+
+			const dashboardName = uniqueTestName("sdk_cli_it_dashboard",);
+			const createdDashboard = parseCliJson(
+				await dssRaw(["dashboard", "create", "--name", dashboardName,],),
+				"dashboard create",
+			) as { id?: string; name?: string; pages?: unknown[]; };
+			dashboardId = createdDashboard.id;
+			expect(dashboardId, "created dashboard id",).toBeTruthy();
+			cleanup.defer(async () => {
+				if (dashboardId) await client.dashboards.delete(dashboardId,).catch(() => undefined);
+			},);
+			expect(createdDashboard.name,).toBe(dashboardName,);
+			expect(Array.isArray(createdDashboard.pages,),).toBe(true,);
+
+			const dashboardDeleteDryRun = parseCliJson(
+				await dssRaw(["dashboard", "delete", dashboardId!, "--dry-run",],),
+				"dashboard delete dry-run",
+			) as Record<string, unknown>;
+			expect(dashboardDeleteDryRun.dryRun,).toBe(true,);
+			expect((await client.dashboards.get(dashboardId!,)).id,).toBe(dashboardId,);
+			const renamedDashboard = await client.dashboards.update(dashboardId!, {
+				name: `${dashboardName}_renamed`,
+			},);
+			expect(renamedDashboard.name,).toBe(`${dashboardName}_renamed`,);
+			const cliDashboard = parseCliJson(
+				await dssRaw(["dashboard", "get", dashboardId!,],),
+				"dashboard get",
+			) as {
+				name?: string;
+			};
+			expect(cliDashboard.name,).toBe(`${dashboardName}_renamed`,);
+			parseCliJson(await dssRaw(["dashboard", "delete", dashboardId!,],), "dashboard delete",);
+			const deletedDashboardId = dashboardId;
+			dashboardId = undefined;
+			const remainingDashboards = await client.dashboards.list();
+			expect(remainingDashboards.map((dashboard,) => dashboard.id),).not.toContain(
+				deletedDashboardId,
+			);
+		} finally {
+			await cleanup.run();
+		}
+	});
+
+	it("round-trips disposable insights and data quality rules through SDK and CLI", async () => {
+		const client = createClient();
+		const cleanup = createCleanupStack();
+		let insightId: string | undefined;
+		let dataQualityRule: { datasetName: string; ruleId: string; } | undefined;
+
+		try {
+			const insights = await client.insights.list();
+			const sourceInsight = insights[0]?.id ? await client.insights.get(insights[0].id,) : undefined;
+			if (!sourceInsight) {
+				addFinding({
+					id: "insight-mutation-needs-source-insight",
+					category: "resource-gap",
+					status: "skipped",
+					severity: "medium",
+					observed: "No existing insight was available to clone for disposable insight CRUD validation.",
+					cleanupVerified: true,
+				},);
+			} else {
+				const insightName = uniqueTestName("sdk_cli_it_insight",);
+				const prototype = JSON.parse(JSON.stringify(sourceInsight,),) as Record<string, unknown>;
+				delete prototype.id;
+				delete prototype.versionTag;
+				delete prototype.creationTag;
+				prototype.name = insightName;
+				prototype.listed = false;
+
+				const createdInsight = await client.insights.create({ data: prototype, },);
+				insightId = createdInsight.id;
+				cleanup.defer(async () => {
+					if (insightId) await client.insights.delete(insightId,).catch(() => undefined);
+				},);
+				expect(createdInsight.name,).toBe(insightName,);
+
+				const updateDryRun = parseCliJson(
+					await dssRaw(["insight", "update", insightId, "--name", `${insightName}_dry`, "--dry-run",],),
+					"insight update dry-run",
+				) as { current?: { id?: string; }; next?: { name?: string; }; };
+				expect(updateDryRun.current?.id,).toBe(insightId,);
+				expect(updateDryRun.next?.name,).toBe(`${insightName}_dry`,);
+
+				const updatedInsight = await client.insights.update(insightId, {
+					name: `${insightName}_updated`,
+				},);
+				expect(updatedInsight.name,).toBe(`${insightName}_updated`,);
+				const cliInsight = parseCliJson(
+					await dssRaw(["insight", "get", insightId,],),
+					"insight get",
+				) as {
+					name?: string;
+				};
+				expect(cliInsight.name,).toBe(`${insightName}_updated`,);
+
+				const deleteDryRun = parseCliJson(
+					await dssRaw(["insight", "delete", insightId, "--dry-run",],),
+					"insight delete dry-run",
+				) as Record<string, unknown>;
+				expect(deleteDryRun.dryRun,).toBe(true,);
+				await client.insights.delete(insightId,);
+				const deletedInsightId = insightId;
+				insightId = undefined;
+				expect((await client.insights.list()).map((insight,) => insight.id),).not.toContain(
+					deletedInsightId,
+				);
+			}
+
+			const datasetName = (await client.datasets.list()).find((dataset,) =>
+				typeof dataset.name === "string"
+			)?.name;
+			if (!datasetName) {
+				addFinding({
+					id: "data-quality-mutation-needs-dataset",
+					category: "resource-gap",
+					status: "skipped",
+					severity: "medium",
+					observed: "No dataset was available for disposable data quality rule CRUD validation.",
+					cleanupVerified: true,
+				},);
+				return;
+			}
+
+			const ruleName = uniqueTestName("sdk_cli_it_dq_rule",);
+			const createdRule = parseCliJson(
+				await dssRaw([
+					"data-quality",
+					"create-rule",
+					datasetName,
+					"--data",
+					JSON.stringify({
+						type: "RecordCountInRangeRule",
+						softMinimum: 0,
+						softMinimumEnabled: true,
+						displayName: ruleName,
+					},),
+				],),
+				"data-quality create-rule",
+			) as { id?: string; displayName?: string; };
+			expect(createdRule.id, "created data quality rule id",).toBeTruthy();
+			dataQualityRule = { datasetName, ruleId: createdRule.id!, };
+			cleanup.defer(async () => {
+				if (dataQualityRule) {
+					await client.dataQuality.deleteRule(dataQualityRule.datasetName, dataQualityRule.ruleId,)
+						.catch(() => undefined);
+				}
+			},);
+			expect(createdRule.displayName,).toBe(ruleName,);
+
+			expect(await client.dataQuality.statusByPartition(datasetName,),).toBeDefined();
+			expect(Array.isArray(await client.dataQuality.lastResults(datasetName,),),).toBe(true,);
+			expect(Array.isArray(await client.dataQuality.history(datasetName,),),).toBe(true,);
+			const computeDryRun = parseCliJson(
+				await dssRaw([
+					"data-quality",
+					"compute",
+					datasetName,
+					"--rule-id",
+					dataQualityRule.ruleId,
+					"--dry-run",
+				],),
+				"data-quality compute dry-run",
+			) as Record<string, unknown>;
+			expect(computeDryRun.dryRun,).toBe(true,);
+
+			const computeWait = parseCliJson(
+				await dssRaw([
+					"data-quality",
+					"compute",
+					datasetName,
+					"--rule-id",
+					dataQualityRule.ruleId,
+					"--wait",
+					"--timeout",
+					"120000",
+					"--poll-interval",
+					"1000",
+				],),
+				"data-quality compute wait",
+			) as { success?: boolean; result?: unknown; };
+			expect(computeWait.success,).toBe(true,);
+			expect(computeWait.result,).toBeDefined();
+
+			const datasetStatus = parseCliJson(
+				await dssRaw(["data-quality", "status", datasetName,],),
+				"data-quality status",
+			);
+			expect(datasetStatus,).toBeDefined();
+			const dryRun = parseCliJson(
+				await dssRaw([
+					"data-quality",
+					"update-rule",
+					datasetName,
+					dataQualityRule.ruleId,
+					"--data",
+					JSON.stringify({ displayName: `${ruleName}_dry`, },),
+					"--dry-run",
+				],),
+				"data-quality update-rule dry-run",
+			) as { current?: { displayName?: string; }; next?: { displayName?: string; }; };
+			expect(dryRun.current?.displayName,).toBe(ruleName,);
+			expect(dryRun.next?.displayName,).toBe(`${ruleName}_dry`,);
+
+			const updatedRule = await client.dataQuality.updateRule(datasetName, dataQualityRule.ruleId, {
+				data: { displayName: `${ruleName}_updated`, },
+			},);
+			expect(updatedRule.displayName,).toBe(`${ruleName}_updated`,);
+			const cliRule = parseCliJson(
+				await dssRaw(["data-quality", "get-rule", datasetName, dataQualityRule.ruleId,],),
+				"data-quality get-rule",
+			) as { displayName?: string; };
+			expect(cliRule.displayName,).toBe(`${ruleName}_updated`,);
+
+			const deleteDryRun = parseCliJson(
+				await dssRaw([
+					"data-quality",
+					"delete-rule",
+					datasetName,
+					dataQualityRule.ruleId,
+					"--dry-run",
+				],),
+				"data-quality delete-rule dry-run",
+			) as Record<string, unknown>;
+			expect(deleteDryRun.dryRun,).toBe(true,);
+			await client.dataQuality.deleteRule(datasetName, dataQualityRule.ruleId,);
+			const deletedRuleId = dataQualityRule.ruleId;
+			dataQualityRule = undefined;
+			const remainingRules = await client.dataQuality.listRules(datasetName,);
+			expect(remainingRules.map((rule,) => rule.id),).not.toContain(deletedRuleId,);
 		} finally {
 			await cleanup.run();
 		}

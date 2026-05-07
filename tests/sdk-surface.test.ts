@@ -2,10 +2,14 @@ import { describe, expect, it, } from "bun:test";
 import {
 	CodeEnvsResource,
 	ConnectionsResource,
+	DashboardsResource,
 	DataikuClient,
+	DataQualityResource,
 	DatasetsResource,
 	FlowZonesResource,
 	FoldersResource,
+	FuturesResource,
+	InsightsResource,
 	JobsResource,
 	NotebooksResource,
 	ProjectsResource,
@@ -13,16 +17,23 @@ import {
 	ScenariosResource,
 	SqlResource,
 	VariablesResource,
+	WikiResource,
 } from "../src/index.js";
 
 const SDK_SURFACE: Array<
 	{ key: keyof DataikuClient; ctor: new(...args: never[]) => unknown; methods: string[]; }
 > = [
 	{ key: "projects", ctor: ProjectsResource, methods: ["list", "get", "metadata", "flow", "map",], },
+	{ key: "futures", ctor: FuturesResource, methods: ["get", "peek", "state", "abort", "wait",], },
 	{
 		key: "flowZones",
 		ctor: FlowZonesResource,
 		methods: ["list", "get", "create", "update", "delete", "moveItems", "moveItem", "graph",],
+	},
+	{
+		key: "dashboards",
+		ctor: DashboardsResource,
+		methods: ["list", "get", "create", "update", "delete",],
 	},
 	{
 		key: "datasets",
@@ -72,6 +83,31 @@ const SDK_SURFACE: Array<
 	{ key: "variables", ctor: VariablesResource, methods: ["get", "set",], },
 	{ key: "connections", ctor: ConnectionsResource, methods: ["list", "infer",], },
 	{
+		key: "dataQuality",
+		ctor: DataQualityResource,
+		methods: [
+			"rules",
+			"listRules",
+			"createRule",
+			"updateRule",
+			"deleteRule",
+			"getRule",
+			"status",
+			"statusByPartition",
+			"lastResults",
+			"history",
+			"computeRules",
+			"computeRulesAndWait",
+			"projectStatus",
+			"projectTimeline",
+		],
+	},
+	{
+		key: "insights",
+		ctor: InsightsResource,
+		methods: ["list", "get", "create", "update", "delete",],
+	},
+	{
 		key: "codeEnvs",
 		ctor: CodeEnvsResource,
 		methods: [
@@ -110,6 +146,11 @@ const SDK_SURFACE: Array<
 			"getSqlHistory",
 			"clearSqlHistory",
 		],
+	},
+	{
+		key: "wiki",
+		ctor: WikiResource,
+		methods: ["settings", "list", "get", "create", "update", "delete",],
 	},
 ];
 

@@ -288,6 +288,35 @@ export const JobWaitResultSchema = Type.Object({
 },);
 export type JobWaitResult = Static<typeof JobWaitResultSchema>;
 
+export const FutureStateSchema = Type.Object({
+	jobId: Type.Optional(Type.String(),),
+	hasResult: Type.Optional(Type.Boolean(),),
+	aborted: Type.Optional(Type.Boolean(),),
+	abortable: Type.Optional(Type.Boolean(),),
+	alive: Type.Optional(Type.Boolean(),),
+	unknown: Type.Optional(Type.Boolean(),),
+	startTime: Type.Optional(Type.Number(),),
+	runningTime: Type.Optional(Type.Number(),),
+	result: Type.Optional(Type.Unknown(),),
+}, { additionalProperties: true, },);
+export type FutureState = Static<typeof FutureStateSchema>;
+
+export const FutureWaitResultSchema = Type.Object({
+	futureId: Type.String(),
+	jobId: Type.Optional(Type.String(),),
+	state: Type.String(),
+	elapsedMs: Type.Number(),
+	pollCount: Type.Number(),
+	success: Type.Boolean(),
+	timedOut: Type.Optional(Type.Boolean(),),
+	hasResult: Type.Boolean(),
+	alive: Type.Optional(Type.Boolean(),),
+	aborted: Type.Optional(Type.Boolean(),),
+	unknown: Type.Optional(Type.Boolean(),),
+	result: Type.Optional(Type.Unknown(),),
+}, { additionalProperties: true, },);
+export type FutureWaitResult = Static<typeof FutureWaitResultSchema>;
+
 export const BuildModeSchema = Type.Union([
 	Type.Literal("RECURSIVE_BUILD",),
 	Type.Literal("NON_RECURSIVE_FORCED_BUILD",),
@@ -529,6 +558,125 @@ export const CodeEnvUsageArraySchema = Type.Array(CodeEnvActionResultSchema,);
 export type CodeEnvUsage = CodeEnvActionResult;
 
 // ---------------------------------------------------------------------------
+// Wiki, Dashboards, Insights
+// ---------------------------------------------------------------------------
+
+export const WikiTaxonomyNodeSchema = Type.Object({
+	id: Type.String(),
+	children: Type.Array(Type.Unknown(),),
+}, { additionalProperties: true, },);
+export type WikiTaxonomyNode = Static<typeof WikiTaxonomyNodeSchema>;
+
+export const WikiSettingsSchema = Type.Object({
+	projectKey: Type.Optional(Type.String(),),
+	taxonomy: Type.Optional(Type.Array(WikiTaxonomyNodeSchema,),),
+	homeArticleId: Type.Optional(Type.String(),),
+}, { additionalProperties: true, },);
+export type WikiSettings = Static<typeof WikiSettingsSchema>;
+
+export const WikiArticleMetadataSchema = Type.Object({
+	id: Type.String(),
+	name: Type.Optional(Type.String(),),
+	projectKey: Type.Optional(Type.String(),),
+}, { additionalProperties: true, },);
+export type WikiArticleMetadata = Static<typeof WikiArticleMetadataSchema>;
+
+export const WikiArticleDataSchema = Type.Object({
+	article: WikiArticleMetadataSchema,
+	payload: Type.Optional(Type.String(),),
+}, { additionalProperties: true, },);
+export type WikiArticleData = Static<typeof WikiArticleDataSchema>;
+
+export const DashboardSummarySchema = Type.Object({
+	id: Type.String(),
+	name: Type.String(),
+	projectKey: Type.Optional(Type.String(),),
+	owner: Type.Optional(Type.String(),),
+	listed: Type.Optional(Type.Boolean(),),
+	numPages: Type.Optional(Type.Number(),),
+	numTiles: Type.Optional(Type.Number(),),
+}, { additionalProperties: true, },);
+export type DashboardSummary = Static<typeof DashboardSummarySchema>;
+
+export const DashboardDetailsSchema = Type.Object({
+	id: Type.String(),
+	name: Type.String(),
+	projectKey: Type.Optional(Type.String(),),
+	owner: Type.Optional(Type.String(),),
+	listed: Type.Optional(Type.Boolean(),),
+	pages: Type.Optional(Type.Array(Type.Unknown(),),),
+}, { additionalProperties: true, },);
+export type DashboardDetails = Static<typeof DashboardDetailsSchema>;
+
+export const InsightSummarySchema = Type.Object({
+	id: Type.String(),
+	name: Type.String(),
+	type: Type.Optional(Type.String(),),
+	projectKey: Type.Optional(Type.String(),),
+	owner: Type.Optional(Type.String(),),
+	listed: Type.Optional(Type.Boolean(),),
+}, { additionalProperties: true, },);
+export type InsightSummary = Static<typeof InsightSummarySchema>;
+
+export const InsightDetailsSchema = Type.Object({
+	id: Type.String(),
+	name: Type.String(),
+	type: Type.Optional(Type.String(),),
+	projectKey: Type.Optional(Type.String(),),
+	owner: Type.Optional(Type.String(),),
+	listed: Type.Optional(Type.Boolean(),),
+}, { additionalProperties: true, },);
+export type InsightDetails = Static<typeof InsightDetailsSchema>;
+
+export const DataQualityRuleSchema = Type.Object({
+	id: Type.String(),
+	displayName: Type.Optional(Type.String(),),
+	name: Type.Optional(Type.String(),),
+	type: Type.Optional(Type.String(),),
+	enabled: Type.Optional(Type.Boolean(),),
+	autoRun: Type.Optional(Type.Boolean(),),
+	computeOnBuildMode: Type.Optional(Type.String(),),
+}, { additionalProperties: true, },);
+export type DataQualityRule = Static<typeof DataQualityRuleSchema>;
+
+export const DataQualityRulesSchema = Type.Object({
+	checks: Type.Array(DataQualityRuleSchema,),
+	monitor: Type.Optional(Type.Unknown(),),
+	displayedState: Type.Optional(Type.Unknown(),),
+}, { additionalProperties: true, },);
+export type DataQualityRules = Static<typeof DataQualityRulesSchema>;
+
+export const DataQualityRuleResultSchema = Type.Object({
+	id: Type.Optional(Type.String(),),
+	name: Type.Optional(Type.String(),),
+	ruleId: Type.Optional(Type.String(),),
+	outcome: Type.Optional(Type.String(),),
+	status: Type.Optional(Type.String(),),
+}, { additionalProperties: true, },);
+export type DataQualityRuleResult = Static<typeof DataQualityRuleResultSchema>;
+
+export const DataQualityStatusByPartitionSchema = Type.Record(Type.String(), Type.Unknown(),);
+
+export const DataQualityStatusSchema = Type.Union([
+	Type.String(),
+	Type.Record(Type.String(), Type.Unknown(),),
+],);
+export type DataQualityStatus = Static<typeof DataQualityStatusSchema>;
+
+export const DataQualityProjectStatusSchema = Type.Record(Type.String(), Type.Unknown(),);
+export type DataQualityProjectStatus = Static<typeof DataQualityProjectStatusSchema>;
+
+export const DataQualityTimelineEntrySchema = Type.Record(Type.String(), Type.Unknown(),);
+export type DataQualityTimelineEntry = Static<typeof DataQualityTimelineEntrySchema>;
+
+export type DataQualityStatusByPartition = Static<typeof DataQualityStatusByPartitionSchema>;
+
+export const DataQualityComputeResultSchema = Type.Object({
+	jobId: Type.Optional(Type.String(),),
+}, { additionalProperties: true, },);
+export type DataQualityComputeResult = Static<typeof DataQualityComputeResultSchema>;
+
+// ---------------------------------------------------------------------------
 // Jupyter Notebooks
 // ---------------------------------------------------------------------------
 
@@ -644,6 +792,13 @@ export const ScenarioSummaryArraySchema = Type.Array(ScenarioSummarySchema,);
 export const FolderSummaryArraySchema = Type.Array(FolderSummarySchema,);
 export const FolderItemArraySchema = Type.Array(FolderItemSchema,);
 export const CodeEnvSummaryArraySchema = Type.Array(CodeEnvSummarySchema,);
+export const WikiArticleDataArraySchema = Type.Array(WikiArticleDataSchema,);
+export const DashboardSummaryArraySchema = Type.Array(DashboardSummarySchema,);
+export const InsightSummaryArraySchema = Type.Array(InsightSummarySchema,);
+export const DataQualityRuleArraySchema = Type.Array(DataQualityRuleSchema,);
+export const DataQualityRuleResultArraySchema = Type.Array(DataQualityRuleResultSchema,);
+export const DataQualityTimelineSchema = Type.Array(DataQualityTimelineEntrySchema,);
+export type DataQualityTimeline = Static<typeof DataQualityTimelineSchema>;
 export const JupyterNotebookSummaryArraySchema = Type.Array(JupyterNotebookSummarySchema,);
 export const SqlNotebookSummaryArraySchema = Type.Array(SqlNotebookSummarySchema,);
 export const NotebookSessionArraySchema = Type.Array(NotebookSessionSchema,);

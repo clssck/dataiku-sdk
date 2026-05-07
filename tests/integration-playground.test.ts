@@ -37,10 +37,9 @@ describeIntegration("Dataiku playground integration: authentication", () => {
 		expect(Array.isArray(projects,),).toBe(true,);
 		expect(projects.length,).toBeGreaterThan(0,);
 
-		await expect(dss(["project", "list", "-f", "quiet",],),).resolves.toEqual({
-			stdout: "",
-			stderr: "",
-		},);
+		const cliProjects = await dss(["project", "list",],);
+		expect(JSON.parse(cliProjects.stdout,),).toHaveLength(projects.length,);
+		expect(cliProjects.stderr,).toBe("",);
 	});
 },);
 
@@ -66,6 +65,9 @@ describeProjectIntegration("Dataiku playground integration: read-only SDK resour
 			jupyter,
 			sqlNotebooks,
 			connections,
+			dashboards,
+			insights,
+			wikiSettings,
 		] = await Promise.all([
 			client.datasets.list(),
 			client.recipes.list(),
@@ -76,6 +78,9 @@ describeProjectIntegration("Dataiku playground integration: read-only SDK resour
 			client.notebooks.listJupyter(),
 			client.notebooks.listSql(),
 			client.connections.infer(),
+			client.dashboards.list(),
+			client.insights.list(),
+			client.wiki.settings(),
 		],);
 
 		expect(Array.isArray(datasets,),).toBe(true,);
@@ -88,31 +93,60 @@ describeProjectIntegration("Dataiku playground integration: read-only SDK resour
 		expect(Array.isArray(jupyter,),).toBe(true,);
 		expect(Array.isArray(sqlNotebooks,),).toBe(true,);
 		expect(Array.isArray(connections,),).toBe(true,);
+		expect(Array.isArray(dashboards,),).toBe(true,);
+		expect(Array.isArray(insights,),).toBe(true,);
+		expect(wikiSettings,).toHaveProperty("projectKey",);
+		const firstDatasetName = datasets.find((dataset,) => typeof dataset.name === "string")?.name;
+		if (firstDatasetName) {
+			expect(Array.isArray(await client.dataQuality.listRules(firstDatasetName,),),).toBe(true,);
+			expect(await client.dataQuality.statusByPartition(firstDatasetName,),).toBeDefined();
+			expect(Array.isArray(await client.dataQuality.lastResults(firstDatasetName,),),).toBe(true,);
+			expect(Array.isArray(await client.dataQuality.history(firstDatasetName,),),).toBe(true,);
+		}
 	});
 },);
 
 describeProjectIntegration("Dataiku playground integration: read-only CLI commands", () => {
 	it("runs resource list/info commands against the configured project", async () => {
+		const datasetName = (await createClient().datasets.list()).find((dataset,) =>
+			typeof dataset.name === "string"
+		)?.name;
 		const commands: string[][] = [
-			["project", "get", "-f", "quiet",],
-			["project", "metadata", "-f", "quiet",],
-			["project", "map", "--max-nodes", "25", "--max-edges", "50", "-f", "quiet",],
-			["flow-zone", "list", "-f", "quiet",],
-			["dataset", "list", "-f", "quiet",],
-			["recipe", "list", "-f", "quiet",],
-			["job", "list", "-f", "quiet",],
-			["scenario", "list", "-f", "quiet",],
-			["folder", "list", "-f", "quiet",],
-			["variable", "get", "-f", "quiet",],
-			["connection", "infer", "-f", "quiet",],
-			["notebook", "list-jupyter", "-f", "quiet",],
-			["notebook", "list-sql", "-f", "quiet",],
+			["project", "get",],
+			["project", "metadata",],
+			["project", "map", "--max-nodes", "25", "--max-edges", "50",],
+			["flow-zone", "list",],
+			["dataset", "list",],
+			["recipe", "list",],
+			["job", "list",],
+			["scenario", "list",],
+			["folder", "list",],
+			["variable", "get",],
+			["connection", "infer",],
+			["notebook", "list-jupyter",],
+			["notebook", "list-sql",],
+			["dashboard", "list",],
+			["insight", "list",],
+			["wiki", "settings",],
+			["wiki", "list",],
+			["data-quality", "project-status",],
+			["data-quality", "project-timeline",],
 		];
+		if (datasetName) {
+			commands.push(
+				["data-quality", "rules", datasetName,],
+				["data-quality", "status-by-partition", datasetName,],
+				["data-quality", "last-results", datasetName,],
+				["data-quality", "history", datasetName,],
+			);
+		}
 
 		for (const command of commands) {
-			await expect(dss(command,), command.join(" ",),).resolves.toEqual({ stdout: "", stderr: "", },);
+			const result = await dss(command,);
+			expect(result.stderr, command.join(" ",),).toBe("",);
+			expect(() => JSON.parse(result.stdout,), command.join(" ",),).not.toThrow();
 		}
-	});
+	}, 30_000,);
 },);
 
 describeMutatingProjectIntegration("Dataiku playground integration: flow zone mutations", () => {

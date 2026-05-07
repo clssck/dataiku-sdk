@@ -56,7 +56,7 @@ export class CodeEnvsResource extends BaseResource {
 		const langEnc = encodeURIComponent(opts.envLang,);
 		const nameEnc = encodeURIComponent(opts.envName,);
 		const body = {
-			...(opts.params ?? {}),
+			...opts.params,
 			deploymentMode: opts.deploymentMode,
 		};
 		return this.client.post<CodeEnvActionResult>(

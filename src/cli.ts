@@ -21,6 +21,7 @@ import type { FlowZoneItemInput, } from "./resources/flow-zones.js";
 import type { JobBuildTargetType, } from "./resources/jobs.js";
 import type { BuildMode, FlowZoneObjectType, } from "./schemas.js";
 import { AGENTS, detectAgents, findWorkspaceRoot, installSkill, } from "./skill.js";
+import { deepMerge, } from "./utils/deep-merge.js";
 
 // ---------------------------------------------------------------------------
 // Utility helpers
@@ -153,8 +154,6 @@ function json(v: string | boolean | undefined,): Record<string, unknown> | undef
 	return JSON.parse(v,) as Record<string, unknown>;
 }
 
-type OutputFormat = "json" | "quiet" | "table" | "tsv";
-
 type TlsSettings = Pick<DssCredentials, "tlsRejectUnauthorized" | "caCertPath">;
 
 const SQL_QUERY_USAGE =
@@ -175,6 +174,21 @@ function jsonInput(flags: Record<string, string | boolean>,): Record<string, unk
 		return JSON.parse(flags["data"],) as Record<string, unknown>;
 	}
 	return undefined;
+}
+
+function textInput(flags: Record<string, string | boolean>,): string | undefined {
+	if (typeof flags["content"] === "string") return flags["content"];
+	if (typeof flags["file"] === "string") return readFileSync(flags["file"], "utf-8",);
+	return undefined;
+}
+
+function requiredJsonInput(
+	flags: Record<string, string | boolean>,
+	message: string,
+): Record<string, unknown> {
+	const data = jsonInput(flags,);
+	if (!data) throw new UsageError(message,);
+	return data;
 }
 
 function parseBooleanOption(
@@ -341,72 +355,8 @@ function formatLineDiff(
 	return lines.join("\n",);
 }
 
-function parseOutputFormat(v: string | boolean | undefined,): OutputFormat {
-	if (v === undefined) return "json";
-	if (v === "json" || v === "quiet" || v === "table" || v === "tsv") return v;
-	throw new UsageError(`Invalid --format value: ${String(v,)}. Use json, tsv, table, or quiet.`,);
-}
-
-function writeTable(items: Record<string, unknown>[],): void {
-	if (items.length === 0) return;
-	const keys = Object.keys(items[0],);
-	const maxWidths = keys.map((k,) => {
-		const values = items.map((item,) => String(item[k] ?? "",));
-		return Math.min(40, Math.max(k.length, ...values.map((v,) => v.length),),);
-	},);
-	process.stdout.write(`${keys.map((k, i,) => k.padEnd(maxWidths[i],)).join("  ",)}\n`,);
-	process.stdout.write(`${maxWidths.map((w,) => "-".repeat(w,)).join("  ",)}\n`,);
-	for (const item of items) {
-		const row = keys.map((k, i,) => {
-			const val = String(item[k] ?? "",);
-			return (val.length > maxWidths[i]
-				? `${val.slice(0, maxWidths[i] - 1,)}\u2026`
-				: val).padEnd(maxWidths[i],);
-		},);
-		process.stdout.write(`${row.join("  ",)}\n`,);
-	}
-}
-
-function writeCommandResult(result: unknown, format: OutputFormat,): void {
-	if (result === undefined || result === null) {
-		if (format !== "quiet") {
-			process.stdout.write(`${JSON.stringify({ ok: true, }, null, 2,)}\n`,);
-		}
-		return;
-	}
-	if (typeof result === "string") {
-		if (format !== "quiet") {
-			process.stdout.write(result,);
-			if (!result.endsWith("\n",)) process.stdout.write("\n",);
-		}
-		return;
-	}
-	if (format === "quiet") return;
-	const isArrayOfObjects = Array.isArray(result,)
-		&& result.every((item,) => item !== null && typeof item === "object" && !Array.isArray(item,));
-	if (format === "tsv" && isArrayOfObjects) {
-		const items = result as Record<string, unknown>[];
-		if (items.length === 0) {
-			process.stdout.write("# no rows\n",);
-			return;
-		}
-		const keys = Object.keys(items[0],);
-		process.stdout.write(`${keys.join("\t",)}\n`,);
-		for (const item of items) {
-			process.stdout.write(`${keys.map((key,) => String(item[key] ?? "",)).join("\t",)}\n`,);
-		}
-		return;
-	}
-	if (format === "table" && isArrayOfObjects) {
-		const items = result as Record<string, unknown>[];
-		if (items.length === 0) {
-			process.stdout.write("No rows\n",);
-			return;
-		}
-		writeTable(items,);
-		return;
-	}
-	process.stdout.write(`${JSON.stringify(result, null, 2,)}\n`,);
+function writeCommandResult(result: unknown,): void {
+	process.stdout.write(`${JSON.stringify(result ?? { ok: true, }, null, 2,)}\n`,);
 }
 
 function isFailedWaitResult(result: unknown,): boolean {
@@ -440,7 +390,10 @@ const BOOLEAN_FLAGS = new Set([
 	"include-logs",
 	"replace",
 	"dry-run",
+	"include-all-partitions",
+	"wait",
 	"if-not-exists",
+	"json",
 	"no-wait",
 	"force-rebuild",
 ],);
@@ -449,7 +402,6 @@ const SHORT_FLAGS: Record<string, string> = {
 	h: "help",
 	v: "verbose",
 	V: "version",
-	f: "format",
 	o: "output",
 };
 
@@ -470,6 +422,8 @@ const VALUE_FLAGS = new Set([
 	"cell-id",
 	"color",
 	"connection",
+	"content",
+	"content-type",
 	"data",
 	"active",
 	"deployment-mode",
@@ -480,7 +434,6 @@ const VALUE_FLAGS = new Set([
 	"file",
 	"install-core-packages",
 	"folder",
-	"format",
 	"input",
 	"knowledge-bank",
 	"labeling-task",
@@ -490,8 +443,12 @@ const VALUE_FLAGS = new Set([
 	"local",
 	"max-edges",
 	"max-lines",
+	"listed",
 	"max-nodes",
 	"max-rows",
+	"max-timestamp",
+	"only-monitored",
+	"min-timestamp",
 	"mode",
 	"model-evaluation-store",
 	"name",
@@ -499,11 +456,17 @@ const VALUE_FLAGS = new Set([
 	"output",
 	"output-connection",
 	"output-folder",
+	"page",
+	"partition",
+	"parent",
 	"path",
 	"project-key",
 	"recipe",
 	"request-timeout",
 	"params",
+	"results-per-page",
+	"rule-id",
+	"poll-interval",
 	"python-interpreter",
 	"retain",
 	"saved-model",
@@ -622,7 +585,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: (c,) => c.projects.list(),
 			usage: "dss project list",
 			description: "List all accessible projects.",
-			examples: ["dss project list", "dss project list -f table",],
+			examples: ["dss project list",],
 		},
 		get: {
 			handler: (c, _a, f,) => c.projects.get(f["project-key"] as string | undefined,),
@@ -640,7 +603,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: (c, _a, f,) => c.projects.flow(f["project-key"] as string | undefined,),
 			usage: "dss project flow [--project-key KEY]",
 			description: "Get the raw flow graph (all datasets, recipes, and edges).",
-			examples: ["dss project flow", "dss project flow --project-key MYPROJ -f quiet",],
+			examples: ["dss project flow", "dss project flow --project-key MYPROJ",],
 		},
 		map: {
 			handler: (c, _a, f,) =>
@@ -659,12 +622,603 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		},
 	},
 
+	doctor: {
+		run: {
+			handler: async (_c, _a, f,) => (await runDoctor(f,)).result,
+			usage: "dss doctor [--project-key KEY]",
+			description: "Run JSON diagnostics for DSS credentials, connectivity, and project access.",
+			examples: ["dss doctor", "dss doctor --project-key MYPROJ",],
+		},
+	},
+
+	wiki: {
+		settings: {
+			handler: (c, _a, f,) => c.wiki.settings(f["project-key"] as string | undefined,),
+			usage: "dss wiki settings [--project-key KEY]",
+			description: "Get project wiki settings and taxonomy.",
+			examples: ["dss wiki settings",],
+		},
+		list: {
+			handler: (c, _a, f,) => c.wiki.list(f["project-key"] as string | undefined,),
+			usage: "dss wiki list [--project-key KEY]",
+			description: "List wiki articles by walking the taxonomy.",
+			examples: ["dss wiki list",],
+		},
+		get: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss wiki get <id-or-name>",);
+				return c.wiki.get(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss wiki get <id-or-name> [--project-key KEY]",
+			description: "Get a wiki article including markdown body.",
+			examples: ["dss wiki get ARTICLE_ID",],
+		},
+		create: {
+			handler: async (c, _a, f,) => {
+				const name = f["name"] as string | undefined;
+				if (!name) throw new UsageError("--name is required. Usage: dss wiki create --name NAME",);
+				const content = textInput(f,);
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "create",
+						resource: "wiki",
+						name,
+						parent: f["parent"] as string | undefined,
+						content,
+					};
+				}
+				return c.wiki.create({
+					name,
+					parent: f["parent"] as string | undefined,
+					content,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss wiki create --name NAME [--parent ID] [--content TEXT|--file PATH] [--dry-run] [--project-key KEY]",
+			description: "Create a wiki article, optionally with markdown content.",
+			examples: [
+				"dss wiki create --name 'Agent notes' --content '# Notes'",
+				"dss wiki create --name 'Agent notes' --file article.md --dry-run",
+			],
+		},
+		update: {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss wiki update <id-or-name> [--name NAME] [--content TEXT|--file PATH|--data JSON]",
+				);
+				const data = jsonInput(f,);
+				const content = textInput(f,);
+				const name = f["name"] as string | undefined;
+				if (!data && content === undefined && name === undefined) {
+					throw new UsageError(
+						"--name, --content, --file, --data, --data-file, or --stdin is required.",
+					);
+				}
+				if (f["dry-run"] === true) {
+					const current = await c.wiki.get(a[0], f["project-key"] as string | undefined,);
+					const next = deepMerge(current as unknown as Record<string, unknown>, data ?? {},);
+					if (name !== undefined) {
+						next.article = {
+							...((next.article && typeof next.article === "object" && !Array.isArray(next.article,))
+								? next.article as Record<string, unknown>
+								: {}),
+							name,
+						};
+					}
+					if (content !== undefined) next.payload = content;
+					return { dryRun: true, action: "update", resource: "wiki", article: a[0], current, next, };
+				}
+				return c.wiki.update(a[0], {
+					name,
+					content,
+					data,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss wiki update <id-or-name> [--name NAME] [--content TEXT|--file PATH|--data JSON|--data-file PATH|--stdin] [--dry-run] [--project-key KEY]",
+			description: "Update wiki article metadata/body via merge.",
+			examples: ["dss wiki update ARTICLE_ID --content '# Updated' --dry-run",],
+		},
+		delete: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss wiki delete <id-or-name>",);
+				if (f["dry-run"] === true) {
+					const current = await c.wiki.get(a[0], f["project-key"] as string | undefined,);
+					return { dryRun: true, action: "delete", resource: "wiki", article: a[0], current, };
+				}
+				await c.wiki.delete(a[0], f["project-key"] as string | undefined,);
+				return { deleted: a[0], resource: "wiki", };
+			},
+			usage: "dss wiki delete <id-or-name> [--dry-run] [--project-key KEY]",
+			description: "Delete a wiki article.",
+			examples: ["dss wiki delete ARTICLE_ID --dry-run",],
+		},
+	},
+
+	dashboard: {
+		list: {
+			handler: (c, _a, f,) => c.dashboards.list(f["project-key"] as string | undefined,),
+			usage: "dss dashboard list [--project-key KEY]",
+			description: "List project dashboards.",
+			examples: ["dss dashboard list",],
+		},
+		get: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss dashboard get <id>",);
+				return c.dashboards.get(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss dashboard get <id> [--project-key KEY]",
+			description: "Get dashboard definition.",
+			examples: ["dss dashboard get DASHBOARD_ID",],
+		},
+		create: {
+			handler: async (c, _a, f,) => {
+				const name = f["name"] as string | undefined;
+				if (!name) throw new UsageError("--name is required. Usage: dss dashboard create --name NAME",);
+				const settings = jsonInput(f,);
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "create",
+						resource: "dashboard",
+						name,
+						settings: settings ?? { pages: [], },
+					};
+				}
+				return c.dashboards.create({
+					name,
+					settings,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss dashboard create --name NAME [--data JSON|--data-file PATH|--stdin] [--dry-run] [--project-key KEY]",
+			description: "Create a dashboard. Defaults to an empty pages array.",
+			examples: ["dss dashboard create --name 'Agent dashboard' --dry-run",],
+		},
+		update: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss dashboard update <id> [--name NAME|--data JSON]",);
+				const name = f["name"] as string | undefined;
+				const data = jsonInput(f,);
+				if (!name && !data) {
+					throw new UsageError("--name, --data, --data-file, or --stdin is required.",);
+				}
+				if (f["dry-run"] === true) {
+					const current = await c.dashboards.get(a[0], f["project-key"] as string | undefined,);
+					const next = deepMerge(current as unknown as Record<string, unknown>, data ?? {},);
+					if (name !== undefined) next.name = name;
+					return { dryRun: true, action: "update", resource: "dashboard", id: a[0], current, next, };
+				}
+				return c.dashboards.update(a[0], {
+					name,
+					data,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss dashboard update <id> [--name NAME|--data JSON|--data-file PATH|--stdin] [--dry-run] [--project-key KEY]",
+			description: "Update dashboard settings via merge.",
+			examples: ["dss dashboard update DASHBOARD_ID --name 'New name' --dry-run",],
+		},
+		delete: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss dashboard delete <id>",);
+				if (f["dry-run"] === true) {
+					const current = await c.dashboards.get(a[0], f["project-key"] as string | undefined,);
+					return { dryRun: true, action: "delete", resource: "dashboard", id: a[0], current, };
+				}
+				await c.dashboards.delete(a[0], f["project-key"] as string | undefined,);
+				return { deleted: a[0], resource: "dashboard", };
+			},
+			usage: "dss dashboard delete <id> [--dry-run] [--project-key KEY]",
+			description: "Delete a dashboard.",
+			examples: ["dss dashboard delete DASHBOARD_ID --dry-run",],
+		},
+	},
+
+	insight: {
+		list: {
+			handler: (c, _a, f,) => c.insights.list(f["project-key"] as string | undefined,),
+			usage: "dss insight list [--project-key KEY]",
+			description: "List project insights.",
+			examples: ["dss insight list",],
+		},
+		get: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss insight get <id>",);
+				return c.insights.get(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss insight get <id> [--project-key KEY]",
+			description: "Get insight definition.",
+			examples: ["dss insight get INSIGHT_ID",],
+		},
+		create: {
+			handler: async (c, _a, f,) => {
+				const data = jsonInput(f,);
+				const name = f["name"] as string | undefined;
+				const type = f["type"] as string | undefined;
+				const params = json(f["params"],);
+				const listed = parseBooleanOption(f["listed"], "--listed",);
+				const contentType = f["content-type"] as string | undefined;
+				const payload = textInput(f,);
+				if (!data && (!name || !type)) {
+					throw new UsageError(
+						"--data or both --name and --type are required. Usage: dss insight create --name NAME --type TYPE",
+					);
+				}
+				const prototype: Record<string, unknown> = { ...data, };
+				if (name !== undefined) prototype.name = name;
+				if (type !== undefined) prototype.type = type;
+				if (listed !== undefined) prototype.listed = listed;
+				if (params !== undefined) prototype.params = params;
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "create",
+						resource: "insight",
+						prototype,
+						contentType,
+						payload,
+					};
+				}
+				return c.insights.create({
+					data,
+					name,
+					type,
+					listed,
+					params,
+					contentType,
+					payload,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss insight create (--data JSON|--data-file PATH|--stdin | --name NAME --type TYPE [--params JSON] [--listed true|false]) [--content TEXT|--file PATH --content-type MIME] [--dry-run] [--project-key KEY]",
+			description: "Create an insight from a raw prototype or minimal name/type fields.",
+			examples: [
+				"dss insight create --name 'Agent chart' --type chart --params '{\"dataset\":\"orders\"}' --dry-run",
+				"dss insight create --data-file insight-prototype.json --dry-run",
+			],
+		},
+		update: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss insight update <id> [--name NAME|--params JSON|--data JSON]",);
+				const data = jsonInput(f,);
+				const name = f["name"] as string | undefined;
+				const params = json(f["params"],);
+				const listed = parseBooleanOption(f["listed"], "--listed",);
+				const contentType = f["content-type"] as string | undefined;
+				const payload = textInput(f,);
+				if (
+					!data && name === undefined && params === undefined && listed === undefined
+					&& contentType === undefined && payload === undefined
+				) {
+					throw new UsageError(
+						"--name, --listed, --params, --content, --file, --data, --data-file, or --stdin is required.",
+					);
+				}
+				if (f["dry-run"] === true) {
+					const current = await c.insights.get(a[0], f["project-key"] as string | undefined,);
+					const next = deepMerge(current as unknown as Record<string, unknown>, data ?? {},);
+					if (name !== undefined) next.name = name;
+					if (listed !== undefined) next.listed = listed;
+					if (params !== undefined) {
+						const currentParams = next.params;
+						next.params =
+							currentParams && typeof currentParams === "object" && !Array.isArray(currentParams,)
+								? deepMerge(currentParams as Record<string, unknown>, params,)
+								: params;
+					}
+					return {
+						dryRun: true,
+						action: "update",
+						resource: "insight",
+						id: a[0],
+						current,
+						next,
+						contentType,
+						payload,
+					};
+				}
+				return c.insights.update(a[0], {
+					data,
+					name,
+					listed,
+					params,
+					contentType,
+					payload,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss insight update <id> [--name NAME] [--listed true|false] [--params JSON] [--content TEXT|--file PATH --content-type MIME] [--data JSON|--data-file PATH|--stdin] [--dry-run] [--project-key KEY]",
+			description: "Update an insight using GET-before-POST merge semantics.",
+			examples: ["dss insight update INSIGHT_ID --name 'Updated' --dry-run",],
+		},
+		delete: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss insight delete <id>",);
+				if (f["dry-run"] === true) {
+					const current = await c.insights.get(a[0], f["project-key"] as string | undefined,);
+					return { dryRun: true, action: "delete", resource: "insight", id: a[0], current, };
+				}
+				await c.insights.delete(a[0], f["project-key"] as string | undefined,);
+				return { deleted: a[0], resource: "insight", };
+			},
+			usage: "dss insight delete <id> [--dry-run] [--project-key KEY]",
+			description: "Delete an insight.",
+			examples: ["dss insight delete INSIGHT_ID --dry-run",],
+		},
+	},
+
+	"data-quality": {
+		rules: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss data-quality rules <dataset>",);
+				return c.dataQuality.listRules(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss data-quality rules <dataset> [--project-key KEY]",
+			description: "List data quality rules for a dataset.",
+			examples: ["dss data-quality rules orders",],
+		},
+		"get-rule": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 2, "dss data-quality get-rule <dataset> <rule-id>",);
+				return c.dataQuality.getRule(a[0], a[1], f["project-key"] as string | undefined,);
+			},
+			usage: "dss data-quality get-rule <dataset> <rule-id> [--project-key KEY]",
+			description: "Get one data quality rule by id.",
+			examples: ["dss data-quality get-rule orders RULE_ID",],
+		},
+		status: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss data-quality status <dataset>",);
+				return c.dataQuality.status(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss data-quality status <dataset> [--project-key KEY]",
+			description: "Get the aggregate data quality status for a dataset.",
+			examples: ["dss data-quality status orders",],
+		},
+		"create-rule": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss data-quality create-rule <dataset> --data JSON",);
+				const config = requiredJsonInput(f, "--data, --data-file, or --stdin is required.",);
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "create-rule",
+						resource: "data-quality",
+						dataset: a[0],
+						config,
+					};
+				}
+				return c.dataQuality.createRule(a[0], {
+					config,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss data-quality create-rule <dataset> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
+			description: "Create a data quality rule from raw rule config.",
+			examples: [
+				'dss data-quality create-rule orders --data \'{"type":"RecordCountInRangeRule","softMinimum":1,"softMinimumEnabled":true,"displayName":"Has rows"}\' --dry-run',
+			],
+		},
+		"update-rule": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 2, "dss data-quality update-rule <dataset> <rule-id> --data JSON",);
+				const data = requiredJsonInput(f, "--data, --data-file, or --stdin is required.",);
+				if (f["dry-run"] === true) {
+					const current = await c.dataQuality.getRule(
+						a[0],
+						a[1],
+						f["project-key"] as string | undefined,
+					);
+					const next = deepMerge(current as unknown as Record<string, unknown>, data,);
+					return {
+						dryRun: true,
+						action: "update-rule",
+						resource: "data-quality",
+						dataset: a[0],
+						ruleId: a[1],
+						current,
+						next,
+					};
+				}
+				return c.dataQuality.updateRule(a[0], a[1], {
+					data,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss data-quality update-rule <dataset> <rule-id> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
+			description: "Update a data quality rule via GET-before-PUT merge.",
+			examples: [
+				"dss data-quality update-rule orders RULE_ID --data '{\"enabled\":false}' --dry-run",
+			],
+		},
+		"delete-rule": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 2, "dss data-quality delete-rule <dataset> <rule-id>",);
+				if (f["dry-run"] === true) {
+					const current = await c.dataQuality.getRule(
+						a[0],
+						a[1],
+						f["project-key"] as string | undefined,
+					);
+					return {
+						dryRun: true,
+						action: "delete-rule",
+						resource: "data-quality",
+						dataset: a[0],
+						ruleId: a[1],
+						current,
+					};
+				}
+				await c.dataQuality.deleteRule(a[0], a[1], f["project-key"] as string | undefined,);
+				return { deleted: a[1], dataset: a[0], resource: "data-quality", };
+			},
+			usage: "dss data-quality delete-rule <dataset> <rule-id> [--dry-run] [--project-key KEY]",
+			description: "Delete a data quality rule.",
+			examples: ["dss data-quality delete-rule orders RULE_ID --dry-run",],
+		},
+		"status-by-partition": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss data-quality status-by-partition <dataset>",);
+				return c.dataQuality.statusByPartition(a[0], {
+					includeAllPartitions: f["include-all-partitions"] === true,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss data-quality status-by-partition <dataset> [--include-all-partitions] [--project-key KEY]",
+			description: "Get data quality status by dataset partition.",
+			examples: ["dss data-quality status-by-partition orders --include-all-partitions",],
+		},
+		"last-results": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss data-quality last-results <dataset>",);
+				return c.dataQuality.lastResults(a[0], {
+					partition: f["partition"] as string | undefined,
+					ruleId: f["rule-id"] as string | undefined,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss data-quality last-results <dataset> [--partition P] [--rule-id ID] [--project-key KEY]",
+			description: "Get latest data quality rule results for a dataset.",
+			examples: ["dss data-quality last-results orders",],
+		},
+		history: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss data-quality history <dataset>",);
+				return c.dataQuality.history(a[0], {
+					minTimestamp: num(f["min-timestamp"],),
+					maxTimestamp: num(f["max-timestamp"],),
+					resultsPerPage: num(f["results-per-page"],),
+					page: num(f["page"],),
+					ruleId: f["rule-id"] as string | undefined,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss data-quality history <dataset> [--rule-id ID] [--min-timestamp MS] [--max-timestamp MS] [--results-per-page N] [--page N] [--project-key KEY]",
+			description: "Get data quality rule execution history.",
+			examples: ["dss data-quality history orders --results-per-page 100",],
+		},
+		"project-status": {
+			handler: (c, _a, f,) =>
+				c.dataQuality.projectStatus({
+					onlyMonitored: parseBooleanOption(f["only-monitored"], "--only-monitored",),
+					projectKey: f["project-key"] as string | undefined,
+				},),
+			usage: "dss data-quality project-status [--only-monitored true|false] [--project-key KEY]",
+			description: "Get project-level data quality status by dataset.",
+			examples: ["dss data-quality project-status --only-monitored false",],
+		},
+		"project-timeline": {
+			handler: (c, _a, f,) =>
+				c.dataQuality.projectTimeline({
+					minTimestamp: num(f["min-timestamp"],),
+					maxTimestamp: num(f["max-timestamp"],),
+					projectKey: f["project-key"] as string | undefined,
+				},),
+			usage:
+				"dss data-quality project-timeline [--min-timestamp MS] [--max-timestamp MS] [--project-key KEY]",
+			description: "Get project-level data quality timeline aggregates.",
+			examples: ["dss data-quality project-timeline --min-timestamp 1714521600000",],
+		},
+		compute: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss data-quality compute <dataset>",);
+				const options = {
+					partition: f["partition"] as string | undefined,
+					pollIntervalMs: num(f["poll-interval"],),
+					ruleId: f["rule-id"] as string | undefined,
+					projectKey: f["project-key"] as string | undefined,
+					timeoutMs: num(f["timeout"],),
+				};
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "compute",
+						resource: "data-quality",
+						dataset: a[0],
+						...options,
+					};
+				}
+				if (f["wait"] === true) return c.dataQuality.computeRulesAndWait(a[0], options,);
+				return c.dataQuality.computeRules(a[0], options,);
+			},
+			usage:
+				"dss data-quality compute <dataset> [--partition P] [--rule-id ID] [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
+			description:
+				"Start data quality rule computation, optionally waiting on the returned DSS future.",
+			examples: [
+				"dss data-quality compute orders --dry-run",
+				"dss data-quality compute orders --wait",
+			],
+		},
+	},
+
+	future: {
+		get: {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss future get <id>",);
+				return c.futures.get(a[0],);
+			},
+			usage: "dss future get <id>",
+			description: "Get a DSS future state and retrieve the result if ready.",
+			examples: ["dss future get FUTURE_ID",],
+		},
+		peek: {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss future peek <id>",);
+				return c.futures.peek(a[0],);
+			},
+			usage: "dss future peek <id>",
+			description: "Peek at a DSS future state without consuming its result.",
+			examples: ["dss future peek FUTURE_ID",],
+		},
+		wait: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss future wait <id>",);
+				return c.futures.wait(a[0], {
+					pollIntervalMs: num(f["poll-interval"],),
+					timeoutMs: num(f["timeout"],),
+				},);
+			},
+			usage: "dss future wait <id> [--timeout MS] [--poll-interval MS]",
+			description: "Wait for a DSS future to finish.",
+			examples: ["dss future wait FUTURE_ID --timeout 60000",],
+		},
+		abort: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss future abort <id>",);
+				if (f["dry-run"] === true) {
+					const current = await c.futures.peek(a[0],);
+					return { dryRun: true, action: "abort", resource: "future", id: a[0], current, };
+				}
+				await c.futures.abort(a[0],);
+				return { aborted: a[0], resource: "future", };
+			},
+			usage: "dss future abort <id> [--dry-run]",
+			description: "Abort a DSS future.",
+			examples: ["dss future abort FUTURE_ID --dry-run",],
+		},
+	},
 	"flow-zone": {
 		list: {
 			handler: (c, _a, f,) => c.flowZones.list(f["project-key"] as string | undefined,),
 			usage: "dss flow-zone list [--project-key KEY]",
 			description: "List flow zones in a project.",
-			examples: ["dss flow-zone list", "dss flow-zone list -f table",],
+			examples: ["dss flow-zone list",],
 		},
 		get: {
 			handler: (c, a, f,) => {
@@ -761,11 +1315,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: (c, _a, f,) => c.datasets.list(f["project-key"] as string | undefined,),
 			usage: "dss dataset list [--project-key KEY]",
 			description: "List all datasets in a project.",
-			examples: [
-				"dss dataset list",
-				"dss dataset list -f table",
-				"dss dataset list --project-key MYPROJ",
-			],
+			examples: ["dss dataset list", "dss dataset list --project-key MYPROJ",],
 		},
 		get: {
 			handler: (c, a, f,) => {
@@ -783,7 +1333,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			},
 			usage: "dss dataset schema <name> [--project-key KEY]",
 			description: "Show the column schema of a dataset.",
-			examples: ["dss dataset schema orders", "dss dataset schema orders -f table",],
+			examples: ["dss dataset schema orders",],
 		},
 		preview: {
 			handler: (c, a, f,) => {
@@ -850,7 +1400,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				await c.datasets.delete(a[0], pk,);
 				return { deleted: a[0], resource: "dataset", };
 			},
-			usage: "dss dataset delete <name> [--project-key KEY]",
+			usage: "dss dataset delete <name> [--dry-run] [--project-key KEY]",
 			description: "Delete a dataset.",
 			examples: ["dss dataset delete orders",],
 		},
@@ -881,7 +1431,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: (c, _a, f,) => c.recipes.list(f["project-key"] as string | undefined,),
 			usage: "dss recipe list [--project-key KEY]",
 			description: "List all recipes in a project.",
-			examples: ["dss recipe list", "dss recipe list -f table",],
+			examples: ["dss recipe list",],
 		},
 		get: {
 			handler: (c, a, f,) => {
@@ -910,7 +1460,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				await c.recipes.delete(a[0], pk,);
 				return { deleted: a[0], resource: "recipe", };
 			},
-			usage: "dss recipe delete <name> [--project-key KEY]",
+			usage: "dss recipe delete <name> [--dry-run] [--project-key KEY]",
 			description: "Delete a recipe.",
 			examples: ["dss recipe delete compute_orders",],
 		},
@@ -1077,7 +1627,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: (c, _a, f,) => c.jobs.list(f["project-key"] as string | undefined,),
 			usage: "dss job list [--project-key KEY]",
 			description: "List recent jobs.",
-			examples: ["dss job list", "dss job list -f table",],
+			examples: ["dss job list",],
 		},
 		get: {
 			handler: (c, a, f,) => {
@@ -1164,7 +1714,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: (c, _a, f,) => c.scenarios.list(f["project-key"] as string | undefined,),
 			usage: "dss scenario list [--project-key KEY]",
 			description: "List all scenarios in a project.",
-			examples: ["dss scenario list", "dss scenario list -f table",],
+			examples: ["dss scenario list",],
 		},
 		get: {
 			handler: (c, a, _f,) => {
@@ -1219,7 +1769,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				await c.scenarios.delete(a[0], pk,);
 				return { deleted: a[0], resource: "scenario", };
 			},
-			usage: "dss scenario delete <id> [--project-key KEY]",
+			usage: "dss scenario delete <id> [--dry-run] [--project-key KEY]",
 			description: "Delete a scenario.",
 			examples: ["dss scenario delete my_scenario",],
 		},
@@ -1269,7 +1819,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: (c, _a, f,) => c.folders.list(f["project-key"] as string | undefined,),
 			usage: "dss folder list [--project-key KEY]",
 			description: "List managed folders in a project.",
-			examples: ["dss folder list", "dss folder list -f table",],
+			examples: ["dss folder list",],
 		},
 		create: {
 			handler: (c, _a, f,) => {
@@ -1365,7 +1915,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				);
 				return { deleted: a[1], folder: a[0], resource: "folder", };
 			},
-			usage: "dss folder delete-file <name-or-id> <path> [--project-key KEY]",
+			usage: "dss folder delete-file <name-or-id> <path> [--dry-run] [--project-key KEY]",
 			description: "Delete a file from a managed folder.",
 			examples: ["dss folder delete-file my_folder /data/report.csv",],
 		},
@@ -1679,7 +2229,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				await c.notebooks.deleteJupyter(a[0],);
 				return { deleted: a[0], resource: "jupyter-notebook", };
 			},
-			usage: "dss notebook delete-jupyter <name>",
+			usage: "dss notebook delete-jupyter <name> [--dry-run]",
 			description: "Delete a Jupyter notebook.",
 			examples: ["dss notebook delete-jupyter my_notebook",],
 		},
@@ -1737,7 +2287,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				await c.notebooks.deleteSql(a[0],);
 				return { deleted: a[0], resource: "sql-notebook", };
 			},
-			usage: "dss notebook delete-sql <id>",
+			usage: "dss notebook delete-sql <id> [--dry-run]",
 			description: "Delete a SQL notebook.",
 			examples: ["dss notebook delete-sql my_sql_notebook",],
 		},
@@ -1815,7 +2365,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 // Help
 // ---------------------------------------------------------------------------
 
-const RESOURCE_NAMES = [...Object.keys(commands,), "auth", "install-skill",].sort();
+const RESOURCE_NAMES = [...Object.keys(commands,), "auth", "commands", "install-skill",].sort();
 
 function printTopLevelHelp(): void {
 	const lines = [
@@ -1825,7 +2375,7 @@ function printTopLevelHelp(): void {
 		"  -h, --help               Show help",
 		"  -v, --verbose            Log HTTP requests to stderr",
 		"  -V, --version            Show version",
-		"  -f, --format FORMAT      Output format: json|tsv|table|quiet",
+		"      --json               Emit JSON output (default)",
 		"  -o, --output PATH        Write output to file (recipe get-payload)",
 		"      --url URL            Dataiku DSS base URL (env: DATAIKU_URL)",
 		"      --api-key KEY        API key              (env: DATAIKU_API_KEY)",
@@ -1843,6 +2393,7 @@ function printTopLevelHelp(): void {
 		"Quick start:",
 		"  dss auth login                         Save DSS credentials",
 		"  dss auth status                        Verify connection",
+		"  dss doctor                            Run JSON connectivity diagnostics",
 		"  dss project list                       List accessible projects",
 		"  dss dataset list                       List datasets in default project",
 		"  dss dataset preview <name>             Preview dataset rows as CSV",
@@ -2023,6 +2574,309 @@ const AUTH_ACTIONS: Record<string, {
 };
 
 // ---------------------------------------------------------------------------
+// Agent-facing diagnostics and introspection
+// ---------------------------------------------------------------------------
+
+interface DoctorCheck {
+	name: string;
+	ok: boolean;
+	message: string;
+	details?: Record<string, unknown>;
+}
+
+interface DoctorResult {
+	ok: boolean;
+	checks: DoctorCheck[];
+	context: {
+		hasUrl: boolean;
+		hasApiKey: boolean;
+		projectKey?: string;
+		tlsVerify: "strict" | "disabled";
+		caCert: "default" | "custom";
+	};
+}
+
+function errorDetails(error: unknown,): Record<string, unknown> {
+	if (error instanceof DataikuError) {
+		return {
+			category: error.category,
+			retryable: error.retryable,
+			status: error.status,
+			statusText: error.statusText,
+		};
+	}
+	return { message: error instanceof Error ? error.message : String(error,), };
+}
+
+async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
+	result: DoctorResult;
+	exitCode: number;
+}> {
+	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
+	const checks: DoctorCheck[] = [];
+	const context: DoctorResult["context"] = {
+		hasUrl: url.trim().length > 0,
+		hasApiKey: apiKey.trim().length > 0,
+		...(projectKey ? { projectKey, } : {}),
+		tlsVerify: tlsRejectUnauthorized === false ? "disabled" : "strict",
+		caCert: caCertPath ? "custom" : "default",
+	};
+
+	const credentialsOk = context.hasUrl && context.hasApiKey;
+	checks.push({
+		name: "credentials_present",
+		ok: credentialsOk,
+		message: credentialsOk
+			? "Dataiku URL and API key are configured."
+			: "Missing Dataiku URL and/or API key. Set DATAIKU_URL/DATAIKU_API_KEY, pass flags, or run dss auth login.",
+	},);
+
+	if (credentialsOk) {
+		const requestTimeoutMs = num(flags["request-timeout"],) ?? num(flags["timeout"],) ?? undefined;
+		const client = new DataikuClient({
+			url,
+			apiKey,
+			projectKey,
+			verbose: flags["verbose"] === true,
+			requestTimeoutMs,
+			tlsRejectUnauthorized,
+			caCertPath,
+		},);
+
+		try {
+			const projects = await client.projects.list();
+			checks.push({
+				name: "connectivity",
+				ok: true,
+				message: "Connected to DSS and listed accessible projects.",
+				details: { projectCount: projects.length, },
+			},);
+		} catch (error) {
+			checks.push({
+				name: "connectivity",
+				ok: false,
+				message: "Could not list accessible projects.",
+				details: errorDetails(error,),
+			},);
+		}
+
+		if (projectKey) {
+			try {
+				const project = await client.projects.get(projectKey,);
+				checks.push({
+					name: "default_project",
+					ok: true,
+					message: `Project ${projectKey} is accessible.`,
+					details: {
+						projectKey,
+						name: typeof project.name === "string" ? project.name : undefined,
+					},
+				},);
+			} catch (error) {
+				checks.push({
+					name: "default_project",
+					ok: false,
+					message: `Project ${projectKey} is not accessible.`,
+					details: errorDetails(error,),
+				},);
+			}
+		}
+	}
+
+	const result = { ok: checks.every((check,) => check.ok), checks, context, };
+	return { result, exitCode: result.ok ? 0 : 2, };
+}
+
+type CommandSideEffect = "read" | "write" | "auth";
+
+interface CommandRegistryEntry {
+	resource: string;
+	action: string;
+	usage: string;
+	description?: string;
+	examples?: string[];
+	flags: Array<{ name: string; kind: "boolean" | "value"; }>;
+	positionals: string[];
+	sideEffect: CommandSideEffect;
+	requiresAuth: boolean;
+	requiresProject: boolean;
+}
+
+const READ_ACTIONS = new Set([
+	"contents",
+	"diff",
+	"download",
+	"download-code",
+	"flow",
+	"get",
+	"get-rule",
+	"get-definition",
+	"get-jupyter",
+	"get-payload",
+	"get-sql",
+	"graph",
+	"history-sql",
+	"history",
+	"infer",
+	"list",
+	"last-results",
+	"list-jupyter",
+	"list-sql",
+	"log",
+	"map",
+	"metadata",
+	"peek",
+	"wait",
+	"preview",
+	"query",
+	"schema",
+	"sessions-jupyter",
+	"status",
+	"rules",
+	"settings",
+	"status-by-partition",
+	"usages",
+],);
+
+const PROJECT_SCOPED_RESOURCES = new Set([
+	"data-quality",
+	"dashboard",
+	"dataset",
+	"flow-zone",
+	"insight",
+	"folder",
+	"job",
+	"notebook",
+	"recipe",
+	"scenario",
+	"sql",
+	"variable",
+	"wiki",
+],);
+
+const GLOBAL_AGENT_FLAGS = ["help", "json", "verbose",];
+const AUTHENTICATED_AGENT_FLAGS = ["url", "api-key", "request-timeout", "insecure", "ca-cert",];
+const COMMANDS_USAGE = "dss commands [--json]";
+const COMMANDS_DESCRIPTION = "Print the machine-readable command registry for agent planning.";
+const COMMANDS_EXAMPLES = ["dss commands", "dss commands --json",];
+const INSTALL_SKILL_USAGE =
+	"dss install-skill [--global] [--agent NAME] [--target PATH] [--list-agents]";
+const INSTALL_SKILL_DESCRIPTION = "Install the dataiku-dss agent skill for detected coding agents.";
+const INSTALL_SKILL_EXAMPLES = [
+	"dss install-skill --list-agents",
+	"dss install-skill --agent omp",
+];
+
+function uniqueStrings(values: string[],): string[] {
+	return [...new Set(values,),];
+}
+
+function flagKind(name: string,): "boolean" | "value" {
+	return BOOLEAN_FLAGS.has(name,) ? "boolean" : "value";
+}
+
+function extractUsageFlags(usage: string,): string[] {
+	const flags: string[] = [];
+	for (const match of usage.matchAll(/--([a-z0-9-]+)/g,)) {
+		flags.push(FLAG_ALIASES[match[1]!] ?? match[1]!,);
+	}
+	return uniqueStrings(flags,).filter((flag,) => KNOWN_LONG_FLAGS.has(flag,));
+}
+
+function extractPositionals(usage: string,): string[] {
+	return uniqueStrings([...usage.matchAll(/<([^>]+)>/g,),].map((match,) => match[1]),);
+}
+
+function inferSideEffect(resource: string, action: string,): CommandSideEffect {
+	if (resource === "auth") return "auth";
+	if (resource === "doctor" || resource === "commands") return "read";
+	if (resource === "install-skill") return "write";
+	if (resource === "data-quality" && action === "compute") return "write";
+	if (READ_ACTIONS.has(action,)) return "read";
+	if (
+		/^(create|update|delete|set|save|upload|run|build|abort|move|clear|unload|install|login|logout)/
+			.test(action,)
+	) {
+		return "write";
+	}
+	return "read";
+}
+
+function inferRequiresAuth(resource: string,): boolean {
+	return resource !== "auth" && resource !== "commands" && resource !== "install-skill";
+}
+
+function inferRequiresProject(resource: string, action: string, usage: string,): boolean {
+	if (resource === "doctor" || resource === "commands" || resource === "install-skill") return false;
+	if (PROJECT_SCOPED_RESOURCES.has(resource,)) return true;
+	if (resource === "project" && action !== "list") return true;
+	return usage.includes("--project-key",);
+}
+
+function buildRegistryEntry(
+	resource: string,
+	action: string,
+	meta: CommandMeta,
+): CommandRegistryEntry {
+	const requiresAuth = inferRequiresAuth(resource,);
+	const requiresProject = inferRequiresProject(resource, action, meta.usage,);
+	const flags = uniqueStrings([
+		...extractUsageFlags(meta.usage,),
+		...GLOBAL_AGENT_FLAGS,
+		...(requiresAuth ? AUTHENTICATED_AGENT_FLAGS : []),
+		...(requiresProject ? ["project-key",] : []),
+	],);
+	return {
+		resource,
+		action,
+		usage: meta.usage,
+		description: meta.description,
+		examples: meta.examples,
+		flags: flags.map((name,) => ({ name, kind: flagKind(name,), })),
+		positionals: extractPositionals(meta.usage,),
+		sideEffect: inferSideEffect(resource, action,),
+		requiresAuth,
+		requiresProject,
+	};
+}
+
+function buildCommandRegistry(): Record<string, Record<string, CommandRegistryEntry>> {
+	const registry: Record<string, Record<string, CommandRegistryEntry>> = {};
+	for (const [resource, actions,] of Object.entries(commands,)) {
+		registry[resource] = {};
+		for (const [action, meta,] of Object.entries(actions,)) {
+			registry[resource][action] = buildRegistryEntry(resource, action, meta,);
+		}
+	}
+	registry.commands = {
+		run: buildRegistryEntry("commands", "run", {
+			handler: async () => undefined,
+			usage: COMMANDS_USAGE,
+			description: COMMANDS_DESCRIPTION,
+			examples: COMMANDS_EXAMPLES,
+		},),
+	};
+	registry["install-skill"] = {
+		run: buildRegistryEntry("install-skill", "run", {
+			handler: async () => undefined,
+			usage: INSTALL_SKILL_USAGE,
+			description: INSTALL_SKILL_DESCRIPTION,
+			examples: INSTALL_SKILL_EXAMPLES,
+		},),
+	};
+	registry.auth = {};
+	for (const [action, meta,] of Object.entries(AUTH_ACTIONS,)) {
+		registry.auth[action] = buildRegistryEntry("auth", action, {
+			handler: async () => undefined,
+			usage: meta.usage,
+			description: meta.description,
+			examples: meta.examples,
+		},);
+	}
+	return registry;
+}
+
+// ---------------------------------------------------------------------------
 // Interactive prompts
 // ---------------------------------------------------------------------------
 
@@ -2112,6 +2966,20 @@ async function main(): Promise<void> {
 
 	const resource = positional[0];
 
+	if (resource === "doctor") {
+		const action = positional[1];
+		if (flags["help"] === true) {
+			printActionHelp("doctor", "run",);
+			process.exit(0,);
+		}
+		if (action !== undefined && action !== "run") {
+			throw new UsageError("Usage: dss doctor [--project-key KEY]",);
+		}
+		const { result, exitCode, } = await runDoctor(flags,);
+		writeCommandResult(result,);
+		process.exit(exitCode,);
+	}
+
 	// Auth commands — dispatched before client creation
 	if (resource === "auth") {
 		const action = positional[1];
@@ -2154,11 +3022,12 @@ async function main(): Promise<void> {
 
 	// install-skill — dispatched before client creation
 	if (resource === "install-skill") {
+		const installSkillAction = positional[1];
 		if (flags["help"] === true) {
 			const lines = [
-				"Usage: dss install-skill [--global] [--agent NAME] [--target PATH] [--list-agents]",
+				`Usage: ${INSTALL_SKILL_USAGE}`,
 				"",
-				"Install the dataiku-dss agent skill for detected coding agents.",
+				INSTALL_SKILL_DESCRIPTION,
 				"",
 				"Flags:",
 				"  --global         Install to user-level global scope (default: project)",
@@ -2168,6 +3037,9 @@ async function main(): Promise<void> {
 			];
 			process.stderr.write(`${lines.join("\n",)}\n`,);
 			process.exit(0,);
+		}
+		if (installSkillAction !== undefined && installSkillAction !== "run") {
+			throw new UsageError(`Usage: ${INSTALL_SKILL_USAGE}`,);
 		}
 
 		const listOnly = flags["list-agents"] === true;
@@ -2223,30 +3095,24 @@ async function main(): Promise<void> {
 
 	// commands — machine-readable introspection (no auth needed)
 	if (resource === "commands") {
-		const registry: Record<
-			string,
-			Record<string, { usage: string; description?: string; examples?: string[]; }>
-		> = {};
-		for (const [res, actions,] of Object.entries(commands,)) {
-			registry[res] = {};
-			for (const [act, meta,] of Object.entries(actions,)) {
-				registry[res][act] = {
-					usage: meta.usage,
-					description: meta.description,
-					examples: meta.examples,
-				};
-			}
+		const action = positional[1];
+		if (flags["help"] === true) {
+			const lines = [
+				`Usage: ${COMMANDS_USAGE}`,
+				"",
+				COMMANDS_DESCRIPTION,
+				"",
+				"Examples:",
+				...COMMANDS_EXAMPLES.map((example,) => `  ${example}`),
+			];
+			process.stderr.write(`${lines.join("\n",)}\n`,);
+			process.exit(0,);
 		}
-		registry["auth"] = {};
-		for (const [act, meta,] of Object.entries(AUTH_ACTIONS,)) {
-			registry["auth"][act] = {
-				usage: meta.usage,
-				description: meta.description,
-				examples: meta.examples,
-			};
+		if (action !== undefined && action !== "run") {
+			throw new UsageError(`Usage: ${COMMANDS_USAGE}`,);
 		}
-		process.stdout.write(`${JSON.stringify(registry, null, 2,)}\n`,);
-		process.exit(0,);
+		writeCommandResult(buildCommandRegistry(),);
+		return;
 	}
 
 	// Unknown resource
@@ -2314,9 +3180,8 @@ async function main(): Promise<void> {
 	},);
 
 	const args = positional.slice(2,);
-	const format = parseOutputFormat(flags["format"],);
 	const result = await actionMeta.handler(client, args, flags,);
-	writeCommandResult(result, format,);
+	writeCommandResult(result,);
 	const failureExitCode = commandFailureExitCode(result,);
 	if (failureExitCode !== undefined) process.exit(failureExitCode,);
 }

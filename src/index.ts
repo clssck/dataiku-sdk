@@ -28,9 +28,13 @@ export {
 // Resources (for advanced use / extension)
 export { CodeEnvsResource, } from "./resources/code-envs.js";
 export { ConnectionsResource, } from "./resources/connections.js";
+export { DashboardsResource, } from "./resources/dashboards.js";
+export { DataQualityResource, } from "./resources/data-quality.js";
 export { DatasetsResource, } from "./resources/datasets.js";
 export { type FlowZoneItemInput, FlowZonesResource, } from "./resources/flow-zones.js";
 export { FoldersResource, } from "./resources/folders.js";
+export { FuturesResource, } from "./resources/futures.js";
+export { InsightsResource, } from "./resources/insights.js";
 export {
 	computeNextPollDelayMs,
 	type JobBuildTargetType,
@@ -42,6 +46,7 @@ export { RecipesResource, } from "./resources/recipes.js";
 export { ScenariosResource, } from "./resources/scenarios.js";
 export { SqlResource, } from "./resources/sql.js";
 export { VariablesResource, } from "./resources/variables.js";
+export { WikiResource, } from "./resources/wiki.js";
 
 // Schemas (TypeBox schema objects for runtime validation)
 export {
@@ -57,6 +62,20 @@ export {
 	CodeEnvUsageArraySchema,
 	CodeEnvWaitOptionsSchema,
 	ConnectionSummarySchema,
+	DashboardDetailsSchema,
+	DashboardSummaryArraySchema,
+	DashboardSummarySchema,
+	DataQualityComputeResultSchema,
+	DataQualityProjectStatusSchema,
+	DataQualityRuleArraySchema,
+	DataQualityRuleResultArraySchema,
+	DataQualityRuleResultSchema,
+	DataQualityRuleSchema,
+	DataQualityRulesSchema,
+	DataQualityStatusByPartitionSchema,
+	DataQualityStatusSchema,
+	DataQualityTimelineEntrySchema,
+	DataQualityTimelineSchema,
 	DatasetCreateOptionsSchema,
 	DatasetDetailsSchema,
 	DatasetSchemaSchema,
@@ -75,6 +94,11 @@ export {
 	FolderItemSchema,
 	FolderSummaryArraySchema,
 	FolderSummarySchema,
+	FutureStateSchema,
+	FutureWaitResultSchema,
+	InsightDetailsSchema,
+	InsightSummaryArraySchema,
+	InsightSummarySchema,
 	JobSummaryArraySchema,
 	JobSummarySchema,
 	JobWaitResultSchema,
@@ -107,6 +131,11 @@ export {
 	SqlQueryResponseSchema,
 	SqlQueryResultSchema,
 	SqlQuerySchemaSchema,
+	WikiArticleDataArraySchema,
+	WikiArticleDataSchema,
+	WikiArticleMetadataSchema,
+	WikiSettingsSchema,
+	WikiTaxonomyNodeSchema,
 } from "./schemas.js";
 
 export type { SafeParseResult, } from "./schemas.js";
@@ -124,6 +153,17 @@ export type {
 	CodeEnvUsage,
 	CodeEnvWaitOptions,
 	ConnectionSummary,
+	DashboardDetails,
+	DashboardSummary,
+	DataQualityComputeResult,
+	DataQualityProjectStatus,
+	DataQualityRule,
+	DataQualityRuleResult,
+	DataQualityRules,
+	DataQualityStatus,
+	DataQualityStatusByPartition,
+	DataQualityTimeline,
+	DataQualityTimelineEntry,
 	DatasetCreateOptions,
 	DatasetDetails,
 	DatasetSchema,
@@ -138,6 +178,10 @@ export type {
 	FolderDetails,
 	FolderItem,
 	FolderSummary,
+	FutureState,
+	FutureWaitResult,
+	InsightDetails,
+	InsightSummary,
 	JobSummary,
 	JobWaitResult,
 	JupyterCell,
@@ -161,6 +205,10 @@ export type {
 	SqlQueryResponse,
 	SqlQueryResult,
 	SqlQuerySchema,
+	WikiArticleData,
+	WikiArticleMetadata,
+	WikiSettings,
+	WikiTaxonomyNode,
 } from "./schemas.js";
 
 // Utilities

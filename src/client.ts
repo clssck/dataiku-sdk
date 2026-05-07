@@ -9,9 +9,13 @@ import { classifyDataikuError, DataikuError, type DataikuRetryMetadata, } from "
 
 import { CodeEnvsResource, } from "./resources/code-envs.js";
 import { ConnectionsResource, } from "./resources/connections.js";
+import { DashboardsResource, } from "./resources/dashboards.js";
+import { DataQualityResource, } from "./resources/data-quality.js";
 import { DatasetsResource, } from "./resources/datasets.js";
 import { FlowZonesResource, } from "./resources/flow-zones.js";
 import { FoldersResource, } from "./resources/folders.js";
+import { FuturesResource, } from "./resources/futures.js";
+import { InsightsResource, } from "./resources/insights.js";
 import { JobsResource, } from "./resources/jobs.js";
 import { NotebooksResource, } from "./resources/notebooks.js";
 import { ProjectsResource, } from "./resources/projects.js";
@@ -19,6 +23,7 @@ import { RecipesResource, } from "./resources/recipes.js";
 import { ScenariosResource, } from "./resources/scenarios.js";
 import { SqlResource, } from "./resources/sql.js";
 import { VariablesResource, } from "./resources/variables.js";
+import { WikiResource, } from "./resources/wiki.js";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -151,15 +156,20 @@ export class DataikuClient {
 	private _projects?: ProjectsResource;
 	private _datasets?: DatasetsResource;
 	private _recipes?: RecipesResource;
+	private _dashboards?: DashboardsResource;
+	private _dataQuality?: DataQualityResource;
 	private _jobs?: JobsResource;
+	private futuresResource?: FuturesResource;
 	private _scenarios?: ScenariosResource;
 	private _folders?: FoldersResource;
 	private _flowZones?: FlowZonesResource;
 	private _variables?: VariablesResource;
 	private _connections?: ConnectionsResource;
 	private _codeEnvs?: CodeEnvsResource;
+	private _insights?: InsightsResource;
 	private _sql?: SqlResource;
 	private _notebooks?: NotebooksResource;
+	private _wiki?: WikiResource;
 
 	get projects(): ProjectsResource {
 		return (this._projects ??= new ProjectsResource(this,));
@@ -167,11 +177,20 @@ export class DataikuClient {
 	get datasets(): DatasetsResource {
 		return (this._datasets ??= new DatasetsResource(this,));
 	}
+	get dashboards(): DashboardsResource {
+		return (this._dashboards ??= new DashboardsResource(this,));
+	}
+	get dataQuality(): DataQualityResource {
+		return (this._dataQuality ??= new DataQualityResource(this,));
+	}
 	get recipes(): RecipesResource {
 		return (this._recipes ??= new RecipesResource(this,));
 	}
 	get jobs(): JobsResource {
 		return (this._jobs ??= new JobsResource(this,));
+	}
+	get futures(): FuturesResource {
+		return (this.futuresResource ??= new FuturesResource(this,));
 	}
 	get scenarios(): ScenariosResource {
 		return (this._scenarios ??= new ScenariosResource(this,));
@@ -191,11 +210,17 @@ export class DataikuClient {
 	get codeEnvs(): CodeEnvsResource {
 		return (this._codeEnvs ??= new CodeEnvsResource(this,));
 	}
+	get insights(): InsightsResource {
+		return (this._insights ??= new InsightsResource(this,));
+	}
 	get sql(): SqlResource {
 		return (this._sql ??= new SqlResource(this,));
 	}
 	get notebooks(): NotebooksResource {
 		return (this._notebooks ??= new NotebooksResource(this,));
+	}
+	get wiki(): WikiResource {
+		return (this._wiki ??= new WikiResource(this,));
 	}
 
 	constructor(config: DataikuClientConfig,) {

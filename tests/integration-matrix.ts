@@ -2,13 +2,6 @@ export type Persona = "newbie" | "expert" | "error-prone";
 export type RiskLevel = "read-only" | "local-validation" | "mutating" | "expensive";
 export type ResultShape = "array" | "object" | "string";
 
-export type FormatChecks = {
-	json?: boolean;
-	quiet?: boolean;
-	table?: boolean;
-	tsv?: boolean;
-};
-
 export type SdkParityKind =
 	| "project-list"
 	| "project-get"
@@ -23,8 +16,12 @@ export type SdkParityKind =
 	| "variable-get"
 	| "connection-infer"
 	| "code-env-list"
+	| "dashboard-list"
+	| "insight-list"
 	| "notebook-list-jupyter"
-	| "notebook-list-sql";
+	| "notebook-list-sql"
+	| "wiki-settings"
+	| "wiki-list";
 
 export type ReadOnlyCommandCase = {
 	id: string;
@@ -35,7 +32,6 @@ export type ReadOnlyCommandCase = {
 	risk: "read-only";
 	requiresProject: boolean;
 	resultShape: ResultShape;
-	formatChecks: FormatChecks;
 	sdkParity?: SdkParityKind;
 	stableFields?: string[];
 	featureProbe?: string;
@@ -61,7 +57,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: false,
 		resultShape: "array",
-		formatChecks: { json: true, quiet: true, table: true, tsv: true, },
 		sdkParity: "project-list",
 		stableFields: ["projectKey",],
 		featureProbe: "auth doctor could verify project reachability after credentials load",
@@ -75,7 +70,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "object",
-		formatChecks: { json: true, quiet: true, },
 		sdkParity: "project-get",
 		stableFields: ["projectKey",],
 	},
@@ -88,7 +82,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "object",
-		formatChecks: { json: true, quiet: true, },
 		sdkParity: "project-metadata",
 	},
 	{
@@ -100,7 +93,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "object",
-		formatChecks: { json: true, quiet: true, },
 		sdkParity: "project-map",
 		stableFields: ["map",],
 		featureProbe: "project map filtering/search would help large flows",
@@ -114,7 +106,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "array",
-		formatChecks: { json: true, quiet: true, table: true, tsv: true, },
 		sdkParity: "flow-zone-list",
 		stableFields: ["id", "name",],
 		featureProbe:
@@ -129,7 +120,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "array",
-		formatChecks: { json: true, quiet: true, table: true, tsv: true, },
 		sdkParity: "dataset-list",
 		stableFields: ["name",],
 		featureProbe: "dataset exists/delete --if-exists would simplify automation",
@@ -143,7 +133,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "array",
-		formatChecks: { json: true, quiet: true, table: true, tsv: true, },
 		sdkParity: "recipe-list",
 		stableFields: ["name",],
 		featureProbe: "recipe validate-update dry-run could prevent malformed recipe patches",
@@ -157,7 +146,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "array",
-		formatChecks: { json: true, quiet: true, table: true, tsv: true, },
 		sdkParity: "job-list",
 		stableFields: ["id",],
 		featureProbe: "job last --target TARGET would help inspect recent automation",
@@ -171,7 +159,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "array",
-		formatChecks: { json: true, quiet: true, table: true, tsv: true, },
 		sdkParity: "scenario-list",
 		stableFields: ["id",],
 		featureProbe: "scenario enable/disable commands would support safe maintenance workflows",
@@ -185,7 +172,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "array",
-		formatChecks: { json: true, quiet: true, table: true, tsv: true, },
 		sdkParity: "folder-list",
 		stableFields: ["id", "name",],
 		featureProbe: "folder delete and folder sync would complete the managed-folder workflow",
@@ -199,7 +185,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "object",
-		formatChecks: { json: true, quiet: true, },
 		sdkParity: "variable-get",
 		stableFields: ["standard", "local",],
 		featureProbe: "variable unset/diff would avoid full replacement for cleanup",
@@ -213,7 +198,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: false,
 		resultShape: "array",
-		formatChecks: { json: true, quiet: true, table: true, tsv: true, },
 		sdkParity: "connection-infer",
 		stableFields: ["name",],
 		featureProbe: "connection test NAME would verify write/read capabilities before mutating tests",
@@ -227,7 +211,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: false,
 		resultShape: "array",
-		formatChecks: { json: true, quiet: true, table: true, tsv: true, },
 		sdkParity: "code-env-list",
 		stableFields: ["envName", "name",],
 		featureProbe: "code-env packages NAME would expose package inventory",
@@ -241,7 +224,6 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "array",
-		formatChecks: { json: true, quiet: true, table: true, tsv: true, },
 		sdkParity: "notebook-list-jupyter",
 		stableFields: ["name",],
 		featureProbe: "notebook export/import would help agent-driven notebook workflows",
@@ -255,10 +237,57 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		risk: "read-only",
 		requiresProject: true,
 		resultShape: "array",
-		formatChecks: { json: true, quiet: true, table: true, tsv: true, },
 		sdkParity: "notebook-list-sql",
 		stableFields: ["id", "name",],
 		featureProbe: "notebook sessions --unload-all --dry-run could simplify cleanup",
+	},
+	{
+		id: "dashboard-list",
+		persona: "expert",
+		resource: "dashboard",
+		action: "list",
+		args: ["dashboard", "list",],
+		risk: "read-only",
+		requiresProject: true,
+		resultShape: "array",
+		sdkParity: "dashboard-list",
+		stableFields: ["id", "name",],
+	},
+	{
+		id: "insight-list",
+		persona: "expert",
+		resource: "insight",
+		action: "list",
+		args: ["insight", "list",],
+		risk: "read-only",
+		requiresProject: true,
+		resultShape: "array",
+		sdkParity: "insight-list",
+		stableFields: ["id", "name",],
+	},
+	{
+		id: "wiki-settings",
+		persona: "expert",
+		resource: "wiki",
+		action: "settings",
+		args: ["wiki", "settings",],
+		risk: "read-only",
+		requiresProject: true,
+		resultShape: "object",
+		sdkParity: "wiki-settings",
+		stableFields: ["projectKey",],
+	},
+	{
+		id: "wiki-list",
+		persona: "expert",
+		resource: "wiki",
+		action: "list",
+		args: ["wiki", "list",],
+		risk: "read-only",
+		requiresProject: true,
+		resultShape: "array",
+		sdkParity: "wiki-list",
+		stableFields: ["article",],
 	},
 ];
 
@@ -280,12 +309,12 @@ export const localValidationCases: LocalValidationCase[] = [
 		expectedMessage: "Unknown flag: -z",
 	},
 	{
-		id: "invalid-format",
+		id: "removed-format-flag",
 		persona: "newbie",
 		args: ["flow-zone", "list", "--format", "csv",],
 		risk: "local-validation",
 		expectedCode: 1,
-		expectedMessage: "Invalid --format value: csv",
+		expectedMessage: "Unknown flag: --format",
 	},
 	{
 		id: "missing-flow-zone-create-name",
