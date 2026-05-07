@@ -18,6 +18,7 @@ import {
 	localValidationCases,
 	type ReadOnlyCommandCase,
 	readOnlyCommandCases,
+	registryExpectationsForReadOnlyCase,
 	type SdkParityKind,
 } from "./integration-matrix.js";
 
@@ -174,6 +175,25 @@ describeIntegration("Rigorous integration: CLI discoverability and local validat
 			}
 		}
 	}, 60_000,);
+
+	it("aligns read-only matrix expectations with registry metadata", async () => {
+		const registryResult = await dssRaw(["commands",],);
+		const registry = parseCliJson(registryResult, "commands",) as Record<
+			string,
+			Record<string, Record<string, unknown>>
+		>;
+
+		for (const entry of readOnlyCommandCases) {
+			const meta = registry[entry.resource]?.[entry.action];
+			const expected = registryExpectationsForReadOnlyCase(entry,);
+			expect(meta, `${entry.id} registry entry`,).toBeDefined();
+			expect(meta?.outputShape, `${entry.id} outputShape`,).toBe(expected.outputShape,);
+			expect(meta?.sideEffect, `${entry.id} sideEffect`,).toBe(expected.sideEffect,);
+			expect(meta?.destructive, `${entry.id} destructive`,).toBe(expected.destructive,);
+			expect(meta?.mutatesDss, `${entry.id} mutatesDss`,).toBe(expected.mutatesDss,);
+			expect(meta?.async, `${entry.id} async`,).toBe(expected.async,);
+		}
+	});
 
 	for (const scenario of localValidationCases) {
 		it(`locally rejects ${scenario.id}`, async () => {

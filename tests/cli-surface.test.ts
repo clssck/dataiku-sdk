@@ -18,6 +18,14 @@ type CommandRegistryEntry = {
 	flags: Array<{ name: string; kind: "boolean" | "value"; }>;
 	positionals: string[];
 	sideEffect: "read" | "write" | "auth";
+	outputShape: "object" | "array" | "string" | "void";
+	inputContract: { stdin?: boolean; dataFlag?: boolean; dataFileFlag?: boolean; };
+	destructive: "none" | "reversible" | "destructive";
+	producesLocalFile: boolean;
+	mutatesDss: boolean;
+	async: "none" | "job" | "future";
+	idempotency: "safe" | "if-not-exists" | "if-exists" | "none";
+	cleanupHint?: string;
 	requiresAuth: boolean;
 	requiresProject: boolean;
 };
@@ -141,12 +149,37 @@ describe("CLI command surface", () => {
 				expect(meta?.action, `${resource} ${action} action`,).toBe(action,);
 				expect(Array.isArray(meta?.flags,), `${resource} ${action} flags`,).toBe(true,);
 				expect(Array.isArray(meta?.positionals,), `${resource} ${action} positionals`,).toBe(true,);
+				expect(["object", "array", "string", "void",], `${resource} ${action} outputShape`,).toContain(
+					meta?.outputShape,
+				);
+				expect(
+					meta?.inputContract && typeof meta.inputContract === "object",
+					`${resource} ${action} inputContract`,
+				).toBe(true,);
+				expect(["none", "reversible", "destructive",], `${resource} ${action} destructive`,).toContain(
+					meta?.destructive,
+				);
+				expect(typeof meta?.producesLocalFile, `${resource} ${action} producesLocalFile`,).toBe(
+					"boolean",
+				);
+				expect(typeof meta?.mutatesDss, `${resource} ${action} mutatesDss`,).toBe("boolean",);
+				expect(["none", "job", "future",], `${resource} ${action} async`,).toContain(meta?.async,);
+				expect(
+					["safe", "if-not-exists", "if-exists", "none",],
+					`${resource} ${action} idempotency`,
+				).toContain(meta?.idempotency,);
 			}
 		}
 
 		expect(registry.dataset.delete.sideEffect,).toBe("write",);
 		expect(registry.dataset.delete.requiresProject,).toBe(true,);
 		expect(registry.dataset.delete.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
+		expect(registry.dataset.create.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
+		expect(registry.dataset.create.flags,).toContainEqual({
+			name: "if-not-exists",
+			kind: "boolean",
+		},);
+		expect(registry.dataset.create.idempotency,).toBe("if-not-exists",);
 		expect(registry.project.list.sideEffect,).toBe("read",);
 		expect(registry.project.list.requiresProject,).toBe(false,);
 		expect(registry.wiki.settings.sideEffect,).toBe("read",);
@@ -158,6 +191,9 @@ describe("CLI command surface", () => {
 		expect(registry["data-quality"].status.sideEffect,).toBe("read",);
 		expect(registry["data-quality"]["create-rule"].sideEffect,).toBe("write",);
 		expect(registry["data-quality"].compute.sideEffect,).toBe("write",);
+		expect(registry.job.build.flags,).toContainEqual({ name: "wait", kind: "boolean", },);
+		expect(registry.job.build.async,).toBe("job",);
+		expect(registry.job.build.destructive,).toBe("reversible",);
 		expect(registry["data-quality"]["project-status"].flags,).toContainEqual({
 			name: "only-monitored",
 			kind: "value",
@@ -185,6 +221,12 @@ describe("CLI command surface", () => {
 		expect(registry.commands.run.requiresAuth,).toBe(false,);
 		expect(registry["install-skill"].run.sideEffect,).toBe("write",);
 		expect(registry["install-skill"].run.requiresAuth,).toBe(false,);
+		expect(registry["install-skill"].run.flags,).toContainEqual({
+			name: "dry-run",
+			kind: "boolean",
+		},);
+		expect(registry.recipe["set-payload"].inputContract.dataFlag,).toBeUndefined();
+		expect(registry.recipe["set-payload"].destructive,).toBe("reversible",);
 	});
 
 	it("prints action help for every registered command without resolving credentials", async () => {

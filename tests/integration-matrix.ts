@@ -1,6 +1,10 @@
 export type Persona = "newbie" | "expert" | "error-prone";
 export type RiskLevel = "read-only" | "local-validation" | "mutating" | "expensive";
 export type ResultShape = "array" | "object" | "string";
+export type RegistryOutputShape = ResultShape | "void";
+export type RegistrySideEffect = "read" | "write" | "auth";
+export type RegistryDestructiveLevel = "none" | "reversible" | "destructive";
+export type RegistryAsyncKind = "none" | "job" | "future";
 
 export type SdkParityKind =
 	| "project-list"
@@ -36,6 +40,26 @@ export type ReadOnlyCommandCase = {
 	stableFields?: string[];
 	featureProbe?: string;
 };
+
+export type RegistryExpectations = {
+	outputShape: RegistryOutputShape;
+	sideEffect: RegistrySideEffect;
+	destructive: RegistryDestructiveLevel;
+	mutatesDss: boolean;
+	async: RegistryAsyncKind;
+};
+
+export function registryExpectationsForReadOnlyCase(
+	entry: ReadOnlyCommandCase,
+): RegistryExpectations {
+	return {
+		outputShape: entry.resultShape,
+		sideEffect: "read",
+		destructive: "none",
+		mutatesDss: false,
+		async: entry.resource === "future" ? "future" : "none",
+	};
+}
 
 export type LocalValidationCase = {
 	id: string;

@@ -371,6 +371,39 @@ function isFailedWaitResult(result: unknown,): boolean {
 function commandFailureExitCode(result: unknown,): number | undefined {
 	return isFailedWaitResult(result,) ? 4 : undefined;
 }
+function isNotFoundError(error: unknown,): boolean {
+	if (error instanceof DataikuError) return error.category === "not_found";
+	if (error instanceof Error) return /not found|does not exist|unknown/i.test(error.message,);
+	return false;
+}
+
+async function readIfExists<T,>(reader: () => Promise<T>,): Promise<T | undefined> {
+	try {
+		return await reader();
+	} catch (error) {
+		if (isNotFoundError(error,)) return undefined;
+		throw error;
+	}
+}
+
+function skipResult(
+	resource: string,
+	id: string,
+	reason: "exists" | "missing",
+	extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+	return { skipped: id, reason, resource, ...extra, };
+}
+
+function encodedProjectEndpoint(
+	client: DataikuClient,
+	projectKey: string | undefined,
+	suffix: string,
+): string {
+	return `/public/api/projects/${
+		encodeURIComponent(client.resolveProjectKey(projectKey,),)
+	}${suffix}`;
+}
 
 // ---------------------------------------------------------------------------
 // Arg parsing
@@ -393,6 +426,7 @@ const BOOLEAN_FLAGS = new Set([
 	"include-all-partitions",
 	"wait",
 	"if-not-exists",
+	"if-exists",
 	"json",
 	"no-wait",
 	"force-rebuild",
@@ -658,25 +692,37 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				const name = f["name"] as string | undefined;
 				if (!name) throw new UsageError("--name is required. Usage: dss wiki create --name NAME",);
 				const content = textInput(f,);
-				if (f["dry-run"] === true) {
-					return {
-						dryRun: true,
-						action: "create",
-						resource: "wiki",
-						name,
-						parent: f["parent"] as string | undefined,
-						content,
-					};
+				const pk = f["project-key"] as string | undefined;
+				if (f["if-not-exists"] === true || f["dry-run"] === true) {
+					const existing = (await c.wiki.list(pk,)).find((article,) => article.article.name === name);
+					if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+						return skipResult("wiki", existing.article.id, "exists", { current: existing, },);
+					}
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "create",
+							resource: "wiki",
+							name,
+							payload: {
+								name,
+								parent: f["parent"] as string | undefined,
+								content,
+							},
+							...(existing ? { current: existing, } : {}),
+						};
+					}
 				}
-				return c.wiki.create({
+				const created = await c.wiki.create({
 					name,
 					parent: f["parent"] as string | undefined,
 					content,
-					projectKey: f["project-key"] as string | undefined,
+					projectKey: pk,
 				},);
+				return { created: created.article.id, resource: "wiki", ...created, };
 			},
 			usage:
-				"dss wiki create --name NAME [--parent ID] [--content TEXT|--file PATH] [--dry-run] [--project-key KEY]",
+				"dss wiki create --name NAME [--parent ID] [--content TEXT|--file PATH] [--if-not-exists] [--dry-run] [--project-key KEY]",
 			description: "Create a wiki article, optionally with markdown content.",
 			examples: [
 				"dss wiki create --name 'Agent notes' --content '# Notes'",
@@ -727,14 +773,18 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		delete: {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss wiki delete <id-or-name>",);
-				if (f["dry-run"] === true) {
-					const current = await c.wiki.get(a[0], f["project-key"] as string | undefined,);
-					return { dryRun: true, action: "delete", resource: "wiki", article: a[0], current, };
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() => c.wiki.get(a[0], pk,));
+					if (!current) return skipResult("wiki", a[0], "missing",);
+					if (f["dry-run"] === true) {
+						return { dryRun: true, action: "delete", resource: "wiki", article: a[0], current, };
+					}
 				}
-				await c.wiki.delete(a[0], f["project-key"] as string | undefined,);
+				await c.wiki.delete(a[0], pk,);
 				return { deleted: a[0], resource: "wiki", };
 			},
-			usage: "dss wiki delete <id-or-name> [--dry-run] [--project-key KEY]",
+			usage: "dss wiki delete <id-or-name> [--if-exists] [--dry-run] [--project-key KEY]",
 			description: "Delete a wiki article.",
 			examples: ["dss wiki delete ARTICLE_ID --dry-run",],
 		},
@@ -761,23 +811,32 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				const name = f["name"] as string | undefined;
 				if (!name) throw new UsageError("--name is required. Usage: dss dashboard create --name NAME",);
 				const settings = jsonInput(f,);
-				if (f["dry-run"] === true) {
-					return {
-						dryRun: true,
-						action: "create",
-						resource: "dashboard",
-						name,
-						settings: settings ?? { pages: [], },
-					};
+				const pk = f["project-key"] as string | undefined;
+				if (f["if-not-exists"] === true || f["dry-run"] === true) {
+					const existing = (await c.dashboards.list(pk,)).find((dashboard,) => dashboard.name === name);
+					if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+						return skipResult("dashboard", existing.id, "exists", { current: existing, },);
+					}
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "create",
+							resource: "dashboard",
+							name,
+							payload: settings ?? { pages: [], },
+							...(existing ? { current: existing, } : {}),
+						};
+					}
 				}
-				return c.dashboards.create({
+				const created = await c.dashboards.create({
 					name,
 					settings,
-					projectKey: f["project-key"] as string | undefined,
+					projectKey: pk,
 				},);
+				return { created: created.id, resource: "dashboard", ...created, };
 			},
 			usage:
-				"dss dashboard create --name NAME [--data JSON|--data-file PATH|--stdin] [--dry-run] [--project-key KEY]",
+				"dss dashboard create --name NAME [--data JSON|--data-file PATH|--stdin] [--if-not-exists] [--dry-run] [--project-key KEY]",
 			description: "Create a dashboard. Defaults to an empty pages array.",
 			examples: ["dss dashboard create --name 'Agent dashboard' --dry-run",],
 		},
@@ -809,14 +868,18 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		delete: {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss dashboard delete <id>",);
-				if (f["dry-run"] === true) {
-					const current = await c.dashboards.get(a[0], f["project-key"] as string | undefined,);
-					return { dryRun: true, action: "delete", resource: "dashboard", id: a[0], current, };
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() => c.dashboards.get(a[0], pk,));
+					if (!current) return skipResult("dashboard", a[0], "missing",);
+					if (f["dry-run"] === true) {
+						return { dryRun: true, action: "delete", resource: "dashboard", id: a[0], current, };
+					}
 				}
-				await c.dashboards.delete(a[0], f["project-key"] as string | undefined,);
+				await c.dashboards.delete(a[0], pk,);
 				return { deleted: a[0], resource: "dashboard", };
 			},
-			usage: "dss dashboard delete <id> [--dry-run] [--project-key KEY]",
+			usage: "dss dashboard delete <id> [--if-exists] [--dry-run] [--project-key KEY]",
 			description: "Delete a dashboard.",
 			examples: ["dss dashboard delete DASHBOARD_ID --dry-run",],
 		},
@@ -857,17 +920,31 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				if (type !== undefined) prototype.type = type;
 				if (listed !== undefined) prototype.listed = listed;
 				if (params !== undefined) prototype.params = params;
-				if (f["dry-run"] === true) {
-					return {
-						dryRun: true,
-						action: "create",
-						resource: "insight",
-						prototype,
-						contentType,
-						payload,
-					};
+				const pk = f["project-key"] as string | undefined;
+				if (f["if-not-exists"] === true || f["dry-run"] === true) {
+					const existing = name
+						? (await c.insights.list(pk,)).find((insight,) => insight.name === name)
+						: undefined;
+					if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+						return skipResult("insight", existing.id, "exists", { current: existing, },);
+					}
+					if (f["if-not-exists"] === true && !name && f["dry-run"] !== true) {
+						throw new UsageError("--if-not-exists requires --name for insight create.",);
+					}
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "create",
+							resource: "insight",
+							name,
+							payload: prototype,
+							contentType,
+							content: payload,
+							...(existing ? { current: existing, } : {}),
+						};
+					}
 				}
-				return c.insights.create({
+				const created = await c.insights.create({
 					data,
 					name,
 					type,
@@ -875,11 +952,12 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					params,
 					contentType,
 					payload,
-					projectKey: f["project-key"] as string | undefined,
+					projectKey: pk,
 				},);
+				return { created: created.id, resource: "insight", ...created, };
 			},
 			usage:
-				"dss insight create (--data JSON|--data-file PATH|--stdin | --name NAME --type TYPE [--params JSON] [--listed true|false]) [--content TEXT|--file PATH --content-type MIME] [--dry-run] [--project-key KEY]",
+				"dss insight create (--data JSON|--data-file PATH|--stdin | --name NAME --type TYPE [--params JSON] [--listed true|false]) [--content TEXT|--file PATH --content-type MIME] [--if-not-exists] [--dry-run] [--project-key KEY]",
 			description: "Create an insight from a raw prototype or minimal name/type fields.",
 			examples: [
 				"dss insight create --name 'Agent chart' --type chart --params '{\"dataset\":\"orders\"}' --dry-run",
@@ -944,14 +1022,18 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		delete: {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss insight delete <id>",);
-				if (f["dry-run"] === true) {
-					const current = await c.insights.get(a[0], f["project-key"] as string | undefined,);
-					return { dryRun: true, action: "delete", resource: "insight", id: a[0], current, };
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() => c.insights.get(a[0], pk,));
+					if (!current) return skipResult("insight", a[0], "missing",);
+					if (f["dry-run"] === true) {
+						return { dryRun: true, action: "delete", resource: "insight", id: a[0], current, };
+					}
 				}
-				await c.insights.delete(a[0], f["project-key"] as string | undefined,);
+				await c.insights.delete(a[0], pk,);
 				return { deleted: a[0], resource: "insight", };
 			},
-			usage: "dss insight delete <id> [--dry-run] [--project-key KEY]",
+			usage: "dss insight delete <id> [--if-exists] [--dry-run] [--project-key KEY]",
 			description: "Delete an insight.",
 			examples: ["dss insight delete INSIGHT_ID --dry-run",],
 		},
@@ -989,22 +1071,51 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss data-quality create-rule <dataset> --data JSON",);
 				const config = requiredJsonInput(f, "--data, --data-file, or --stdin is required.",);
-				if (f["dry-run"] === true) {
-					return {
-						dryRun: true,
-						action: "create-rule",
-						resource: "data-quality",
-						dataset: a[0],
-						config,
-					};
+				const pk = f["project-key"] as string | undefined;
+				const identity = typeof config.id === "string"
+					? config.id
+					: typeof config.displayName === "string"
+					? config.displayName
+					: undefined;
+				if (f["if-not-exists"] === true || f["dry-run"] === true) {
+					const existing = identity
+						? (await c.dataQuality.listRules(a[0], pk,)).find((rule,) =>
+							rule.id === identity || rule.displayName === identity
+						)
+						: undefined;
+					if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+						return skipResult("data-quality", identity ?? existing.id, "exists", {
+							dataset: a[0],
+							current: existing,
+						},);
+					}
+					if (f["if-not-exists"] === true && !identity && f["dry-run"] !== true) {
+						throw new UsageError("--if-not-exists requires rule id or displayName in the rule JSON.",);
+					}
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "create-rule",
+							resource: "data-quality",
+							dataset: a[0],
+							payload: config,
+							...(existing ? { current: existing, } : {}),
+						};
+					}
 				}
-				return c.dataQuality.createRule(a[0], {
+				const created = await c.dataQuality.createRule(a[0], {
 					config,
-					projectKey: f["project-key"] as string | undefined,
+					projectKey: pk,
 				},);
+				return {
+					created: created.id ?? identity ?? "rule",
+					dataset: a[0],
+					resource: "data-quality",
+					...created,
+				};
 			},
 			usage:
-				"dss data-quality create-rule <dataset> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
+				"dss data-quality create-rule <dataset> (--data JSON|--data-file PATH|--stdin) [--if-not-exists] [--dry-run] [--project-key KEY]",
 			description: "Create a data quality rule from raw rule config.",
 			examples: [
 				'dss data-quality create-rule orders --data \'{"type":"RecordCountInRangeRule","softMinimum":1,"softMinimumEnabled":true,"displayName":"Has rows"}\' --dry-run',
@@ -1046,25 +1157,26 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		"delete-rule": {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 2, "dss data-quality delete-rule <dataset> <rule-id>",);
-				if (f["dry-run"] === true) {
-					const current = await c.dataQuality.getRule(
-						a[0],
-						a[1],
-						f["project-key"] as string | undefined,
-					);
-					return {
-						dryRun: true,
-						action: "delete-rule",
-						resource: "data-quality",
-						dataset: a[0],
-						ruleId: a[1],
-						current,
-					};
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() => c.dataQuality.getRule(a[0], a[1], pk,));
+					if (!current) return skipResult("data-quality", a[1], "missing", { dataset: a[0], },);
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "delete-rule",
+							resource: "data-quality",
+							dataset: a[0],
+							ruleId: a[1],
+							current,
+						};
+					}
 				}
-				await c.dataQuality.deleteRule(a[0], a[1], f["project-key"] as string | undefined,);
+				await c.dataQuality.deleteRule(a[0], a[1], pk,);
 				return { deleted: a[1], dataset: a[0], resource: "data-quality", };
 			},
-			usage: "dss data-quality delete-rule <dataset> <rule-id> [--dry-run] [--project-key KEY]",
+			usage:
+				"dss data-quality delete-rule <dataset> <rule-id> [--if-exists] [--dry-run] [--project-key KEY]",
 			description: "Delete a data quality rule.",
 			examples: ["dss data-quality delete-rule orders RULE_ID --dry-run",],
 		},
@@ -1137,20 +1249,32 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		compute: {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss data-quality compute <dataset>",);
+				const pk = f["project-key"] as string | undefined;
 				const options = {
 					partition: f["partition"] as string | undefined,
 					pollIntervalMs: num(f["poll-interval"],),
 					ruleId: f["rule-id"] as string | undefined,
-					projectKey: f["project-key"] as string | undefined,
+					projectKey: pk,
 					timeoutMs: num(f["timeout"],),
 				};
 				if (f["dry-run"] === true) {
+					const params = new URLSearchParams();
+					params.set("partition", options.partition?.trim() ? options.partition : "NP",);
+					if (options.ruleId !== undefined) params.set("ruleId", options.ruleId,);
 					return {
 						dryRun: true,
 						action: "compute",
 						resource: "data-quality",
 						dataset: a[0],
 						...options,
+						endpoint: encodedProjectEndpoint(
+							c,
+							pk,
+							`/datasets/${
+								encodeURIComponent(a[0],)
+							}/data-quality/actions/compute-rules?${params.toString()}`,
+						),
+						method: "POST",
 					};
 				}
 				if (f["wait"] === true) return c.dataQuality.computeRulesAndWait(a[0], options,);
@@ -1230,52 +1354,92 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			examples: ["dss flow-zone get ZONE_ID",],
 		},
 		create: {
-			handler: (c, _a, f,) =>
-				c.flowZones.create({
-					name: flowZoneName(f["name"],),
+			handler: async (c, _a, f,) => {
+				const pk = f["project-key"] as string | undefined;
+				const name = flowZoneName(f["name"],);
+				const payload = {
+					name,
 					color: flowZoneColor(f["color"],),
-					projectKey: f["project-key"] as string | undefined,
-				},),
-			usage: "dss flow-zone create --name NAME [--color #RRGGBB] [--project-key KEY]",
+					projectKey: pk,
+				};
+				if (f["if-not-exists"] === true || f["dry-run"] === true) {
+					const list = await c.flowZones.list(pk,);
+					const existing = list.find((zone,) => zone.name === name);
+					if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+						return skipResult("flow-zone", existing.id, "exists", { current: existing, },);
+					}
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "create",
+							resource: "flow-zone",
+							name,
+							payload,
+							...(existing ? { current: existing, } : {}),
+						};
+					}
+				}
+				const created = await c.flowZones.create(payload,);
+				return { created: created.id, resource: "flow-zone", ...created, };
+			},
+			usage:
+				"dss flow-zone create --name NAME [--color #RRGGBB] [--if-not-exists] [--dry-run] [--project-key KEY]",
 			description: "Create a flow zone.",
 			examples: [
 				"dss flow-zone create --name Exports",
-				"dss flow-zone create --name Exports --color '#2ab1ac'",
+				"dss flow-zone create --name Exports --color '#2ab1ac' --dry-run",
 			],
 		},
 		update: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss flow-zone update <id> [--name NAME] [--color #RRGGBB]",);
 				if (typeof f["name"] !== "string" && typeof f["color"] !== "string") {
 					throw new UsageError("--name and/or --color is required.",);
 				}
-				return c.flowZones.update(flowZoneId(a[0],), {
+				const zoneId = flowZoneId(a[0],);
+				const pk = f["project-key"] as string | undefined;
+				const patch = {
 					name: typeof f["name"] === "string" ? flowZoneName(f["name"],) : undefined,
 					color: flowZoneColor(f["color"],),
-					projectKey: f["project-key"] as string | undefined,
-				},);
+					projectKey: pk,
+				};
+				if (f["dry-run"] === true) {
+					const current = await c.flowZones.get(zoneId, pk,);
+					const next = deepMerge(current as unknown as Record<string, unknown>, patch,);
+					return { dryRun: true, action: "update", resource: "flow-zone", id: zoneId, current, next, };
+				}
+				return c.flowZones.update(zoneId, patch,);
 			},
-			usage: "dss flow-zone update <id> [--name NAME] [--color #RRGGBB] [--project-key KEY]",
+			usage:
+				"dss flow-zone update <id> [--name NAME] [--color #RRGGBB] [--dry-run] [--project-key KEY]",
 			description: "Update flow zone settings.",
-			examples: ["dss flow-zone update ZONE_ID --name Exports --color '#2ab1ac'",],
+			examples: ["dss flow-zone update ZONE_ID --name Exports --color '#2ab1ac' --dry-run",],
 		},
 		delete: {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss flow-zone delete <id>",);
 				const zoneId = flowZoneId(a[0],);
-				if (f["dry-run"] === true) {
-					const current = await c.flowZones.get(zoneId, f["project-key"] as string | undefined,);
-					return { dryRun: true, action: "delete", resource: "flow-zone", id: zoneId, current, };
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() =>
+						c.flowZones.get(zoneId, f["project-key"] as string | undefined,)
+					);
+					if (!current) return skipResult("flow-zone", zoneId, "missing",);
+					if (f["dry-run"] === true) {
+						return { dryRun: true, action: "delete", resource: "flow-zone", id: zoneId, current, };
+					}
 				}
 				await c.flowZones.delete(zoneId, f["project-key"] as string | undefined,);
 				return { deleted: zoneId, resource: "flow-zone", };
 			},
-			usage: "dss flow-zone delete <id> [--dry-run] [--project-key KEY]",
+			usage: "dss flow-zone delete <id> [--if-exists] [--dry-run] [--project-key KEY]",
 			description: "Delete a flow zone. DSS moves zone items back to the default zone.",
-			examples: ["dss flow-zone delete ZONE_ID --dry-run", "dss flow-zone delete ZONE_ID",],
+			examples: [
+				"dss flow-zone delete ZONE_ID --dry-run",
+				"dss flow-zone delete ZONE_ID --if-exists",
+			],
 		},
 		move: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(
 					a,
 					1,
@@ -1287,13 +1451,22 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"At least one object is required. Use --dataset, --recipe, --folder, or --object TYPE:ID.",
 					);
 				}
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "move",
+						resource: "flow-zone",
+						id: flowZoneId(a[0],),
+						items,
+					};
+				}
 				return c.flowZones.moveItems(flowZoneId(a[0],), items, f["project-key"] as string | undefined,);
 			},
 			usage:
-				"dss flow-zone move <id> [--dataset DS[,DS2]] [--recipe R] [--folder F] [--object TYPE:ID] [--project-key KEY]",
+				"dss flow-zone move <id> [--dataset DS[,DS2]] [--recipe R] [--folder F] [--object TYPE:ID] [--dry-run] [--project-key KEY]",
 			description: "Move datasets, recipes, managed folders, or other flow objects into a zone.",
 			examples: [
-				"dss flow-zone move ZONE_ID --dataset orders",
+				"dss flow-zone move ZONE_ID --dataset orders --dry-run",
 				"dss flow-zone move ZONE_ID --dataset raw_orders,clean_orders --recipe prepare_orders",
 				"dss flow-zone move ZONE_ID --folder FOLDER_ID",
 				"dss flow-zone move ZONE_ID --object SAVED_MODEL:model_id",
@@ -1372,37 +1545,65 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		create: {
 			handler: async (c, _a, f,) => {
 				const pk = f["project-key"] as string | undefined;
-				const name = f["name"] as string;
-				if (f["if-not-exists"] === true) {
+				const name = f["name"] as string | undefined;
+				const connection = f["connection"] as string | undefined;
+				const dsType = f["type"] as string | undefined;
+				if (!name || !connection || !dsType) {
+					throw new UsageError(
+						"--name, --connection, and --type are required. Usage: dss dataset create --name NAME --connection CONN --type TYPE",
+					);
+				}
+				const payload = {
+					datasetName: name,
+					connection,
+					dsType,
+					projectKey: pk,
+				};
+				if (f["if-not-exists"] === true || f["dry-run"] === true) {
 					const list = await c.datasets.list(pk,);
 					const existing = list.find((d,) => d.name === name);
-					if (existing) return { exists: true, ...existing, };
+					if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+						return skipResult("dataset", name, "exists", { current: existing, },);
+					}
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "create",
+							resource: "dataset",
+							name,
+							payload,
+							...(existing ? { current: existing, } : {}),
+						};
+					}
 				}
-				return c.datasets.create({
-					datasetName: name,
-					connection: f["connection"] as string,
-					dsType: f["type"] as string,
-					projectKey: pk,
-				},);
+				await c.datasets.create(payload,);
+				return { created: name, resource: "dataset", };
 			},
-			usage: "dss dataset create --name NAME --connection CONN --type TYPE [--project-key KEY]",
+			usage:
+				"dss dataset create --name NAME --connection CONN --type TYPE [--if-not-exists] [--dry-run] [--project-key KEY]",
 			description: "Create a new dataset.",
-			examples: ["dss dataset create --name orders --connection filesystem --type Filesystem",],
+			examples: [
+				"dss dataset create --name orders --connection filesystem --type Filesystem",
+				"dss dataset create --name orders --connection filesystem --type Filesystem --dry-run",
+			],
 		},
 		delete: {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss dataset delete <name>",);
 				const pk = f["project-key"] as string | undefined;
-				if (f["dry-run"] === true) {
-					const current = await c.datasets.get(a[0], pk,);
-					return { dryRun: true, action: "delete", resource: "dataset", name: a[0], current, };
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() => c.datasets.get(a[0], pk,));
+					if (!current) return skipResult("dataset", a[0], "missing",);
+					if (f["dry-run"] === true) {
+						return { dryRun: true, action: "delete", resource: "dataset", name: a[0], current, };
+					}
 				}
 				await c.datasets.delete(a[0], pk,);
 				return { deleted: a[0], resource: "dataset", };
 			},
-			usage: "dss dataset delete <name> [--dry-run] [--project-key KEY]",
+			usage: "dss dataset delete <name> [--if-exists] [--dry-run] [--project-key KEY]",
 			description: "Delete a dataset.",
-			examples: ["dss dataset delete orders",],
+			examples: ["dss dataset delete orders", "dss dataset delete orders --if-exists",],
 		},
 		update: {
 			handler: async (c, a, f,) => {
@@ -1413,14 +1614,20 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"--data, --data-file, or --stdin is required. Usage: dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin]",
 					);
 				}
-				await c.datasets.update(a[0], data, f["project-key"] as string | undefined,);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					const current = await c.datasets.get(a[0], pk,);
+					const next = deepMerge(current as unknown as Record<string, unknown>, data,);
+					return { dryRun: true, action: "update", resource: "dataset", name: a[0], current, next, };
+				}
+				await c.datasets.update(a[0], data, pk,);
 				return { updated: a[0], resource: "dataset", };
 			},
 			usage:
-				"dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
+				"dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
 			description: "Update dataset settings via JSON merge.",
 			examples: [
-				'dss dataset update orders --data \'{"tags":["production"]}\'',
+				'dss dataset update orders --data \'{"tags":["production"]}\' --dry-run',
 				"echo '{\"tags\":[]}' | dss dataset update orders --stdin",
 			],
 		},
@@ -1453,16 +1660,21 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss recipe delete <name>",);
 				const pk = f["project-key"] as string | undefined;
-				if (f["dry-run"] === true) {
-					const current = await c.recipes.get(a[0],);
-					return { dryRun: true, action: "delete", resource: "recipe", name: a[0], current, };
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() =>
+						c.recipes.get(a[0], { projectKey: pk, includePayload: true, },)
+					);
+					if (!current) return skipResult("recipe", a[0], "missing",);
+					if (f["dry-run"] === true) {
+						return { dryRun: true, action: "delete", resource: "recipe", name: a[0], current, };
+					}
 				}
 				await c.recipes.delete(a[0], pk,);
 				return { deleted: a[0], resource: "recipe", };
 			},
-			usage: "dss recipe delete <name> [--dry-run] [--project-key KEY]",
+			usage: "dss recipe delete <name> [--if-exists] [--dry-run] [--project-key KEY]",
 			description: "Delete a recipe.",
-			examples: ["dss recipe delete compute_orders",],
+			examples: ["dss recipe delete compute_orders", "dss recipe delete compute_orders --if-exists",],
 		},
 		download: {
 			handler: (c, a, f,) => {
@@ -1517,12 +1729,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				}
 				const name = f["name"] as string | undefined;
 				const pk = f["project-key"] as string | undefined;
-				if (f["if-not-exists"] === true && name) {
-					const list = await c.recipes.list(pk,);
-					const existing = list.find((r,) => r.name === name);
-					if (existing) return { exists: true, ...existing, };
-				}
-				return c.recipes.create({
+				const payload = {
 					type,
 					name,
 					inputDatasets: f["input"] ? [f["input"] as string,] : undefined,
@@ -1530,16 +1737,38 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					outputFolder,
 					outputConnection: f["output-connection"] as string | undefined,
 					projectKey: pk,
-				},);
+				};
+				if ((f["if-not-exists"] === true || f["dry-run"] === true) && name) {
+					const list = await c.recipes.list(pk,);
+					const existing = list.find((r,) => r.name === name);
+					if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+						return skipResult("recipe", name, "exists", { current: existing, },);
+					}
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "create",
+							resource: "recipe",
+							name,
+							payload,
+							...(existing ? { current: existing, } : {}),
+						};
+					}
+				}
+				if (f["dry-run"] === true) {
+					return { dryRun: true, action: "create", resource: "recipe", payload, };
+				}
+				const created = await c.recipes.create(payload,);
+				return { created: created.recipeName, resource: "recipe", ...created, };
 			},
 			usage:
-				"dss recipe create --type TYPE --input DS (--output DS | --output-folder FOLDER_ID) [--output-connection CONN] [--project-key KEY]",
+				"dss recipe create --type TYPE --input DS (--output DS | --output-folder FOLDER_ID) [--name NAME] [--output-connection CONN] [--if-not-exists] [--dry-run] [--project-key KEY]",
 			description:
 				"Create a recipe with a dataset output, or use --output-folder with --output-connection for a managed-folder output.",
 			examples: [
 				"dss recipe create --type python --input orders --output orders_clean",
 				"dss recipe create --type python --input orders --output orders_clean --output-connection filesystem",
-				"dss recipe create --type python --input orders --output-folder LT7TUHJ8 --output-connection filesystem",
+				"dss recipe create --type python --input orders --output-folder LT7TUHJ8 --output-connection filesystem --dry-run",
 			],
 		},
 		diff: {
@@ -1573,15 +1802,31 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"--data, --data-file, or --stdin is required. Usage: dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin]",
 					);
 				}
-				await c.recipes.update(a[0], data, f["project-key"] as string | undefined,);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					const current = await c.recipes.get(a[0], { projectKey: pk, includePayload: true, },);
+					const currentRecipe = current.recipe as Record<string, unknown>;
+					const next = {
+						...current,
+						...data,
+						recipe: deepMerge(
+							currentRecipe,
+							(data.recipe && typeof data.recipe === "object" && !Array.isArray(data.recipe,))
+								? data.recipe as Record<string, unknown>
+								: {},
+						),
+					};
+					return { dryRun: true, action: "update", resource: "recipe", name: a[0], current, next, };
+				}
+				await c.recipes.update(a[0], data, pk,);
 				return { updated: a[0], resource: "recipe", };
 			},
 			usage:
-				"dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
+				"dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
 			description:
 				"Update recipe settings via JSON merge. Recipe definition fields must be nested under a top-level recipe key.",
 			examples: [
-				"dss recipe update compute_orders --data-file settings.json",
+				"dss recipe update compute_orders --data-file settings.json --dry-run",
 				'dss recipe update compute_orders --data \'{"recipe":{"params":{"envSelection":{"envMode":"EXPLICIT_ENV","envName":"python39"}}}}\'',
 				"cat settings.json | dss recipe update compute_orders --stdin",
 			],
@@ -1611,14 +1856,29 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				const filePath = f["file"] as string;
 				if (!filePath) throw new UsageError("--file is required.",);
 				const content = readFileSync(filePath, "utf-8",);
+				if (f["dry-run"] === true) {
+					const current = await c.recipes.get(a[0], {
+						projectKey: f["project-key"] as string | undefined,
+						includePayload: true,
+					},);
+					return {
+						dryRun: true,
+						action: "set-payload",
+						resource: "recipe",
+						name: a[0],
+						file: filePath,
+						current,
+						next: { ...current, payload: content, },
+					};
+				}
 				await c.recipes.setPayload(a[0], content, {
 					projectKey: f["project-key"] as string | undefined,
 				},);
 				return { updated: a[0], resource: "recipe", file: filePath, };
 			},
-			usage: "dss recipe set-payload <name> --file PATH [--project-key KEY]",
+			usage: "dss recipe set-payload <name> --file PATH [--dry-run] [--project-key KEY]",
 			description: "Upload recipe code from a local file.",
-			examples: ["dss recipe set-payload compute_orders --file code.py",],
+			examples: ["dss recipe set-payload compute_orders --file code.py --dry-run",],
 		},
 	},
 
@@ -1651,39 +1911,72 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			examples: ["dss job log JOB_ID", "dss job log JOB_ID --activity main --max-lines 200",],
 		},
 		build: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss job build <target>",);
-				return c.jobs.build(a[0], {
+				const pk = f["project-key"] as string | undefined;
+				const options = {
 					buildMode: f["build-mode"] as BuildMode | undefined,
+					pollIntervalMs: num(f["poll-interval"],),
 					targetType: jobBuildTargetType(f["type"],),
-				},);
+					timeoutMs: num(f["timeout"],),
+				};
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "build",
+						resource: "job",
+						target: a[0],
+						...options,
+						endpoint: encodedProjectEndpoint(c, pk, "/jobs/",),
+						method: "POST",
+					};
+				}
+				if (f["wait"] === true) {
+					return c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },);
+				}
+				return c.jobs.build(a[0], { ...options, projectKey: pk, },);
 			},
-			usage: "dss job build <target> [--type DATASET|MANAGED_FOLDER] [--build-mode MODE]",
-			description: "Start a dataset or managed-folder build (returns immediately).",
+			usage:
+				"dss job build <target> [--type DATASET|MANAGED_FOLDER] [--build-mode MODE] [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
+			description: "Start a dataset or managed-folder build, optionally waiting for completion.",
 			examples: [
 				"dss job build orders",
-				"dss job build orders --build-mode RECURSIVE_BUILD",
-				"dss job build LT7TUHJ8 --type MANAGED_FOLDER",
+				"dss job build orders --build-mode RECURSIVE_BUILD --wait",
+				"dss job build LT7TUHJ8 --type MANAGED_FOLDER --dry-run",
 			],
 		},
 		"build-and-wait": {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss job build-and-wait <target>",);
-				return c.jobs.buildAndWait(a[0], {
+				const pk = f["project-key"] as string | undefined;
+				const options = {
 					buildMode: f["build-mode"] as BuildMode | undefined,
 					includeLogs: f["include-logs"] === true,
+					pollIntervalMs: num(f["poll-interval"],),
 					timeoutMs: num(f["timeout"],),
 					targetType: jobBuildTargetType(f["type"],),
-				},);
+				};
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "build-and-wait",
+						resource: "job",
+						target: a[0],
+						...options,
+						endpoint: encodedProjectEndpoint(c, pk, "/jobs/",),
+						method: "POST",
+					};
+				}
+				return c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },);
 			},
 			usage:
-				"dss job build-and-wait <target> [--type DATASET|MANAGED_FOLDER] [--build-mode MODE] [--include-logs] [--timeout MS]",
+				"dss job build-and-wait <target> [--type DATASET|MANAGED_FOLDER] [--build-mode MODE] [--include-logs] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
 			description: "Build a dataset or managed folder and wait for completion.",
 			examples: [
 				"dss job build-and-wait orders",
 				"dss job build-and-wait orders --include-logs",
 				"dss job build-and-wait orders --timeout 300000",
-				"dss job build-and-wait LT7TUHJ8 --type MANAGED_FOLDER",
+				"dss job build-and-wait LT7TUHJ8 --type MANAGED_FOLDER --dry-run",
 			],
 		},
 		wait: {
@@ -1691,21 +1984,34 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				requireArgs(a, 1, "dss job wait <id>",);
 				return c.jobs.wait(a[0], {
 					includeLogs: f["include-logs"] === true,
+					pollIntervalMs: num(f["poll-interval"],),
 					timeoutMs: num(f["timeout"],),
 				},);
 			},
-			usage: "dss job wait <id> [--include-logs] [--timeout MS]",
+			usage: "dss job wait <id> [--include-logs] [--timeout MS] [--poll-interval MS]",
 			description: "Wait for an existing job to complete.",
 			examples: ["dss job wait JOB_ID", "dss job wait JOB_ID --include-logs --timeout 60000",],
 		},
 		abort: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss job abort <id>",);
-				return c.jobs.abort(a[0], f["project-key"] as string | undefined,);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "abort",
+						resource: "job",
+						id: a[0],
+						endpoint: encodedProjectEndpoint(c, pk, `/jobs/${encodeURIComponent(a[0],)}/abort/`,),
+						method: "POST",
+					};
+				}
+				await c.jobs.abort(a[0], pk,);
+				return { aborted: a[0], resource: "job", };
 			},
-			usage: "dss job abort <id> [--project-key KEY]",
+			usage: "dss job abort <id> [--dry-run] [--project-key KEY]",
 			description: "Abort a running job.",
-			examples: ["dss job abort JOB_ID",],
+			examples: ["dss job abort JOB_ID", "dss job abort JOB_ID --dry-run",],
 		},
 	},
 
@@ -1717,32 +2023,74 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			examples: ["dss scenario list",],
 		},
 		get: {
-			handler: (c, a, _f,) => {
+			handler: (c, a, f,) => {
 				requireArgs(a, 1, "dss scenario get <id>",);
-				return c.scenarios.get(a[0],);
+				return c.scenarios.get(a[0], { projectKey: f["project-key"] as string | undefined, },);
 			},
-			usage: "dss scenario get <id>",
+			usage: "dss scenario get <id> [--project-key KEY]",
 			description: "Get scenario definition.",
 			examples: ["dss scenario get my_scenario",],
 		},
 		run: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss scenario run <id>",);
-				return c.scenarios.run(a[0], f["project-key"] as string | undefined,);
+				const pk = f["project-key"] as string | undefined;
+				const options = {
+					pollIntervalMs: num(f["poll-interval"],),
+					timeoutMs: num(f["timeout"],),
+				};
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "run",
+						resource: "scenario",
+						id: a[0],
+						...options,
+						endpoint: encodedProjectEndpoint(
+							c,
+							pk,
+							`/scenarios/${encodeURIComponent(a[0],)}/run/`,
+						),
+						method: "POST",
+					};
+				}
+				if (f["wait"] === true) {
+					return c.scenarios.runAndWait(a[0], { ...options, projectKey: pk, },);
+				}
+				return c.scenarios.run(a[0], pk,);
 			},
-			usage: "dss scenario run <id> [--project-key KEY]",
-			description: "Trigger a scenario run (returns immediately).",
-			examples: ["dss scenario run my_scenario",],
+			usage:
+				"dss scenario run <id> [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
+			description: "Trigger a scenario run, optionally waiting for completion.",
+			examples: ["dss scenario run my_scenario", "dss scenario run my_scenario --wait",],
 		},
 		"run-and-wait": {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss scenario run-and-wait <id>",);
-				return c.scenarios.runAndWait(a[0], {
+				const pk = f["project-key"] as string | undefined;
+				const options = {
+					pollIntervalMs: num(f["poll-interval"],),
 					timeoutMs: num(f["timeout"],),
-					projectKey: f["project-key"] as string | undefined,
-				},);
+				};
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "run-and-wait",
+						resource: "scenario",
+						id: a[0],
+						...options,
+						endpoint: encodedProjectEndpoint(
+							c,
+							pk,
+							`/scenarios/${encodeURIComponent(a[0],)}/run/`,
+						),
+						method: "POST",
+					};
+				}
+				return c.scenarios.runAndWait(a[0], { ...options, projectKey: pk, },);
 			},
-			usage: "dss scenario run-and-wait <id> [--timeout MS] [--project-key KEY]",
+			usage:
+				"dss scenario run-and-wait <id> [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
 			description: "Run a scenario and wait for completion.",
 			examples: [
 				"dss scenario run-and-wait my_scenario",
@@ -1762,37 +2110,59 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss scenario delete <id>",);
 				const pk = f["project-key"] as string | undefined;
-				if (f["dry-run"] === true) {
-					const current = await c.scenarios.get(a[0],);
-					return { dryRun: true, action: "delete", resource: "scenario", id: a[0], current, };
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() => c.scenarios.get(a[0], { projectKey: pk, },));
+					if (!current) return skipResult("scenario", a[0], "missing",);
+					if (f["dry-run"] === true) {
+						return { dryRun: true, action: "delete", resource: "scenario", id: a[0], current, };
+					}
 				}
 				await c.scenarios.delete(a[0], pk,);
 				return { deleted: a[0], resource: "scenario", };
 			},
-			usage: "dss scenario delete <id> [--dry-run] [--project-key KEY]",
+			usage: "dss scenario delete <id> [--if-exists] [--dry-run] [--project-key KEY]",
 			description: "Delete a scenario.",
-			examples: ["dss scenario delete my_scenario",],
+			examples: ["dss scenario delete my_scenario", "dss scenario delete my_scenario --if-exists",],
 		},
 		create: {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 2, "dss scenario create <id> <name>",);
 				const pk = f["project-key"] as string | undefined;
-				if (f["if-not-exists"] === true) {
+				const payload = {
+					scenarioId: a[0],
+					name: a[1],
+					scenarioType: f["type"] as "step_based" | "custom_python" | undefined,
+					projectKey: pk,
+				};
+				if (f["if-not-exists"] === true || f["dry-run"] === true) {
 					const list = await c.scenarios.list(pk,);
 					const existing = list.find((s,) => s.id === a[0]);
-					if (existing) return { exists: true, ...existing, };
+					if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+						return skipResult("scenario", a[0], "exists", { current: existing, },);
+					}
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "create",
+							resource: "scenario",
+							id: a[0],
+							payload,
+							...(existing ? { current: existing, } : {}),
+						};
+					}
 				}
 				await c.scenarios.create(a[0], a[1], {
-					scenarioType: f["type"] as "step_based" | "custom_python" | undefined,
+					scenarioType: payload.scenarioType,
 					projectKey: pk,
 				},);
 				return { created: a[0], name: a[1], resource: "scenario", };
 			},
-			usage: "dss scenario create <id> <name> [--type step_based|custom_python] [--project-key KEY]",
+			usage:
+				"dss scenario create <id> <name> [--type step_based|custom_python] [--if-not-exists] [--dry-run] [--project-key KEY]",
 			description: "Create a new scenario.",
 			examples: [
 				'dss scenario create my_scenario "My Scenario"',
-				'dss scenario create my_scenario "My Scenario" --type custom_python',
+				'dss scenario create my_scenario "My Scenario" --type custom_python --dry-run',
 			],
 		},
 		update: {
@@ -1804,13 +2174,19 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"--data, --data-file, or --stdin is required. Usage: dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin]",
 					);
 				}
-				await c.scenarios.update(a[0], data, f["project-key"] as string | undefined,);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					const current = await c.scenarios.get(a[0], { projectKey: pk, },);
+					const next = deepMerge(current as unknown as Record<string, unknown>, data,);
+					return { dryRun: true, action: "update", resource: "scenario", id: a[0], current, next, };
+				}
+				await c.scenarios.update(a[0], data, pk,);
 				return { updated: a[0], resource: "scenario", };
 			},
 			usage:
-				"dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
+				"dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
 			description: "Update scenario settings via JSON merge.",
-			examples: ["dss scenario update my_scenario --data-file settings.json",],
+			examples: ["dss scenario update my_scenario --data-file settings.json --dry-run",],
 		},
 	},
 
@@ -1822,29 +2198,49 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			examples: ["dss folder list",],
 		},
 		create: {
-			handler: (c, _a, f,) => {
+			handler: async (c, _a, f,) => {
 				const name = f["name"] as string | undefined;
 				const type = f["type"] as string | undefined;
 				const connection = f["connection"] as string | undefined;
+				const pk = f["project-key"] as string | undefined;
 				if (!name || !type || !connection) {
 					throw new UsageError(
 						"--name, --type, and --connection are required. Usage: dss folder create --name NAME --type TYPE --connection CONN [--path PATH]",
 					);
 				}
-				return c.folders.create({
+				const payload = {
 					name,
 					type,
 					connection,
 					path: f["path"] as string | undefined,
-					projectKey: f["project-key"] as string | undefined,
-				},);
+					projectKey: pk,
+				};
+				if (f["if-not-exists"] === true || f["dry-run"] === true) {
+					const list = await c.folders.list(pk,);
+					const existing = list.find((folder,) => folder.name === name);
+					if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+						return skipResult("folder", existing.id ?? name, "exists", { current: existing, },);
+					}
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "create",
+							resource: "folder",
+							name,
+							payload,
+							...(existing ? { current: existing, } : {}),
+						};
+					}
+				}
+				const created = await c.folders.create(payload,);
+				return { created: created.id ?? name, resource: "folder", ...created, };
 			},
 			usage:
-				"dss folder create --name NAME --type TYPE --connection CONN [--path PATH] [--project-key KEY]",
+				"dss folder create --name NAME --type TYPE --connection CONN [--path PATH] [--if-not-exists] [--dry-run] [--project-key KEY]",
 			description: "Create a managed folder.",
 			examples: [
 				"dss folder create --name exports --type S3 --connection s3_connection",
-				"dss folder create --name exports --type S3 --connection s3_connection --path /dataiku/MYPROJ/exports",
+				"dss folder create --name exports --type S3 --connection s3_connection --path /dataiku/MYPROJ/exports --dry-run",
 			],
 		},
 		get: {
@@ -1890,17 +2286,31 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		upload: {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 3, "dss folder upload <name-or-id> <path> <localPath>",);
-				await c.folders.upload(
-					await resolveFolderId(c, a[0], f,),
-					a[1],
-					a[2],
-					f["project-key"] as string | undefined,
-				);
+				const pk = f["project-key"] as string | undefined;
+				const folderId = await resolveFolderId(c, a[0], f,);
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "upload",
+						resource: "folder",
+						folder: a[0],
+						folderId,
+						path: a[1],
+						localPath: a[2],
+						endpoint: encodedProjectEndpoint(
+							c,
+							pk,
+							`/managedfolders/${encodeURIComponent(folderId,)}/contents/${encodeURIComponent(a[1],)}`,
+						),
+						method: "POST",
+					};
+				}
+				await c.folders.upload(folderId, a[1], a[2], pk,);
 				return { uploaded: a[1], folder: a[0], localPath: a[2], resource: "folder", };
 			},
-			usage: "dss folder upload <name-or-id> <path> <localPath> [--project-key KEY]",
+			usage: "dss folder upload <name-or-id> <path> <localPath> [--dry-run] [--project-key KEY]",
 			description: "Upload a local file to a managed folder.",
-			examples: ["dss folder upload my_folder /data/report.csv ./report.csv",],
+			examples: ["dss folder upload my_folder /data/report.csv ./report.csv --dry-run",],
 		},
 		"delete-file": {
 			handler: async (c, a, f,) => {
@@ -1929,18 +2339,42 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			examples: ["dss variable get", "dss variable get --project-key MYPROJ",],
 		},
 		set: {
-			handler: (c, _a, f,) =>
-				c.variables.set({
-					standard: json(f["standard"],),
-					local: json(f["local"],),
+			handler: async (c, _a, f,) => {
+				const standard = json(f["standard"],);
+				const local = json(f["local"],);
+				const pk = f["project-key"] as string | undefined;
+				if (standard === undefined && local === undefined) {
+					throw new UsageError("--standard and/or --local is required.",);
+				}
+				if (f["dry-run"] === true) {
+					const current = await c.variables.get(pk,);
+					const next = f["replace"] === true
+						? { standard: standard ?? {}, local: local ?? {}, }
+						: {
+							standard: { ...current.standard, ...standard, },
+							local: { ...current.local, ...local, },
+						};
+					return {
+						dryRun: true,
+						action: "set",
+						resource: "variable",
+						projectKey: pk,
+						current,
+						next,
+					};
+				}
+				return c.variables.set({
+					standard,
+					local,
 					replace: f["replace"] === true,
-					projectKey: f["project-key"] as string | undefined,
-				},),
+					projectKey: pk,
+				},);
+			},
 			usage:
-				`dss variable set --standard '{"k":"v"}' --local '{"k":"v"}' [--replace] [--project-key KEY]`,
+				`dss variable set --standard '{"k":"v"}' --local '{"k":"v"}' [--replace] [--dry-run] [--project-key KEY]`,
 			description: "Set project variables via JSON merge (or full replace with --replace).",
 			examples: [
-				'dss variable set --standard \'{"env":"staging"}\'',
+				'dss variable set --standard \'{"env":"staging"}\' --dry-run',
 				"dss variable set --local '{\"debug\":true}' --replace",
 			],
 		},
@@ -2003,28 +2437,39 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				}
 				const params = codeEnvParams(f,);
 				const wait = codeEnvWait(f,);
-				if (f["dry-run"] === true) {
-					return {
-						dryRun: true,
-						action: "create",
-						resource: "code-env",
-						envLang: a[0],
-						envName: a[1],
-						deploymentMode,
-						params,
-						wait,
-					};
+				if (f["if-not-exists"] === true || f["dry-run"] === true) {
+					const existing = (await c.codeEnvs.list({ envLang: a[0] as "PYTHON" | "R", },))
+						.find((env,) => env.envName === a[1]);
+					if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+						return skipResult("code-env", a[1], "exists", { envLang: a[0], current: existing, },);
+					}
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "create",
+							resource: "code-env",
+							envLang: a[0],
+							envName: a[1],
+							payload: {
+								deploymentMode,
+								params,
+								wait,
+							},
+							...(existing ? { current: existing, } : {}),
+						};
+					}
 				}
-				return c.codeEnvs.create({
+				const created = await c.codeEnvs.create({
 					envLang: a[0],
 					envName: a[1],
 					deploymentMode,
 					params,
 					wait,
 				},);
+				return { created: a[1], resource: "code-env", envLang: a[0], ...created, };
 			},
 			usage:
-				"dss code-env create <lang> <name> --deployment-mode MODE [--params JSON|--data JSON|--data-file PATH|--stdin] [--python-interpreter PYTHON311] [--no-wait] [--dry-run]",
+				"dss code-env create <lang> <name> --deployment-mode MODE [--params JSON|--data JSON|--data-file PATH|--stdin] [--python-interpreter PYTHON311] [--no-wait] [--if-not-exists] [--dry-run]",
 			description: "Create a code environment.",
 			examples: [
 				"dss code-env create PYTHON my_env --deployment-mode DESIGN_MANAGED --python-interpreter PYTHON311",
@@ -2148,19 +2593,24 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 2, "dss code-env delete <lang> <name>",);
 				const wait = codeEnvWait(f,);
-				if (f["dry-run"] === true) {
-					return {
-						dryRun: true,
-						action: "delete",
-						resource: "code-env",
-						envLang: a[0],
-						envName: a[1],
-						wait,
-					};
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() => c.codeEnvs.get(a[0], a[1],));
+					if (!current) return skipResult("code-env", a[1], "missing", { envLang: a[0], },);
+					if (f["dry-run"] === true) {
+						return {
+							dryRun: true,
+							action: "delete",
+							resource: "code-env",
+							envLang: a[0],
+							envName: a[1],
+							wait,
+							current,
+						};
+					}
 				}
 				return c.codeEnvs.delete(a[0], a[1], { wait, },);
 			},
-			usage: "dss code-env delete <lang> <name> [--no-wait] [--dry-run]",
+			usage: "dss code-env delete <lang> <name> [--no-wait] [--if-exists] [--dry-run]",
 			description: "Delete a code environment.",
 			examples: ["dss code-env delete PYTHON my_env --dry-run",],
 		},
@@ -2211,56 +2661,95 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			examples: ["dss notebook list-jupyter",],
 		},
 		"get-jupyter": {
-			handler: (c, a, _f,) => {
+			handler: (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook get-jupyter <name>",);
-				return c.notebooks.getJupyter(a[0],);
+				return c.notebooks.getJupyter(a[0], f["project-key"] as string | undefined,);
 			},
-			usage: "dss notebook get-jupyter <name>",
+			usage: "dss notebook get-jupyter <name> [--project-key KEY]",
 			description: "Get a Jupyter notebook.",
 			examples: ["dss notebook get-jupyter my_notebook",],
 		},
 		"delete-jupyter": {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook delete-jupyter <name>",);
-				if (f["dry-run"] === true) {
-					const current = await c.notebooks.getJupyter(a[0],);
-					return { dryRun: true, action: "delete", resource: "jupyter-notebook", name: a[0], current, };
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() => c.notebooks.getJupyter(a[0], pk,));
+					if (!current) return skipResult("jupyter-notebook", a[0], "missing",);
+					if (f["dry-run"] === true) {
+						return { dryRun: true, action: "delete", resource: "jupyter-notebook", name: a[0], current, };
+					}
 				}
-				await c.notebooks.deleteJupyter(a[0],);
+				await c.notebooks.deleteJupyter(a[0], pk,);
 				return { deleted: a[0], resource: "jupyter-notebook", };
 			},
-			usage: "dss notebook delete-jupyter <name> [--dry-run]",
+			usage: "dss notebook delete-jupyter <name> [--if-exists] [--dry-run] [--project-key KEY]",
 			description: "Delete a Jupyter notebook.",
-			examples: ["dss notebook delete-jupyter my_notebook",],
+			examples: ["dss notebook delete-jupyter my_notebook --dry-run",],
 		},
 		"clear-jupyter-outputs": {
-			handler: async (c, a, _f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook clear-jupyter-outputs <name>",);
-				await c.notebooks.clearJupyterOutputs(a[0],);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					const current = await c.notebooks.getJupyter(a[0], pk,);
+					const next = {
+						...current,
+						cells: current.cells.map((cell,) => ({ ...cell, outputs: [], execution_count: null, })),
+					};
+					return {
+						dryRun: true,
+						action: "clear-jupyter-outputs",
+						resource: "jupyter-notebook",
+						name: a[0],
+						current,
+						next,
+					};
+				}
+				await c.notebooks.clearJupyterOutputs(a[0], pk,);
 				return { cleared: a[0], resource: "jupyter-notebook", };
 			},
-			usage: "dss notebook clear-jupyter-outputs <name>",
+			usage: "dss notebook clear-jupyter-outputs <name> [--dry-run] [--project-key KEY]",
 			description: "Clear all cell outputs from a Jupyter notebook.",
-			examples: ["dss notebook clear-jupyter-outputs my_notebook",],
+			examples: ["dss notebook clear-jupyter-outputs my_notebook --dry-run",],
 		},
 		"sessions-jupyter": {
-			handler: (c, a, _f,) => {
+			handler: (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook sessions-jupyter <name>",);
-				return c.notebooks.listJupyterSessions(a[0],);
+				return c.notebooks.listJupyterSessions(a[0], f["project-key"] as string | undefined,);
 			},
-			usage: "dss notebook sessions-jupyter <name>",
+			usage: "dss notebook sessions-jupyter <name> [--project-key KEY]",
 			description: "List active kernel sessions for a Jupyter notebook.",
 			examples: ["dss notebook sessions-jupyter my_notebook",],
 		},
 		"unload-jupyter": {
-			handler: async (c, a, _f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 2, "dss notebook unload-jupyter <name> <sessionId>",);
-				await c.notebooks.unloadJupyter(a[0], a[1],);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					const sessions = await c.notebooks.listJupyterSessions(a[0], pk,);
+					const current = sessions.find((session,) => session.sessionId === a[1]);
+					return {
+						dryRun: true,
+						action: "unload-jupyter",
+						resource: "jupyter-notebook",
+						name: a[0],
+						sessionId: a[1],
+						current,
+						endpoint: encodedProjectEndpoint(
+							c,
+							pk,
+							`/jupyter-notebooks/${encodeURIComponent(a[0],)}/sessions/${encodeURIComponent(a[1],)}`,
+						),
+						method: "DELETE",
+					};
+				}
+				await c.notebooks.unloadJupyter(a[0], a[1], pk,);
 				return { unloaded: a[0], sessionId: a[1], resource: "jupyter-notebook", };
 			},
-			usage: "dss notebook unload-jupyter <name> <sessionId>",
+			usage: "dss notebook unload-jupyter <name> <sessionId> [--dry-run] [--project-key KEY]",
 			description: "Unload a Jupyter notebook kernel session.",
-			examples: ["dss notebook unload-jupyter my_notebook SESSION_ID",],
+			examples: ["dss notebook unload-jupyter my_notebook SESSION_ID --dry-run",],
 		},
 		"list-sql": {
 			handler: (c, _a, f,) => c.notebooks.listSql(f["project-key"] as string | undefined,),
@@ -2269,34 +2758,38 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			examples: ["dss notebook list-sql",],
 		},
 		"get-sql": {
-			handler: (c, a, _f,) => {
+			handler: (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook get-sql <id>",);
-				return c.notebooks.getSql(a[0],);
+				return c.notebooks.getSql(a[0], f["project-key"] as string | undefined,);
 			},
-			usage: "dss notebook get-sql <id>",
+			usage: "dss notebook get-sql <id> [--project-key KEY]",
 			description: "Get a SQL notebook.",
 			examples: ["dss notebook get-sql my_sql_notebook",],
 		},
 		"delete-sql": {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook delete-sql <id>",);
-				if (f["dry-run"] === true) {
-					const current = await c.notebooks.getSql(a[0],);
-					return { dryRun: true, action: "delete", resource: "sql-notebook", id: a[0], current, };
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true || f["if-exists"] === true) {
+					const current = await readIfExists(() => c.notebooks.getSql(a[0], pk,));
+					if (!current) return skipResult("sql-notebook", a[0], "missing",);
+					if (f["dry-run"] === true) {
+						return { dryRun: true, action: "delete", resource: "sql-notebook", id: a[0], current, };
+					}
 				}
-				await c.notebooks.deleteSql(a[0],);
+				await c.notebooks.deleteSql(a[0], pk,);
 				return { deleted: a[0], resource: "sql-notebook", };
 			},
-			usage: "dss notebook delete-sql <id> [--dry-run]",
+			usage: "dss notebook delete-sql <id> [--if-exists] [--dry-run] [--project-key KEY]",
 			description: "Delete a SQL notebook.",
-			examples: ["dss notebook delete-sql my_sql_notebook",],
+			examples: ["dss notebook delete-sql my_sql_notebook --dry-run",],
 		},
 		"history-sql": {
-			handler: (c, a, _f,) => {
+			handler: (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook history-sql <id>",);
-				return c.notebooks.getSqlHistory(a[0],);
+				return c.notebooks.getSqlHistory(a[0], f["project-key"] as string | undefined,);
 			},
-			usage: "dss notebook history-sql <id>",
+			usage: "dss notebook history-sql <id> [--project-key KEY]",
 			description: "Get query history for a SQL notebook.",
 			examples: ["dss notebook history-sql my_sql_notebook",],
 		},
@@ -2313,14 +2806,26 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"--data, --data-file, or --stdin is required (notebook JSON content).",
 					);
 				}
-				await c.notebooks.saveJupyter(a[0], data as never, f["project-key"] as string | undefined,);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					const current = await readIfExists(() => c.notebooks.getJupyter(a[0], pk,));
+					return {
+						dryRun: true,
+						action: "save-jupyter",
+						resource: "jupyter-notebook",
+						name: a[0],
+						current,
+						next: data,
+					};
+				}
+				await c.notebooks.saveJupyter(a[0], data as never, pk,);
 				return { saved: a[0], resource: "jupyter-notebook", };
 			},
 			usage:
-				"dss notebook save-jupyter <name> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
+				"dss notebook save-jupyter <name> [--data '{...}' | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
 			description: "Save content to a Jupyter notebook.",
 			examples: [
-				"dss notebook save-jupyter my_notebook --data-file notebook.json",
+				"dss notebook save-jupyter my_notebook --data-file notebook.json --dry-run",
 				"cat notebook.json | dss notebook save-jupyter my_notebook --stdin",
 			],
 		},
@@ -2333,28 +2838,60 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						"--data, --data-file, or --stdin is required (SQL notebook content JSON).",
 					);
 				}
-				await c.notebooks.saveSql(a[0], data as never, f["project-key"] as string | undefined,);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					const current = await readIfExists(() => c.notebooks.getSql(a[0], pk,));
+					return {
+						dryRun: true,
+						action: "save-sql",
+						resource: "sql-notebook",
+						id: a[0],
+						current,
+						next: data,
+					};
+				}
+				await c.notebooks.saveSql(a[0], data as never, pk,);
 				return { saved: a[0], resource: "sql-notebook", };
 			},
 			usage:
-				"dss notebook save-sql <id> [--data '{...}' | --data-file PATH | --stdin] [--project-key KEY]",
+				"dss notebook save-sql <id> [--data '{...}' | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
 			description: "Save content to a SQL notebook.",
-			examples: ["dss notebook save-sql my_sql_notebook --data-file content.json",],
+			examples: ["dss notebook save-sql my_sql_notebook --data-file content.json --dry-run",],
 		},
 		"clear-sql-history": {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss notebook clear-sql-history <id>",);
-				await c.notebooks.clearSqlHistory(a[0], {
+				const pk = f["project-key"] as string | undefined;
+				const options = {
 					cellId: f["cell-id"] as string | undefined,
 					numRunsToRetain: num(f["retain"],),
-					projectKey: f["project-key"] as string | undefined,
-				},);
+					projectKey: pk,
+				};
+				if (f["dry-run"] === true) {
+					const current = await c.notebooks.getSqlHistory(a[0], pk,);
+					return {
+						dryRun: true,
+						action: "clear-sql-history",
+						resource: "sql-notebook",
+						id: a[0],
+						current,
+						next: options,
+						endpoint: encodedProjectEndpoint(
+							c,
+							pk,
+							`/sql-notebooks/${encodeURIComponent(a[0],)}/history/clear`,
+						),
+						method: "POST",
+					};
+				}
+				await c.notebooks.clearSqlHistory(a[0], options,);
 				return { cleared: a[0], resource: "sql-notebook", };
 			},
-			usage: "dss notebook clear-sql-history <id> [--cell-id CID] [--retain N] [--project-key KEY]",
+			usage:
+				"dss notebook clear-sql-history <id> [--cell-id CID] [--retain N] [--dry-run] [--project-key KEY]",
 			description: "Clear query history for a SQL notebook.",
 			examples: [
-				"dss notebook clear-sql-history my_sql_notebook",
+				"dss notebook clear-sql-history my_sql_notebook --dry-run",
 				"dss notebook clear-sql-history my_sql_notebook --cell-id CELL1 --retain 5",
 			],
 		},
@@ -2384,6 +2921,7 @@ function printTopLevelHelp(): void {
 		"      --request-timeout MS HTTP request timeout in ms (default: 30000)",
 		"      --dry-run            Preview destructive actions without executing",
 		"      --if-not-exists      Skip create if resource already exists",
+		"      --if-exists          Skip delete if resource is already missing",
 		"      --insecure           Disable TLS certificate verification",
 		"      --ca-cert PATH       Extra PEM CA bundle (env: NODE_EXTRA_CA_CERTS)",
 		"",
@@ -2510,7 +3048,7 @@ const AUTH_ACTIONS: Record<string, {
 			process.stderr.write("Validating credentials... ",);
 			const result = await validateCredentials(url, apiKey, tlsSettings,);
 			if (!result.valid) {
-				process.stderr.write(`✗ Failed\n`,);
+				process.stderr.write("Failed\n",);
 				if (result.dataikuError) throw result.dataikuError;
 				throw new DataikuError(
 					0,
@@ -2518,7 +3056,7 @@ const AUTH_ACTIONS: Record<string, {
 					result.error ?? "Credential validation failed",
 				);
 			}
-			process.stderr.write("✓ Connected\n",);
+			process.stderr.write("Connected\n",);
 
 			saveCredentials({ url, apiKey, projectKey, ...tlsSettings, },);
 			process.stderr.write(`Credentials saved to ${getCredentialsPath()}\n`,);
@@ -2550,9 +3088,9 @@ const AUTH_ACTIONS: Record<string, {
 
 			const result = await validateCredentials(creds.url, creds.apiKey, tlsSettings,);
 			if (result.valid) {
-				process.stderr.write("Connection:  ✓ Valid\n",);
+				process.stderr.write("Connection:  valid\n",);
 			} else {
-				process.stderr.write(`Connection:  ✗ Failed (${result.error ?? "unknown error"})\n`,);
+				process.stderr.write(`Connection:  failed (${result.error ?? "unknown error"})\n`,);
 				process.stderr.write(`Config:      ${getCredentialsPath()}\n`,);
 				process.exit(1,);
 			}
@@ -2688,6 +3226,16 @@ async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
 }
 
 type CommandSideEffect = "read" | "write" | "auth";
+type CommandOutputShape = "object" | "array" | "string" | "void";
+type CommandDestructiveLevel = "none" | "reversible" | "destructive";
+type CommandAsyncKind = "none" | "job" | "future";
+type CommandIdempotency = "safe" | "if-not-exists" | "if-exists" | "none";
+
+interface CommandInputContract {
+	stdin?: boolean;
+	dataFlag?: boolean;
+	dataFileFlag?: boolean;
+}
 
 interface CommandRegistryEntry {
 	resource: string;
@@ -2700,6 +3248,14 @@ interface CommandRegistryEntry {
 	sideEffect: CommandSideEffect;
 	requiresAuth: boolean;
 	requiresProject: boolean;
+	outputShape: CommandOutputShape;
+	inputContract: CommandInputContract;
+	destructive: CommandDestructiveLevel;
+	producesLocalFile: boolean;
+	mutatesDss: boolean;
+	async: CommandAsyncKind;
+	idempotency: CommandIdempotency;
+	cleanupHint?: string;
 }
 
 const READ_ACTIONS = new Set([
@@ -2760,11 +3316,11 @@ const COMMANDS_USAGE = "dss commands [--json]";
 const COMMANDS_DESCRIPTION = "Print the machine-readable command registry for agent planning.";
 const COMMANDS_EXAMPLES = ["dss commands", "dss commands --json",];
 const INSTALL_SKILL_USAGE =
-	"dss install-skill [--global] [--agent NAME] [--target PATH] [--list-agents]";
+	"dss install-skill [--global] [--agent NAME] [--target PATH] [--list-agents] [--dry-run]";
 const INSTALL_SKILL_DESCRIPTION = "Install the dataiku-dss agent skill for detected coding agents.";
 const INSTALL_SKILL_EXAMPLES = [
 	"dss install-skill --list-agents",
-	"dss install-skill --agent omp",
+	"dss install-skill --agent omp --dry-run",
 ];
 
 function uniqueStrings(values: string[],): string[] {
@@ -2813,6 +3369,81 @@ function inferRequiresProject(resource: string, action: string, usage: string,):
 	return usage.includes("--project-key",);
 }
 
+const ARRAY_OUTPUT_ACTIONS = new Set([
+	"history",
+	"infer",
+	"last-results",
+	"list",
+	"list-jupyter",
+	"list-sql",
+	"rules",
+	"sessions-jupyter",
+	"usages",
+],);
+
+const STRING_OUTPUT_ACTIONS = new Set([
+	"diff",
+	"download",
+	"download-code",
+	"get-payload",
+	"log",
+	"preview",
+],);
+
+function inferOutputShape(resource: string, action: string,): CommandOutputShape {
+	if (resource === "auth" || resource === "install-skill") return "void";
+	if (ARRAY_OUTPUT_ACTIONS.has(action,)) return "array";
+	if (STRING_OUTPUT_ACTIONS.has(action,)) return "string";
+	return "object";
+}
+
+function inferInputContract(usage: string,): CommandInputContract {
+	return {
+		...(usage.includes("--stdin",) ? { stdin: true, } : {}),
+		...(usage.includes("--data ",) || usage.includes("--data JSON",) ? { dataFlag: true, } : {}),
+		...(usage.includes("--data-file",) ? { dataFileFlag: true, } : {}),
+	};
+}
+
+function inferDestructiveLevel(
+	sideEffect: CommandSideEffect,
+	action: string,
+): CommandDestructiveLevel {
+	if (sideEffect !== "write") return "none";
+	if (/^(delete|abort|clear|unload|logout)/.test(action,)) return "destructive";
+	return "reversible";
+}
+
+function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
+	if (resource === "job" && ["build", "build-and-wait", "wait",].includes(action,)) return "job";
+	if (resource === "future" && ["get", "peek", "wait", "abort",].includes(action,)) return "future";
+	if (resource === "scenario" && ["run", "run-and-wait", "status",].includes(action,)) {
+		return "future";
+	}
+	if (resource === "data-quality" && action === "compute") return "future";
+	return "none";
+}
+
+function inferIdempotency(
+	sideEffect: CommandSideEffect,
+	action: string,
+	usage: string,
+): CommandIdempotency {
+	if (sideEffect === "read") return "safe";
+	if (action.startsWith("create",) && usage.includes("--if-not-exists",)) return "if-not-exists";
+	if (action.startsWith("delete",) && usage.includes("--if-exists",)) return "if-exists";
+	return "none";
+}
+
+function inferCleanupHint(resource: string, action: string,): string | undefined {
+	if (!action.startsWith("create",)) return undefined;
+	if (resource === "code-env") return "Delete with `dss code-env delete <lang> <name> --if-exists`.";
+	if (resource === "data-quality") {
+		return "Delete with `dss data-quality delete-rule <dataset> <rule-id> --if-exists`.";
+	}
+	return `Delete with \`dss ${resource} delete <id> --if-exists\` when the created object is disposable.`;
+}
+
 function buildRegistryEntry(
 	resource: string,
 	action: string,
@@ -2820,12 +3451,16 @@ function buildRegistryEntry(
 ): CommandRegistryEntry {
 	const requiresAuth = inferRequiresAuth(resource,);
 	const requiresProject = inferRequiresProject(resource, action, meta.usage,);
+	const sideEffect = inferSideEffect(resource, action,);
+	const destructive = inferDestructiveLevel(sideEffect, action,);
+	const asyncKind = inferAsyncKind(resource, action,);
 	const flags = uniqueStrings([
 		...extractUsageFlags(meta.usage,),
 		...GLOBAL_AGENT_FLAGS,
 		...(requiresAuth ? AUTHENTICATED_AGENT_FLAGS : []),
 		...(requiresProject ? ["project-key",] : []),
 	],);
+	const cleanupHint = inferCleanupHint(resource, action,);
 	return {
 		resource,
 		action,
@@ -2834,9 +3469,17 @@ function buildRegistryEntry(
 		examples: meta.examples,
 		flags: flags.map((name,) => ({ name, kind: flagKind(name,), })),
 		positionals: extractPositionals(meta.usage,),
-		sideEffect: inferSideEffect(resource, action,),
+		sideEffect,
 		requiresAuth,
 		requiresProject,
+		outputShape: inferOutputShape(resource, action,),
+		inputContract: inferInputContract(meta.usage,),
+		destructive,
+		producesLocalFile: meta.usage.includes("--output PATH",),
+		mutatesDss: sideEffect === "write" && resource !== "auth" && resource !== "install-skill",
+		async: asyncKind,
+		idempotency: inferIdempotency(sideEffect, action, meta.usage,),
+		...(cleanupHint ? { cleanupHint, } : {}),
 	};
 }
 
@@ -3034,6 +3677,7 @@ async function main(): Promise<void> {
 				"  --agent NAME     Target a specific agent: claude, codex, cursor, pi, omp",
 				"  --target PATH    Project directory to install into (default: workspace root)",
 				"  --list-agents    Print detected agents and exit",
+				"  --dry-run        Print planned skill installs without writing files",
 			];
 			process.stderr.write(`${lines.join("\n",)}\n`,);
 			process.exit(0,);
@@ -3081,11 +3725,26 @@ async function main(): Promise<void> {
 
 		const scope = isGlobal ? "global" : "project";
 		const cwd = targetDir ?? (isGlobal ? process.cwd() : findWorkspaceRoot(process.cwd(),));
+		if (flags["dry-run"] === true) {
+			writeCommandResult({
+				dryRun: true,
+				action: "install-skill",
+				resource: "install-skill",
+				scope,
+				target: cwd,
+				agents: targets.map((target,) => ({
+					id: target.id,
+					name: target.def.name,
+					via: target.via,
+				})),
+			},);
+			return;
+		}
 		process.stderr.write(`Installing dataiku-dss skill (${scope} scope):\n`,);
 		const results = installSkill(targets, { global: isGlobal, cwd, },);
 
 		for (const r of results) {
-			process.stderr.write(`  ${r.agent}  \u2192  ${r.path}\n`,);
+			process.stderr.write(`  ${r.agent}  ->  ${r.path}\n`,);
 		}
 		if (results.length > 0) {
 			process.stderr.write(`\nDone. ${results.length} skill(s) installed.\n`,);

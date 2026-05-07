@@ -772,7 +772,7 @@ describe("CLI auth commands", () => {
 						DSS_CONFIG_DIR: tmpDir,
 					},
 				},);
-				expect(stderr,).toContain("\u2713 Connected",);
+				expect(stderr,).toContain("Connected",);
 				expect(stderr,).toContain("Credentials saved",);
 
 				// Verify the file was written
@@ -885,7 +885,7 @@ describe("CLI auth commands", () => {
 				expect(stderr,).toContain("API key:",);
 				expect(stderr,).toContain("Project key:",);
 				expect(stderr,).toContain("PROJ",);
-				expect(stderr,).toContain("\u2713 Valid",);
+				expect(stderr,).toContain("Connection:  valid",);
 			},);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
@@ -1168,7 +1168,12 @@ describe("CLI managed folder commands", () => {
 				"--connection",
 				"s3_conn",
 			], { env: cliEnv(url,), },);
-			expect(JSON.parse(stdout,),).toEqual({ id: "folder-id", name: "exports", },);
+			expect(JSON.parse(stdout,),).toEqual({
+				created: "folder-id",
+				resource: "folder",
+				id: "folder-id",
+				name: "exports",
+			},);
 		},);
 
 		expect(requestBody,).toMatchObject({
@@ -1280,6 +1285,8 @@ describe("CLI flow zone commands", () => {
 				"#cc0000",
 			], { env: cliEnv(url,), },);
 			expect(JSON.parse(stdout,),).toEqual({
+				created: "zone-1",
+				resource: "flow-zone",
 				id: "zone-1",
 				name: "Exports",
 				color: "#cc0000",
@@ -1425,7 +1432,12 @@ describe("CLI code-env management commands", () => {
 				"PYTHON311",
 				"--no-wait",
 			], { env: cliEnv(url,), },);
-			expect(JSON.parse(stdout,),).toEqual({ messages: { success: true, }, },);
+			expect(JSON.parse(stdout,),).toEqual({
+				created: "omp_test_env",
+				resource: "code-env",
+				envLang: "PYTHON",
+				messages: { success: true, },
+			},);
 		},);
 
 		expect(requestUrl?.searchParams.get("wait",),).toBe("false",);
@@ -1564,9 +1576,12 @@ describe("CLI code-env management commands", () => {
 		expect(requestUrl?.searchParams.get("wait",),).toBe("false",);
 	});
 
-	it("code-env delete dry-run does not call DSS", async () => {
-		await withCliServer(() => {
-			throw new Error("server should not be called for code-env delete dry-run",);
+	it("code-env delete dry-run reads current state without deleting", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/admin/code-envs/PYTHON/omp_test_env/",);
+			sendJson(res, { envName: "omp_test_env", envLang: "PYTHON", },);
 		}, async (url,) => {
 			const { stdout, } = await dss([
 				"code-env",
@@ -1575,13 +1590,14 @@ describe("CLI code-env management commands", () => {
 				"omp_test_env",
 				"--dry-run",
 			], { env: cliEnv(url,), },);
-			expect(JSON.parse(stdout,),).toEqual({
+			expect(JSON.parse(stdout,),).toMatchObject({
 				dryRun: true,
 				action: "delete",
 				resource: "code-env",
 				envLang: "PYTHON",
 				envName: "omp_test_env",
 				wait: true,
+				current: { envName: "omp_test_env", envLang: "PYTHON", },
 			},);
 		},);
 	});
@@ -2045,7 +2061,7 @@ describe("CLI command behavioral smoke coverage", () => {
 						"--type",
 						"Filesystem",
 					], { env: cliEnv(url,), },)).stdout,
-				),).toEqual({ name: "new_orders", type: "Filesystem", },);
+				),).toEqual({ created: "new_orders", resource: "dataset", },);
 				expect(datasetCreateBody,).toMatchObject({
 					name: "new_orders",
 					type: "Filesystem",
@@ -2105,7 +2121,7 @@ describe("CLI command behavioral smoke coverage", () => {
 				expect(JSON.parse((await dss(["job", "get", "job-1",], { env: cliEnv(url,), },)).stdout,),)
 					.toHaveProperty("baseStatus.state", "DONE",);
 				expect(JSON.parse((await dss(["job", "abort", "job-1",], { env: cliEnv(url,), },)).stdout,),)
-					.toEqual({ ok: true, },);
+					.toEqual({ aborted: "job-1", resource: "job", },);
 				expect(JSON.parse((await dss(["connection", "list",], { env: cliEnv(url,), },)).stdout,),)
 					.toEqual(["filesystem_managed",],);
 
@@ -2626,7 +2642,7 @@ describe("CLI command behavioral smoke coverage", () => {
 				action: "create",
 				resource: "wiki",
 				name: "Dry run",
-				content: "preview",
+				payload: { name: "Dry run", content: "preview", },
 			},);
 			expect(JSON.parse(
 				(await dss(["wiki", "create", "--name", "Created", "--content", "created",], {
@@ -2700,7 +2716,7 @@ describe("CLI command behavioral smoke coverage", () => {
 				action: "create",
 				resource: "dashboard",
 				name: "Dry dashboard",
-				settings: { pages: [], },
+				payload: { pages: [], },
 			},);
 			expect(JSON.parse(
 				(await dss(["dashboard", "create", "--name", "Created dashboard",], {
@@ -2753,8 +2769,11 @@ describe("CLI command behavioral smoke coverage", () => {
 						env: cliEnv(url,),
 					},)
 				).stdout,
-			) as { prototype?: { name?: string; type?: string; }; };
-			expect(insightCreateDryRun.prototype,).toMatchObject({ name: "Dry insight", type: "chart", },);
+			) as { payload?: { name?: string; type?: string; }; };
+			expect(insightCreateDryRun.payload,).toMatchObject({
+				name: "Dry insight",
+				type: "chart",
+			},);
 			expect(JSON.parse(
 				(await dss([
 					"insight",
@@ -3109,5 +3128,192 @@ describe("CLI command behavioral smoke coverage", () => {
 			)
 				.toEqual({ aborted: "job-1", resource: "future", },);
 		},);
+	});
+});
+
+describe("CLI agent-readiness mutation contracts", () => {
+	it("dry-runs dataset writes and reports idempotent create skips", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [{ name: "orders", type: "Filesystem", },],);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/orders") {
+				sendJson(res, { name: "orders", tags: ["old",], },);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const skipped = JSON.parse(
+				(await dss([
+					"dataset",
+					"create",
+					"--name",
+					"orders",
+					"--connection",
+					"filesystem",
+					"--type",
+					"Filesystem",
+					"--if-not-exists",
+				], { env: cliEnv(url,), },)).stdout,
+			) as Record<string, unknown>;
+			expect(skipped,).toMatchObject({ skipped: "orders", reason: "exists", resource: "dataset", },);
+
+			const createDryRun = JSON.parse(
+				(await dss([
+					"dataset",
+					"create",
+					"--name",
+					"new_orders",
+					"--connection",
+					"filesystem",
+					"--type",
+					"Filesystem",
+					"--dry-run",
+				], { env: cliEnv(url,), },)).stdout,
+			) as Record<string, unknown>;
+			expect(createDryRun,).toMatchObject({
+				dryRun: true,
+				action: "create",
+				resource: "dataset",
+				name: "new_orders",
+				payload: { datasetName: "new_orders", connection: "filesystem", dsType: "Filesystem", },
+			},);
+
+			const updateDryRun = JSON.parse(
+				(await dss([
+					"dataset",
+					"update",
+					"orders",
+					"--data",
+					'{"tags":["new"]}',
+					"--dry-run",
+				], { env: cliEnv(url,), },)).stdout,
+			) as { current?: { tags?: string[]; }; next?: { tags?: string[]; }; };
+			expect(updateDryRun.current?.tags,).toEqual(["old",],);
+			expect(updateDryRun.next?.tags,).toEqual(["new",],);
+		},);
+	});
+
+	it("dry-runs long-running job and scenario commands without POSTing", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const jobDryRun = JSON.parse(
+				(await dss([
+					"job",
+					"build",
+					"orders",
+					"--wait",
+					"--timeout",
+					"10",
+					"--poll-interval",
+					"1",
+					"--dry-run",
+				], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as Record<string, unknown>;
+			expect(jobDryRun,).toMatchObject({
+				dryRun: true,
+				action: "build",
+				resource: "job",
+				target: "orders",
+				method: "POST",
+			},);
+			expect(jobDryRun.endpoint,).toBe("/public/api/projects/TEST/jobs/",);
+
+			const scenarioDryRun = JSON.parse(
+				(await dss([
+					"scenario",
+					"run",
+					"nightly",
+					"--wait",
+					"--timeout",
+					"10",
+					"--poll-interval",
+					"1",
+					"--dry-run",
+				], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as Record<string, unknown>;
+			expect(scenarioDryRun,).toMatchObject({
+				dryRun: true,
+				action: "run",
+				resource: "scenario",
+				id: "nightly",
+				method: "POST",
+			},);
+			expect(scenarioDryRun.endpoint,).toBe("/public/api/projects/TEST/scenarios/nightly/run/",);
+		},);
+	});
+
+	it("dry-runs variable and notebook mutations with current and next state", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/variables/") {
+				sendJson(res, { standard: { a: 1, }, local: {}, },);
+				return;
+			}
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/jupyter-notebooks/book"
+			) {
+				sendJson(res, {
+					cells: [{
+						cell_type: "code",
+						source: "1",
+						outputs: [{ text: "old", },],
+						execution_count: 7,
+					},],
+					metadata: {},
+					nbformat: 4,
+					nbformat_minor: 5,
+				},);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const varsDryRun = JSON.parse(
+				(await dss(["variable", "set", "--standard", '{"b":2}', "--dry-run",], { env: cliEnv(url,), },))
+					.stdout,
+			) as { next?: { standard?: Record<string, unknown>; }; };
+			expect(varsDryRun.next?.standard,).toEqual({ a: 1, b: 2, },);
+
+			const clearDryRun = JSON.parse(
+				(await dss(["notebook", "clear-jupyter-outputs", "book", "--dry-run",], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as { next?: { cells?: Array<{ outputs?: unknown[]; execution_count?: number | null; }>; }; };
+			expect(clearDryRun.next?.cells?.[0]?.outputs,).toEqual([],);
+			expect(clearDryRun.next?.cells?.[0]?.execution_count,).toBeNull();
+		},);
+	});
+
+	it("dry-runs install-skill without credentials or file writes", async () => {
+		const tmpDir = join(tmpdir(), `dss-install-skill-dry-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			const result = JSON.parse(
+				(await dss(["install-skill", "--agent", "omp", "--target", tmpDir, "--dry-run",], {
+					cwd: tmpDir,
+					env: { PATH: process.env.PATH, HOME: process.env.HOME, },
+				},)).stdout,
+			) as Record<string, unknown>;
+			expect(result,).toMatchObject({
+				dryRun: true,
+				action: "install-skill",
+				resource: "install-skill",
+				scope: "project",
+				target: tmpDir,
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
 	});
 });
