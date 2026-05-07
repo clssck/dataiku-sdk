@@ -3405,6 +3405,108 @@ describe("CLI agent-readiness mutation contracts", () => {
 		},);
 	});
 
+	it("plans mutations without contacting DSS", async () => {
+		let requestCount = 0;
+		await withCliServer((req, res,) => {
+			requestCount++;
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${req.url ?? ""}`,);
+		}, async (url,) => {
+			const datasetPlan = JSON.parse(
+				(await dss([
+					"dataset",
+					"create",
+					"--name",
+					"planned_orders",
+					"--connection",
+					"filesystem",
+					"--type",
+					"Filesystem",
+					"--plan",
+					"--project-key",
+					"TEST",
+				], { env: cliEnv(url,), },)).stdout,
+			) as Record<string, unknown>;
+			expect(datasetPlan,).toMatchObject({
+				plan: true,
+				action: "create",
+				resource: "dataset",
+				name: "planned_orders",
+				method: "POST",
+				endpoint: "/public/api/projects/TEST/datasets/",
+				payload: {
+					datasetName: "planned_orders",
+					connection: "filesystem",
+					dsType: "Filesystem",
+					projectKey: "TEST",
+				},
+			},);
+
+			const scenarioPlan = JSON.parse(
+				(await dss(["scenario", "run", "nightly", "--plan", "--project-key", "TEST",], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as Record<string, unknown>;
+			expect(scenarioPlan,).toMatchObject({
+				plan: true,
+				action: "run",
+				resource: "scenario",
+				id: "nightly",
+				method: "POST",
+				endpoint: "/public/api/projects/TEST/scenarios/nightly/run/",
+				payload: {},
+			},);
+
+			const jobPlan = JSON.parse(
+				(await dss(["job", "build", "orders", "--plan", "--project-key", "TEST",], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as Record<string, unknown>;
+			expect(jobPlan,).toMatchObject({
+				plan: true,
+				action: "build",
+				resource: "job",
+				target: "orders",
+				method: "POST",
+				endpoint: "/public/api/projects/TEST/jobs/",
+			},);
+			const plannedAndDryRun = JSON.parse(
+				(await dss(["scenario", "run", "nightly", "--plan", "--dry-run", "--project-key", "TEST",], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as Record<string, unknown>;
+			expect(plannedAndDryRun,).toMatchObject({
+				plan: true,
+				plannedAndDryRun: true,
+				action: "run",
+				resource: "scenario",
+			},);
+		},);
+		expect(requestCount,).toBe(0,);
+	});
+
+	it("validates mutation plan inputs locally", async () => {
+		const failure = await dssFailure([
+			"dataset",
+			"create",
+			"--name",
+			"planned_orders",
+			"--type",
+			"Filesystem",
+			"--plan",
+			"--project-key",
+			"TEST",
+		], {
+			env: {
+				PATH: process.env.PATH,
+				HOME: process.env.HOME,
+				DATAIKU_PROJECT_KEY: "TEST",
+			},
+		},);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toContain("--connection is required",);
+	});
+
 	it("dry-runs variable and notebook mutations with current and next state", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);

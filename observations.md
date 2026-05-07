@@ -103,3 +103,32 @@
   }
 }
 ```
+
+## Agent Ergonomics Phase 1.5.C Verification (2026-05-07)
+
+```json
+{
+  "phase": "1.5.C mutation planning",
+  "status": "verified",
+  "changes": [
+    "Added --plan with --explain alias for mutating command planning before credential resolution or DSS calls.",
+    "Added structured plan output with method, endpoint, payload, identifiers, wait, idempotency, async, and failure exit code metadata.",
+    "Updated commands --json to advertise the canonical plan flag for write commands."
+  ],
+  "verification": {
+    "focused": "bun test tests/cli.test.ts tests/cli-surface.test.ts tests/sdk-surface.test.ts tests/schemas.test.ts -> 161 pass, 0 fail",
+    "typecheck": "bun run check -> pass",
+    "format": "bun run format:check -> pass",
+    "lint": "bun run lint -> pass with pre-existing no-underscore-dangle warnings in src/client.ts",
+    "build": "bun run build -> pass",
+    "integration": "bun run test:integration -> 4 pass, 1 skip, 0 fail",
+    "rigorous": "bun run test:integration:rigorous -> 50 pass, 5 skip, 0 fail",
+    "rigorousMutating": "bun run test:integration:rigorous:mutating -> 55 pass, 0 fail",
+    "liveSmoke": "bun run src/cli.ts scenario run BUILDDASHBOARD --plan and bun run src/cli.ts job build cardholder_info --plan -> emitted POST endpoints and payloads without executing the operations"
+  },
+  "cleanup": {
+    "required": false,
+    "notes": "Plan mode does not mutate DSS; no disposable artifacts were created."
+  }
+}
+```

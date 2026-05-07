@@ -395,6 +395,37 @@ function skipResult(
 	return { skipped: id, reason, resource, ...extra, };
 }
 
+function planResult(
+	resource: string,
+	action: string,
+	options: {
+		asyncKind: string;
+		endpoint?: string;
+		exitCodesOnFailure: Record<string, number>;
+		identifiers?: Record<string, unknown>;
+		idempotency: string;
+		method?: string;
+		payload?: unknown;
+		plannedAndDryRun?: boolean;
+		wait?: unknown;
+	},
+): Record<string, unknown> {
+	return {
+		plan: true,
+		action,
+		resource,
+		...(options.plannedAndDryRun ? { plannedAndDryRun: true, } : {}),
+		...options.identifiers,
+		...(options.method ? { method: options.method, } : {}),
+		...(options.endpoint ? { endpoint: options.endpoint, } : {}),
+		...(options.payload !== undefined ? { payload: options.payload, } : {}),
+		...(options.wait !== undefined ? { wait: options.wait, } : {}),
+		idempotency: options.idempotency,
+		async: options.asyncKind,
+		exitCodesOnFailure: options.exitCodesOnFailure,
+	};
+}
+
 function encodedProjectEndpoint(
 	client: DataikuClient,
 	projectKey: string | undefined,
@@ -403,6 +434,10 @@ function encodedProjectEndpoint(
 	return `/public/api/projects/${
 		encodeURIComponent(client.resolveProjectKey(projectKey,),)
 	}${suffix}`;
+}
+
+function encodedProjectEndpointForPlan(projectKey: string, suffix: string,): string {
+	return `/public/api/projects/${encodeURIComponent(projectKey,)}${suffix}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -423,6 +458,7 @@ const BOOLEAN_FLAGS = new Set([
 	"include-logs",
 	"replace",
 	"dry-run",
+	"plan",
 	"capabilities",
 	"fast",
 	"include-all-partitions",
@@ -447,6 +483,7 @@ const FLAG_ALIASES: Record<string, string> = {
 	dryrun: "dry-run",
 	"skip-tls-verify": "insecure",
 	"extra-ca-certs": "ca-cert",
+	explain: "plan",
 };
 
 const VALUE_FLAGS = new Set([
@@ -3798,9 +3835,12 @@ function buildRegistryEntry(
 	const sideEffect = inferSideEffect(resource, action,);
 	const destructive = inferDestructiveLevel(sideEffect, action,);
 	const asyncKind = inferAsyncKind(resource, action,);
+	const mutatesDss = sideEffect === "write" && resource !== "auth" && resource !== "install-skill";
+	const supportsPlan = mutatesDss || sideEffect === "write";
 	const usageFlags = extractUsageFlags(meta.usage,);
 	const flags = uniqueStrings([
 		...usageFlags,
+		...(supportsPlan ? ["plan",] : []),
 		...GLOBAL_AGENT_FLAGS,
 		...(requiresAuth ? AUTHENTICATED_AGENT_FLAGS : []),
 		...(requiresProject ? ["project-key",] : []),
@@ -3836,7 +3876,7 @@ function buildRegistryEntry(
 		inputContract,
 		destructive,
 		producesLocalFile: meta.usage.includes("--output PATH",),
-		mutatesDss: sideEffect === "write" && resource !== "auth" && resource !== "install-skill",
+		mutatesDss,
 		async: asyncKind,
 		idempotency: inferIdempotency(sideEffect, action, meta.usage,),
 		dryRun: meta.usage.includes("--dry-run",),
@@ -3884,6 +3924,610 @@ function buildCommandRegistry(): Record<string, Record<string, CommandRegistryEn
 		},);
 	}
 	return registry;
+}
+
+function exitCodesOnFailure(entry: CommandRegistryEntry,): Record<string, number> {
+	return {
+		usage: entry.exitCodes.usage,
+		error: entry.exitCodes.error,
+		transient: entry.exitCodes.transient,
+		...(entry.exitCodes.longRunningFailure !== undefined
+			? { longRunningFailure: entry.exitCodes.longRunningFailure, }
+			: {}),
+	};
+}
+
+function projectKeyForPlan(
+	entry: CommandRegistryEntry,
+	flags: Record<string, string | boolean>,
+): string | undefined {
+	if (!entry.requiresProject) return undefined;
+	const projectKey = resolveCredentials(flags,).projectKey;
+	if (projectKey) return projectKey;
+	throw new UsageError(
+		`Missing project key. Pass --project-key or set DATAIKU_PROJECT_KEY before planning ${entry.resource} ${entry.action}.`,
+	);
+}
+
+function requiredPlanFlag(
+	flags: Record<string, string | boolean>,
+	name: string,
+	usage: string,
+): string {
+	const value = flags[name];
+	if (typeof value === "string" && value.trim().length > 0) return value;
+	throw new UsageError(`--${name} is required. Usage: ${usage}`,);
+}
+
+function optionalJsonFlag(
+	flags: Record<string, string | boolean>,
+	name: string,
+): Record<string, unknown> | undefined {
+	const value = flags[name];
+	return typeof value === "string" ? JSON.parse(value,) as Record<string, unknown> : undefined;
+}
+
+function requiredPlanJsonInput(
+	flags: Record<string, string | boolean>,
+	usage: string,
+): Record<string, unknown> {
+	return requiredJsonInput(flags, `--data, --data-file, or --stdin is required. Usage: ${usage}`,);
+}
+
+function requiredPlanPositionals(usage: string,): string[] {
+	return [...stripOptionalUsageGroups(usage,).matchAll(/<([^>]+)>/g,),].map((match,) => match[1]!);
+}
+
+function dataQualityEndpoint(projectKey: string, datasetName: string, suffix: string,): string {
+	return encodedProjectEndpointForPlan(
+		projectKey,
+		`/datasets/${encodeURIComponent(datasetName,)}/data-quality${suffix}`,
+	);
+}
+
+function querySuffix(params: Record<string, string | number | boolean | undefined>,): string {
+	const search = new URLSearchParams();
+	for (const [key, value,] of Object.entries(params,)) {
+		if (value !== undefined) search.set(key, String(value,),);
+	}
+	const raw = search.toString();
+	return raw ? `?${raw}` : "";
+}
+
+function jobBuildPayload(
+	target: string,
+	projectKey: string,
+	flags: Record<string, string | boolean>,
+): Record<string, unknown> {
+	const targetType = jobBuildTargetType(flags["type"],);
+	const payload: Record<string, unknown> = {
+		outputs: [{ projectKey, id: target, type: targetType, },],
+		type: (flags["build-mode"] as string | undefined) ?? "NON_RECURSIVE_FORCED_BUILD",
+	};
+	if (flags["force-rebuild"] === true && targetType === "DATASET") {
+		payload.autoUpdateSchemaBeforeEachRecipeRun = true;
+	}
+	return payload;
+}
+
+function commandPlanShape(
+	resource: string,
+	action: string,
+	args: string[],
+	flags: Record<string, string | boolean>,
+	entry: CommandRegistryEntry,
+	projectKey: string | undefined,
+): {
+	endpoint?: string;
+	identifiers?: Record<string, unknown>;
+	method?: string;
+	payload?: unknown;
+	wait?: unknown;
+} {
+	const projectEndpoint = (suffix: string,) => {
+		if (!projectKey) throw new UsageError(`Missing project key for ${resource} ${action}.`,);
+		return encodedProjectEndpointForPlan(projectKey, suffix,);
+	};
+	const id = args[0];
+	switch (`${resource}.${action}`) {
+		case "wiki.create": {
+			const name = requiredPlanFlag(flags, "name", entry.usage,);
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/wiki/",),
+				identifiers: { name, },
+				payload: {
+					projectKey,
+					name,
+					parent: flags["parent"] as string | undefined ?? null,
+					content: textInput(flags,),
+				},
+			};
+		}
+		case "wiki.update":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/wiki/${encodeURIComponent(id,)}`,),
+				identifiers: { article: id, },
+				payload: {
+					...jsonInput(flags,),
+					name: flags["name"] as string | undefined,
+					content: textInput(flags,),
+				},
+			};
+		case "wiki.delete":
+			return {
+				method: "DELETE",
+				endpoint: projectEndpoint(`/wiki/${encodeURIComponent(id,)}`,),
+				identifiers: { article: id, },
+			};
+		case "dashboard.create": {
+			const name = requiredPlanFlag(flags, "name", entry.usage,);
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/dashboards/",),
+				identifiers: { name, },
+				payload: { ...(jsonInput(flags,) ?? { pages: [], }), name, },
+			};
+		}
+		case "dashboard.update":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/dashboards/${encodeURIComponent(id,)}/`,),
+				identifiers: { id, },
+				payload: { ...jsonInput(flags,), name: flags["name"] as string | undefined, },
+			};
+		case "dashboard.delete":
+			return {
+				method: "DELETE",
+				endpoint: projectEndpoint(`/dashboards/${encodeURIComponent(id,)}/`,),
+				identifiers: { id, },
+			};
+		case "insight.create": {
+			const data = jsonInput(flags,);
+			const name = flags["name"] as string | undefined;
+			const type = flags["type"] as string | undefined;
+			if (!data && (!name || !type)) {
+				throw new UsageError(
+					"--data or both --name and --type are required. Usage: dss insight create --name NAME --type TYPE",
+				);
+			}
+			const prototype: Record<string, unknown> = { ...data, };
+			if (name !== undefined) prototype.name = name;
+			if (type !== undefined) prototype.type = type;
+			const listed = parseBooleanOption(flags["listed"], "--listed",);
+			if (listed !== undefined) prototype.listed = listed;
+			const params = optionalJsonFlag(flags, "params",);
+			if (params !== undefined) prototype.params = params;
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/insights/",),
+				identifiers: { name, type, },
+				payload: {
+					insightPrototype: prototype,
+					contentType: flags["content-type"] as string | undefined,
+					payload: textInput(flags,),
+				},
+			};
+		}
+		case "insight.update":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/insights/${encodeURIComponent(id,)}/`,),
+				identifiers: { id, },
+				payload: {
+					insight: {
+						...jsonInput(flags,),
+						name: flags["name"] as string | undefined,
+						listed: parseBooleanOption(flags["listed"], "--listed",),
+						params: optionalJsonFlag(flags, "params",),
+					},
+					contentType: flags["content-type"] as string | undefined,
+					payload: textInput(flags,),
+				},
+			};
+		case "insight.delete":
+			return {
+				method: "DELETE",
+				endpoint: projectEndpoint(`/insights/${encodeURIComponent(id,)}/`,),
+				identifiers: { id, },
+			};
+		case "data-quality.create-rule":
+			return {
+				method: "POST",
+				endpoint: dataQualityEndpoint(projectKey!, args[0], "/rules",),
+				identifiers: { dataset: args[0], },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "data-quality.update-rule":
+			return {
+				method: "PUT",
+				endpoint: dataQualityEndpoint(projectKey!, args[0], `/rules/${encodeURIComponent(args[1],)}`,),
+				identifiers: { dataset: args[0], ruleId: args[1], },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "data-quality.delete-rule":
+			return {
+				method: "DELETE",
+				endpoint: dataQualityEndpoint(
+					projectKey!,
+					args[0],
+					`/rules/${encodeURIComponent(args[1],)}${querySuffix({ ruleId: args[1], },)}`,
+				),
+				identifiers: { dataset: args[0], ruleId: args[1], },
+			};
+		case "data-quality.compute":
+			return {
+				method: "POST",
+				endpoint: dataQualityEndpoint(
+					projectKey!,
+					args[0],
+					`/actions/compute-rules${
+						querySuffix({
+							partition: (flags["partition"] as string | undefined) ?? "NP",
+							ruleId: flags["rule-id"] as string | undefined,
+						},)
+					}`,
+				),
+				identifiers: { dataset: args[0], ruleId: flags["rule-id"] as string | undefined, },
+				wait: flags["wait"] === true,
+			};
+		case "future.abort":
+			return {
+				method: "POST",
+				endpoint: `/public/api/futures/${encodeURIComponent(id,)}/abort`,
+				identifiers: { id, },
+			};
+		case "flow-zone.create": {
+			const name = flowZoneName(flags["name"],);
+			const payload = { name, color: flowZoneColor(flags["color"],), projectKey, };
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/flow/zones",),
+				identifiers: { name, },
+				payload,
+			};
+		}
+		case "flow-zone.update":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/flow/zones/${encodeURIComponent(id,)}`,),
+				identifiers: { id, },
+				payload: {
+					name: typeof flags["name"] === "string" ? flowZoneName(flags["name"],) : undefined,
+					color: flowZoneColor(flags["color"],),
+					projectKey,
+				},
+			};
+		case "flow-zone.delete":
+			return {
+				method: "DELETE",
+				endpoint: projectEndpoint(`/flow/zones/${encodeURIComponent(id,)}`,),
+				identifiers: { id, },
+			};
+		case "flow-zone.move":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/flow/zones/${encodeURIComponent(id,)}/move-to`,),
+				identifiers: { id, },
+				payload: { items: flowZoneMoveItems(flags,), },
+			};
+		case "dataset.create": {
+			const name = requiredPlanFlag(flags, "name", entry.usage,);
+			const connection = requiredPlanFlag(flags, "connection", entry.usage,);
+			const dsType = requiredPlanFlag(flags, "type", entry.usage,);
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/datasets/",),
+				identifiers: { name, },
+				payload: { datasetName: name, connection, dsType, projectKey, },
+			};
+		}
+		case "dataset.delete":
+			return {
+				method: "DELETE",
+				endpoint: projectEndpoint(`/datasets/${encodeURIComponent(id,)}`,),
+				identifiers: { name: id, },
+			};
+		case "dataset.update":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/datasets/${encodeURIComponent(id,)}`,),
+				identifiers: { name: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "recipe.delete":
+			return {
+				method: "DELETE",
+				endpoint: projectEndpoint(`/recipes/${encodeURIComponent(id,)}`,),
+				identifiers: { name: id, },
+			};
+		case "recipe.create": {
+			const type = requiredPlanFlag(flags, "type", entry.usage,);
+			const outputDataset = flags["output"] as string | undefined;
+			const outputFolder = flags["output-folder"] as string | undefined;
+			if (outputDataset && outputFolder) {
+				throw new UsageError("--output and --output-folder are mutually exclusive.",);
+			}
+			if (!outputDataset && !outputFolder) {
+				throw new UsageError("--output or --output-folder is required.",);
+			}
+			if (outputFolder && !flags["output-connection"]) {
+				throw new UsageError("--output-connection is required when using --output-folder.",);
+			}
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/recipes/",),
+				identifiers: { name: flags["name"] as string | undefined, },
+				payload: {
+					type,
+					name: flags["name"] as string | undefined,
+					inputDatasets: flags["input"] ? [flags["input"] as string,] : undefined,
+					outputDataset,
+					outputFolder,
+					outputConnection: flags["output-connection"] as string | undefined,
+					projectKey,
+				},
+			};
+		}
+		case "recipe.update":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/recipes/${encodeURIComponent(id,)}`,),
+				identifiers: { name: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "recipe.set-payload":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/recipes/${encodeURIComponent(id,)}/payload`,),
+				identifiers: { name: id, },
+				payload: { file: flags["file"] as string | undefined, content: textInput(flags,), },
+			};
+		case "job.build":
+		case "job.build-and-wait":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/jobs/",),
+				identifiers: { target: id, },
+				payload: jobBuildPayload(id, projectKey!, flags,),
+				wait: action === "build-and-wait" || flags["wait"] === true,
+			};
+		case "job.abort":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/jobs/${encodeURIComponent(id,)}/abort/`,),
+				identifiers: { id, },
+			};
+		case "scenario.run":
+		case "scenario.run-and-wait":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/run/`,),
+				identifiers: { id, },
+				payload: {},
+				wait: action === "run-and-wait" || flags["wait"] === true,
+			};
+		case "scenario.delete":
+			return {
+				method: "DELETE",
+				endpoint: projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/`,),
+				identifiers: { id, },
+			};
+		case "scenario.create":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/scenarios/",),
+				identifiers: { id: args[0], name: args[1], },
+				payload: {
+					id: args[0],
+					name: args[1],
+					projectKey,
+					type: (flags["type"] as string | undefined) ?? "step_based",
+				},
+			};
+		case "scenario.update":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/`,),
+				identifiers: { id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "folder.create": {
+			const name = requiredPlanFlag(flags, "name", entry.usage,);
+			const type = requiredPlanFlag(flags, "type", entry.usage,);
+			const connection = requiredPlanFlag(flags, "connection", entry.usage,);
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/managedfolders/",),
+				identifiers: { name, },
+				payload: { name, type, connection, path: flags["path"] as string | undefined, projectKey, },
+			};
+		}
+		case "folder.upload":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/managedfolders/${encodeURIComponent(args[0],)}/contents/${encodeURIComponent(args[1],)}`,
+				),
+				identifiers: { folder: args[0], path: args[1], localPath: args[2], },
+			};
+		case "folder.delete-file":
+			return {
+				method: "DELETE",
+				endpoint: projectEndpoint(
+					`/managedfolders/${encodeURIComponent(args[0],)}/contents/${encodeURIComponent(args[1],)}`,
+				),
+				identifiers: { folder: args[0], path: args[1], },
+			};
+		case "variable.set":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint("/variables/",),
+				payload: {
+					standard: optionalJsonFlag(flags, "standard",),
+					local: optionalJsonFlag(flags, "local",),
+					replace: flags["replace"] === true,
+				},
+			};
+		case "code-env.create":
+			return {
+				method: "POST",
+				endpoint: "/public/api/admin/code-envs/",
+				identifiers: { lang: args[0], name: args[1], },
+				payload: {
+					envLang: args[0],
+					envName: args[1],
+					deploymentMode: requiredPlanFlag(flags, "deployment-mode", entry.usage,),
+					params: codeEnvParams(flags,),
+					wait: codeEnvWait(flags,),
+				},
+				wait: codeEnvWait(flags,),
+			};
+		case "code-env.set-definition":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
+					encodeURIComponent(args[1],)
+				}`,
+				identifiers: { lang: args[0], name: args[1], },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "code-env.set-packages":
+			return {
+				method: "POST",
+				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
+					encodeURIComponent(args[1],)
+				}/packages`,
+				identifiers: { lang: args[0], name: args[1], },
+				payload: {
+					packages: codeEnvPackageList(flags,),
+					installCorePackages: parseBooleanOption(
+						flags["install-core-packages"],
+						"--install-core-packages",
+					),
+				},
+			};
+		case "code-env.update-packages":
+			return {
+				method: "POST",
+				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
+					encodeURIComponent(args[1],)
+				}/packages/actions/update`,
+				identifiers: { lang: args[0], name: args[1], },
+				payload: {
+					forceRebuildEnv: flags["force-rebuild"] === true,
+					versionToUpdate: flags["env-version"] as string | undefined,
+					wait: codeEnvWait(flags,),
+				},
+				wait: codeEnvWait(flags,),
+			};
+		case "code-env.set-jupyter":
+			return {
+				method: "POST",
+				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
+					encodeURIComponent(args[1],)
+				}/jupyter`,
+				identifiers: { lang: args[0], name: args[1], },
+				payload: {
+					active: parseBooleanOption(flags["active"], "--active",),
+					wait: codeEnvWait(flags,),
+				},
+				wait: codeEnvWait(flags,),
+			};
+		case "code-env.delete":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
+					encodeURIComponent(args[1],)
+				}`,
+				identifiers: { lang: args[0], name: args[1], },
+				wait: codeEnvWait(flags,),
+			};
+		case "notebook.save-jupyter":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/jupyter-notebooks/${encodeURIComponent(id,)}`,),
+				identifiers: { name: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "notebook.delete-jupyter":
+			return {
+				method: "DELETE",
+				endpoint: projectEndpoint(`/jupyter-notebooks/${encodeURIComponent(id,)}`,),
+				identifiers: { name: id, },
+			};
+		case "notebook.clear-jupyter-outputs":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/jupyter-notebooks/${encodeURIComponent(id,)}`,),
+				identifiers: { name: id, },
+				payload: { clearOutputs: true, },
+			};
+		case "notebook.unload-jupyter":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/jupyter-notebooks/${encodeURIComponent(args[0],)}/sessions/${
+						encodeURIComponent(args[1],)
+					}/unload`,
+				),
+				identifiers: { name: args[0], sessionId: args[1], },
+			};
+		case "notebook.save-sql":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/sql-notebooks/${encodeURIComponent(id,)}`,),
+				identifiers: { id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "notebook.delete-sql":
+			return {
+				method: "DELETE",
+				endpoint: projectEndpoint(`/sql-notebooks/${encodeURIComponent(id,)}`,),
+				identifiers: { id, },
+			};
+		case "notebook.clear-sql-history":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/sql-notebooks/${encodeURIComponent(id,)}/history`,),
+				identifiers: { id, cellId: flags["cell-id"] as string | undefined, },
+				payload: { retain: num(flags["retain"],), },
+			};
+		default:
+			return {
+				method: action.startsWith("delete",) || action === "abort" ? "DELETE" : "POST",
+				endpoint: projectKey
+					? projectEndpoint(`/${resource}s/${id ? encodeURIComponent(id,) : ""}`,)
+					: undefined,
+				identifiers: id ? { id, } : undefined,
+				payload: jsonInput(flags,),
+			};
+	}
+}
+
+function buildMutationPlan(
+	resource: string,
+	action: string,
+	meta: CommandMeta,
+	args: string[],
+	flags: Record<string, string | boolean>,
+): Record<string, unknown> {
+	const entry = buildRegistryEntry(resource, action, meta,);
+	if (!entry.mutatesDss && entry.sideEffect !== "write") {
+		throw new UsageError(`--plan is only supported for mutating commands. Usage: ${meta.usage}`,);
+	}
+	const requiredPositionals = requiredPlanPositionals(meta.usage,);
+	requireArgs(args, requiredPositionals.length, meta.usage,);
+	const projectKey = projectKeyForPlan(entry, flags,);
+	const shape = commandPlanShape(resource, action, args, flags, entry, projectKey,);
+	return planResult(resource, action, {
+		...shape,
+		asyncKind: entry.async,
+		exitCodesOnFailure: exitCodesOnFailure(entry,),
+		idempotency: entry.idempotency,
+		plannedAndDryRun: flags["dry-run"] === true,
+	},);
 }
 
 // ---------------------------------------------------------------------------
@@ -4045,6 +4689,7 @@ async function main(): Promise<void> {
 				"  --target PATH    Project directory to install into (default: workspace root)",
 				"  --list-agents    Print detected agents and exit",
 				"  --dry-run        Print planned skill installs without writing files",
+				"  --plan           Print planned skill installs without writing files",
 			];
 			process.stderr.write(`${lines.join("\n",)}\n`,);
 			process.exit(0,);
@@ -4092,6 +4737,23 @@ async function main(): Promise<void> {
 
 		const scope = isGlobal ? "global" : "project";
 		const cwd = targetDir ?? (isGlobal ? process.cwd() : findWorkspaceRoot(process.cwd(),));
+		if (flags["plan"] === true) {
+			writeCommandResult(planResult("install-skill", "run", {
+				identifiers: { scope, target: cwd, },
+				payload: {
+					agents: targets.map((target,) => ({
+						id: target.id,
+						name: target.def.name,
+						via: target.via,
+					})),
+				},
+				idempotency: "none",
+				asyncKind: "none",
+				exitCodesOnFailure: { usage: 1, error: 2, transient: 3, },
+				plannedAndDryRun: flags["dry-run"] === true,
+			},),);
+			return;
+		}
 		if (flags["dry-run"] === true) {
 			writeCommandResult({
 				dryRun: true,
@@ -4181,6 +4843,12 @@ async function main(): Promise<void> {
 		process.exit(0,);
 	}
 
+	const args = positional.slice(2,);
+	if (flags["plan"] === true) {
+		const plan = buildMutationPlan(resource, action, actionMeta, args, flags,);
+		writeCommandResult(plan,);
+		return;
+	}
 	// Resolve credentials: flags > env > saved > .env
 	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
 
@@ -4205,7 +4873,6 @@ async function main(): Promise<void> {
 		caCertPath,
 	},);
 
-	const args = positional.slice(2,);
 	const result = await actionMeta.handler(client, args, flags,);
 	writeCommandResult(result,);
 	const failureExitCode = commandFailureExitCode(result,);
