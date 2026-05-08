@@ -2668,17 +2668,21 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 
 	connection: {
 		list: {
-			handler: (c,) => c.connections.list(),
-			usage: "dss connection list",
-			description: "List all connection names.",
-			examples: ["dss connection list",],
+			handler: (c, _a, f,) =>
+				c.connections.list({
+					type: f["type"] as string | undefined,
+				},),
+			usage: "dss connection list [--type TYPE]",
+			description: "List all connection names, optionally filtered by connection type.",
+			examples: ["dss connection list", "dss connection list --type Filesystem",],
 		},
 		infer: {
 			handler: (c, _a, f,) =>
 				c.connections.infer({
 					mode: f["mode"] as "fast" | "rich" | undefined,
+					projectKey: f["project-key"] as string | undefined,
 				},),
-			usage: "dss connection infer [--mode fast|rich]",
+			usage: "dss connection infer [--mode fast|rich] [--project-key KEY]",
 			description: "List connections with inferred types and metadata.",
 			examples: ["dss connection infer", "dss connection infer --mode rich",],
 		},

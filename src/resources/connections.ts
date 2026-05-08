@@ -59,8 +59,10 @@ export class ConnectionsResource extends BaseResource {
 	/**
 	 * Returns sorted list of all connection names visible to the current user.
 	 */
-	async list(): Promise<string[]> {
-		const raw = await this.client.get<unknown>(`/public/api/connections/get-names/`,);
+	async list(opts?: { type?: string; },): Promise<string[]> {
+		const type = opts?.type?.trim();
+		const query = type ? `?type=${encodeURIComponent(type,)}` : "";
+		const raw = await this.client.get<unknown>(`/public/api/connections/get-names/${query}`,);
 		return normalizeConnectionNames(raw,);
 	}
 

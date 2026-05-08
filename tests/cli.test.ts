@@ -1702,6 +1702,26 @@ describe("CLI managed folder commands", () => {
 		},);
 	});
 
+	it("connection infer rich honors --project-key", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/OTHER/datasets/",);
+			sendJson(res, [
+				{ type: "Filesystem", managed: true, params: { connection: "filesystem_managed", }, },
+			],);
+		}, async (url,) => {
+			const result = JSON.parse(
+				(await dss(["connection", "infer", "--mode", "rich", "--project-key", "OTHER",], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as unknown[];
+			expect(result,).toEqual([
+				{ name: "filesystem_managed", types: ["Filesystem",], managed: true, dbSchemas: [], },
+			],);
+		},);
+	});
+
 	it("job build supports managed folder targets", async () => {
 		let requestBody: Record<string, unknown> | undefined;
 		await withCliServer(async (req, res,) => {
@@ -2640,6 +2660,12 @@ describe("CLI command behavioral smoke coverage", () => {
 				expect(JSON.parse((await dss(["connection", "list",], { env: cliEnv(url,), },)).stdout,),)
 					.toEqual(["filesystem_managed",],);
 
+				expect(
+					JSON.parse(
+						(await dss(["connection", "list", "--type", "Filesystem",], { env: cliEnv(url,), },)).stdout,
+					),
+				)
+					.toEqual(["filesystem_managed",],);
 				expect(
 					JSON.parse((await dss(["scenario", "get", "scenario-1",], { env: cliEnv(url,), },)).stdout,),
 				)

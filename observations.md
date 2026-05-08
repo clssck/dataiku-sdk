@@ -293,3 +293,31 @@
   ]
 }
 ```
+
+## Connection Read-only Follow-up (2026-05-07)
+
+```json
+{
+  "scope": "connection read-only ergonomics",
+  "status": "verified",
+  "changes": [
+    "Added optional type filtering to ConnectionsResource.list and dss connection list --type TYPE using the non-admin /connections/get-names endpoint.",
+    "Added --project-key support to dss connection infer so rich inference can target a specific project.",
+    "Explicitly avoided admin connection CRUD/get/update/delete because Dataiku docs show admin-only endpoints can expose connection parameters and delete in-use connections without checks."
+  ],
+  "verification": {
+    "officialDocs": "Dataiku REST docs list non-admin GET /connections/get-names/{?type}; admin /admin/connections get/update/delete are privileged and can expose params or delete in-use connections.",
+    "focused": "bun test tests/connections-variables.test.ts tests/cli.test.ts tests/cli-surface.test.ts tests/sdk-surface.test.ts -> 120 pass, 0 fail",
+    "typecheck": "bun run check -> pass",
+    "format": "bun run format:check -> pass",
+    "lint": "bun run lint -> pass with pre-existing no-underscore-dangle warnings in src/client.ts",
+    "build": "bun run build -> pass",
+    "liveSmoke": "dss connection list --type all returned dataiku-managed-storage, filesystem_folders, filesystem_managed; dss connection infer --mode rich --project-key TUT_PIVOT_TABLES returned filesystem_managed"
+  },
+  "cleanup": {
+    "required": false,
+    "verified": true,
+    "notes": "Connection follow-up is read-only and performed no DSS mutations."
+  }
+}
+```

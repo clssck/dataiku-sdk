@@ -53,6 +53,32 @@ async function withTestServer(
 	}
 }
 
+describe("ConnectionsResource.list", () => {
+	it("filters connection names by type with the public non-admin endpoint", async () => {
+		const requests: string[] = [];
+
+		await withTestServer((req, res,) => {
+			requests.push(`${req.method ?? "UNKNOWN"} ${req.url ?? ""}`,);
+			expect(req.method,).toBe("GET",);
+			expect(req.url,).toBe("/public/api/connections/get-names/?type=Filesystem",);
+			res.setHeader("Content-Type", "application/json",);
+			res.end(JSON.stringify(["filesystem_managed",],),);
+		}, async (url,) => {
+			const client = new DataikuClient({
+				url,
+				apiKey: "test-key",
+				projectKey: "TEST",
+			},);
+
+			await expect(client.connections.list({ type: "Filesystem", },),).resolves.toEqual([
+				"filesystem_managed",
+			],);
+		},);
+
+		expect(requests,).toEqual(["GET /public/api/connections/get-names/?type=Filesystem",],);
+	});
+});
+
 describe("ConnectionsResource.infer", () => {
 	it("falls back to rich inference when fast mode returns an empty list", async () => {
 		const requests: string[] = [];
@@ -112,6 +138,33 @@ describe("ConnectionsResource.infer", () => {
 			"GET /public/api/connections/get-names/",
 			"GET /public/api/projects/TEST/datasets/",
 		],);
+	});
+
+	it("uses the requested project for rich inference", async () => {
+		const requests: string[] = [];
+
+		await withTestServer((req, res,) => {
+			requests.push(`${req.method ?? "UNKNOWN"} ${req.url ?? ""}`,);
+			expect(req.method,).toBe("GET",);
+			expect(req.url,).toBe("/public/api/projects/OTHER/datasets/",);
+			res.setHeader("Content-Type", "application/json",);
+			res.end(JSON.stringify([
+				{ type: "Filesystem", managed: true, params: { connection: "filesystem_managed", }, },
+			],),);
+		}, async (url,) => {
+			const client = new DataikuClient({
+				url,
+				apiKey: "test-key",
+				projectKey: "TEST",
+			},);
+
+			await expect(client.connections.infer({ mode: "rich", projectKey: "OTHER", },),).resolves
+				.toEqual([
+					{ name: "filesystem_managed", types: ["Filesystem",], managed: true, dbSchemas: [], },
+				],);
+		},);
+
+		expect(requests,).toEqual(["GET /public/api/projects/OTHER/datasets/",],);
 	});
 });
 
