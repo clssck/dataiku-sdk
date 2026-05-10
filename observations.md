@@ -321,3 +321,69 @@
   }
 }
 ```
+
+## SDK Live Surface Audit (2026-05-07)
+
+```json
+{
+  "scope": "SDK live method audit",
+  "status": "completed_with_safe_skips",
+  "safeBoundary": [
+    "Project CRUD remains out of scope; project SDK was audited read-only only.",
+    "Admin connection CRUD was not added or audited because Dataiku docs show it can expose connection params and delete in-use connections without checks.",
+    "Existing live assets were not destructively mutated; disposable scenarios, flow zones, dashboards, wiki articles, data-quality rules, temp files, and attempted disposable datasets/folders were cleaned up or rejected before creation."
+  ],
+  "verification": {
+    "integration": "bun run test:integration -> 4 pass, 1 skip, 0 fail",
+    "rigorous": "bun run test:integration:rigorous -> 51 pass, 5 skip, 0 fail",
+    "rigorousMutating": "bun run test:integration:rigorous:mutating -> 56 pass, 0 fail",
+    "directSdkAudit": {
+      "summary": {
+        "pass": 73,
+        "skip": 44,
+        "blocked": 5,
+        "fail": 0
+      },
+      "passedCategories": [
+        "projects read-only",
+        "connections read-only",
+        "datasets read-only plus disposable create/update/delete",
+        "recipes read-only",
+        "scenarios disposable lifecycle",
+        "flow-zone list/create/update/delete",
+        "variables get",
+        "data-quality read-only plus disposable rule lifecycle and compute/wait",
+        "futures get/peek/state/wait via data-quality compute",
+        "dashboards disposable lifecycle",
+        "code-env read-only",
+        "wiki disposable lifecycle"
+      ],
+      "fixtureLimited": {
+        "method": "notebooks.saveSql",
+        "observedResponse": "404 Not Found: Dataiku instance not found",
+        "classification": "nonexistent SQL notebook fixture; not a confirmed SDK defect",
+        "context": "Retest while DSS was confirmed running: doctor/project-get/listSql all succeeded, listSql returned [], and both saveSql to a disposable nonexistent id and getSql for a nonexistent id returned the same DSS 404 body. The message text is misleading here; the actionable constraint is that there was no existing SQL notebook fixture to overwrite safely."
+      },
+      "permissionBlocked": [
+        "folders.create: 403 Forbidden on filesystem_managed",
+        "folders.update/delete blocked because disposable managed-folder create is not permitted in this live env"
+      ],
+      "safetySkips": [
+        "recipes create/update/setPayload/delete require a disposable recipe/output lifecycle",
+        "jobs build/buildAndWait/abort would build or abort live jobs",
+        "flowZones moveItems/moveItem would move existing flow objects",
+        "variables.set would rewrite project variables",
+        "futures.abort would abort a live future/job",
+        "codeEnvs mutators are admin/global mutations",
+        "Jupyter save/delete/clear/unload would mutate existing notebooks and no SDK create endpoint exists",
+        "SQL query methods skipped because no SQL-compatible live connection was confirmed",
+        "insight create/update/delete need a valid object-specific insight prototype"
+      ]
+    }
+  },
+  "cleanup": {
+    "verified": true,
+    "notes": "Audit temp script and local temp directories were removed; disposable DSS artifacts were cleaned up best-effort during each run. Folder create was rejected before creation."
+  }
+}
+```
