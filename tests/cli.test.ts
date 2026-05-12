@@ -650,6 +650,8 @@ describe("CLI execution behavior", () => {
 					...cliEnv(url,),
 					RUN_DATAIKU_INTEGRATION_MUTATING: "1",
 					RUN_DATAIKU_INTEGRATION_VARIABLES: "true",
+					RUN_DATAIKU_ADMIN_MUTATING: "1",
+					RUN_DATAIKU_SQL_LIVE: "true",
 				},
 			},);
 			expect(stderr,).toBe("",);
@@ -679,6 +681,8 @@ describe("CLI execution behavior", () => {
 			expect(result.environment.projectKey,).toBe("TEST",);
 			expect(result.environment.integrationFlags.mutating,).toBe(true,);
 			expect(result.environment.integrationFlags.variables,).toBe(true,);
+			expect(result.environment.integrationFlags.adminMutating,).toBe(true,);
+			expect(result.environment.integrationFlags.sqlLive,).toBe(true,);
 			expect(result.environment.integrationFlags.bundles,).toBe(false,);
 		},);
 	});

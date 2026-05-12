@@ -50,8 +50,9 @@ export class NotebooksResource extends BaseResource {
 	/**
 	 * Delete a Jupyter notebook.
 	 *
-	 * DSS public APIs can delete notebooks but do not expose notebook creation, so
-	 * this can only target notebooks created outside this SDK (for example in the UI).
+	 * The SDK intentionally does not expose notebook creation as a first-class
+	 * resource method yet; integration tests create disposable notebooks through
+	 * the documented project-level create endpoint.
 	 */
 	async deleteJupyter(name: string, projectKey?: string,): Promise<void> {
 		const nameEnc = encodeURIComponent(name,);
@@ -89,8 +90,9 @@ export class NotebooksResource extends BaseResource {
 	/**
 	 * Unload (stop) a running Jupyter notebook session.
 	 *
-	 * DSS public APIs do not expose notebook or session creation, so this only
-	 * works for sessions started outside this SDK.
+	 * DSS public APIs expose session listing and unloading, but this SDK has no
+	 * path to start a disposable kernel session; live unload coverage therefore
+	 * requires an externally-started disposable session fixture.
 	 */
 	async unloadJupyter(name: string, sessionId: string, projectKey?: string,): Promise<void> {
 		const nameEnc = encodeURIComponent(name,);

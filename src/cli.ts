@@ -3477,7 +3477,9 @@ interface DoctorEnvironment {
 	instanceTime?: string;
 	integrationFlags: {
 		mutating: boolean;
+		adminMutating: boolean;
 		variables: boolean;
+		sqlLive: boolean;
 		bundles: boolean;
 		apiServices: boolean;
 	};
@@ -3533,7 +3535,9 @@ function doctorEnvironment(projectKey?: string,): DoctorEnvironment {
 		...(projectKey ? { projectKey, } : {}),
 		integrationFlags: {
 			mutating: integrationFlag("RUN_DATAIKU_INTEGRATION_MUTATING",),
+			adminMutating: integrationFlag("RUN_DATAIKU_ADMIN_MUTATING",),
 			variables: integrationFlag("RUN_DATAIKU_INTEGRATION_VARIABLES",),
+			sqlLive: integrationFlag("RUN_DATAIKU_SQL_LIVE",),
 			bundles: integrationFlag("RUN_DATAIKU_INTEGRATION_BUNDLES",),
 			apiServices: integrationFlag("RUN_DATAIKU_INTEGRATION_API_SERVICES",),
 		},

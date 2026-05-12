@@ -74,6 +74,20 @@ export const mutatingProjectIntegrationEnabled = integrationEnabled
 export const describeMutatingProjectIntegration = mutatingProjectIntegrationEnabled
 	? describe
 	: describe.skip;
+export const adminMutatingIntegrationEnabled = integrationEnabled
+	&& process.env.RUN_DATAIKU_ADMIN_MUTATING === "1"
+	&& hasCredentials;
+export const describeAdminMutatingIntegration = adminMutatingIntegrationEnabled
+	? describe
+	: describe.skip;
+
+export const sqlLiveIntegrationEnabled = integrationEnabled
+	&& process.env.RUN_DATAIKU_SQL_LIVE === "1"
+	&& hasCredentials
+	&& Boolean(process.env.DATAIKU_SQL_CONNECTION || process.env.DATAIKU_SQL_DATASET_FULL_NAME,);
+export const describeSqlLiveIntegration = sqlLiveIntegrationEnabled
+	? describe
+	: describe.skip;
 
 function dssExecOptions(opts: DssRunOptions,): { cwd: string; env: typeof process.env; } {
 	return {

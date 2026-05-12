@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile, } from "node:fs/promises";
 import { tmpdir, } from "node:os";
 import { join, } from "node:path";
 import type { DataikuClient, } from "../src/client.js";
+import type { JupyterNotebookContent, SqlNotebookContent, } from "../src/schemas.js";
 import type { DssRawResult, } from "./integration-harness.js";
 import {
 	createCleanupStack,
@@ -103,6 +104,94 @@ async function rigorousFixtures(): Promise<RigorousFixtures> {
 		return parseCliJson(result, "fixtures",) as RigorousFixtures;
 	})();
 	return rigorousFixturesPromise;
+}
+
+type DisposableSqlConnectionConfig = {
+	type: "PostgreSQL";
+	params: {
+		host: string;
+		port: string;
+		db: string;
+		user: string;
+		password: string;
+	};
+};
+
+function disposableSqlConnectionConfig(): DisposableSqlConnectionConfig | undefined {
+	const host = process.env.DATAIKU_SQL_LIVE_HOST?.trim();
+	const db = process.env.DATAIKU_SQL_LIVE_DATABASE?.trim();
+	const user = process.env.DATAIKU_SQL_LIVE_USER?.trim();
+	const password = process.env.DATAIKU_SQL_LIVE_PASSWORD;
+	if (!host || !db || !user || password === undefined) return undefined;
+	return {
+		type: "PostgreSQL",
+		params: {
+			host,
+			port: process.env.DATAIKU_SQL_LIVE_PORT?.trim() || "5432",
+			db,
+			user,
+			password,
+		},
+	};
+}
+
+function disposableJupyterNotebookContent(label: string,): JupyterNotebookContent {
+	return {
+		metadata: {
+			kernelspec: {
+				name: "python3",
+				display_name: "Python 3",
+				language: "python",
+			},
+			language_info: { name: "python", },
+		},
+		nbformat: 4,
+		nbformat_minor: 5,
+		cells: [{
+			cell_type: "code",
+			source: [`print(${JSON.stringify(label,)})`,],
+			metadata: {},
+			outputs: [{
+				output_type: "stream",
+				name: "stdout",
+				text: [`${label}\n`,],
+			},],
+			execution_count: 1,
+		},],
+	};
+}
+
+async function createDisposableJupyterNotebook(
+	client: DataikuClient,
+	name: string,
+): Promise<void> {
+	await client.post(
+		`/public/api/projects/${
+			encodeURIComponent(process.env.DATAIKU_PROJECT_KEY!,)
+		}/jupyter-notebooks/${encodeURIComponent(name,)}`,
+		disposableJupyterNotebookContent(name,),
+	);
+}
+
+async function createDisposableSqlNotebook(
+	client: DataikuClient,
+	connection: string,
+): Promise<string> {
+	const created = await client.post<{ id?: string; }>(
+		`/public/api/projects/${encodeURIComponent(process.env.DATAIKU_PROJECT_KEY!,)}/sql-notebooks/`,
+		{
+			projectKey: process.env.DATAIKU_PROJECT_KEY!,
+			connection,
+			cells: [{
+				id: uniqueTestName("sdk_cli_it_sql_cell",),
+				type: "QUERY",
+				name: "Disposable probe",
+				code: "SELECT 1",
+			},],
+		},
+	);
+	if (!created?.id) throw new Error("DSS did not return an id for disposable SQL notebook.",);
+	return created.id;
 }
 
 function expectResultShape(
@@ -340,52 +429,448 @@ describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () 
 	}, 30_000,);
 },);
 
+describeIntegration("Rigorous integration: gated unproven SDK coverage", () => {
+	it("runs SQL query methods when a SQL live fixture is configured", async () => {
+		let sqlConnection = process.env.DATAIKU_SQL_CONNECTION;
+		const sqlDatasetFullName = process.env.DATAIKU_SQL_DATASET_FULL_NAME;
+		const cleanup = createCleanupStack();
+
+		if (process.env.RUN_DATAIKU_SQL_LIVE !== "1") {
+			addFinding({
+				id: "sql-live-fixture-not-configured",
+				category: "resource-gap",
+				status: "skipped",
+				severity: "medium",
+				observed: "SQL live coverage requires RUN_DATAIKU_SQL_LIVE=1.",
+				expected: "A SQL-compatible read-only fixture is configured for SELECT 1 live coverage.",
+				cleanupVerified: true,
+			},);
+			return;
+		}
+
+		const client = createClient();
+		if (!sqlConnection && !sqlDatasetFullName) {
+			const disposableConnection = disposableSqlConnectionConfig();
+			if (
+				process.env.RUN_DATAIKU_ADMIN_MUTATING !== "1"
+				|| process.env.DATAIKU_SQL_LIVE_CREATE_CONNECTION !== "1"
+				|| !disposableConnection
+			) {
+				addFinding({
+					id: "sql-live-fixture-not-configured",
+					category: "resource-gap",
+					status: "skipped",
+					severity: "medium",
+					observed:
+						"SQL live coverage needs DATAIKU_SQL_CONNECTION/DATAIKU_SQL_DATASET_FULL_NAME or RUN_DATAIKU_ADMIN_MUTATING=1 plus DATAIKU_SQL_LIVE_CREATE_CONNECTION=1 and disposable PostgreSQL connection env.",
+					expected: "A SQL-compatible read-only fixture is configured for SELECT 1 live coverage.",
+					cleanupVerified: true,
+				},);
+				return;
+			}
+
+			const connectionName = uniqueTestName("OMP_SQL_CONN",);
+			await client.post("/public/api/admin/connections", {
+				name: connectionName,
+				description: "OMP disposable SQL live integration probe",
+				type: disposableConnection.type,
+				params: disposableConnection.params,
+				usableBy: "ALL",
+				allowedGroups: [],
+			},);
+			sqlConnection = connectionName;
+			cleanup.defer(async () => {
+				await client.del(`/public/api/admin/connections/${encodeURIComponent(connectionName,)}`,);
+			},);
+		}
+
+		try {
+			const result = await client.sql.query({
+				query: "SELECT 1",
+				...(sqlConnection ? { connection: sqlConnection, } : { datasetFullName: sqlDatasetFullName, }),
+				projectKey: process.env.DATAIKU_PROJECT_KEY,
+			},);
+
+			expect(result.queryId, "SQL query id",).toBeTruthy();
+			expect(Array.isArray(result.rows,),).toBe(true,);
+			expect(result.rows.length, "SQL query rows",).toBeGreaterThan(0,);
+			expect(result.schema,).toBeDefined();
+
+			const cliResult = parseCliJson(
+				await dssRaw([
+					"sql",
+					"query",
+					"SELECT 1",
+					...(sqlConnection
+						? ["--connection", sqlConnection,]
+						: ["--dataset", sqlDatasetFullName!,]),
+				],),
+				"sql query",
+			) as { queryId?: string; rows?: unknown[][]; schema?: unknown; };
+			expect(cliResult.queryId, "CLI SQL query id",).toBeTruthy();
+			expect(Array.isArray(cliResult.rows,),).toBe(true,);
+			expect(cliResult.rows?.length, "CLI SQL query rows",).toBeGreaterThan(0,);
+			expect(cliResult.schema,).toBeDefined();
+		} finally {
+			await cleanup.run();
+		}
+	}, 120_000,);
+
+	it("uses disposable notebook fixtures for no-loss mutation coverage", async () => {
+		if (process.env.RUN_DATAIKU_INTEGRATION_MUTATING !== "1") {
+			addFinding({
+				id: "notebook-mutation-needs-mutating-gate",
+				category: "automation-risk",
+				status: "skipped",
+				severity: "medium",
+				observed:
+					"Jupyter and SQL notebook mutation coverage is gated by RUN_DATAIKU_INTEGRATION_MUTATING=1.",
+				expected: "Notebook mutation tests only run when mutating integration is explicitly enabled.",
+				cleanupVerified: true,
+			},);
+			return;
+		}
+
+		const client = createClient();
+		const cleanup = createCleanupStack();
+		const jupyterToDelete = new Set<string>();
+		const sqlToDelete = new Set<string>();
+		cleanup.defer(async () => {
+			for (const name of jupyterToDelete) {
+				await client.notebooks.deleteJupyter(name,);
+			}
+			for (const id of sqlToDelete) {
+				await client.notebooks.deleteSql(id,);
+			}
+		},);
+
+		try {
+			const sdkJupyterName = `${uniqueTestName("sdk_cli_it_jupyter_sdk",)}.ipynb`;
+			await createDisposableJupyterNotebook(client, sdkJupyterName,);
+			jupyterToDelete.add(sdkJupyterName,);
+
+			const sdkOriginal = await client.notebooks.getJupyter(sdkJupyterName,);
+			const sdkSaved: JupyterNotebookContent = {
+				...sdkOriginal,
+				cells: [
+					...sdkOriginal.cells,
+					{
+						cell_type: "markdown",
+						source: ["SDK mutation proof",],
+						metadata: {},
+					},
+				],
+			};
+			await client.notebooks.saveJupyter(sdkJupyterName, sdkSaved,);
+			expect((await client.notebooks.getJupyter(sdkJupyterName,)).cells.length,).toBe(
+				sdkSaved.cells.length,
+			);
+
+			await client.notebooks.clearJupyterOutputs(sdkJupyterName,);
+			const sdkCleared = await client.notebooks.getJupyter(sdkJupyterName,);
+			expect(
+				sdkCleared.cells.every((cell,) => {
+					const outputs = (cell as { outputs?: unknown[]; }).outputs;
+					return outputs === undefined || outputs.length === 0;
+				},),
+			).toBe(true,);
+			expect(Array.isArray(await client.notebooks.listJupyterSessions(sdkJupyterName,),),).toBe(true,);
+			await client.notebooks.deleteJupyter(sdkJupyterName,);
+			jupyterToDelete.delete(sdkJupyterName,);
+
+			const cliJupyterName = `${uniqueTestName("sdk_cli_it_jupyter_cli",)}.ipynb`;
+			await createDisposableJupyterNotebook(client, cliJupyterName,);
+			jupyterToDelete.add(cliJupyterName,);
+			const cliJupyterContent = disposableJupyterNotebookContent(`${cliJupyterName}_updated`,);
+			const saveJupyter = parseCliJson(
+				await dssRaw([
+					"notebook",
+					"save-jupyter",
+					cliJupyterName,
+					"--data",
+					JSON.stringify(cliJupyterContent,),
+				],),
+				"notebook save-jupyter",
+			) as { saved?: string; };
+			expect(saveJupyter.saved,).toBe(cliJupyterName,);
+			const clearJupyter = parseCliJson(
+				await dssRaw(["notebook", "clear-jupyter-outputs", cliJupyterName,],),
+				"notebook clear-jupyter-outputs",
+			) as { cleared?: string; };
+			expect(clearJupyter.cleared,).toBe(cliJupyterName,);
+			const sessionsJupyter = parseCliJson(
+				await dssRaw(["notebook", "sessions-jupyter", cliJupyterName,],),
+				"notebook sessions-jupyter",
+			);
+			expect(Array.isArray(sessionsJupyter,),).toBe(true,);
+			const unloadDryRun = parseCliJson(
+				await dssRaw(["notebook", "unload-jupyter", cliJupyterName, "missing-session", "--dry-run",],),
+				"notebook unload-jupyter dry-run",
+			) as Record<string, unknown>;
+			expect(unloadDryRun.dryRun,).toBe(true,);
+			const deleteJupyterDryRun = parseCliJson(
+				await dssRaw(["notebook", "delete-jupyter", cliJupyterName, "--dry-run",],),
+				"notebook delete-jupyter dry-run",
+			) as Record<string, unknown>;
+			expect(deleteJupyterDryRun.dryRun,).toBe(true,);
+			const deleteJupyter = parseCliJson(
+				await dssRaw(["notebook", "delete-jupyter", cliJupyterName,],),
+				"notebook delete-jupyter",
+			) as { deleted?: string; };
+			expect(deleteJupyter.deleted,).toBe(cliJupyterName,);
+			jupyterToDelete.delete(cliJupyterName,);
+
+			addFinding({
+				id: "jupyter-unload-needs-running-session",
+				category: "resource-gap",
+				status: "skipped",
+				severity: "medium",
+				observed:
+					"Disposable Jupyter notebooks can be created, saved, cleared, session-listed, and deleted, but no running session is created by the public notebook API.",
+				expected: "unloadJupyter is live-tested only against a disposable running notebook session.",
+				cleanupVerified: true,
+			},);
+
+			const sqlNotebookConnection = process.env.DATAIKU_TEST_SQL_NOTEBOOK_CONNECTION
+				?? process.env.DATAIKU_SQL_CONNECTION
+				?? "filesystem_managed";
+			const sdkSqlId = await createDisposableSqlNotebook(client, sqlNotebookConnection,);
+			sqlToDelete.add(sdkSqlId,);
+			const sdkSqlOriginal = await client.notebooks.getSql(sdkSqlId,);
+			const sdkSqlSaved: SqlNotebookContent = {
+				...sdkSqlOriginal,
+				cells: [
+					...sdkSqlOriginal.cells,
+					{
+						id: uniqueTestName("sdk_cli_it_sql_cell",),
+						type: "QUERY",
+						name: "SDK mutation proof",
+						code: "SELECT 1",
+					},
+				],
+			};
+			await client.notebooks.saveSql(sdkSqlId, sdkSqlSaved,);
+			expect((await client.notebooks.getSql(sdkSqlId,)).cells.length,).toBe(
+				sdkSqlSaved.cells.length,
+			);
+			expect(await client.notebooks.getSqlHistory(sdkSqlId,),).toBeDefined();
+			await client.notebooks.clearSqlHistory(sdkSqlId, { numRunsToRetain: 9_999, },);
+			await client.notebooks.deleteSql(sdkSqlId,);
+			sqlToDelete.delete(sdkSqlId,);
+
+			const cliSqlId = await createDisposableSqlNotebook(client, sqlNotebookConnection,);
+			sqlToDelete.add(cliSqlId,);
+			const cliSqlContent = await client.notebooks.getSql(cliSqlId,);
+			const saveSql = parseCliJson(
+				await dssRaw([
+					"notebook",
+					"save-sql",
+					cliSqlId,
+					"--data",
+					JSON.stringify(cliSqlContent,),
+				],),
+				"notebook save-sql",
+			) as { saved?: string; };
+			expect(saveSql.saved,).toBe(cliSqlId,);
+			expect(
+				typeof parseCliJson(
+					await dssRaw(["notebook", "history-sql", cliSqlId,],),
+					"notebook history-sql",
+				),
+			).toBe("object",);
+			const clearSql = parseCliJson(
+				await dssRaw(["notebook", "clear-sql-history", cliSqlId, "--retain", "9999",],),
+				"notebook clear-sql-history",
+			) as { cleared?: string; };
+			expect(clearSql.cleared,).toBe(cliSqlId,);
+			const deleteSqlDryRun = parseCliJson(
+				await dssRaw(["notebook", "delete-sql", cliSqlId, "--dry-run",],),
+				"notebook delete-sql dry-run",
+			) as Record<string, unknown>;
+			expect(deleteSqlDryRun.dryRun,).toBe(true,);
+			const deleteSql = parseCliJson(
+				await dssRaw(["notebook", "delete-sql", cliSqlId,],),
+				"notebook delete-sql",
+			) as { deleted?: string; };
+			expect(deleteSql.deleted,).toBe(cliSqlId,);
+			sqlToDelete.delete(cliSqlId,);
+		} finally {
+			await cleanup.run();
+		}
+	}, 180_000,);
+
+	it("guards admin code-env lifecycle behind an explicit admin gate", async () => {
+		if (process.env.RUN_DATAIKU_ADMIN_MUTATING !== "1") {
+			addFinding({
+				id: "code-env-mutation-admin-gated",
+				category: "automation-risk",
+				status: "skipped",
+				severity: "medium",
+				observed:
+					"Code-env mutators are global/admin operations and require RUN_DATAIKU_ADMIN_MUTATING=1.",
+				expected:
+					"A disposable code environment is created only under an explicit admin mutation gate.",
+				cleanupVerified: true,
+			},);
+			return;
+		}
+
+		const client = createClient();
+		const envLang = "PYTHON";
+		const envName = uniqueTestName(process.env.OMP_CODE_ENV_PREFIX ?? "OMP_CODE_ENV",);
+		let created = false;
+
+		try {
+			const createDryRun = parseCliJson(
+				await dssRaw([
+					"code-env",
+					"create",
+					envLang,
+					envName,
+					"--deployment-mode",
+					"DESIGN_MANAGED",
+					"--python-interpreter",
+					"PYTHON311",
+					"--dry-run",
+				],),
+				"code-env create dry-run",
+			) as Record<string, unknown>;
+			expect(createDryRun.dryRun,).toBe(true,);
+			expect(createDryRun.envName,).toBe(envName,);
+
+			await client.codeEnvs.create({
+				envLang,
+				envName,
+				deploymentMode: "DESIGN_MANAGED",
+				params: { pythonInterpreter: "PYTHON311", },
+				wait: true,
+			},);
+			created = true;
+
+			const details = await client.codeEnvs.get(envLang, envName,);
+			expect(details.envName,).toBe(envName,);
+
+			const definition = await client.codeEnvs.getDefinition(envLang, envName,);
+			expect(definition,).toBeDefined();
+			await client.codeEnvs.setDefinition(envLang, envName, definition,);
+			await client.codeEnvs.setPackages(envLang, envName, [],);
+			await client.codeEnvs.setJupyterSupport(envLang, envName, false, { wait: true, },);
+			expect(Array.isArray(await client.codeEnvs.listUsages(envLang, envName,),),).toBe(true,);
+
+			const updatePackages = await client.codeEnvs.updatePackages(envLang, envName, {
+				forceRebuildEnv: false,
+				wait: false,
+			},);
+			expect(updatePackages,).toBeDefined();
+
+			await client.codeEnvs.delete(envLang, envName, { wait: true, },);
+			created = false;
+		} finally {
+			if (created) {
+				await client.codeEnvs.delete(envLang, envName, { wait: true, },).catch(() => undefined);
+			}
+		}
+	}, 300_000,);
+},);
+
 describeMutatingProjectIntegration("Rigorous integration: safe mutating workflows", () => {
-	it("round-trips a temporary flow zone through SDK and CLI", async () => {
+	it("round-trips temporary flow zones and moves only disposable flow objects", async () => {
 		const client = createClient();
 		const cleanup = createCleanupStack();
 		let zoneId: string | undefined;
+		let secondZoneId: string | undefined;
+		let datasetName: string | undefined;
 
 		try {
 			const zoneName = uniqueTestName("sdk_cli_it_zone",);
 			const created = await client.flowZones.create({ name: zoneName, color: "#2ab1ac", },);
 			zoneId = created.id;
 			cleanup.defer(async () => {
-				if (zoneId) await client.flowZones.delete(zoneId,);
+				if (zoneId) await client.flowZones.delete(zoneId,).catch(() => undefined);
 			},);
 			expect(created.name,).toBe(zoneName,);
 
 			const dryRun = parseCliJson(
-				await dssRaw(["flow-zone", "delete", zoneId, "--dryrun",],),
+				await dssRaw(["flow-zone", "delete", zoneId!, "--dryrun",],),
 				"flow-zone dryrun",
 			) as Record<string, unknown>;
 			expect(dryRun.dryRun,).toBe(true,);
 
-			const datasets = await client.datasets.list();
-			const firstDataset = datasets.find((dataset,) => typeof dataset.name === "string");
-			if (!firstDataset?.name) {
+			datasetName = uniqueTestName("sdk_cli_it_zone_dataset",);
+			try {
+				await client.datasets.create({
+					datasetName,
+					connection: "filesystem_managed",
+					dsType: "Filesystem",
+				},);
+				cleanup.defer(async () => {
+					if (datasetName) await client.datasets.delete(datasetName,);
+				},);
+			} catch (error) {
 				addFinding({
-					id: "flow-zone-move-no-datasets",
+					id: "flow-zone-move-needs-disposable-dataset-create",
 					category: "resource-gap",
 					status: "skipped",
-					severity: "low",
-					observed: "No dataset was available to test flow-zone move.",
+					severity: "medium",
+					observed: `Could not create disposable dataset for flow-zone movement: ${
+						error instanceof Error ? error.message : String(error,)
+					}`,
+					expected:
+						"Disposable filesystem dataset creation is available so flow-zone move tests never touch existing project objects.",
 					cleanupVerified: true,
 				},);
-			} else {
-				const moved = parseCliJson(
-					await dssRaw(["flow-zone", "move", zoneId, "--dataset", firstDataset.name,],),
+				datasetName = undefined;
+			}
+
+			if (datasetName) {
+				const movedBySdk = await client.flowZones.moveItem(zoneId!, {
+					objectType: "DATASET",
+					objectId: datasetName,
+				},);
+				expect(
+					movedBySdk.items?.some((item,) =>
+						item.objectType === "DATASET" && item.objectId === datasetName
+					),
+				)
+					.toBe(true,);
+
+				const secondZoneName = uniqueTestName("sdk_cli_it_zone_second",);
+				const secondZone = await client.flowZones.create({
+					name: secondZoneName,
+					color: "#cc0000",
+				},);
+				secondZoneId = secondZone.id;
+				cleanup.defer(async () => {
+					if (secondZoneId) await client.flowZones.delete(secondZoneId,).catch(() => undefined);
+				},);
+
+				const moveDryRun = parseCliJson(
+					await dssRaw(["flow-zone", "move", secondZoneId!, "--dataset", datasetName, "--dry-run",],),
+					"flow-zone move dry-run",
+				) as { dryRun?: boolean; items?: Array<{ objectId?: string; objectType?: string; }>; };
+				expect(moveDryRun.dryRun,).toBe(true,);
+				expect(moveDryRun.items,).toContainEqual({
+					objectType: "DATASET",
+					objectId: datasetName,
+				},);
+
+				const movedByCli = parseCliJson(
+					await dssRaw(["flow-zone", "move", secondZoneId!, "--dataset", datasetName,],),
 					"flow-zone move",
 				) as { items?: Array<{ objectId?: string; objectType?: string; }>; };
 				expect(
-					moved.items?.some((item,) =>
-						item.objectType === "DATASET" && item.objectId === firstDataset.name
+					movedByCli.items?.some((item,) =>
+						item.objectType === "DATASET" && item.objectId === datasetName
 					),
 				)
 					.toBe(true,);
 			}
 
-			await client.flowZones.delete(zoneId,);
+			if (secondZoneId) {
+				await client.flowZones.delete(secondZoneId,);
+				secondZoneId = undefined;
+			}
+			await client.flowZones.delete(zoneId!,);
 			zoneId = undefined;
 			expect(await client.flowZones.list(),).not.toContainEqual(
 				expect.objectContaining({ id: created.id, },),
@@ -484,13 +969,14 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 		} finally {
 			await cleanup.run();
 		}
-	});
+	}, 120_000,);
 
 	it("round-trips disposable insights and data quality rules through SDK and CLI", async () => {
 		const client = createClient();
 		const cleanup = createCleanupStack();
 		let insightId: string | undefined;
 		let dataQualityRule: { datasetName: string; ruleId: string; } | undefined;
+		let dataQualityDatasetName: string | undefined;
 
 		try {
 			const insights = await client.insights.list();
@@ -552,16 +1038,28 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				);
 			}
 
-			const datasetName = (await client.datasets.list()).find((dataset,) =>
-				typeof dataset.name === "string"
-			)?.name;
-			if (!datasetName) {
+			const datasetName = uniqueTestName("sdk_cli_it_dq_dataset",);
+			try {
+				await client.datasets.create({
+					datasetName,
+					connection: "filesystem_managed",
+					dsType: "Filesystem",
+				},);
+				dataQualityDatasetName = datasetName;
+				cleanup.defer(async () => {
+					if (dataQualityDatasetName) await client.datasets.delete(dataQualityDatasetName,);
+				},);
+			} catch (error) {
 				addFinding({
-					id: "data-quality-mutation-needs-dataset",
+					id: "data-quality-mutation-needs-disposable-dataset-create",
 					category: "resource-gap",
 					status: "skipped",
 					severity: "medium",
-					observed: "No dataset was available for disposable data quality rule CRUD validation.",
+					observed: `Could not create disposable dataset for data-quality rule CRUD validation: ${
+						error instanceof Error ? error.message : String(error,)
+					}`,
+					expected:
+						"Disposable filesystem dataset creation is available so data-quality rule coverage never mutates existing datasets.",
 					cleanupVerified: true,
 				},);
 				return;
@@ -676,7 +1174,220 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 		} finally {
 			await cleanup.run();
 		}
-	});
+	}, 180_000,);
+
+	it("builds disposable dataset jobs through SDK and CLI planning", async () => {
+		const client = createClient();
+		const cleanup = createCleanupStack();
+		let datasetName: string | undefined;
+
+		try {
+			datasetName = uniqueTestName("sdk_cli_it_job_dataset",);
+			try {
+				await client.datasets.create({
+					datasetName,
+					connection: "filesystem_managed",
+					dsType: "Filesystem",
+				},);
+				cleanup.defer(async () => {
+					if (datasetName) await client.datasets.delete(datasetName,);
+				},);
+			} catch (error) {
+				addFinding({
+					id: "job-build-needs-disposable-dataset-create",
+					category: "resource-gap",
+					status: "skipped",
+					severity: "medium",
+					observed: `Could not create disposable dataset for job build coverage: ${
+						error instanceof Error ? error.message : String(error,)
+					}`,
+					expected:
+						"Disposable filesystem dataset creation is available so job build coverage never targets existing outputs.",
+					cleanupVerified: true,
+				},);
+				return;
+			}
+
+			const buildDryRun = parseCliJson(
+				await dssRaw(["job", "build", datasetName!, "--dry-run",],),
+				"job build dry-run",
+			) as Record<string, unknown>;
+			expect(buildDryRun.dryRun,).toBe(true,);
+			expect(buildDryRun.target,).toBe(datasetName,);
+			expect(buildDryRun.method,).toBe("POST",);
+
+			const build = await client.jobs.build(datasetName!, {
+				buildMode: "NON_RECURSIVE_FORCED_BUILD",
+			},);
+			expect(build.jobId, "build job id",).toBeTruthy();
+
+			const wait = await client.jobs.wait(build.jobId, {
+				includeLogs: true,
+				maxLogLines: 20,
+				pollIntervalMs: 1_000,
+				timeoutMs: 120_000,
+			},);
+			expect(wait.success, `job ${build.jobId} state ${wait.state}`,).toBe(true,);
+			expect(wait.jobId,).toBe(build.jobId,);
+			expect(typeof wait.log,).toBe("string",);
+
+			const details = await client.jobs.get(build.jobId,);
+			expect(details,).toBeDefined();
+			expect(typeof await client.jobs.log(build.jobId, { maxLogLines: 20, },),).toBe("string",);
+
+			const cliWait = parseCliJson(
+				await dssRaw([
+					"job",
+					"wait",
+					build.jobId,
+					"--timeout",
+					"120000",
+					"--poll-interval",
+					"1000",
+				],),
+				"job wait",
+			) as { success?: boolean; jobId?: string; };
+			expect(cliWait.success,).toBe(true,);
+			expect(cliWait.jobId,).toBe(build.jobId,);
+
+			const buildAndWaitDryRun = parseCliJson(
+				await dssRaw(["job", "build-and-wait", datasetName!, "--dry-run",],),
+				"job build-and-wait dry-run",
+			) as Record<string, unknown>;
+			expect(buildAndWaitDryRun.dryRun,).toBe(true,);
+			expect(buildAndWaitDryRun.target,).toBe(datasetName,);
+
+			const buildAndWait = await client.jobs.buildAndWait(datasetName!, {
+				buildMode: "NON_RECURSIVE_FORCED_BUILD",
+				includeLogs: true,
+				maxLogLines: 20,
+				pollIntervalMs: 1_000,
+				timeoutMs: 120_000,
+			},);
+			expect(buildAndWait.success, `job ${buildAndWait.jobId} state ${buildAndWait.state}`,).toBe(
+				true,
+			);
+
+			const abortDryRun = parseCliJson(
+				await dssRaw(["job", "abort", buildAndWait.jobId, "--dry-run",],),
+				"job abort dry-run",
+			) as Record<string, unknown>;
+			expect(abortDryRun.dryRun,).toBe(true,);
+			expect(abortDryRun.id,).toBe(buildAndWait.jobId,);
+
+			const abortFixtures = await rigorousFixtures();
+			const abortInputDataset = fixtureString(abortFixtures.safeDataset, ["name", "id",],)
+				?? datasetName!;
+			const abortRecipeName = uniqueTestName("sdk_cli_it_abort_recipe",);
+			const abortOutputDataset = uniqueTestName("sdk_cli_it_abort_output",);
+			const abortPayload = [
+				"import time",
+				"time.sleep(120)",
+				"import dataiku",
+				"import pandas as pd",
+				`out = dataiku.Dataset(${JSON.stringify(abortOutputDataset,)})`,
+				'out.write_with_schema(pd.DataFrame({"x": [1]}))',
+				"",
+			].join("\n",);
+			const abortRecipe = await client.recipes.create({
+				type: "python",
+				name: abortRecipeName,
+				inputDatasets: [abortInputDataset,],
+				outputDataset: abortOutputDataset,
+				outputConnection: "filesystem_managed",
+				payload: abortPayload,
+			},);
+			expect(abortRecipe.recipeName,).toBe(abortRecipeName,);
+			cleanup.defer(async () => {
+				await client.datasets.delete(abortOutputDataset,);
+			},);
+			cleanup.defer(async () => {
+				await client.recipes.delete(abortRecipeName,);
+			},);
+
+			const terminalAbortStates = ["ABORTED", "KILLED", "CANCELED", "CANCELLED",];
+			const terminalStates = [
+				"DONE",
+				"FAILED",
+				"ABORTED",
+				"KILLED",
+				"CANCELED",
+				"CANCELLED",
+				"ERROR",
+			];
+			const addJobAbortFixtureFinding = (observed: string,): void => {
+				addFinding({
+					id: "job-abort-needs-long-running-fixture",
+					category: "resource-gap",
+					status: "skipped",
+					severity: "medium",
+					observed,
+					expected:
+						"A disposable recipe build remains running long enough for SDK and CLI job abort calls to be issued.",
+					cleanupVerified: true,
+				},);
+			};
+			const startAbortableJob = async (label: string,): Promise<string | undefined> => {
+				let started: { jobId: string; };
+				try {
+					started = await client.jobs.build(abortOutputDataset, {
+						buildMode: "NON_RECURSIVE_FORCED_BUILD",
+					},);
+				} catch (error) {
+					addJobAbortFixtureFinding(
+						`${label} abort fixture build could not start: ${
+							error instanceof Error ? error.message : String(error,)
+						}`,
+					);
+					return undefined;
+				}
+				await new Promise((resolve,) => setTimeout(resolve, 5_000,));
+				const details = await client.jobs.get(started.jobId,);
+				const state = ((details.baseStatus as { state?: string; } | undefined)?.state ?? "")
+					.toUpperCase();
+				if (terminalStates.includes(state,)) {
+					addJobAbortFixtureFinding(
+						`${label} abort fixture job ${started.jobId} reached terminal state ${state} before abort could be issued.`,
+					);
+					return undefined;
+				}
+				return started.jobId;
+			};
+
+			const sdkAbortJobId = await startAbortableJob("SDK",);
+			if (!sdkAbortJobId) return;
+			await client.jobs.abort(sdkAbortJobId,);
+			const sdkAbortWait = await client.jobs.wait(sdkAbortJobId, {
+				includeLogs: true,
+				maxLogLines: 20,
+				pollIntervalMs: 1_000,
+				timeoutMs: 120_000,
+			},);
+			expect(sdkAbortWait.success, `SDK abort job ${sdkAbortJobId} state ${sdkAbortWait.state}`,).toBe(
+				false,
+			);
+			expect(terminalAbortStates,).toContain(sdkAbortWait.state.toUpperCase(),);
+
+			const cliAbortJobId = await startAbortableJob("CLI",);
+			if (!cliAbortJobId) return;
+			const cliAbort = parseCliJson(
+				await dssRaw(["job", "abort", cliAbortJobId,],),
+				"job abort",
+			) as { aborted?: string; resource?: string; };
+			expect(cliAbort.aborted,).toBe(cliAbortJobId,);
+			expect(cliAbort.resource,).toBe("job",);
+			const cliAbortWait = await client.jobs.wait(cliAbortJobId, {
+				pollIntervalMs: 1_000,
+				timeoutMs: 120_000,
+			},);
+			expect(cliAbortWait.success, `CLI abort job ${cliAbortJobId} state ${cliAbortWait.state}`,).toBe(
+				false,
+			);
+			expect(terminalAbortStates,).toContain(cliAbortWait.state.toUpperCase(),);
+		} finally {
+			await cleanup.run();
+		}
+	}, 180_000,);
 
 	it("guards variable round-trip behind explicit variable mutation gate", async () => {
 		if (process.env.RUN_DATAIKU_INTEGRATION_VARIABLES !== "1") {
@@ -696,10 +1407,21 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 		const client = createClient();
 		const key = uniqueTestName("sdk_cli_it_var",);
 		const before = await client.variables.get();
+		const dryRun = parseCliJson(
+			await dssRaw(["variable", "set", "--local", JSON.stringify({ [key]: "ok", },), "--dry-run",],),
+			"variable set dry-run",
+		) as { dryRun?: boolean; next?: { local?: Record<string, unknown>; }; };
+		expect(dryRun.dryRun,).toBe(true,);
+		expect(dryRun.next?.local?.[key],).toBe("ok",);
 		try {
 			await client.variables.set({ local: { [key]: "ok", }, },);
 			const afterSet = await client.variables.get();
 			expect(afterSet.local[key],).toBe("ok",);
+			const cliAfterSet = parseCliJson(
+				await dssRaw(["variable", "get",],),
+				"variable get after set",
+			) as { local?: Record<string, unknown>; };
+			expect(cliAfterSet.local?.[key],).toBe("ok",);
 		} finally {
 			await client.variables.set({ standard: before.standard, local: before.local, replace: true, },);
 		}
@@ -707,27 +1429,34 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 		expect(restored,).toEqual(before,);
 	});
 
-	it("guards managed-folder file workflow behind fixture discovery", async () => {
-		const fixtures = await rigorousFixtures();
-		const folderId = process.env.DATAIKU_TEST_FOLDER_ID
-			?? fixtureString(fixtures.safeManagedFolder, ["id",],);
-		if (!folderId) {
+	it("round-trips files through a disposable managed folder", async () => {
+		const client = createClient();
+		const folderName = uniqueTestName("sdk_cli_it_folder",);
+		let folderId: string | undefined;
+		try {
+			const folder = await client.folders.create({
+				name: folderName,
+				type: "Filesystem",
+				connection: "filesystem_managed",
+			},);
+			folderId = folder.id;
+			expect(folderId, "created folder id",).toBeTruthy();
+		} catch (error) {
 			addFinding({
-				id: "folder-file-workflow-needs-test-folder",
-				category: "feature-opportunity",
+				id: "folder-file-workflow-needs-disposable-folder-create",
+				category: "resource-gap",
 				status: "skipped",
 				severity: "medium",
-				observed:
-					"No DATAIKU_TEST_FOLDER_ID was configured and dss fixtures did not discover a safeManagedFolder candidate.",
+				observed: `Could not create disposable managed folder for file workflow validation: ${
+					error instanceof Error ? error.message : String(error,)
+				}`,
 				expected:
-					"A safe managed-folder fixture is discoverable automatically, while DATAIKU_TEST_FOLDER_ID remains an override.",
-				suggestedAction:
-					"Create a Filesystem or Inline managed folder fixture, pass --allow-types if appropriate, or configure DATAIKU_TEST_FOLDER_ID.",
+					"Disposable filesystem managed-folder creation is available so folder file workflow coverage never touches existing folders.",
+				cleanupVerified: true,
 			},);
 			return;
 		}
 
-		const client = createClient();
 		const tempDir = await mkdtemp(join(tmpdir(), "dss-rigorous-",),);
 		const remotePath = `/${uniqueTestName("sdk_cli_it_file",)}.txt`;
 		const localPath = join(tempDir, "upload.txt",);
@@ -735,14 +1464,17 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 		await writeFile(localPath, "hello rigorous integration\n", "utf-8",);
 
 		try {
-			await client.folders.upload(folderId, remotePath, localPath,);
-			const contents = await client.folders.contents(folderId,);
+			await client.folders.upload(folderId!, remotePath, localPath,);
+			const contents = await client.folders.contents(folderId!,);
 			expect(contents.some((item,) => item.path === remotePath || item.path === remotePath.slice(1,)),)
 				.toBe(true,);
-			await client.folders.download(folderId, remotePath, { localPath: downloadPath, },);
+			await client.folders.download(folderId!, remotePath, { localPath: downloadPath, },);
 			expect(await readFile(downloadPath, "utf-8",),).toBe("hello rigorous integration\n",);
 		} finally {
-			await client.folders.deleteFile(folderId, remotePath,).catch(() => undefined);
+			if (folderId) {
+				await client.folders.deleteFile(folderId, remotePath,).catch(() => undefined);
+				await client.folders.delete(folderId,).catch(() => undefined);
+			}
 			await rm(tempDir, { recursive: true, force: true, },);
 		}
 	});

@@ -387,3 +387,321 @@
   }
 }
 ```
+
+## Unproven SDK Function Coverage Progress (2026-05-11)
+
+```json
+{
+  "scope": "unproven SDK live coverage plan execution",
+  "status": "live_validated_safe_and_restore_gated_paths",
+  "implemented": [
+    {
+      "area": "flow-zone movement",
+      "change": "Rigorous mutating integration now creates a disposable dataset and moves only that dataset through SDK moveItem and CLI moveItems paths.",
+      "methodsCoveredWhenLive": ["flowZones.moveItem", "flowZones.moveItems"],
+      "safety": "No existing project flow objects are moved."
+    },
+    {
+      "area": "job build coverage",
+      "change": "Rigorous mutating integration now creates a disposable dataset and covers job build/wait/details/log/buildAndWait plus CLI dry-run planning.",
+      "methodsCoveredWhenLive": ["jobs.build", "jobs.wait", "jobs.get", "jobs.log", "jobs.buildAndWait"],
+      "remaining": "jobs.abort remains dry-run-only until a long-running disposable job fixture exists."
+    },
+    {
+      "area": "variables",
+      "change": "Variable mutation gate now verifies CLI dry-run planning, SDK merge write, CLI readback, and full snapshot restore.",
+      "methodsCoveredWhenGated": ["variables.set", "variables.get"],
+      "gate": "RUN_DATAIKU_INTEGRATION_VARIABLES=1"
+    },
+    {
+      "area": "SQL query coverage",
+      "change": "Added gated live SELECT 1 coverage for sql.query, which exercises startQuery, streamResults, and finishStreaming internally.",
+      "methodsCoveredWhenConfigured": ["sql.query", "sql.startQuery", "sql.streamResults", "sql.finishStreaming"],
+      "gate": "RUN_DATAIKU_SQL_LIVE=1 plus DATAIKU_SQL_CONNECTION or DATAIKU_SQL_DATASET_FULL_NAME"
+    },
+    {
+      "area": "notebook mutation coverage",
+      "change": "Added explicit-fixture gated no-loss Jupyter and SQL notebook mutation coverage. Jupyter save/clear restore original notebook content; SQL notebook save/history/clear requires explicit SQL notebook id.",
+      "methodsCoveredWhenConfigured": ["notebooks.saveJupyter", "notebooks.clearJupyterOutputs", "notebooks.saveSql", "notebooks.getSqlHistory", "notebooks.clearSqlHistory"],
+      "remaining": "deleteJupyter and deleteSql remain unproven until disposable notebook create paths or explicit disposable fixtures exist."
+    },
+    {
+      "area": "admin code-env coverage",
+      "change": "Added RUN_DATAIKU_ADMIN_MUTATING gated disposable code-env lifecycle for create/get/getDefinition/setDefinition/setPackages/setJupyterSupport/updatePackages/delete.",
+      "methodsCoveredWhenConfigured": ["codeEnvs.create", "codeEnvs.get", "codeEnvs.getDefinition", "codeEnvs.setDefinition", "codeEnvs.setPackages", "codeEnvs.setJupyterSupport", "codeEnvs.updatePackages", "codeEnvs.delete"],
+      "gate": "RUN_DATAIKU_ADMIN_MUTATING=1"
+    },
+    {
+      "area": "environment reporting",
+      "change": "Doctor now reports RUN_DATAIKU_ADMIN_MUTATING and RUN_DATAIKU_SQL_LIVE flags. Integration harness now exposes admin-mutating and SQL-live describe gates.",
+      "newFlags": ["RUN_DATAIKU_ADMIN_MUTATING", "RUN_DATAIKU_SQL_LIVE"]
+    }
+  ],
+  "verification": {
+    "typecheck": "bun run check passed",
+    "format": "bun run format:check passed",
+    "lint": "bun run lint passed with pre-existing no-underscore-dangle warnings in src/client.ts",
+    "focusedTests": "bun test tests/cli.test.ts tests/integration-rigorous.test.ts tests/connections-variables.test.ts tests/folders-jobs.test.ts tests/flow-zones.test.ts -> 134 pass, 60 skip, 0 fail"
+  },
+  "liveDss": {
+    "status": "available during live validation",
+    "observed": "doctor --capabilities returned ok=true for TUT_PIVOT_TABLES with yes permissions for list/read/mutate project, create folder, run jobs, create scenario, save Jupyter, and mutate connection.",
+    "impact": "Safe mutating, restore-safe variable, and read-only rigorous suites were live-proven against the playground."
+  },
+  "liveValidation": {
+    "commands": [
+      "bun run test:integration -> 4 pass, 1 skip, 0 fail",
+      "bun run test:integration:rigorous -> 54 pass, 6 skip, 0 fail",
+      "bun run test:integration:mutating -> 5 pass, 0 fail",
+      "bun run test:integration:rigorous:mutating -> 60 pass, 0 fail after adding explicit per-test timeouts for long live data-quality/job tests",
+      "RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 RUN_DATAIKU_INTEGRATION_VARIABLES=1 bun test tests/integration-rigorous.test.ts -> 60 pass, 0 fail, 727 expect calls",
+      "RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 RUN_DATAIKU_INTEGRATION_VARIABLES=1 RUN_DATAIKU_INTEGRATION_REPORT=1 bun test tests/integration-rigorous.test.ts -> 60 pass, 0 fail, 727 expect calls"
+    ],
+    "cleanup": "An intermediate fixture scan observed a disposable job dataset from a timed-out run; a later residue scan across datasets, data-quality rules, flow zones, wiki articles, dashboards, and insights found no sdk_cli_it/OMP artifacts. Dataset cleanup in the affected tests now fails visibly instead of swallowing delete failures."
+  },
+  "next": [
+    "Run fixture-gated SQL/Jupyter/admin code-env coverage when explicit SQL/Jupyter notebook fixtures or RUN_DATAIKU_ADMIN_MUTATING are intentionally configured.",
+    "Add a dedicated long-running disposable job fixture before live-testing jobs.abort."
+  ]
+}
+```
+
+## Unproven SDK Function Coverage Live Validation (2026-05-11)
+
+```json
+{
+  "scope": "live validation after DSS playground became available",
+  "doctor": {
+    "command": "bun run src/cli.ts doctor --capabilities --report-json",
+    "result": "passed",
+    "connectivity": "ok",
+    "projectKey": "TUT_PIVOT_TABLES",
+    "permissions": {
+      "canListProjects": "yes",
+      "canReadProject": "yes",
+      "canMutateProject": "yes",
+      "canCreateFolder": "yes",
+      "canRunJobs": "yes",
+      "canCreateScenario": "yes",
+      "canSaveJupyter": "yes",
+      "canMutateConnection": "yes"
+    },
+    "fixtures": {
+      "defaultDataset": "cardholder_info",
+      "defaultRecipe": "compute_transactions_joined",
+      "defaultScenario": "BUILDDASHBOARD",
+      "defaultFlowZone": null,
+      "defaultManagedFolder": null,
+      "defaultJupyterNotebook": null
+    }
+  },
+  "commands": [
+    {
+      "command": "bun run test:integration",
+      "result": "4 pass, 1 skip, 0 fail"
+    },
+    {
+      "command": "bun run test:integration:rigorous",
+      "result": "54 pass, 6 skip, 0 fail"
+    },
+    {
+      "command": "bun run test:integration:mutating",
+      "result": "5 pass, 0 fail"
+    },
+    {
+      "command": "bun run test:integration:rigorous:mutating",
+      "result": "60 pass, 0 fail",
+      "notes": "An earlier run hit live-operation timeouts in the data-quality/job area; targeted reruns and a full rerun passed cleanly."
+    },
+    {
+      "command": "RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 RUN_DATAIKU_INTEGRATION_VARIABLES=1 bun test tests/integration-rigorous.test.ts",
+      "result": "60 pass, 0 fail",
+      "expectCalls": 727
+    },
+    {
+      "command": "RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 RUN_DATAIKU_INTEGRATION_VARIABLES=1 RUN_DATAIKU_INTEGRATION_REPORT=1 bun test tests/integration-rigorous.test.ts",
+      "result": "60 pass, 0 fail",
+      "expectCalls": 727,
+      "skips": [
+        "sql-live-fixture-not-configured",
+        "jupyter-mutation-needs-explicit-fixture",
+        "sql-notebook-mutation-needs-explicit-fixture",
+        "code-env-mutation-admin-gated",
+        "job-abort-needs-long-running-disposable-job",
+        "folder-file-workflow-needs-test-folder"
+      ]
+    }
+  ],
+  "finalVerification": {
+    "format": "bun run format:check passed",
+    "typecheck": "bun run check passed",
+    "lint": "bun run lint passed with pre-existing no-underscore-dangle warnings in src/client.ts",
+    "focusedTests": "bun test tests/cli.test.ts tests/integration-rigorous.test.ts tests/connections-variables.test.ts tests/folders-jobs.test.ts tests/flow-zones.test.ts -> 134 pass, 60 skip, 0 fail",
+    "residueScan": "SDK scan found no disposable sdk_cli_it/OMP datasets, data-quality rules, flow zones, wiki articles, dashboards, or insights."
+  },
+  "nowLiveProven": [
+    "flowZones.moveItem",
+    "flowZones.moveItems",
+    "jobs.build",
+    "jobs.wait",
+    "jobs.get",
+    "jobs.log",
+    "jobs.buildAndWait",
+    "variables.set",
+    "variables.get",
+    "insights.create",
+    "insights.update",
+    "insights.delete"
+  ],
+  "stillNotLiveProven": [
+    {
+      "area": "jobs.abort",
+      "reason": "Only dry-run planning is covered; real abort still needs a long-running disposable job fixture."
+    },
+    {
+      "area": "SQL query methods",
+      "reason": "RUN_DATAIKU_SQL_LIVE plus DATAIKU_SQL_CONNECTION or DATAIKU_SQL_DATASET_FULL_NAME is not configured."
+    },
+    {
+      "area": "Jupyter notebook mutations",
+      "reason": "DATAIKU_TEST_JUPYTER_NOTEBOOK is not configured; delete/unload still need disposable notebook/session fixtures."
+    },
+    {
+      "area": "SQL notebook mutations",
+      "reason": "DATAIKU_TEST_SQL_NOTEBOOK_ID is not configured; deleteSql still needs a disposable create path or explicit disposable fixture."
+    },
+    {
+      "area": "admin code-env mutations",
+      "reason": "RUN_DATAIKU_ADMIN_MUTATING is not configured, so global/admin code-env lifecycle was not executed."
+    }
+  ],
+  "cleanup": {
+    "verifiedByTests": true,
+    "notes": "An intermediate fixture scan observed a disposable job dataset from a timed-out run; the current residue scan found no sdk_cli_it/OMP datasets, data-quality rules, flow zones, wiki articles, dashboards, or insights. New dataset cleanup no longer swallows delete failures."
+  }
+}
+```
+
+## Remaining SDK Function Coverage Live Completion (2026-05-11)
+
+```json
+{
+  "scope": "completion pass for previously gated/unproven SDK and CLI coverage",
+  "status": "remaining_safe_sandbox_paths_live_validated",
+  "supersedes": "The earlier 2026-05-11 live-validation stillNotLiveProven entries for jobs.abort, SQL query methods, Jupyter delete, SQL notebook delete, and admin code-env mutations are now resolved by this completion pass. Jupyter unload remains explicitly session-fixture-gated.",
+  "implemented": [
+    {
+      "area": "jobs.abort",
+      "change": "Rigorous mutating integration now creates a disposable long-running Python recipe, builds its disposable output, aborts one running job through SDK jobs.abort, aborts a second running job through CLI job abort, waits both to terminal non-success states, then deletes the recipe and output dataset.",
+      "methodsCoveredWhenLive": ["jobs.abort"],
+      "cliCoveredWhenLive": ["job abort"],
+      "safety": "Only sdk_cli_it_* disposable recipe/output dataset jobs are aborted."
+    },
+    {
+      "area": "SQL query methods",
+      "change": "SQL live coverage can now create a disposable PostgreSQL connection under RUN_DATAIKU_ADMIN_MUTATING=1 plus DATAIKU_SQL_LIVE_CREATE_CONNECTION=1 when DATAIKU_SQL_CONNECTION/DATAIKU_SQL_DATASET_FULL_NAME are absent; the test runs SDK and CLI SELECT 1 probes and cleans up the temporary connection.",
+      "methodsCoveredWhenLive": ["sql.query", "sql.startQuery", "sql.streamResults", "sql.finishStreaming"],
+      "cliCoveredWhenLive": ["sql query"],
+      "gate": "RUN_DATAIKU_SQL_LIVE=1 plus either DATAIKU_SQL_CONNECTION/DATAIKU_SQL_DATASET_FULL_NAME or disposable connection env"
+    },
+    {
+      "area": "Jupyter notebook mutations",
+      "change": "Mutating integration now creates disposable Jupyter notebooks through the documented public create endpoint, covers SDK saveJupyter/clearJupyterOutputs/listJupyterSessions/deleteJupyter, covers CLI save-jupyter/clear-jupyter-outputs/sessions-jupyter/delete-jupyter, and cleans up all notebooks.",
+      "methodsCoveredWhenLive": ["notebooks.saveJupyter", "notebooks.clearJupyterOutputs", "notebooks.listJupyterSessions", "notebooks.deleteJupyter"],
+      "cliCoveredWhenLive": ["notebook save-jupyter", "notebook clear-jupyter-outputs", "notebook sessions-jupyter", "notebook delete-jupyter"],
+      "remaining": "notebooks.unloadJupyter still requires a disposable running notebook session; public POST session probing returned 405 Method Not Allowed."
+    },
+    {
+      "area": "SQL notebook mutations",
+      "change": "Mutating integration now creates disposable SQL notebooks through the documented public create endpoint, covers SDK saveSql/getSqlHistory/clearSqlHistory/deleteSql, covers CLI save-sql/history-sql/clear-sql-history/delete-sql, and cleans up all notebooks.",
+      "methodsCoveredWhenLive": ["notebooks.saveSql", "notebooks.getSqlHistory", "notebooks.clearSqlHistory", "notebooks.deleteSql"],
+      "cliCoveredWhenLive": ["notebook save-sql", "notebook history-sql", "notebook clear-sql-history", "notebook delete-sql"]
+    },
+    {
+      "area": "admin code-env mutations",
+      "change": "The existing RUN_DATAIKU_ADMIN_MUTATING-gated disposable code-env lifecycle was executed live and passed.",
+      "methodsCoveredWhenLive": ["codeEnvs.create", "codeEnvs.get", "codeEnvs.getDefinition", "codeEnvs.setDefinition", "codeEnvs.setPackages", "codeEnvs.setJupyterSupport", "codeEnvs.listUsages", "codeEnvs.updatePackages", "codeEnvs.delete"]
+    }
+  ],
+  "liveValidation": {
+    "commands": [
+      "RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 RUN_DATAIKU_INTEGRATION_VARIABLES=1 RUN_DATAIKU_SQL_LIVE=1 RUN_DATAIKU_ADMIN_MUTATING=1 DATAIKU_SQL_LIVE_CREATE_CONNECTION=1 DATAIKU_SQL_LIVE_*=[configured] bun test tests/integration-rigorous.test.ts -> 60 pass, 0 fail, 794 expect calls",
+      "same command with RUN_DATAIKU_INTEGRATION_REPORT=1 -> 60 pass, 0 fail, 794 expect calls"
+    ],
+    "remainingReportFindings": [
+      "jupyter-unload-needs-running-session",
+      "folder-file-workflow-needs-test-folder",
+      "low-severity feature-opportunity probes"
+    ]
+  },
+  "residueScan": {
+    "result": "clean",
+    "checked": ["datasets", "recipes", "flowZones", "insights", "jupyter notebooks", "sql notebooks", "connections", "code envs", "dashboards", "wiki articles"],
+    "pattern": "sdk_cli_it/OMP"
+  },
+  "stillNotLiveProven": [
+    {
+      "area": "notebooks.unloadJupyter",
+      "reason": "No public API path creates a running disposable Jupyter session; disposable notebook session create probing returned 405 Method Not Allowed. Dry-run and session listing are covered."
+    }
+  ]
+}
+```
+
+## Additional Project Live Validation (2026-05-12)
+
+```json
+{
+  "scope": "cross-project validation after additional DSS playground projects became available",
+  "status": "validated_with_project_specific_fixture_gaps_classified",
+  "projects": [
+    "DKU_EXAM_DEVELOPER",
+    "DKU_TUT_CODE_NOTEBOOKS",
+    "TUT_BATCH",
+    "TUT_GOVERNANCE",
+    "TUT_PIVOT_TABLES",
+    "TUT_PYTHON_PREPARE",
+    "TUT_R_MARKDOWN",
+    "TUT_STATIC_INSIGHTS"
+  ],
+  "testHardening": [
+    "Data-quality mutation coverage now creates a disposable filesystem dataset before adding/removing a disposable rule, instead of attaching a temporary rule to an existing project dataset.",
+    "Managed-folder file workflow coverage now attempts disposable managed-folder creation and classifies the resource gap if creation is forbidden, instead of uploading into an existing folder fixture.",
+    "Job abort coverage now classifies projects whose disposable long-running abort fixture reaches a terminal state before abort can be issued, while still proving abort on projects where the fixture remains running."
+  ],
+  "validation": {
+    "fixtures": "dss fixtures --project-key <project> --allow-types Filesystem,Inline was run for all 8 accessible projects.",
+    "capabilities": "dss doctor --capabilities --project-key <project> --report-json returned ok=true for all 8 accessible projects.",
+    "readOnlyMatrix": "RUN_DATAIKU_INTEGRATION=1 bun test tests/integration-playground.test.ts tests/integration-rigorous.test.ts passed for all 8 projects; each run reported 58 pass, 7 skip, 0 fail.",
+    "mutatingMatrix": "RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 RUN_DATAIKU_INTEGRATION_VARIABLES=1 RUN_DATAIKU_INTEGRATION_REPORT=1 bun test tests/integration-rigorous.test.ts passed for all 8 projects; each run reported 60 pass, 0 fail.",
+    "focusedLocal": "bun test tests/cli.test.ts tests/integration-rigorous.test.ts tests/connections-variables.test.ts tests/folders-jobs.test.ts tests/flow-zones.test.ts -> 134 pass, 60 skip, 0 fail",
+    "format": "bun run format:check passed",
+    "typecheck": "bun run check passed",
+    "lint": "bun run lint passed with 16 pre-existing no-underscore-dangle warnings in src/client.ts and 0 errors",
+    "diffCheck": "git diff --check passed"
+  },
+  "projectSpecificClassifications": {
+    "jobAbortFixtureGap": [
+      "TUT_BATCH",
+      "TUT_PYTHON_PREPARE",
+      "TUT_R_MARKDOWN",
+      "TUT_STATIC_INSIGHTS"
+    ],
+    "jobAbortStillLiveProvenOn": [
+      "DKU_EXAM_DEVELOPER",
+      "DKU_TUT_CODE_NOTEBOOKS",
+      "TUT_GOVERNANCE",
+      "TUT_PIVOT_TABLES"
+    ],
+    "managedFolderDisposableCreate": "Skipped where DSS returned 403 for disposable folder creation on filesystem connections; existing folders were not mutated.",
+    "sqlLive": "Not rerun in the per-project matrix; SQL live remains covered by the earlier explicit SQL/admin gated completion run.",
+    "adminCodeEnv": "Not rerun in the per-project matrix; global code-env lifecycle remains guarded by RUN_DATAIKU_ADMIN_MUTATING=1 and was covered by the earlier completion run.",
+    "notebooksUnloadJupyter": "Still requires an externally started disposable running Jupyter session."
+  },
+  "residueScan": {
+    "result": "clean",
+    "checked": ["datasets", "recipes", "flow zones", "insights", "Jupyter notebooks", "SQL notebooks", "dashboards", "wiki articles", "managed folders", "connections", "code envs"],
+    "pattern": "sdk_cli_it/OMP"
+  }
+}
+```
