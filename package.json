@@ -1,6 +1,6 @@
 {
 	"name": "dataiku-sdk",
-	"version": "0.5.1",
+	"version": "0.6.0",
 	"description": "Dataiku DSS SDK and CLI for programmatic access to DSS REST APIs",
 	"type": "module",
 	"workspaces": [
