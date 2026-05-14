@@ -78,6 +78,24 @@ describe("classifyDataikuError", () => {
 		});
 	});
 
+	describe("Athena SQL engine errors", () => {
+		it("classifies COLUMN_NOT_FOUND as deterministic validation", () => {
+			const result = classifyDataikuError(
+				500,
+				"COLUMN_NOT_FOUND: Column 'task_name' cannot be resolved",
+			);
+			expect(result.category,).toBe("validation",);
+			expect(result.retryable,).toBe(false,);
+			expect(result.retryHint,).toContain("column names",);
+		});
+
+		it("classifies TABLE_NOT_FOUND as deterministic validation", () => {
+			const result = classifyDataikuError(500, "TABLE_NOT_FOUND: Table analytics.orders not found",);
+			expect(result.category,).toBe("validation",);
+			expect(result.retryable,).toBe(false,);
+			expect(result.retryHint,).toContain("table names",);
+		});
+	});
 	describe("500 + permission-like", () => {
 		it("classifies code env permission failures as forbidden", () => {
 			const result = classifyDataikuError(

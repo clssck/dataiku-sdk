@@ -427,7 +427,41 @@ describe("JobsResource.build", () => {
 		},);
 
 		expect(buildRequestBody,).toEqual({
-			outputs: [{ projectKey: "TEST", id: "folder-id", type: "MANAGED_FOLDER", },],
+			outputs: [{
+				projectKey: "TEST",
+				id: "folder-id",
+				type: "MANAGED_FOLDER",
+				targetManagedFolderProjectKey: "TEST",
+				targetManagedFolder: "folder-id",
+				targetPartition: "NP",
+			},],
+			type: "NON_RECURSIVE_FORCED_BUILD",
+		},);
+	});
+
+	it("includes dataset partitions in build payloads", async () => {
+		let buildRequestBody: Record<string, unknown> | undefined;
+
+		await withDataikuServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("POST",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/jobs/",);
+			buildRequestBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
+			sendJson(res, { id: "job-partition", }, 200,);
+		}, async (client,) => {
+			const result = await client.jobs.build("target_dataset", {
+				partition: "2026-05-13",
+			},);
+			expect(result,).toEqual({ jobId: "job-partition", },);
+		},);
+
+		expect(buildRequestBody,).toEqual({
+			outputs: [{
+				projectKey: "TEST",
+				id: "target_dataset",
+				type: "DATASET",
+				partition: "2026-05-13",
+			},],
 			type: "NON_RECURSIVE_FORCED_BUILD",
 		},);
 	});
@@ -474,7 +508,14 @@ describe("JobsResource.build", () => {
 		},);
 
 		expect(buildRequestBody,).toEqual({
-			outputs: [{ projectKey: "TEST", id: "folder-id", type: "MANAGED_FOLDER", },],
+			outputs: [{
+				projectKey: "TEST",
+				id: "folder-id",
+				type: "MANAGED_FOLDER",
+				targetManagedFolderProjectKey: "TEST",
+				targetManagedFolder: "folder-id",
+				targetPartition: "NP",
+			},],
 			type: "NON_RECURSIVE_FORCED_BUILD",
 		},);
 		expect(requests,).toEqual([

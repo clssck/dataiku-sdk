@@ -13,6 +13,16 @@ function normalizeConnectionNames(value: unknown,): string[] {
 		.sort();
 }
 
+export interface ConnectionSchemaListOptions {
+	connection: string;
+	projectKey?: string;
+}
+
+export interface ConnectionTableListOptions extends ConnectionSchemaListOptions {
+	catalog?: string;
+	schema?: string;
+}
+
 async function inferRichConnectionsFromDatasets(
 	client: DataikuClient,
 	projectEnc: string,
@@ -96,5 +106,29 @@ export class ConnectionsResource extends BaseResource {
 		}
 
 		return inferRichConnectionsFromDatasets(this.client, projectEnc,);
+	}
+
+	async schemas(opts: ConnectionSchemaListOptions,): Promise<string[]> {
+		const pk = this.resolveProjectKey(opts.projectKey,);
+		const params = new URLSearchParams();
+		params.set("connectionName", opts.connection,);
+		return this.client.get<string[]>(
+			`/public/api/projects/${
+				encodeURIComponent(pk,)
+			}/datasets/tables-import/actions/list-schemas?${params.toString()}`,
+		);
+	}
+
+	async tables(opts: ConnectionTableListOptions,): Promise<Record<string, unknown>> {
+		const pk = this.resolveProjectKey(opts.projectKey,);
+		const params = new URLSearchParams();
+		params.set("connectionName", opts.connection,);
+		if (opts.catalog !== undefined) params.set("catalogName", opts.catalog,);
+		if (opts.schema !== undefined) params.set("schemaName", opts.schema,);
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/projects/${
+				encodeURIComponent(pk,)
+			}/datasets/tables-import/actions/list-tables?${params.toString()}`,
+		);
 	}
 }

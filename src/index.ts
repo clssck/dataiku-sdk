@@ -27,22 +27,42 @@ export {
 
 // Resources (for advanced use / extension)
 export { CodeEnvsResource, } from "./resources/code-envs.js";
-export { ConnectionsResource, } from "./resources/connections.js";
+export {
+	type ConnectionSchemaListOptions,
+	ConnectionsResource,
+	type ConnectionTableListOptions,
+} from "./resources/connections.js";
 export { DashboardsResource, } from "./resources/dashboards.js";
 export { DataQualityResource, } from "./resources/data-quality.js";
-export { DatasetsResource, } from "./resources/datasets.js";
+export {
+	type DatasetBuildValidationResult,
+	type DatasetSchemaColumnInput,
+	DatasetsResource,
+} from "./resources/datasets.js";
 export { type FlowZoneItemInput, FlowZonesResource, } from "./resources/flow-zones.js";
 export { FoldersResource, } from "./resources/folders.js";
 export { FuturesResource, } from "./resources/futures.js";
 export { InsightsResource, } from "./resources/insights.js";
 export {
 	computeNextPollDelayMs,
+	type JobBuildAndWaitOptions,
+	type JobBuildOptions,
+	type JobBuildTarget,
 	type JobBuildTargetType,
+	type JobLogFilter,
+	type JobLogSummary,
 	JobsResource,
 } from "./resources/jobs.js";
 export { NotebooksResource, } from "./resources/notebooks.js";
 export { type FlowMapResult, ProjectsResource, } from "./resources/projects.js";
-export { RecipesResource, } from "./resources/recipes.js";
+export {
+	type RecipeGraphReference,
+	type RecipeGraphValidationResult,
+	type RecipeRunOptions,
+	type RecipeRunOutput,
+	type RecipeRunResult,
+	RecipesResource,
+} from "./resources/recipes.js";
 export { ScenariosResource, } from "./resources/scenarios.js";
 export { SqlResource, } from "./resources/sql.js";
 export { VariablesResource, } from "./resources/variables.js";

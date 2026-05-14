@@ -477,4 +477,274 @@ describe("RecipesResource", () => {
 			},
 		},);
 	});
+
+	it("runs recipes by resolving managed-folder outputs", async () => {
+		const requests: string[] = [];
+		let buildRequestBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}${url.search}`,);
+
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/recipes/compute_FOLDERID"
+			) {
+				sendJson(res, {
+					recipe: {
+						name: "compute_FOLDERID",
+						type: "python",
+						outputs: {
+							main: {
+								items: [{ ref: "Exports", appendMode: false, },],
+							},
+						},
+					},
+				},);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [],);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "FOLDERID", name: "Exports", type: "Filesystem", },],);
+				return;
+			}
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/jobs/") {
+				buildRequestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { id: "job-folder", },);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-folder/") {
+				sendJson(res, {
+					baseStatus: {
+						def: { id: "job-folder", type: "MANAGED_FOLDER_BUILD", },
+						state: "DONE",
+					},
+					globalState: { done: 1, failed: 0, running: 0, total: 1, },
+				},);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-folder/log/") {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/plain",);
+				res.end(">>> DONE: 19 experiments\n",);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.run("compute_FOLDERID", {
+				includeLogs: true,
+				pollIntervalMs: 1,
+				timeoutMs: 5_000,
+			},);
+
+			expect(result,).toMatchObject({
+				recipeName: "compute_FOLDERID",
+				success: true,
+				jobId: "job-folder",
+				state: "DONE",
+				type: "MANAGED_FOLDER_BUILD",
+				outputs: [{
+					ref: "Exports",
+					role: "main",
+					id: "FOLDERID",
+					type: "MANAGED_FOLDER",
+					projectKey: "TEST",
+				},],
+				log: ">>> DONE: 19 experiments\n",
+			},);
+		},);
+
+		expect(buildRequestBody,).toEqual({
+			outputs: [{
+				projectKey: "TEST",
+				id: "FOLDERID",
+				type: "MANAGED_FOLDER",
+				targetManagedFolderProjectKey: "TEST",
+				targetManagedFolder: "FOLDERID",
+				targetPartition: "NP",
+			},],
+			type: "NON_RECURSIVE_FORCED_BUILD",
+		},);
+		expect(requests,).toContain("GET /public/api/projects/TEST/recipes/compute_FOLDERID",);
+		expect(requests,).toContain("GET /public/api/projects/TEST/datasets/",);
+		expect(requests,).toContain("GET /public/api/projects/TEST/managedfolders/",);
+		const jobRequests = requests.filter((request,) =>
+			request.startsWith("POST /public/api/projects/TEST/jobs/",)
+			|| request.startsWith("GET /public/api/projects/TEST/jobs/job-folder",)
+		);
+		expect(jobRequests,).toEqual([
+			"POST /public/api/projects/TEST/jobs/",
+			"GET /public/api/projects/TEST/jobs/job-folder/",
+			"GET /public/api/projects/TEST/jobs/job-folder/log/",
+		],);
+	});
+
+	it("waits for summaries and propagates dataset partitions", async () => {
+		const requests: string[] = [];
+		let buildRequestBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}${url.search}`,);
+
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/recipes/compute_output"
+			) {
+				sendJson(res, {
+					recipe: {
+						name: "compute_output",
+						type: "python",
+						outputs: {
+							main: {
+								items: [{ ref: "output_dataset", appendMode: false, },],
+							},
+						},
+					},
+				},);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [{ name: "output_dataset", type: "Filesystem", },],);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [],);
+				return;
+			}
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/jobs/") {
+				buildRequestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { id: "job-summary", },);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-summary/") {
+				sendJson(res, {
+					baseStatus: {
+						def: { id: "job-summary", type: "DATASET_BUILD", },
+						state: "DONE",
+					},
+					globalState: { done: 1, failed: 0, running: 0, total: 1, },
+				},);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-summary/log/") {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/plain",);
+				res.end("first line\nsecond line\n",);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.run("compute_output", {
+				summary: true,
+				maxLogLines: 1,
+				partition: "P1",
+			},);
+
+			expect(result,).toMatchObject({
+				recipeName: "compute_output",
+				success: true,
+				jobId: "job-summary",
+				state: "DONE",
+				logSummary: {
+					state: "DONE",
+					lineCount: 2,
+					lines: ["second line",],
+				},
+			},);
+			expect(result,).not.toHaveProperty("log",);
+		},);
+
+		expect(buildRequestBody,).toEqual({
+			outputs: [{
+				projectKey: "TEST",
+				id: "output_dataset",
+				type: "DATASET",
+				partition: "P1",
+			},],
+			type: "NON_RECURSIVE_FORCED_BUILD",
+		},);
+		expect(
+			requests.filter((request,) => request.startsWith("POST /public/api/projects/TEST/jobs/",)),
+		)
+			.toEqual(["POST /public/api/projects/TEST/jobs/",],);
+		expect(requests,).toContain("GET /public/api/projects/TEST/jobs/job-summary/log/",);
+	});
+});
+
+describe("RecipesResource.validateGraph", () => {
+	it("reports missing and ambiguous recipe graph references", async () => {
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/recipes/compute_orders"
+			) {
+				sendJson(res, {
+					recipe: {
+						name: "compute_orders",
+						type: "python",
+						inputs: {
+							main: { items: [{ ref: "missing_input", }, { ref: "orders", },], },
+						},
+						outputs: {
+							main: { items: [{ ref: "ambiguous", }, { ref: "missing_output", },], },
+						},
+					},
+				},);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [{ name: "orders", }, { name: "ambiguous", },],);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "folder-id", name: "ambiguous", },],);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.validateGraph("compute_orders",);
+
+			expect(result,).toMatchObject({
+				valid: false,
+				recipeName: "compute_orders",
+				projectKey: "TEST",
+				ambiguousOutputs: ["ambiguous",],
+				missingInputs: [{ ref: "missing_input", role: "main", exists: false, },],
+				missingOutputs: [
+					{ ref: "ambiguous", role: "main", exists: false, },
+					{ ref: "missing_output", role: "main", exists: false, },
+				],
+			},);
+			expect(result.warnings,).toContain(
+				'Output "ambiguous" matches both a dataset and a managed folder; declare an explicit output type.',
+			);
+			expect(result.warnings,).toContain(
+				'Declared input "missing_input" was not found in project "TEST".',
+			);
+		},);
+	});
 });

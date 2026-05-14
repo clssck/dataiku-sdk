@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { readFileSync, } from "node:fs";
-import { writeFile, } from "node:fs/promises";
-import { dirname, resolve, } from "node:path";
+import { mkdir, writeFile, } from "node:fs/promises";
+import { dirname, join, resolve, } from "node:path";
 import { createInterface, } from "node:readline";
 import { Writable, } from "node:stream";
 import { fileURLToPath, } from "node:url";
@@ -18,7 +18,7 @@ import {
 } from "./config.js";
 import { DataikuError, dataikuErrorCode, type StableErrorCode, } from "./errors.js";
 import type { FlowZoneItemInput, } from "./resources/flow-zones.js";
-import type { JobBuildTargetType, } from "./resources/jobs.js";
+import type { JobBuildTargetType, JobLogFilter, } from "./resources/jobs.js";
 import type { BuildMode, FlowZoneObjectType, } from "./schemas.js";
 import { AGENTS, detectAgents, findWorkspaceRoot, installSkill, } from "./skill.js";
 import {
@@ -27,6 +27,7 @@ import {
 	readCleanupLedger,
 } from "./utils/cleanup-ledger.js";
 import { deepMerge, } from "./utils/deep-merge.js";
+import { sanitizeFileName, } from "./utils/sanitize.js";
 
 // ---------------------------------------------------------------------------
 // Utility helpers
@@ -58,16 +59,66 @@ function jobBuildTargetType(v: string | boolean | undefined,): JobBuildTargetTyp
 	if (v === undefined) return "DATASET";
 	if (typeof v !== "string") {
 		throw new UsageError(
-			"Invalid --type value for job build. Use DATASET or MANAGED_FOLDER.",
+			"Invalid job target type. Use dataset or managed-folder.",
 			"invalid_enum",
 		);
 	}
 	const normalized = v.trim().toUpperCase().replace(/-/g, "_",);
 	if (normalized === "DATASET" || normalized === "MANAGED_FOLDER") return normalized;
 	throw new UsageError(
-		"Invalid --type value for job build. Use DATASET or MANAGED_FOLDER.",
+		"Invalid job target type. Use dataset or managed-folder.",
 		"invalid_enum",
 	);
+}
+
+function jobBuildTargetTypeFromFlags(flags: Record<string, string | boolean>,): JobBuildTargetType {
+	return jobBuildTargetType(flags["target-type"] ?? flags["type"],);
+}
+
+function maxLogLinesFromFlags(flags: Record<string, string | boolean>,): number | undefined {
+	return num(flags["max-log-lines"] ?? flags["max-lines"],);
+}
+
+function jobLogFilterFromFlag(v: string | boolean | undefined,): JobLogFilter | undefined {
+	if (v === undefined) return undefined;
+	if (typeof v !== "string") {
+		throw new UsageError(
+			"Invalid --log-filter value. Use stdout, stderr, user, or errors.",
+			"invalid_enum",
+		);
+	}
+	const normalized = v.trim().toLowerCase();
+	if (
+		normalized === "stdout" || normalized === "stderr" || normalized === "user"
+		|| normalized === "errors"
+	) {
+		return normalized;
+	}
+	throw new UsageError(
+		"Invalid --log-filter value. Use stdout, stderr, user, or errors.",
+		"invalid_enum",
+	);
+}
+
+function recipePayloadBackupPath(recipeName: string, backupDir: string,): string {
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-",);
+	return join(backupDir, `${sanitizeFileName(recipeName, "recipe",)}-${stamp}.payload`,);
+}
+function recipeRunShouldWait(flags: Record<string, string | boolean>,): boolean {
+	if (flags["wait"] === true && flags["no-wait"] === true) {
+		throw new UsageError("--wait and --no-wait are mutually exclusive.", "invalid_enum",);
+	}
+	const waitImplied = flags["include-logs"] === true
+		|| flags["summary"] === true
+		|| flags["timeout"] !== undefined
+		|| flags["poll-interval"] !== undefined;
+	if (flags["no-wait"] === true && waitImplied) {
+		throw new UsageError(
+			"--include-logs, --summary, --timeout, and --poll-interval require waiting; remove --no-wait.",
+			"invalid_enum",
+		);
+	}
+	return flags["no-wait"] !== true && (flags["wait"] === true || waitImplied);
 }
 
 function splitCsvFlag(v: string | boolean | undefined,): string[] {
@@ -169,7 +220,7 @@ function json(v: string | boolean | undefined,): Record<string, unknown> | undef
 type TlsSettings = Pick<DssCredentials, "tlsRejectUnauthorized" | "caCertPath">;
 
 const SQL_QUERY_USAGE =
-	"dss sql query [SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin] (--connection CONN | --dataset FULL_NAME) [--database DB] [--project-key KEY]";
+	"dss sql query [SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin] (--connection CONN | --dataset FULL_NAME) [--database DB] [--output PATH|--output-file PATH] [--request-timeout MS] [--project-key KEY]";
 
 function readStdinText(): string {
 	return readFileSync(0, "utf-8",);
@@ -186,6 +237,54 @@ function jsonInput(flags: Record<string, string | boolean>,): Record<string, unk
 		return JSON.parse(flags["data"],) as Record<string, unknown>;
 	}
 	return undefined;
+}
+
+function unknownJsonInput(flags: Record<string, string | boolean>,): unknown {
+	if (flags["stdin"] === true) return JSON.parse(readStdinText(),) as unknown;
+	if (typeof flags["data-file"] === "string") {
+		return JSON.parse(readFileSync(flags["data-file"], "utf-8",),) as unknown;
+	}
+	if (typeof flags["data"] === "string") return JSON.parse(flags["data"],) as unknown;
+	return undefined;
+}
+
+function schemaColumnsInput(flags: Record<string, string | boolean>, usage: string,): Array<{
+	comment?: string;
+	name: string;
+	type: string;
+}> {
+	const input = unknownJsonInput(flags,);
+	if (input === undefined) {
+		throw new UsageError(`--data, --data-file, or --stdin is required. Usage: ${usage}`,);
+	}
+	const columns = Array.isArray(input,)
+		? input
+		: input && typeof input === "object" && Array.isArray((input as { columns?: unknown; }).columns,)
+		? (input as { columns: unknown[]; }).columns
+		: undefined;
+	if (!columns) {
+		throw new UsageError(
+			"Schema input must be an array of columns or an object with a columns array.",
+		);
+	}
+	return columns.map((column, index,) => {
+		if (!column || typeof column !== "object" || Array.isArray(column,)) {
+			throw new UsageError(`Schema column at index ${index} must be an object.`,);
+		}
+		const record = column as Record<string, unknown>;
+		if (typeof record.name !== "string" || record.name.length === 0) {
+			throw new UsageError(`Schema column at index ${index} is missing string field "name".`,);
+		}
+		if (typeof record.type !== "string" || record.type.length === 0) {
+			throw new UsageError(`Schema column "${record.name}" is missing string field "type".`,);
+		}
+		return {
+			...record,
+			name: record.name,
+			type: record.type,
+			...(typeof record.comment === "string" ? { comment: record.comment, } : {}),
+		};
+	},);
 }
 
 function textInput(flags: Record<string, string | boolean>,): string | undefined {
@@ -371,6 +470,34 @@ function writeCommandResult(result: unknown,): void {
 	process.stdout.write(`${JSON.stringify(result ?? { ok: true, }, null, 2,)}\n`,);
 }
 
+function transientBodyWithTargetContext(body: string, target: string, elapsedMs: number,): string {
+	try {
+		const parsed = JSON.parse(body,) as unknown;
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed,)) {
+			const record = parsed as Record<string, unknown>;
+			const message = typeof record.message === "string" && record.message.length > 0
+				? `Target: ${target}\nElapsed: ${elapsedMs}ms\n${record.message}`
+				: `Target: ${target}\nElapsed: ${elapsedMs}ms`;
+			return JSON.stringify({ ...record, message, target, elapsedMs, },);
+		}
+	} catch {
+		// Non-JSON DSS bodies are wrapped as text below.
+	}
+	return `Target: ${target}\nElapsed: ${elapsedMs}ms\n${body}`;
+}
+
+function addTransientTargetContext(error: unknown, target: string, elapsedMs: number,): never {
+	if (error instanceof DataikuError && error.category === "transient") {
+		throw new DataikuError(
+			error.status,
+			error.statusText,
+			transientBodyWithTargetContext(error.body, target, elapsedMs,),
+			error.retry,
+		);
+	}
+	throw error;
+}
+
 function isFailedWaitResult(result: unknown,): boolean {
 	if (result === null || typeof result !== "object" || Array.isArray(result,)) return false;
 	const record = result as Record<string, unknown>;
@@ -418,6 +545,7 @@ function planResult(
 		idempotency: string;
 		method?: string;
 		payload?: unknown;
+		localWrites?: unknown;
 		plannedAndDryRun?: boolean;
 		wait?: unknown;
 	},
@@ -431,6 +559,7 @@ function planResult(
 		...(options.method ? { method: options.method, } : {}),
 		...(options.endpoint ? { endpoint: options.endpoint, } : {}),
 		...(options.payload !== undefined ? { payload: options.payload, } : {}),
+		...(options.localWrites !== undefined ? { localWrites: options.localWrites, } : {}),
 		...(options.wait !== undefined ? { wait: options.wait, } : {}),
 		idempotency: options.idempotency,
 		async: options.asyncKind,
@@ -618,6 +747,7 @@ const BOOLEAN_FLAGS = new Set([
 	"include-payload",
 	"no-payload",
 	"include-logs",
+	"summary",
 	"replace",
 	"dry-run",
 	"plan",
@@ -656,7 +786,9 @@ const VALUE_FLAGS = new Set([
 	"agent",
 	"api-key",
 	"build-mode",
+	"backup-dir",
 	"ca-cert",
+	"catalog",
 	"cell-id",
 	"allow-types",
 	"color",
@@ -682,6 +814,7 @@ const VALUE_FLAGS = new Set([
 	"local",
 	"max-edges",
 	"max-lines",
+	"max-log-lines",
 	"listed",
 	"max-nodes",
 	"max-rows",
@@ -689,10 +822,12 @@ const VALUE_FLAGS = new Set([
 	"only-monitored",
 	"min-timestamp",
 	"mode",
+	"log-filter",
 	"model-evaluation-store",
 	"name",
 	"object",
 	"output",
+	"output-file",
 	"output-connection",
 	"output-folder",
 	"page",
@@ -706,15 +841,18 @@ const VALUE_FLAGS = new Set([
 	"results-per-page",
 	"record-cleanup",
 	"rule-id",
+	"retries",
 	"poll-interval",
 	"python-interpreter",
 	"retain",
 	"saved-model",
 	"sql",
+	"schema",
 	"sql-file",
 	"standard",
 	"streaming-endpoint",
 	"target",
+	"target-type",
 	"timeout",
 	"type",
 	"url",
@@ -1729,6 +1867,43 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			description: "Show the column schema of a dataset.",
 			examples: ["dss dataset schema orders",],
 		},
+		"refresh-schema": {
+			handler: async (c, a, f,) => {
+				const usage =
+					"dss dataset refresh-schema <name> [--data JSON | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]";
+				requireArgs(a, 1, usage,);
+				const columns = schemaColumnsInput(f, usage,);
+				const pk = f["project-key"] as string | undefined;
+				if (f["dry-run"] === true) {
+					const current = await c.datasets.schema(a[0], pk,);
+					return {
+						dryRun: true,
+						action: "refresh-schema",
+						resource: "dataset",
+						name: a[0],
+						current,
+						next: { columns, },
+					};
+				}
+				await c.datasets.updateSchema(a[0], columns, pk,);
+				return { updated: a[0], resource: "dataset", schema: { columns, }, };
+			},
+			usage:
+				"dss dataset refresh-schema <name> [--data JSON | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
+			description: "Replace a dataset schema through the DSS schema endpoint.",
+			examples: [
+				`dss dataset refresh-schema orders --data '{"columns":[{"name":"id","type":"bigint"}]}' --dry-run`,
+			],
+		},
+		"validate-build": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss dataset validate-build <name>",);
+				return c.datasets.validateBuildSettings(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss dataset validate-build <name> [--project-key KEY]",
+			description: "Check common dataset settings that can make file-backed builds fail.",
+			examples: ["dss dataset validate-build orders",],
+		},
 		preview: {
 			handler: (c, a, f,) => {
 				requireArgs(a, 1, "dss dataset preview <name>",);
@@ -1875,6 +2050,62 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				"dss recipe get compute_orders",
 				"dss recipe get compute_orders --no-payload",
 				"dss recipe get compute_orders --include-payload",
+			],
+		},
+		"validate-graph": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss recipe validate-graph <name>",);
+				return c.recipes.validateGraph(a[0], {
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage: "dss recipe validate-graph <name> [--project-key KEY]",
+			description: "Validate declared recipe input/output graph references before building.",
+			examples: ["dss recipe validate-graph compute_orders",],
+		},
+		run: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss recipe run <name>",);
+				const pk = f["project-key"] as string | undefined;
+				const wait = recipeRunShouldWait(f,);
+				const options = {
+					buildMode: f["build-mode"] as BuildMode | undefined,
+					includeLogs: f["include-logs"] === true,
+					logFilter: jobLogFilterFromFlag(f["log-filter"],),
+					maxLogLines: maxLogLinesFromFlags(f,),
+					partition: f["partition"] as string | undefined,
+					pollIntervalMs: num(f["poll-interval"],),
+					projectKey: pk,
+					timeoutMs: num(f["timeout"],),
+					summary: f["summary"] === true,
+					wait,
+				};
+				if (f["dry-run"] === true) {
+					const outputs = await c.recipes.resolveRunOutputs(a[0], {
+						partition: options.partition,
+						projectKey: pk,
+					},);
+					return {
+						dryRun: true,
+						action: "run",
+						resource: "recipe",
+						recipe: a[0],
+						outputs,
+						...options,
+						endpoint: encodedProjectEndpoint(c, pk, "/jobs/",),
+						method: "POST",
+					};
+				}
+				return c.recipes.run(a[0], options,);
+			},
+			usage:
+				"dss recipe run <name> [--wait|--no-wait] [--build-mode MODE] [--include-logs] [--log-filter stdout|stderr|user|errors] [--summary] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--partition PARTITION] [--dry-run] [--project-key KEY]",
+			description:
+				"Run a recipe by resolving its outputs and submitting the correct dataset or managed-folder build job.",
+			examples: [
+				"dss recipe run compute_orders --wait",
+				"dss recipe run compute_exports --include-logs --log-filter stdout --summary --timeout 600000",
+				"dss recipe run compute_exports --dry-run",
 			],
 		},
 		delete: {
@@ -2077,6 +2308,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				const filePath = f["file"] as string;
 				if (!filePath) throw new UsageError("--file is required.",);
 				const content = readFileSync(filePath, "utf-8",);
+				const backupDir = f["backup-dir"] as string | undefined;
+				const backupPath = backupDir ? recipePayloadBackupPath(a[0], backupDir,) : undefined;
 				if (f["dry-run"] === true) {
 					const current = await c.recipes.get(a[0], {
 						projectKey: f["project-key"] as string | undefined,
@@ -2090,16 +2323,35 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						file: filePath,
 						current,
 						next: { ...current, payload: content, },
+						...(backupPath ? { backupPath, } : {}),
 					};
+				}
+				if (backupDir && backupPath) {
+					const current = await c.recipes.get(a[0], {
+						projectKey: f["project-key"] as string | undefined,
+						includePayload: true,
+					},);
+					await mkdir(backupDir, { recursive: true, },);
+					await writeFile(backupPath, current.payload ?? "", "utf-8",);
 				}
 				await c.recipes.setPayload(a[0], content, {
 					projectKey: f["project-key"] as string | undefined,
 				},);
-				return { updated: a[0], resource: "recipe", file: filePath, };
+				return {
+					updated: a[0],
+					resource: "recipe",
+					file: filePath,
+					...(backupPath ? { backupPath, } : {}),
+				};
 			},
-			usage: "dss recipe set-payload <name> --file PATH [--dry-run] [--project-key KEY]",
-			description: "Upload recipe code from a local file.",
-			examples: ["dss recipe set-payload compute_orders --file code.py --dry-run",],
+			usage:
+				"dss recipe set-payload <name> --file PATH [--backup-dir DIR] [--dry-run] [--project-key KEY]",
+			description:
+				"Upload recipe code from a local file, optionally backing up the remote payload first.",
+			examples: [
+				"dss recipe set-payload compute_orders --file code.py --dry-run",
+				"dss recipe set-payload compute_orders --file code.py --backup-dir ./backups",
+			],
 		},
 	},
 
@@ -2124,12 +2376,13 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				requireArgs(a, 1, "dss job log <id>",);
 				return c.jobs.log(a[0], {
 					activity: f["activity"] as string | undefined,
-					maxLogLines: num(f["max-lines"],),
+					maxLogLines: maxLogLinesFromFlags(f,),
+					projectKey: f["project-key"] as string | undefined,
 				},);
 			},
-			usage: "dss job log <id> [--activity NAME] [--max-lines N]",
+			usage: "dss job log <id> [--activity NAME] [--max-lines N|--max-log-lines N]",
 			description: "Get log output for a job.",
-			examples: ["dss job log JOB_ID", "dss job log JOB_ID --activity main --max-lines 200",],
+			examples: ["dss job log JOB_ID", "dss job log JOB_ID --activity main --max-log-lines 200",],
 		},
 		build: {
 			handler: async (c, a, f,) => {
@@ -2137,8 +2390,9 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				const pk = f["project-key"] as string | undefined;
 				const options = {
 					buildMode: f["build-mode"] as BuildMode | undefined,
+					partition: f["partition"] as string | undefined,
 					pollIntervalMs: num(f["poll-interval"],),
-					targetType: jobBuildTargetType(f["type"],),
+					targetType: jobBuildTargetTypeFromFlags(f,),
 					timeoutMs: num(f["timeout"],),
 				};
 				if (f["dry-run"] === true) {
@@ -2158,12 +2412,12 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.jobs.build(a[0], { ...options, projectKey: pk, },);
 			},
 			usage:
-				"dss job build <target> [--type DATASET|MANAGED_FOLDER] [--build-mode MODE] [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
+				"dss job build <target> [--target-type dataset|managed-folder] [--type DATASET|MANAGED_FOLDER] [--build-mode MODE] [--wait] [--timeout MS] [--poll-interval MS] [--partition PARTITION] [--dry-run] [--project-key KEY]",
 			description: "Start a dataset or managed-folder build, optionally waiting for completion.",
 			examples: [
 				"dss job build orders",
 				"dss job build orders --build-mode RECURSIVE_BUILD --wait",
-				"dss job build LT7TUHJ8 --type MANAGED_FOLDER --dry-run",
+				"dss job build LT7TUHJ8 --target-type managed-folder --dry-run",
 			],
 		},
 		"build-and-wait": {
@@ -2173,9 +2427,13 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				const options = {
 					buildMode: f["build-mode"] as BuildMode | undefined,
 					includeLogs: f["include-logs"] === true,
+					logFilter: jobLogFilterFromFlag(f["log-filter"],),
+					maxLogLines: maxLogLinesFromFlags(f,),
+					partition: f["partition"] as string | undefined,
 					pollIntervalMs: num(f["poll-interval"],),
 					timeoutMs: num(f["timeout"],),
-					targetType: jobBuildTargetType(f["type"],),
+					summary: f["summary"] === true,
+					targetType: jobBuildTargetTypeFromFlags(f,),
 				};
 				if (f["dry-run"] === true) {
 					return {
@@ -2191,13 +2449,13 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },);
 			},
 			usage:
-				"dss job build-and-wait <target> [--type DATASET|MANAGED_FOLDER] [--build-mode MODE] [--include-logs] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
+				"dss job build-and-wait <target> [--target-type dataset|managed-folder] [--type DATASET|MANAGED_FOLDER] [--build-mode MODE] [--include-logs] [--log-filter stdout|stderr|user|errors] [--summary] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--partition PARTITION] [--dry-run] [--project-key KEY]",
 			description: "Build a dataset or managed folder and wait for completion.",
 			examples: [
 				"dss job build-and-wait orders",
-				"dss job build-and-wait orders --include-logs",
+				"dss job build-and-wait orders --include-logs --log-filter stdout --summary",
 				"dss job build-and-wait orders --timeout 300000",
-				"dss job build-and-wait LT7TUHJ8 --type MANAGED_FOLDER --dry-run",
+				"dss job build-and-wait LT7TUHJ8 --target-type managed-folder --dry-run",
 			],
 		},
 		wait: {
@@ -2205,13 +2463,21 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				requireArgs(a, 1, "dss job wait <id>",);
 				return c.jobs.wait(a[0], {
 					includeLogs: f["include-logs"] === true,
+					logFilter: jobLogFilterFromFlag(f["log-filter"],),
+					maxLogLines: maxLogLinesFromFlags(f,),
 					pollIntervalMs: num(f["poll-interval"],),
 					timeoutMs: num(f["timeout"],),
+					summary: f["summary"] === true,
+					projectKey: f["project-key"] as string | undefined,
 				},);
 			},
-			usage: "dss job wait <id> [--include-logs] [--timeout MS] [--poll-interval MS]",
+			usage:
+				"dss job wait <id> [--include-logs] [--log-filter stdout|stderr|user|errors] [--summary] [--max-log-lines N] [--timeout MS] [--poll-interval MS]",
 			description: "Wait for an existing job to complete.",
-			examples: ["dss job wait JOB_ID", "dss job wait JOB_ID --include-logs --timeout 60000",],
+			examples: [
+				"dss job wait JOB_ID",
+				"dss job wait JOB_ID --include-logs --log-filter stdout --summary --timeout 60000",
+			],
 		},
 		abort: {
 			handler: async (c, a, f,) => {
@@ -2544,13 +2810,24 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		contents: {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss folder contents <name-or-id>",);
-				return c.folders.contents(await resolveFolderId(c, a[0], f,), {
-					projectKey: f["project-key"] as string | undefined,
-				},);
+				const startedAt = Date.now();
+				let folderId = a[0];
+				try {
+					folderId = await resolveFolderId(c, a[0], f,);
+					return await c.folders.contents(folderId, {
+						projectKey: f["project-key"] as string | undefined,
+					},);
+				} catch (error) {
+					addTransientTargetContext(error, `folder:${folderId}`, Date.now() - startedAt,);
+				}
 			},
-			usage: "dss folder contents <name-or-id> [--project-key KEY]",
+			usage:
+				"dss folder contents <name-or-id> [--retries N] [--request-timeout MS] [--project-key KEY]",
 			description: "List files in a managed folder.",
-			examples: ["dss folder contents my_folder",],
+			examples: [
+				"dss folder contents my_folder",
+				"dss folder contents my_folder --retries 8 --request-timeout 60000",
+			],
 		},
 		download: {
 			handler: async (c, a, f,) => {
@@ -2685,6 +2962,46 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			usage: "dss connection infer [--mode fast|rich] [--project-key KEY]",
 			description: "List connections with inferred types and metadata.",
 			examples: ["dss connection infer", "dss connection infer --mode rich",],
+		},
+		schemas: {
+			handler: (c, _a, f,) => {
+				const connection = f["connection"] as string | undefined;
+				if (!connection) {
+					throw new UsageError(
+						"--connection is required. Usage: dss connection schemas --connection CONN",
+					);
+				}
+				return c.connections.schemas({
+					connection,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage: "dss connection schemas --connection CONN [--project-key KEY]",
+			description: "List schemas in a SQL connection.",
+			examples: ["dss connection schemas --connection ATHENA_CONN --project-key MYPROJ",],
+		},
+		tables: {
+			handler: (c, _a, f,) => {
+				const connection = f["connection"] as string | undefined;
+				if (!connection) {
+					throw new UsageError(
+						"--connection is required. Usage: dss connection tables --connection CONN",
+					);
+				}
+				return c.connections.tables({
+					connection,
+					catalog: f["catalog"] as string | undefined,
+					schema: f["schema"] as string | undefined,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage:
+				"dss connection tables --connection CONN [--catalog CATALOG] [--schema SCHEMA] [--project-key KEY]",
+			description:
+				"List importable tables in a SQL connection, optionally scoped by catalog and schema.",
+			examples: [
+				"dss connection tables --connection ATHENA_CONN --schema analytics --project-key MYPROJ",
+			],
 		},
 	},
 
@@ -2917,7 +3234,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 	},
 	sql: {
 		query: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				const query = resolveSqlInput(a, f,);
 				const connection = f["connection"] as string | undefined;
 				const datasetFullName = f["dataset"] as string | undefined;
@@ -2926,13 +3243,28 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						`Pass exactly one of --connection or --dataset. Usage: ${SQL_QUERY_USAGE}`,
 					);
 				}
-				return c.sql.query({
+				const result = await c.sql.query({
 					query,
 					connection,
 					datasetFullName,
 					database: f["database"] as string | undefined,
 					projectKey: f["project-key"] as string | undefined,
 				},);
+				const outputFile = (f["output"] as string | undefined)
+					?? (f["output-file"] as string | undefined);
+				if (!outputFile) return result;
+
+				const outputPath = resolve(outputFile,);
+				await mkdir(dirname(outputPath,), { recursive: true, },);
+				await writeFile(outputPath, `${JSON.stringify(result, null, 2,)}\n`, "utf-8",);
+				return {
+					queryId: result.queryId,
+					schema: result.schema,
+					columns: result.columns ?? result.schema,
+					rowCount: result.rows.length,
+					outputPath,
+					written: outputPath,
+				};
 			},
 			usage: SQL_QUERY_USAGE,
 			description: "Run a SQL query against a DSS connection or dataset.",
@@ -2940,6 +3272,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				"dss sql query 'SELECT * FROM orders LIMIT 10' --connection my_pg",
 				"dss sql query --sql-file query.sql --connection my_pg",
 				"echo 'SELECT 1' | dss sql query --stdin --dataset MYPROJ.orders",
+				"dss sql query --sql-file query.sql --connection my_pg --output results.json --request-timeout 120000",
 			],
 		},
 	},
@@ -3215,7 +3548,7 @@ function printTopLevelHelp(): void {
 		"      --url URL            Dataiku DSS base URL (env: DATAIKU_URL)",
 		"      --api-key KEY        API key              (env: DATAIKU_API_KEY)",
 		"      --project-key KEY    Default project key   (env: DATAIKU_PROJECT_KEY)",
-		"      --timeout MS         Operation timeout (build-and-wait, run-and-wait)",
+		"      --timeout MS         Operation timeout (build-and-wait, run-and-wait, recipe run)",
 		"      --request-timeout MS HTTP request timeout in ms (default: 30000)",
 		"      --dry-run            Preview destructive actions without executing",
 		"      --if-not-exists      Skip create if resource already exists",
@@ -3832,12 +4165,14 @@ async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
 
 	if (credentialsOk) {
 		const requestTimeoutMs = num(flags["request-timeout"],);
+		const retryMaxAttempts = num(flags["retries"],);
 		const client = new DataikuClient({
 			url,
 			apiKey,
 			projectKey,
 			verbose: flags["verbose"] === true,
 			requestTimeoutMs,
+			retryMaxAttempts,
 			tlsRejectUnauthorized,
 			caCertPath,
 		},);
@@ -3886,13 +4221,14 @@ async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
 	const result: DoctorResult = { ok: checks.every((check,) => check.ok), checks, context, };
 	if (flags["capabilities"] === true && credentialsOk) {
 		const requestTimeoutMs = num(flags["request-timeout"],);
+		const retryMaxAttempts = num(flags["retries"],) ?? 1;
 		const client = new DataikuClient({
 			url,
 			apiKey,
 			projectKey,
 			verbose: flags["verbose"] === true,
 			requestTimeoutMs,
-			retryMaxAttempts: 1,
+			retryMaxAttempts,
 			tlsRejectUnauthorized,
 			caCertPath,
 		},);
@@ -3923,13 +4259,14 @@ async function runFixtures(
 
 	currentCommandContext.projectKey = projectKey;
 	const requestTimeoutMs = num(flags["request-timeout"],);
+	const retryMaxAttempts = num(flags["retries"],) ?? 1;
 	const client = new DataikuClient({
 		url,
 		apiKey,
 		projectKey,
 		verbose: flags["verbose"] === true,
 		requestTimeoutMs,
-		retryMaxAttempts: 1,
+		retryMaxAttempts,
 		tlsRejectUnauthorized,
 		caCertPath,
 	},);
@@ -4012,6 +4349,7 @@ const READ_ACTIONS = new Set([
 	"preview",
 	"query",
 	"schema",
+	"schemas",
 	"sessions-jupyter",
 	"status",
 	"rules",
@@ -4038,7 +4376,14 @@ const PROJECT_SCOPED_RESOURCES = new Set([
 ],);
 
 const GLOBAL_AGENT_FLAGS = ["help", "json", "report-json", "verbose",];
-const AUTHENTICATED_AGENT_FLAGS = ["url", "api-key", "request-timeout", "insecure", "ca-cert",];
+const AUTHENTICATED_AGENT_FLAGS = [
+	"url",
+	"api-key",
+	"request-timeout",
+	"retries",
+	"insecure",
+	"ca-cert",
+];
 const COMMANDS_USAGE = "dss commands [--json]";
 const COMMANDS_DESCRIPTION = "Print the machine-readable command registry for agent planning.";
 const COMMANDS_EXAMPLES = ["dss commands", "dss commands --json",];
@@ -4136,7 +4481,7 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "data-quality" && action === "compute") return "write";
 	if (READ_ACTIONS.has(action,)) return "read";
 	if (
-		/^(create|update|delete|set|save|upload|run|build|abort|move|clear|unload|install|login|logout)/
+		/^(create|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout)/
 			.test(action,)
 	) {
 		return "write";
@@ -4163,6 +4508,7 @@ const ARRAY_OUTPUT_ACTIONS = new Set([
 	"list-jupyter",
 	"list-sql",
 	"rules",
+	"schemas",
 	"sessions-jupyter",
 	"usages",
 ],);
@@ -4244,6 +4590,7 @@ function inferDestructiveLevel(
 
 function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
 	if (resource === "job" && ["build", "build-and-wait", "wait",].includes(action,)) return "job";
+	if (resource === "recipe" && action === "run") return "job";
 	if (resource === "future" && ["get", "peek", "wait", "abort",].includes(action,)) return "future";
 	if (resource === "scenario" && ["run", "run-and-wait", "status",].includes(action,)) {
 		return "future";
@@ -4324,7 +4671,8 @@ function buildRegistryEntry(
 		outputShape: inferOutputShape(resource, action,),
 		inputContract,
 		destructive,
-		producesLocalFile: meta.usage.includes("--output PATH",),
+		producesLocalFile: meta.usage.includes("--output PATH",)
+			|| meta.usage.includes("--output-file PATH",),
 		mutatesDss,
 		async: asyncKind,
 		idempotency: inferIdempotency(sideEffect, action, meta.usage,),
@@ -4464,9 +4812,18 @@ function jobBuildPayload(
 	projectKey: string,
 	flags: Record<string, string | boolean>,
 ): Record<string, unknown> {
-	const targetType = jobBuildTargetType(flags["type"],);
+	const targetType = jobBuildTargetTypeFromFlags(flags,);
+	const partition = flags["partition"] as string | undefined;
+	const output: Record<string, unknown> = { projectKey, id: target, type: targetType, };
+	if (targetType === "DATASET") {
+		if (partition !== undefined) output.partition = partition;
+	} else {
+		output.targetManagedFolderProjectKey = projectKey;
+		output.targetManagedFolder = target;
+		output.targetPartition = partition ?? "NP";
+	}
 	const payload: Record<string, unknown> = {
-		outputs: [{ projectKey, id: target, type: targetType, },],
+		outputs: [output,],
 		type: (flags["build-mode"] as string | undefined) ?? "NON_RECURSIVE_FORCED_BUILD",
 	};
 	if (flags["force-rebuild"] === true && targetType === "DATASET") {
@@ -4487,6 +4844,7 @@ function commandPlanShape(
 	identifiers?: Record<string, unknown>;
 	method?: string;
 	payload?: unknown;
+	localWrites?: unknown;
 	wait?: unknown;
 } {
 	const projectEndpoint = (suffix: string,) => {
@@ -4673,9 +5031,9 @@ function commandPlanShape(
 		case "flow-zone.move":
 			return {
 				method: "POST",
-				endpoint: projectEndpoint(`/flow/zones/${encodeURIComponent(id,)}/move-to`,),
+				endpoint: projectEndpoint(`/flow/zones/${encodeURIComponent(id,)}/add-items`,),
 				identifiers: { id, },
-				payload: { items: flowZoneMoveItems(flags,), },
+				payload: flowZoneMoveItems(flags,),
 			};
 		case "dataset.create": {
 			const name = requiredPlanFlag(flags, "name", entry.usage,);
@@ -4694,6 +5052,15 @@ function commandPlanShape(
 				endpoint: projectEndpoint(`/datasets/${encodeURIComponent(id,)}`,),
 				identifiers: { name: id, },
 			};
+		case "dataset.refresh-schema": {
+			const columns = schemaColumnsInput(flags, entry.usage,);
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/datasets/${encodeURIComponent(id,)}/schema`,),
+				identifiers: { name: id, },
+				payload: { columns, },
+			};
+		}
 		case "dataset.update":
 			return {
 				method: "PUT",
@@ -4735,6 +5102,19 @@ function commandPlanShape(
 				},
 			};
 		}
+		case "recipe.run":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/jobs/",),
+				identifiers: { recipe: id, },
+				payload: {
+					recipe: id,
+					outputResolution: "dynamic",
+					projectKey,
+					partition: flags["partition"] as string | undefined,
+				},
+				wait: recipeRunShouldWait(flags,),
+			};
 		case "recipe.update":
 			return {
 				method: "PUT",
@@ -4742,13 +5122,24 @@ function commandPlanShape(
 				identifiers: { name: id, },
 				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
-		case "recipe.set-payload":
+		case "recipe.set-payload": {
+			const file = requiredPlanFlag(flags, "file", entry.usage,);
+			const backupDir = flags["backup-dir"] as string | undefined;
+			const backupPath = backupDir ? recipePayloadBackupPath(id, backupDir,) : undefined;
 			return {
 				method: "PUT",
-				endpoint: projectEndpoint(`/recipes/${encodeURIComponent(id,)}/payload`,),
+				endpoint: projectEndpoint(`/recipes/${encodeURIComponent(id,)}`,),
 				identifiers: { name: id, },
-				payload: { file: flags["file"] as string | undefined, content: textInput(flags,), },
+				payload: {
+					file,
+					content: textInput(flags,),
+					...(backupPath ? { backupPath, } : {}),
+				},
+				...(backupPath
+					? { localWrites: [{ path: backupPath, source: "remote recipe payload", before: "PUT", },], }
+					: {}),
 			};
+		}
 		case "job.build":
 		case "job.build-and-wait":
 			return {
@@ -5050,12 +5441,14 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 		);
 	}
 	const requestTimeoutMs = num(flags["request-timeout"],);
+	const retryMaxAttempts = num(flags["retries"],);
 	const client = new DataikuClient({
 		url,
 		apiKey,
 		projectKey,
 		verbose: flags["verbose"] === true,
 		requestTimeoutMs,
+		retryMaxAttempts,
 		tlsRejectUnauthorized,
 		caCertPath,
 	},);
@@ -5659,6 +6052,7 @@ async function main(): Promise<void> {
 	}
 
 	const requestTimeoutMs = num(flags["request-timeout"],);
+	const retryMaxAttempts = num(flags["retries"],);
 
 	const client = new DataikuClient({
 		url,
@@ -5666,6 +6060,7 @@ async function main(): Promise<void> {
 		projectKey,
 		verbose: flags["verbose"] === true,
 		requestTimeoutMs,
+		retryMaxAttempts,
 		tlsRejectUnauthorized,
 		caCertPath,
 	},);

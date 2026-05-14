@@ -2,10 +2,17 @@ import { writeFile, } from "node:fs/promises";
 import { resolve, } from "node:path";
 import { DataikuError, } from "../errors.js";
 import { RecipeSummaryArraySchema, } from "../schemas.js";
-import type { RecipeCreateOptions, RecipeCreateResult, RecipeSummary, } from "../schemas.js";
+import type {
+	BuildMode,
+	JobWaitResult,
+	RecipeCreateOptions,
+	RecipeCreateResult,
+	RecipeSummary,
+} from "../schemas.js";
 import { deepMerge, } from "../utils/deep-merge.js";
 import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
+import type { JobBuildTarget, JobBuildTargetType, JobLogFilter, JobLogSummary, } from "./jobs.js";
 
 // ---------------------------------------------------------------------------
 // Helpers: type narrowing
@@ -28,8 +35,105 @@ function asRecord(value: unknown,): Record<string, unknown> | undefined {
 
 const RECIPE_DEFINITION_FIELDS = new Set(["params", "inputs", "outputs", "scriptSettings",],);
 
+export interface RecipeRunOutput extends JobBuildTarget {
+	ref: string;
+	role: string;
+}
+
+export interface RecipeGraphReference {
+	ref: string;
+	role: string;
+	type?: JobBuildTargetType;
+	exists: boolean;
+	id?: string;
+}
+
+export interface RecipeGraphValidationResult {
+	valid: boolean;
+	recipeName: string;
+	projectKey: string;
+	inputs: RecipeGraphReference[];
+	outputs: RecipeGraphReference[];
+	missingInputs: RecipeGraphReference[];
+	missingOutputs: RecipeGraphReference[];
+	ambiguousOutputs: string[];
+	warnings: string[];
+}
+
+export interface RecipeRunOptions {
+	buildMode?: BuildMode;
+	includeLogs?: boolean;
+	maxLogLines?: number;
+	partition?: string;
+	pollIntervalMs?: number;
+	projectKey?: string;
+	wait?: boolean;
+	timeoutMs?: number;
+	logFilter?: JobLogFilter;
+	summary?: boolean;
+}
+
+export type RecipeRunResult =
+	& { logSummary?: JobLogSummary; recipeName: string; outputs: RecipeRunOutput[]; }
+	& ({ jobId: string; } | JobWaitResult);
+
 function rootRecipeDefinitionFields(data: Record<string, unknown>,): string[] {
 	return Object.keys(data,).filter((key,) => RECIPE_DEFINITION_FIELDS.has(key,));
+}
+
+function normalizeRecipeOutputType(value: unknown,): JobBuildTargetType | undefined {
+	if (typeof value !== "string") return undefined;
+	const normalized = value.trim().toUpperCase().replace(/-/g, "_",);
+	if (normalized === "DATASET") return "DATASET";
+	if (normalized === "MANAGED_FOLDER" || normalized === "FOLDER") return "MANAGED_FOLDER";
+	return undefined;
+}
+
+function recipeOutputItems(
+	recipe: Record<string, unknown>,
+): Array<{ ref: string; role: string; type?: JobBuildTargetType; }> {
+	const outputs = asRecord(recipe.outputs,);
+	if (!outputs) return [];
+	const result: Array<{ ref: string; role: string; type?: JobBuildTargetType; }> = [];
+	const seen = new Set<string>();
+	for (const [role, roleValue,] of Object.entries(outputs,)) {
+		const items = asRecord(roleValue,)?.items;
+		if (!Array.isArray(items,)) continue;
+		for (const itemValue of items) {
+			const item = asRecord(itemValue,);
+			const ref = asString(item?.ref,);
+			if (!ref) continue;
+			const seenKey = ref;
+			if (seen.has(seenKey,)) continue;
+			seen.add(seenKey,);
+			const type = normalizeRecipeOutputType(item?.type ?? item?.targetType ?? item?.objectType,);
+			result.push({
+				ref,
+				role,
+				...(type ? { type, } : {}),
+			},);
+		}
+	}
+	return result;
+}
+
+function recipeInputItems(recipe: Record<string, unknown>,): Array<{ ref: string; role: string; }> {
+	const inputs = asRecord(recipe.inputs,);
+	if (!inputs) return [];
+	const result: Array<{ ref: string; role: string; }> = [];
+	const seen = new Set<string>();
+	for (const [role, roleValue,] of Object.entries(inputs,)) {
+		const items = asRecord(roleValue,)?.items;
+		if (!Array.isArray(items,)) continue;
+		for (const itemValue of items) {
+			const item = asRecord(itemValue,);
+			const ref = asString(item?.ref,);
+			if (!ref || seen.has(ref,)) continue;
+			seen.add(ref,);
+			result.push({ ref, role, },);
+		}
+	}
+	return result;
 }
 
 function inferRecipeCodeExtension(recipeType: unknown,): string {
@@ -110,6 +214,205 @@ export class RecipesResource extends BaseResource {
 			);
 		}
 		return opts?.includePayload ? { ...result, recipe, } : { recipe, };
+	}
+
+	/** Validate declared recipe graph references before running/building. */
+	async validateGraph(
+		recipeName: string,
+		opts?: { projectKey?: string; },
+	): Promise<RecipeGraphValidationResult> {
+		const pk = this.resolveProjectKey(opts?.projectKey,);
+		const { recipe, } = await this.get(recipeName, { projectKey: pk, },);
+		const inputItems = recipeInputItems(recipe,);
+		const outputItems = recipeOutputItems(recipe,);
+		const [datasets, folders,] = await Promise.all([
+			this.client.datasets.list(pk,),
+			this.client.folders.list(pk,),
+		],);
+		const datasetNames = new Set(datasets.map((dataset,) => dataset.name),);
+		const folderIdByRef = new Map<string, string>();
+		for (const folder of folders) {
+			folderIdByRef.set(folder.id, folder.id,);
+			if (folder.name) folderIdByRef.set(folder.name, folder.id,);
+		}
+
+		const resolveReference = (
+			item: { ref: string; role: string; type?: JobBuildTargetType; },
+			requireExplicitOutputType: boolean,
+		): RecipeGraphReference => {
+			const folderId = folderIdByRef.get(item.ref,);
+			const isDataset = datasetNames.has(item.ref,);
+			if (item.type === "DATASET") {
+				return { ref: item.ref, role: item.role, type: "DATASET", exists: isDataset, id: item.ref, };
+			}
+			if (item.type === "MANAGED_FOLDER") {
+				return {
+					ref: item.ref,
+					role: item.role,
+					type: "MANAGED_FOLDER",
+					exists: folderId !== undefined,
+					id: folderId ?? item.ref,
+				};
+			}
+			if (isDataset && (!folderId || !requireExplicitOutputType)) {
+				return { ref: item.ref, role: item.role, type: "DATASET", exists: true, id: item.ref, };
+			}
+			if (folderId && !isDataset) {
+				return { ref: item.ref, role: item.role, type: "MANAGED_FOLDER", exists: true, id: folderId, };
+			}
+			return { ref: item.ref, role: item.role, exists: false, };
+		};
+
+		const inputs = inputItems.map((item,) => resolveReference(item, false,));
+		const outputs = outputItems.map((item,) => resolveReference(item, true,));
+		const ambiguousOutputs = outputItems
+			.filter((item,) => !item.type && datasetNames.has(item.ref,) && folderIdByRef.has(item.ref,))
+			.map((item,) => item.ref);
+		const missingInputs = inputs.filter((item,) => !item.exists);
+		const missingOutputs = outputs.filter((item,) => !item.exists);
+		const warnings: string[] = [];
+		if (outputItems.length === 0) warnings.push("Recipe has no declared outputs to build.",);
+		for (const ref of ambiguousOutputs) {
+			warnings.push(
+				`Output "${ref}" matches both a dataset and a managed folder; declare an explicit output type.`,
+			);
+		}
+		for (const output of outputs) {
+			if (!output.exists) {
+				warnings.push(`Declared output "${output.ref}" was not found in project "${pk}".`,);
+			}
+		}
+		for (const input of missingInputs) {
+			warnings.push(`Declared input "${input.ref}" was not found in project "${pk}".`,);
+		}
+
+		return {
+			valid: missingInputs.length === 0
+				&& missingOutputs.length === 0
+				&& ambiguousOutputs.length === 0
+				&& outputItems.length > 0,
+			recipeName,
+			projectKey: pk,
+			inputs,
+			outputs,
+			missingInputs,
+			missingOutputs,
+			ambiguousOutputs,
+			warnings,
+		};
+	}
+
+	/** Resolve recipe outputs to job-build targets. */
+	async resolveRunOutputs(
+		recipeName: string,
+		opts?: { partition?: string; projectKey?: string; },
+	): Promise<RecipeRunOutput[]> {
+		const pk = this.resolveProjectKey(opts?.projectKey,);
+		const { recipe, } = await this.get(recipeName, { projectKey: pk, },);
+		const outputItems = recipeOutputItems(recipe,);
+		if (outputItems.length === 0) {
+			throw new Error(`Recipe "${recipeName}" has no output items to build.`,);
+		}
+
+		const [datasets, folders,] = await Promise.all([
+			this.client.datasets.list(pk,),
+			this.client.folders.list(pk,),
+		],);
+		const datasetNames = new Set(datasets.map((dataset,) => dataset.name),);
+		const folderIdByRef = new Map<string, string>();
+		for (const folder of folders) {
+			folderIdByRef.set(folder.id, folder.id,);
+			if (folder.name) folderIdByRef.set(folder.name, folder.id,);
+		}
+
+		return outputItems.map((item,) => {
+			if (item.type === "DATASET") {
+				return {
+					ref: item.ref,
+					role: item.role,
+					id: item.ref,
+					type: "DATASET",
+					projectKey: pk,
+					partition: opts?.partition,
+				};
+			}
+
+			const folderId = folderIdByRef.get(item.ref,);
+			if (item.type === "MANAGED_FOLDER") {
+				return {
+					ref: item.ref,
+					role: item.role,
+					id: folderId ?? item.ref,
+					type: "MANAGED_FOLDER",
+					projectKey: pk,
+					partition: opts?.partition,
+				};
+			}
+
+			const isDataset = datasetNames.has(item.ref,);
+			if (isDataset && folderId) {
+				throw new Error(
+					`Recipe "${recipeName}" output "${item.ref}" matches both a dataset and a managed folder. Add an explicit output type to the recipe definition or build the target directly with --target-type.`,
+				);
+			}
+			if (folderId) {
+				return {
+					ref: item.ref,
+					role: item.role,
+					id: folderId,
+					type: "MANAGED_FOLDER",
+					projectKey: pk,
+					partition: opts?.partition,
+				};
+			}
+			if (isDataset) {
+				return {
+					ref: item.ref,
+					role: item.role,
+					id: item.ref,
+					type: "DATASET",
+					projectKey: pk,
+					partition: opts?.partition,
+				};
+			}
+			throw new Error(
+				`Recipe "${recipeName}" output "${item.ref}" was not found as a dataset or managed folder in project "${pk}".`,
+			);
+		},);
+	}
+
+	/** Run a recipe by building its resolved outputs. */
+	async run(recipeName: string, opts?: RecipeRunOptions,): Promise<RecipeRunResult> {
+		const pk = this.resolveProjectKey(opts?.projectKey,);
+		const outputs = await this.resolveRunOutputs(recipeName, {
+			partition: opts?.partition,
+			projectKey: pk,
+		},);
+		const shouldWait = opts?.wait === true
+			|| opts?.includeLogs === true
+			|| opts?.summary === true
+			|| opts?.timeoutMs !== undefined
+			|| opts?.pollIntervalMs !== undefined;
+
+		if (shouldWait) {
+			const waitResult = await this.client.jobs.buildAndWaitOutputs(outputs, {
+				buildMode: opts?.buildMode,
+				includeLogs: opts?.includeLogs,
+				maxLogLines: opts?.maxLogLines,
+				logFilter: opts?.logFilter,
+				pollIntervalMs: opts?.pollIntervalMs,
+				projectKey: pk,
+				timeoutMs: opts?.timeoutMs,
+				summary: opts?.summary,
+			},);
+			return { recipeName, outputs, ...waitResult, };
+		}
+
+		const started = await this.client.jobs.buildOutputs(outputs, {
+			buildMode: opts?.buildMode,
+			projectKey: pk,
+		},);
+		return { recipeName, outputs, ...started, };
 	}
 
 	/** Create a recipe, with optional output dataset provisioning and join configuration. */

@@ -421,7 +421,12 @@ describe("CLI execution behavior", () => {
 			const { stdout, } = await dss(["sql", "query", "SELECT 1", "--connection", "CONN",], {
 				env: cliEnv(url,),
 			},);
-			expect(JSON.parse(stdout,),).toEqual({ queryId: "q-positional", schema: [], rows: [], },);
+			expect(JSON.parse(stdout,),).toEqual({
+				queryId: "q-positional",
+				schema: [],
+				columns: [],
+				rows: [],
+			},);
 		},);
 		expect(capturedBody,).toMatchObject({
 			query: "SELECT 1",
@@ -466,11 +471,76 @@ describe("CLI execution behavior", () => {
 					"--connection",
 					"CONN",
 				], { env: cliEnv(url,), },);
-				expect(JSON.parse(stdout,),).toEqual({ queryId: "q-file", schema: [], rows: [], },);
+				expect(JSON.parse(stdout,),).toEqual({
+					queryId: "q-file",
+					schema: [],
+					columns: [],
+					rows: [],
+				},);
 			},);
 			expect(capturedBody?.query,).toBe('SELECT * FROM "analytics".orders LIMIT 5',);
 		} finally {
 			rmSync(tmpFile, { force: true, },);
+		}
+	});
+
+	it("writes SQL query results to --output", async () => {
+		const outputPath = join(tmpdir(), `dss-cli-sql-output-${Date.now()}.json`,);
+		try {
+			await withCliServer(async (req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+					sendJson(res, {
+						queryId: "q-output",
+						hasResults: true,
+						schema: [{ name: "id", type: "bigint", },],
+					},);
+					return;
+				}
+				if (req.method === "GET" && url.pathname === "/public/api/sql/queries/q-output/stream") {
+					res.statusCode = 200;
+					res.setHeader("Content-Type", "application/json",);
+					res.end("[[1],[2]]",);
+					return;
+				}
+				if (
+					req.method === "GET" && url.pathname === "/public/api/sql/queries/q-output/finish-streaming"
+				) {
+					res.statusCode = 200;
+					res.end("",);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("not found",);
+			}, async (url,) => {
+				const { stdout, } = await dss([
+					"sql",
+					"query",
+					"SELECT id FROM orders",
+					"--connection",
+					"CONN",
+					"--output",
+					outputPath,
+				], { env: cliEnv(url,), },);
+				const result = JSON.parse(stdout,) as {
+					outputPath: string;
+					rowCount: number;
+					written: string;
+				};
+				expect(result,).toMatchObject({
+					outputPath,
+					written: outputPath,
+					rowCount: 2,
+				},);
+				expect(JSON.parse(readFileSync(outputPath, "utf-8",),),).toEqual({
+					queryId: "q-output",
+					schema: [{ name: "id", type: "bigint", },],
+					columns: [{ name: "id", type: "bigint", },],
+					rows: [[1,], [2,],],
+				},);
+			},);
+		} finally {
+			rmSync(outputPath, { force: true, },);
 		}
 	});
 
@@ -504,7 +574,12 @@ describe("CLI execution behavior", () => {
 				'SELECT * FROM "prod-icmc-dg-ilab-db".workbook LIMIT 5',
 				{ env: cliEnv(url,), },
 			);
-			expect(JSON.parse(stdout,),).toEqual({ queryId: "q-stdin", schema: [], rows: [], },);
+			expect(JSON.parse(stdout,),).toEqual({
+				queryId: "q-stdin",
+				schema: [],
+				columns: [],
+				rows: [],
+			},);
 		},);
 		expect(capturedBody?.query,).toBe('SELECT * FROM "prod-icmc-dg-ilab-db".workbook LIMIT 5',);
 	});
@@ -1087,6 +1162,72 @@ describe("CLI planned command coverage", () => {
 		},);
 	});
 
+	it("adds folder target context to transient contents failures", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "fld-123", name: "Named folder", },],);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/managedfolders/fld-123/contents/"
+			) {
+				sendJson(res, { message: "temporary gateway failure", requestId: "req-123", }, 503,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"folder",
+				"contents",
+				"Named folder",
+				"--retries",
+				"1",
+				"--report-json",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(3,);
+			const report = JSON.parse(failure.stderr,) as {
+				requestId?: string;
+				details: { body: string; };
+			};
+			const body = JSON.parse(report.details.body,) as { elapsedMs: number; target: string; };
+			expect(report.requestId,).toBe("req-123",);
+			expect(body.target,).toBe("folder:fld-123",);
+			expect(body.elapsedMs,).toEqual(expect.any(Number,),);
+		},);
+	});
+
+	it("adds folder target context when contents resolution is transient", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, { message: "gateway timeout", requestId: "req-list", }, 503,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"folder",
+				"contents",
+				"Named folder",
+				"--retries",
+				"1",
+				"--report-json",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(3,);
+			const report = JSON.parse(failure.stderr,) as {
+				requestId?: string;
+				details: { body: string; };
+			};
+			const body = JSON.parse(report.details.body,) as { target: string; };
+			expect(report.requestId,).toBe("req-list",);
+			expect(body.target,).toBe("folder:Named folder",);
+		},);
+	});
+
 	it("downloads recipe code to a file and prints the file path", async () => {
 		const outputPath = join(tmpdir(), `dss-cli-recipe-code-${Date.now()}.py`,);
 
@@ -1358,6 +1499,56 @@ describe("CLI --timeout flag", () => {
 	});
 });
 
+describe("CLI dataset validation", () => {
+	it("reports file-backed dataset build blockers", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/datasets/broken_output",);
+			sendJson(res, {
+				name: "broken_output",
+				type: "Filesystem",
+				params: { connection: "filesystem_managed", },
+			},);
+		}, async (url,) => {
+			const { stdout, } = await dss(["dataset", "validate-build", "broken_output",], {
+				env: cliEnv(url,),
+			},);
+			const result = JSON.parse(stdout,) as { valid: boolean; warnings: string[]; };
+			expect(result.valid,).toBe(false,);
+			expect(result.warnings,).toContain(
+				"File-backed dataset has no writable storage path configured.",
+			);
+			expect(result.warnings,).toContain("File-backed dataset has no formatType configured.",);
+		},);
+	});
+
+	it("refreshes dataset schema through schema endpoint", async () => {
+		let requestBody: unknown;
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("PUT",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/datasets/orders/schema",);
+			requestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+			sendJson(res, {},);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"dataset",
+				"refresh-schema",
+				"orders",
+				"--data",
+				JSON.stringify({ columns: [{ name: "id", type: "bigint", },], },),
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				updated: "orders",
+				resource: "dataset",
+				schema: { columns: [{ name: "id", type: "bigint", },], },
+			},);
+		},);
+		expect(requestBody,).toEqual({ columns: [{ name: "id", type: "bigint", },], },);
+	});
+});
+
 describe("CLI recipe get", () => {
 	it("prints compact recipe settings when DSS returns a payload and --no-payload is set", async () => {
 		await withCliServer((req, res,) => {
@@ -1455,12 +1646,182 @@ describe("CLI recipe get-payload and set-payload", () => {
 		}
 	});
 
+	it("set-payload writes a remote payload backup before PUT", async () => {
+		const filePath = join(tmpdir(), `dss-cli-setpayload-${Date.now()}.py`,);
+		const backupDir = join(tmpdir(), `dss-cli-backup-${Date.now()}`,);
+		writeFileSync(filePath, "print('updated')\n", "utf-8",);
+		const requestEvents: string[] = [];
+		let putBody: string | undefined;
+
+		try {
+			await withCliServer(async (req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				requestEvents.push(`${req.method} ${url.pathname}${url.search}`,);
+				if (req.method === "GET") {
+					sendJson(res, {
+						recipe: { type: "python", name: "my_recipe", },
+						payload: putBody === undefined ? "print('remote')\n" : "print('updated')\n",
+					},);
+					return;
+				}
+				if (req.method === "PUT") {
+					putBody = await readBody(req,);
+					sendJson(res, {},);
+					return;
+				}
+				res.statusCode = 404;
+				res.end();
+			}, async (url,) => {
+				const { stdout, } = await dss([
+					"recipe",
+					"set-payload",
+					"my_recipe",
+					"--file",
+					filePath,
+					"--backup-dir",
+					backupDir,
+				], { env: cliEnv(url,), },);
+				const result = JSON.parse(stdout,) as { backupPath: string; };
+				expect(result.backupPath.startsWith(backupDir,),).toBe(true,);
+				expect(readFileSync(result.backupPath, "utf-8",),).toBe("print('remote')\n",);
+				expect(putBody,).toBeDefined();
+				expect(JSON.parse(putBody!,).payload,).toBe("print('updated')\n",);
+			},);
+		} finally {
+			expect(requestEvents,).toEqual([
+				"GET /public/api/projects/TEST/recipes/my_recipe?includePayload=true",
+				"GET /public/api/projects/TEST/recipes/my_recipe?includePayload=true",
+				"PUT /public/api/projects/TEST/recipes/my_recipe",
+			],);
+			rmSync(filePath, { force: true, },);
+			rmSync(backupDir, { recursive: true, force: true, },);
+		}
+	});
+
 	it("set-payload fails without --file", async () => {
 		const failure = await dssFailure(["recipe", "set-payload", "my_recipe",], {
 			env: cliEnv("http://localhost:1",),
 		},);
 		expect(failure.code,).toBe(1,);
 		expect(failure.stderr,).toContain("--file is required",);
+	});
+
+	it("recipe run resolves managed-folder outputs and waits for logs", async () => {
+		const requests: string[] = [];
+		let buildRequestBody: Record<string, unknown> | undefined;
+
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}${url.search}`,);
+
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/recipes/compute_FOLDERID"
+			) {
+				sendJson(res, {
+					recipe: {
+						name: "compute_FOLDERID",
+						type: "python",
+						outputs: {
+							main: {
+								items: [{ ref: "FOLDERID", appendMode: false, },],
+							},
+						},
+					},
+				},);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [],);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "FOLDERID", name: "Exports", type: "Filesystem", },],);
+				return;
+			}
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/jobs/") {
+				buildRequestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { id: "job-folder", },);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-folder/") {
+				sendJson(res, {
+					baseStatus: {
+						def: { id: "job-folder", type: "MANAGED_FOLDER_BUILD", },
+						state: "DONE",
+					},
+					globalState: { done: 1, failed: 0, running: 0, total: 1, },
+				},);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-folder/log/") {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/plain",);
+				res.end(
+					"2026-01-01 backend-log ignore\nstderr: noisy\nstdout: preparing\n>>> DONE: 19 experiments\n",
+				);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"recipe",
+				"run",
+				"compute_FOLDERID",
+				"--include-logs",
+				"--max-log-lines",
+				"20",
+				"--log-filter",
+				"stdout",
+				"--summary",
+				"--timeout",
+				"5000",
+			], { env: cliEnv(url,), },);
+			const result = JSON.parse(stdout,) as Record<string, unknown>;
+			expect(result,).toMatchObject({
+				recipeName: "compute_FOLDERID",
+				success: true,
+				jobId: "job-folder",
+				state: "DONE",
+				type: "MANAGED_FOLDER_BUILD",
+				log: "stdout: preparing\n>>> DONE: 19 experiments",
+				logSummary: {
+					state: "DONE",
+					lineCount: 2,
+					lines: ["stdout: preparing", ">>> DONE: 19 experiments",],
+				},
+			},);
+		},);
+
+		expect(buildRequestBody,).toEqual({
+			outputs: [{
+				projectKey: "TEST",
+				id: "FOLDERID",
+				type: "MANAGED_FOLDER",
+				targetManagedFolderProjectKey: "TEST",
+				targetManagedFolder: "FOLDERID",
+				targetPartition: "NP",
+			},],
+			type: "NON_RECURSIVE_FORCED_BUILD",
+		},);
+		expect(requests,).toContain("GET /public/api/projects/TEST/recipes/compute_FOLDERID",);
+		expect(requests,).toContain("GET /public/api/projects/TEST/datasets/",);
+		expect(requests,).toContain("GET /public/api/projects/TEST/managedfolders/",);
+		const jobRequests = requests.filter((request,) =>
+			request.startsWith("POST /public/api/projects/TEST/jobs/",)
+			|| request.startsWith("GET /public/api/projects/TEST/jobs/job-folder",)
+		);
+		expect(jobRequests,).toEqual([
+			"POST /public/api/projects/TEST/jobs/",
+			"GET /public/api/projects/TEST/jobs/job-folder/",
+			"GET /public/api/projects/TEST/jobs/job-folder/log/",
+		],);
 	});
 });
 
@@ -1726,6 +2087,53 @@ describe("CLI managed folder commands", () => {
 		},);
 	});
 
+	it("connection schema and table inspection uses public import endpoints", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			if (url.pathname === "/public/api/projects/TEST/datasets/tables-import/actions/list-schemas") {
+				expect(url.searchParams.get("connectionName",),).toBe("ATHENA_CONN",);
+				sendJson(res, ["analytics",],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/datasets/tables-import/actions/list-tables") {
+				expect(url.searchParams.get("connectionName",),).toBe("ATHENA_CONN",);
+				expect(url.searchParams.get("schemaName",),).toBe("analytics",);
+				sendJson(res, {
+					hasResult: true,
+					alive: false,
+					aborted: false,
+					unknown: false,
+					jobId: "future-1",
+					result: [{ table: "orders", schema: "analytics", },],
+				},);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			expect(JSON.parse(
+				(await dss(["connection", "schemas", "--connection", "ATHENA_CONN",], { env: cliEnv(url,), },))
+					.stdout,
+			),).toEqual(["analytics",],);
+			expect(JSON.parse(
+				(
+					await dss([
+						"connection",
+						"tables",
+						"--connection",
+						"ATHENA_CONN",
+						"--schema",
+						"analytics",
+					], { env: cliEnv(url,), },)
+				).stdout,
+			),).toMatchObject({
+				hasResult: true,
+				result: [{ table: "orders", schema: "analytics", },],
+			},);
+		},);
+	});
+
 	it("job build supports managed folder targets", async () => {
 		let requestBody: Record<string, unknown> | undefined;
 		await withCliServer(async (req, res,) => {
@@ -1735,14 +2143,24 @@ describe("CLI managed folder commands", () => {
 			requestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
 			sendJson(res, { id: "job-folder", },);
 		}, async (url,) => {
-			const { stdout, } = await dss(["job", "build", "folder-id", "--type", "MANAGED_FOLDER",], {
-				env: cliEnv(url,),
-			},);
+			const { stdout, } = await dss(
+				["job", "build", "folder-id", "--target-type", "managed-folder",],
+				{
+					env: cliEnv(url,),
+				},
+			);
 			expect(JSON.parse(stdout,),).toEqual({ jobId: "job-folder", },);
 		},);
 
 		expect(requestBody,).toEqual({
-			outputs: [{ projectKey: "TEST", id: "folder-id", type: "MANAGED_FOLDER", },],
+			outputs: [{
+				projectKey: "TEST",
+				id: "folder-id",
+				type: "MANAGED_FOLDER",
+				targetManagedFolderProjectKey: "TEST",
+				targetManagedFolder: "folder-id",
+				targetPartition: "NP",
+			},],
 			type: "NON_RECURSIVE_FORCED_BUILD",
 		},);
 	});
@@ -1779,8 +2197,8 @@ describe("CLI managed folder commands", () => {
 				"job",
 				"build-and-wait",
 				"folder-id",
-				"--type",
-				"MANAGED_FOLDER",
+				"--target-type",
+				"managed-folder",
 				"--timeout",
 				"5000",
 			], {
@@ -1795,7 +2213,14 @@ describe("CLI managed folder commands", () => {
 		},);
 
 		expect(requestBody,).toEqual({
-			outputs: [{ projectKey: "TEST", id: "folder-id", type: "MANAGED_FOLDER", },],
+			outputs: [{
+				projectKey: "TEST",
+				id: "folder-id",
+				type: "MANAGED_FOLDER",
+				targetManagedFolderProjectKey: "TEST",
+				targetManagedFolder: "folder-id",
+				targetPartition: "NP",
+			},],
 			type: "NON_RECURSIVE_FORCED_BUILD",
 		},);
 		expect(requests,).toEqual([
@@ -3863,6 +4288,28 @@ describe("CLI agent-readiness mutation contracts", () => {
 				method: "POST",
 				endpoint: "/public/api/projects/TEST/jobs/",
 			},);
+
+			const flowZonePlan = JSON.parse(
+				(await dss([
+					"flow-zone",
+					"move",
+					"zone-1",
+					"--dataset",
+					"orders",
+					"--plan",
+					"--project-key",
+					"TEST",
+				], { env: cliEnv(url,), },)).stdout,
+			) as Record<string, unknown>;
+			expect(flowZonePlan,).toMatchObject({
+				plan: true,
+				action: "move",
+				resource: "flow-zone",
+				id: "zone-1",
+				method: "POST",
+				endpoint: "/public/api/projects/TEST/flow/zones/zone-1/add-items",
+				payload: [{ objectType: "DATASET", objectId: "orders", },],
+			},);
 			const plannedAndDryRun = JSON.parse(
 				(await dss(["scenario", "run", "nightly", "--plan", "--dry-run", "--project-key", "TEST",], {
 					env: cliEnv(url,),
@@ -3876,6 +4323,56 @@ describe("CLI agent-readiness mutation contracts", () => {
 			},);
 		},);
 		expect(requestCount,).toBe(0,);
+	});
+
+	it("plans recipe payload backups as local writes", async () => {
+		const filePath = join(tmpdir(), `dss-cli-plan-payload-${Date.now()}.py`,);
+		const backupDir = join(tmpdir(), `dss-cli-plan-backup-${Date.now()}`,);
+		writeFileSync(filePath, "print('planned')\n", "utf-8",);
+		let requestCount = 0;
+
+		try {
+			await withCliServer((req, res,) => {
+				requestCount++;
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${req.url ?? ""}`,);
+			}, async (url,) => {
+				const plan = JSON.parse(
+					(await dss([
+						"recipe",
+						"set-payload",
+						"my_recipe",
+						"--file",
+						filePath,
+						"--backup-dir",
+						backupDir,
+						"--plan",
+						"--project-key",
+						"TEST",
+					], { env: cliEnv(url,), },)).stdout,
+				) as {
+					endpoint: string;
+					localWrites: Array<{ before: string; path: string; source: string; }>;
+					payload: { backupPath: string; content: string; file: string; };
+				};
+
+				expect(plan.endpoint,).toBe("/public/api/projects/TEST/recipes/my_recipe",);
+				expect(plan.payload,).toMatchObject({
+					file: filePath,
+					content: "print('planned')\n",
+				},);
+				expect(plan.payload.backupPath.startsWith(backupDir,),).toBe(true,);
+				expect(plan.localWrites,).toEqual([{
+					path: plan.payload.backupPath,
+					source: "remote recipe payload",
+					before: "PUT",
+				},],);
+			},);
+			expect(requestCount,).toBe(0,);
+		} finally {
+			rmSync(filePath, { force: true, },);
+			rmSync(backupDir, { recursive: true, force: true, },);
+		}
 	});
 
 	it("validates mutation plan inputs locally", async () => {

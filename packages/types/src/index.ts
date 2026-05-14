@@ -765,6 +765,7 @@ export type SqlQueryResult = Static<typeof SqlQueryResultSchema>;
 export const SqlQueryResponseSchema = Type.Object({
 	queryId: Type.String(),
 	schema: Type.Array(SqlQuerySchemaSchema,),
+	columns: Type.Optional(Type.Array(SqlQuerySchemaSchema,),),
 	rows: Type.Array(Type.Array(Type.Unknown(),),),
 },);
 export type SqlQueryResponse = Static<typeof SqlQueryResponseSchema>;

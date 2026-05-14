@@ -20,6 +20,21 @@ import type {
 	DatasetSummary,
 } from "../schemas.js";
 
+export interface DatasetBuildValidationResult {
+	valid: boolean;
+	datasetName: string;
+	projectKey: string;
+	type: string | null;
+	path: string | null;
+	formatType: string | null;
+	warnings: string[];
+}
+
+export interface DatasetSchemaColumnInput {
+	name: string;
+	type: string;
+	comment?: string;
+}
 // ---------------------------------------------------------------------------
 // Helpers: TSV → CSV streaming conversion
 // ---------------------------------------------------------------------------
@@ -422,6 +437,19 @@ export class DatasetsResource extends BaseResource {
 		return this.client.safeParse(DatasetSchemaSchema, raw, "datasets.schema",);
 	}
 
+	/** Replace dataset schema columns directly through the schema endpoint. */
+	async updateSchema(
+		datasetName: string,
+		columns: DatasetSchemaColumnInput[],
+		projectKey?: string,
+	): Promise<void> {
+		const dsEnc = encodeURIComponent(datasetName,);
+		await this.client.put<Record<string, unknown>>(
+			`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}/schema`,
+			{ columns, },
+		);
+	}
+
 	/**
 	 * Preview dataset data as CSV text.
 	 * Streams TSV from the API, converts to CSV, and returns up to `maxRows`
@@ -586,6 +614,48 @@ export class DatasetsResource extends BaseResource {
 				body,
 			);
 		}
+	}
+
+	/** Validate common build blockers before running a dataset build. */
+	async validateBuildSettings(
+		datasetName: string,
+		projectKey?: string,
+	): Promise<DatasetBuildValidationResult> {
+		const pk = this.resolveProjectKey(projectKey,);
+		const details = await this.get(datasetName, pk,);
+		const params = details.params ?? {};
+		const type = details.type ?? null;
+		const path = typeof params.path === "string" && params.path.trim().length > 0
+			? params.path
+			: null;
+		const table = typeof params.table === "string" && params.table.trim().length > 0
+			? params.table
+			: null;
+		const normalizedType = (type ?? "").toLowerCase();
+		const fileBacked = !table
+			&& (normalizedType.includes("filesystem",)
+				|| normalizedType.includes("uploaded",)
+				|| normalizedType.includes("s3",)
+				|| path !== null);
+		const formatType = details.formatType ?? null;
+		const warnings: string[] = [];
+
+		if (fileBacked && !path) {
+			warnings.push("File-backed dataset has no writable storage path configured.",);
+		}
+		if (fileBacked && !formatType) {
+			warnings.push("File-backed dataset has no formatType configured.",);
+		}
+
+		return {
+			valid: warnings.length === 0,
+			datasetName,
+			projectKey: pk,
+			type,
+			path,
+			formatType,
+			warnings,
+		};
 	}
 
 	/** Update a dataset by deep-merging a patch into the current definition. */

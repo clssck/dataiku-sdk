@@ -168,6 +168,80 @@ describe("ConnectionsResource.infer", () => {
 	});
 });
 
+describe("ConnectionsResource schema inspection", () => {
+	it("lists SQL schemas for a connection", async () => {
+		const requests: string[] = [];
+
+		await withTestServer((req, res,) => {
+			requests.push(`${req.method ?? "UNKNOWN"} ${req.url ?? ""}`,);
+			expect(req.method,).toBe("GET",);
+			expect(req.url,).toBe(
+				"/public/api/projects/TEST/datasets/tables-import/actions/list-schemas?connectionName=ATHENA_CONN",
+			);
+			res.setHeader("Content-Type", "application/json",);
+			res.end(JSON.stringify(["analytics", "raw",],),);
+		}, async (url,) => {
+			const client = new DataikuClient({
+				url,
+				apiKey: "test-key",
+				projectKey: "TEST",
+			},);
+
+			await expect(client.connections.schemas({ connection: "ATHENA_CONN", },),).resolves.toEqual([
+				"analytics",
+				"raw",
+			],);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/datasets/tables-import/actions/list-schemas?connectionName=ATHENA_CONN",
+		],);
+	});
+
+	it("lists SQL tables with catalog and schema filters", async () => {
+		const requests: string[] = [];
+		const response = {
+			hasResult: true,
+			alive: false,
+			aborted: false,
+			unknown: false,
+			jobId: "future-1",
+			result: [{
+				connectionName: "ATHENA_CONN",
+				catalog: "prod",
+				schema: "analytics",
+				table: "orders",
+			},],
+		};
+
+		await withTestServer((req, res,) => {
+			requests.push(`${req.method ?? "UNKNOWN"} ${req.url ?? ""}`,);
+			expect(req.method,).toBe("GET",);
+			expect(req.url,).toBe(
+				"/public/api/projects/TEST/datasets/tables-import/actions/list-tables?connectionName=ATHENA_CONN&catalogName=prod&schemaName=analytics",
+			);
+			res.setHeader("Content-Type", "application/json",);
+			res.end(JSON.stringify(response,),);
+		}, async (url,) => {
+			const client = new DataikuClient({
+				url,
+				apiKey: "test-key",
+				projectKey: "TEST",
+			},);
+
+			await expect(client.connections.tables({
+				connection: "ATHENA_CONN",
+				catalog: "prod",
+				schema: "analytics",
+			},),).resolves.toEqual(response,);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/datasets/tables-import/actions/list-tables?connectionName=ATHENA_CONN&catalogName=prod&schemaName=analytics",
+		],);
+	});
+});
+
 describe("VariablesResource.set", () => {
 	it("merges with existing variables by default", async () => {
 		const requests: string[] = [];

@@ -67,6 +67,8 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"list",
 		"get",
 		"schema",
+		"validate-build",
+		"refresh-schema",
 		"preview",
 		"metadata",
 		"download",
@@ -78,6 +80,8 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"list",
 		"get",
 		"delete",
+		"run",
+		"validate-graph",
 		"download",
 		"download-code",
 		"create",
@@ -100,7 +104,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"delete-file",
 	],
 	variable: ["get", "set",],
-	connection: ["list", "infer",],
+	connection: ["list", "infer", "schemas", "tables",],
 	insight: ["list", "get", "create", "update", "delete",],
 	"code-env": [
 		"list",
@@ -308,6 +312,23 @@ describe("CLI command surface", () => {
 		},);
 		expect(registry.recipe["set-payload"].inputContract.dataFlag,).toBeUndefined();
 		expect(registry.recipe["set-payload"].destructive,).toBe("reversible",);
+		expect(registry.recipe["set-payload"].flags,).toContainEqual({
+			name: "backup-dir",
+			kind: "value",
+		},);
+		expect(registry.recipe.run.flags,).toContainEqual({ name: "max-log-lines", kind: "value", },);
+		expect(registry.recipe.run.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
+		expect(registry.recipe.run.async,).toBe("job",);
+		expect(registry.sql.query.flags,).toContainEqual({ name: "output-file", kind: "value", },);
+		expect(registry.sql.query.flags,).toContainEqual({ name: "output", kind: "value", },);
+		expect(registry.sql.query.producesLocalFile,).toBe(true,);
+		expect(registry.connection.schemas.outputShape,).toBe("array",);
+		expect(registry.connection.tables.flags,).toContainEqual({ name: "schema", kind: "value", },);
+		expect(registry.dataset["refresh-schema"].sideEffect,).toBe("write",);
+		expect(registry.dataset["refresh-schema"].flags,).toContainEqual({
+			name: "data",
+			kind: "value",
+		},);
 	});
 
 	it("prints action help for every registered command without resolving credentials", async () => {

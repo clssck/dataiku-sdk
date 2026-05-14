@@ -122,6 +122,20 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 		};
 	}
 
+	const isSqlEngineValidation = status >= 400
+		&& (lowerBody.includes("column_not_found",)
+			|| lowerBody.includes("table_not_found",)
+			|| lowerBody.includes("no_such_table",)
+			|| lowerBody.includes("column does not exist",));
+	if (isSqlEngineValidation) {
+		return {
+			category: "validation",
+			retryable: false,
+			retryHint:
+				"Athena/SQL engine rejected the query: check column names, table names, and schema with dss dataset schema or dss connection tables. Do not retry unchanged SQL.",
+		};
+	}
+
 	const isServerValidationLike = status >= 500
 		&& (lowerBody.includes("invalid",)
 			|| lowerBody.includes("validation",)

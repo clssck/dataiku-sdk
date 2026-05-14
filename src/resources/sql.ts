@@ -39,6 +39,82 @@ function asString(value: unknown,): string | undefined {
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function firstStringField(record: Record<string, unknown>, fields: string[],): string | undefined {
+	for (const field of fields) {
+		const value = record[field];
+		if (typeof value === "string" && value.trim().length > 0) return value.trim();
+	}
+	return undefined;
+}
+
+function isLikelySqlErrorDetail(detail: string,): boolean {
+	const lower = detail.toLowerCase();
+	return /\b[A-Z_]+(?:_ERROR|_NOT_FOUND|_MISMATCH|_DENIED|_EXCEEDED)\b/.test(detail,)
+		|| lower.includes("athena",)
+		|| lower.includes("sql",)
+		|| lower.includes("query",)
+		|| lower.includes("column",)
+		|| lower.includes("table",)
+		|| lower.includes("line ",);
+}
+
+function sqlErrorDetailFromBody(body: string,): string | undefined {
+	const trimmed = body.trim();
+	if (!trimmed) return undefined;
+	try {
+		const parsed = JSON.parse(trimmed,) as unknown;
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed,)) {
+			const record = parsed as Record<string, unknown>;
+			const nested = asRecord(record.details,) ?? asRecord(record.error,);
+			const nestedDetail = nested
+				? firstStringField(nested, ["message", "errorMessage", "error", "reason", "cause",],)
+				: undefined;
+			if (nestedDetail && isLikelySqlErrorDetail(nestedDetail,)) return nestedDetail;
+			const direct = firstStringField(record, [
+				"message",
+				"detailedMessage",
+				"errorMessage",
+				"error",
+				"reason",
+				"cause",
+			],);
+			if (direct && isLikelySqlErrorDetail(direct,)) return direct;
+		}
+	} catch {
+		// Fall back to regex extraction from raw DSS/Athena text below.
+	}
+
+	const match = trimmed.match(
+		/\b[A-Z_]+(?:_ERROR|_NOT_FOUND|_MISMATCH|_DENIED|_EXCEEDED)\b[:\s-]+[^\n\r]+/,
+	);
+	return match?.[0] ?? (isLikelySqlErrorDetail(trimmed,) ? trimmed.slice(0, 500,) : undefined);
+}
+
+function withSqlErrorContext(error: unknown,): never {
+	if (error instanceof DataikuError) {
+		const detail = sqlErrorDetailFromBody(error.body,);
+		if (detail) {
+			let body = error.body;
+			try {
+				const parsed = JSON.parse(error.body,) as unknown;
+				if (parsed && typeof parsed === "object" && !Array.isArray(parsed,)) {
+					body = JSON.stringify({
+						...(parsed as Record<string, unknown>),
+						message: `SQL query failed: ${detail}`,
+						sqlError: detail,
+					},);
+				} else {
+					body = `SQL query failed: ${detail}\n${error.body}`;
+				}
+			} catch {
+				body = `SQL query failed: ${detail}\n${error.body}`;
+			}
+			throw new DataikuError(error.status, error.statusText, body, error.retry,);
+		}
+	}
+	throw error;
+}
+
 function splitDatasetIdentifier(
 	datasetFullName: string,
 	fallbackProjectKey?: string,
@@ -101,7 +177,7 @@ export class SqlResource extends BaseResource {
 		const { queryId, schema, } = await this.startQuery(opts,);
 		const rows = await this.streamResults(queryId,);
 		await this.finishStreaming(queryId,);
-		return { queryId, schema, rows, };
+		return { queryId, schema, columns: schema, rows, };
 	}
 
 	private async resolveDatasetQueryFallback(
@@ -143,14 +219,18 @@ export class SqlResource extends BaseResource {
 		try {
 			return await this.executeQuery(queryOpts,);
 		} catch (error) {
-			if (!isUnsupportedSqlDatasetConnectionError(error,)) throw error;
+			if (!isUnsupportedSqlDatasetConnectionError(error,)) withSqlErrorContext(error,);
 			const retryOpts = await this.resolveDatasetQueryFallback(queryOpts,);
 			if (!retryOpts) {
 				throw new Error(buildUnsupportedSqlDatasetConnectionMessage(queryOpts.datasetFullName,), {
 					cause: error,
 				},);
 			}
-			return this.executeQuery(retryOpts,);
+			try {
+				return await this.executeQuery(retryOpts,);
+			} catch (retryError) {
+				withSqlErrorContext(retryError,);
+			}
 		}
 	}
 }

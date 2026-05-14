@@ -204,6 +204,7 @@ describe("SqlResource", () => {
 			expect(result,).toEqual({
 				queryId: "q-3",
 				schema: [{ name: "id", type: "int", },],
+				columns: [{ name: "id", type: "int", },],
 				rows: [[1,], [2,],],
 			},);
 		},);
@@ -237,6 +238,25 @@ describe("SqlResource", () => {
 		}, async (sql,) => {
 			await expect(sql.query({ query: "SELECT 1", },),).rejects.toThrow(
 				"Some other DSS validation failure",
+			);
+		},);
+	});
+
+	it("surfaces nested Athena errors in SQL failures", async () => {
+		await withSqlServer(async (_req, res,) => {
+			res.statusCode = 500;
+			res.statusMessage = "Internal Server Error";
+			res.setHeader("content-type", "application/json",);
+			res.end(JSON.stringify({
+				message: "Backend failed",
+				requestId: "req-sql",
+				details: {
+					message: "COLUMN_NOT_FOUND: line 1:8: Column 'task_name' cannot be resolved",
+				},
+			},),);
+		}, async (sql,) => {
+			await expect(sql.query({ query: "SELECT task_name FROM tasks", },),).rejects.toThrow(
+				"SQL query failed: COLUMN_NOT_FOUND: line 1:8: Column 'task_name' cannot be resolved",
 			);
 		},);
 	});
