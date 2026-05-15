@@ -3898,6 +3898,22 @@ async function probeDoctorPermission(
 	}
 }
 
+async function probeReadOnlyPrerequisiteForMutation(
+	probe: () => Promise<unknown>,
+	readAction: string,
+): Promise<{ status: PermissionStatus; details?: Record<string, unknown>; }> {
+	const readProbe = await probeDoctorPermission(probe,);
+	if (readProbe.status !== "yes") return readProbe;
+	return {
+		status: "unknown",
+		details: {
+			reason: "mutation capability was not verified because doctor capabilities are read-only",
+			readAction,
+			readStatus: "yes",
+		},
+	};
+}
+
 function missingProjectPermission(): {
 	status: PermissionStatus;
 	details: Record<string, unknown>;
@@ -4076,25 +4092,41 @@ async function doctorCapabilities(
 				: Promise.resolve(missingProjectPermission(),),
 		canMutateProject: () =>
 			probeProjectKey
-				? probeDoctorPermission(() => client.variables.get(probeProjectKey,))
+				? probeReadOnlyPrerequisiteForMutation(
+					() => client.variables.get(probeProjectKey,),
+					"variables.get",
+				)
 				: Promise.resolve(missingProjectPermission(),),
 		canCreateFolder: () =>
 			probeProjectKey
-				? probeDoctorPermission(() => client.folders.list(probeProjectKey,))
+				? probeReadOnlyPrerequisiteForMutation(
+					() => client.folders.list(probeProjectKey,),
+					"folders.list",
+				)
 				: Promise.resolve(missingProjectPermission(),),
 		canRunJobs: () =>
 			probeProjectKey
-				? probeDoctorPermission(() => client.jobs.list(probeProjectKey,))
+				? probeReadOnlyPrerequisiteForMutation(
+					() => client.jobs.list(probeProjectKey,),
+					"jobs.list",
+				)
 				: Promise.resolve(missingProjectPermission(),),
 		canCreateScenario: () =>
 			probeProjectKey
-				? probeDoctorPermission(() => client.scenarios.list(probeProjectKey,))
+				? probeReadOnlyPrerequisiteForMutation(
+					() => client.scenarios.list(probeProjectKey,),
+					"scenarios.list",
+				)
 				: Promise.resolve(missingProjectPermission(),),
 		canSaveJupyter: () =>
 			probeProjectKey
-				? probeDoctorPermission(() => client.notebooks.listJupyter(probeProjectKey,))
+				? probeReadOnlyPrerequisiteForMutation(
+					() => client.notebooks.listJupyter(probeProjectKey,),
+					"notebooks.listJupyter",
+				)
 				: Promise.resolve(missingProjectPermission(),),
-		canMutateConnection: () => probeDoctorPermission(() => client.connections.list()),
+		canMutateConnection: () =>
+			probeReadOnlyPrerequisiteForMutation(() => client.connections.list(), "connections.list",),
 	};
 	const permissions = {} as DoctorPermissions;
 	const permissionDetails: Partial<Record<DoctorPermissionKey, Record<string, unknown>>> = {};

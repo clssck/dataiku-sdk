@@ -745,6 +745,16 @@ describe("CLI execution behavior", () => {
 			expect(result.permissions.canReadProject,).toBe("yes",);
 			expect(result.permissions.canMutateProject,).toBe("unknown",);
 			expect(result.permissionDetails?.canMutateProject,).toBeDefined();
+			expect(result.permissions.canCreateFolder,).toBe("unknown",);
+			expect(result.permissionDetails?.canCreateFolder,).toMatchObject({
+				reason: "mutation capability was not verified because doctor capabilities are read-only",
+				readAction: "folders.list",
+				readStatus: "yes",
+			},);
+			expect(result.permissions.canRunJobs,).toBe("unknown",);
+			expect(result.permissions.canCreateScenario,).toBe("unknown",);
+			expect(result.permissions.canSaveJupyter,).toBe("unknown",);
+			expect(result.permissions.canMutateConnection,).toBe("unknown",);
 			expect(result.fixtures,).toEqual({
 				defaultDataset: "orders",
 				defaultRecipe: "prepare_orders",
