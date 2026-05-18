@@ -234,6 +234,22 @@ describe("JobsResource.log", () => {
 			},),).resolves.toBe("python stdout\n",);
 		},);
 	});
+
+	it("translates a pasted UI activity log URL to the public job log endpoint", async () => {
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/jobs/job-4/log/",);
+			expect(url.searchParams.get("activity",),).toBe("activity-1",);
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end("public api stdout\n",);
+		}, async (client,) => {
+			await expect(client.jobs.logFromUrl(
+				"https://dss/dip/api/flow/jobs/cat-activity-log?projectKey=TEST&jobId=job-4&activityId=activity-1&logId=/python-recipe/python-output.log",
+			),).resolves.toBe("public api stdout\n",);
+		},);
+	});
 });
 
 describe("JobsResource.wait", () => {

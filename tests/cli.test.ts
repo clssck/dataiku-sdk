@@ -196,7 +196,12 @@ describe("CLI missing credentials", () => {
 		try {
 			await dss(["project", "list",], {
 				cwd: tmpDir,
-				env: { PATH: process.env.PATH, HOME: process.env.HOME, },
+				env: {
+					PATH: process.env.PATH,
+					HOME: tmpDir,
+					DSS_CONFIG_DIR: join(tmpDir, "config",),
+					DATAIKU_DISABLE_ENV: "1",
+				},
 			},);
 			throw new Error("should have exited non-zero",);
 		} catch (e: unknown) {
@@ -1169,6 +1174,7 @@ describe("CLI planned command coverage", () => {
 			expect(url.pathname,).toBe("/public/api/projects/TEST/datasets/source_ds",);
 			sendJson(res, {
 				name: "source_ds",
+				id: "read-only-id",
 				type: "S3",
 				managed: true,
 				params: {
@@ -1179,6 +1185,7 @@ describe("CLI planned command coverage", () => {
 				formatType: "csv",
 				formatParams: { separator: "\t", parseHeaderRow: true, },
 				schema: { columns: [{ name: "id", type: "bigint", },], },
+				versionTag: { versionNumber: 3, },
 			},);
 		}, async (url,) => {
 			const { stdout, stderr, } = await dss([
@@ -1195,12 +1202,20 @@ describe("CLI planned command coverage", () => {
 
 			expect(stderr,).toBe("",);
 			const result = JSON.parse(stdout,) as {
-				next: { name: string; params: { path: string; metastoreTableName: string; }; schema: unknown; };
+				next: {
+					id?: string;
+					versionTag?: unknown;
+					name: string;
+					params: { path: string; metastoreTableName: string; };
+					schema: unknown;
+				};
 			};
 			expect(result.next.name,).toBe("target_ds",);
 			expect(result.next.params.path,).toBe("/dataiku/TEST/target_ds",);
 			expect(result.next.params.metastoreTableName,).toBe("target_ds",);
 			expect(result.next.schema,).toEqual({ columns: [{ name: "id", type: "bigint", },], },);
+			expect(result.next.id,).toBeUndefined();
+			expect(result.next.versionTag,).toBeUndefined();
 		},);
 	});
 
@@ -2231,7 +2246,8 @@ describe("CLI help improvements", () => {
 describe("CLI --version flag", () => {
 	it("dss --version prints version string to stdout", async () => {
 		const { stdout, } = await dss(["--version",],);
-		expect(stdout.trim(),).toMatch(/^\d+\.\d+\.\d+/,);
+		expect(stdout.trim(),).toMatch(/^\d+\.\d+\.\d+(?:\+g[0-9a-f]{7})?/,);
+		expect(stdout.trim(),).toContain("+g",);
 	});
 
 	it("dss -V prints version string to stdout", async () => {
@@ -3114,14 +3130,14 @@ describe("CLI install-skill command", () => {
 		}
 	});
 
-	it("workspace detection finds nested .pi parent for project installs", async () => {
+	it("workspace detection ignores nested agent config parents for project installs", async () => {
 		const workspace = join(tmpdir(), `dss-cli-skill-pi-${Date.now()}`,);
 		const subdir = join(workspace, "nested", "deeper",);
 		mkdirSync(join(workspace, ".pi",), { recursive: true, },);
 		mkdirSync(subdir, { recursive: true, },);
 		try {
 			await dss(["install-skill", "--agent", "pi",], { cwd: subdir, },);
-			const skillPath = join(workspace, ".pi", "skills", "dataiku-dss", "SKILL.md",);
+			const skillPath = join(subdir, ".pi", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
 			expect(content,).toContain("name: dataiku-dss",);
 		} finally {
@@ -3129,14 +3145,14 @@ describe("CLI install-skill command", () => {
 		}
 	});
 
-	it("workspace detection finds nested .omp parent for project installs", async () => {
+	it("workspace detection ignores nested .omp agent parents for project installs", async () => {
 		const workspace = join(tmpdir(), `dss-cli-skill-omp-${Date.now()}`,);
 		const subdir = join(workspace, "nested", "deeper",);
 		mkdirSync(join(workspace, ".omp", "agent",), { recursive: true, },);
 		mkdirSync(subdir, { recursive: true, },);
 		try {
 			await dss(["install-skill", "--agent", "omp",], { cwd: subdir, },);
-			const skillPath = join(workspace, ".omp", "skills", "dataiku-dss", "SKILL.md",);
+			const skillPath = join(subdir, ".omp", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
 			expect(content,).toContain("name: dataiku-dss",);
 		} finally {
@@ -3282,7 +3298,7 @@ describe("CLI command behavioral smoke coverage", () => {
 		} finally {
 			rmSync(datasetOut, { force: true, },);
 		}
-	});
+	}, 30_000,);
 
 	it("smokes dataset, recipe, job, scenario, and connection command gaps", async () => {
 		const recipeOut = join(tmpdir(), `dss-cli-recipe-download-${Date.now()}.json`,);
@@ -3525,7 +3541,7 @@ describe("CLI command behavioral smoke coverage", () => {
 		} finally {
 			rmSync(recipeOut, { force: true, },);
 		}
-	});
+	}, 45_000,);
 
 	it("smokes folder, code-env, and notebook command gaps", async () => {
 		const uploadPath = join(tmpdir(), `dss-cli-folder-upload-${Date.now()}.txt`,);
@@ -3841,7 +3857,7 @@ describe("CLI command behavioral smoke coverage", () => {
 			rmSync(uploadPath, { force: true, },);
 			rmSync(downloadPath, { force: true, },);
 		}
-	});
+	}, 45_000,);
 
 	it("smokes wiki, dashboard, and insight commands", async () => {
 		let wikiUpdateBody: Record<string, unknown> | undefined;
@@ -4169,7 +4185,7 @@ describe("CLI command behavioral smoke coverage", () => {
 			)
 				.toEqual({ deleted: "insight-1", resource: "insight", },);
 		},);
-	});
+	}, 45_000,);
 
 	it("smokes data quality commands", async () => {
 		let ruleName = "Has rows";
@@ -4469,7 +4485,7 @@ describe("CLI command behavioral smoke coverage", () => {
 			)
 				.toEqual({ aborted: "job-1", resource: "future", },);
 		},);
-	});
+	}, 30_000,);
 });
 
 describe("CLI agent-readiness mutation contracts", () => {

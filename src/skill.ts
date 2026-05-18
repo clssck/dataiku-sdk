@@ -244,11 +244,11 @@ export function detectAgents(): DetectedAgent[] {
 // Workspace root detection
 // ---------------------------------------------------------------------------
 
-const WORKSPACE_MARKERS = [".git", ".cursor", ".claude", ".codex", ".pi", ".omp", ".vscode",];
+const WORKSPACE_MARKERS = [".git",];
 
 /**
- * Walk upward from startDir looking for common workspace markers.
- * Returns the first directory containing a marker, or startDir if none found.
+ * Walk upward from startDir looking for strong project markers.
+ * Agent config directories are install targets, not workspace roots.
  */
 export function findWorkspaceRoot(startDir: string,): string {
 	let dir = startDir;

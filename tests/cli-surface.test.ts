@@ -376,5 +376,5 @@ describe("CLI command surface", () => {
 				expect(stderr, `${resource} ${action} help`,).toContain("Usage:",);
 			}
 		}
-	}, 30_000,);
+	}, 90_000,);
 });

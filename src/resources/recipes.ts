@@ -84,6 +84,7 @@ export interface RecipeCloneOptions {
 	outputRewrites?: Record<string, string>;
 	inputRewrites?: Record<string, string>;
 	payloadRewrites?: Record<string, string>;
+	payloadTextRewrites?: Record<string, string>;
 	copyOutputSettings?: boolean;
 	outputPath?: string;
 	metastoreTableName?: string;
@@ -96,6 +97,7 @@ export interface RecipeCloneResult {
 	outputRewrites: Record<string, string>;
 	inputRewrites: Record<string, string>;
 	payloadRewrites: Record<string, string>;
+	payloadTextRewrites: Record<string, string>;
 	copiedOutputDatasets: string[];
 }
 
@@ -174,13 +176,31 @@ function rewriteRefs(value: unknown, rewrites: Record<string, string>,): unknown
 	return next;
 }
 
+function escapedRegExp(value: string,): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&",);
+}
+
 function rewritePayload(
 	payload: string | undefined,
 	rewrites: Record<string, string>,
+	payloadTextRewrites: Record<string, string> = {},
 ): string | undefined {
-	if (payload === undefined || Object.keys(rewrites,).length === 0) return payload;
+	if (
+		payload === undefined
+		|| (Object.keys(rewrites,).length === 0 && Object.keys(payloadTextRewrites,).length === 0)
+	) {
+		return payload;
+	}
 	let next = payload;
 	for (const [from, to,] of Object.entries(rewrites,)) {
+		if (!from) continue;
+		const escaped = escapedRegExp(from,);
+		next = next.replace(
+			new RegExp(`\\bdataiku\\.(Dataset|Folder)\\(\\s*(['"])${escaped}\\2\\s*\\)`, "g",),
+			(_match, kind: string, quote: string,) => `dataiku.${kind}(${quote}${to}${quote})`,
+		);
+	}
+	for (const [from, to,] of Object.entries(payloadTextRewrites,)) {
 		if (from.length > 0) next = next.split(from,).join(to,);
 	}
 	return next;
@@ -807,8 +827,19 @@ export class RecipesResource extends BaseResource {
 		const graphRewrites: Record<string, string> = { ...inputRewrites, ...outputRewrites, };
 		const payloadRewrites: Record<string, string> = { ...graphRewrites, };
 		if (opts.payloadRewrites) Object.assign(payloadRewrites, opts.payloadRewrites,);
+		if (
+			opts.copyOutputSettings === true
+			&& Object.keys(outputRewrites,).length > 1
+			&& (opts.outputPath !== undefined || opts.metastoreTableName !== undefined)
+		) {
+			throw new Error(
+				"Cannot reuse --path or --metastore-table for multiple cloned output datasets; pass per-output settings in a separate step.",
+			);
+		}
+		const payloadTextRewrites: Record<string, string> = {};
+		if (opts.payloadTextRewrites) Object.assign(payloadTextRewrites, opts.payloadTextRewrites,);
 		const recipe = cloneRecipeDefinition(source.recipe, opts.name, pk, graphRewrites,);
-		const payload = rewritePayload(source.payload, payloadRewrites,);
+		const payload = rewritePayload(source.payload, payloadRewrites, payloadTextRewrites,);
 		const copiedOutputDatasets: string[] = [];
 		if (opts.copyOutputSettings) {
 			for (const [from, to,] of Object.entries(outputRewrites,)) {
@@ -839,6 +870,7 @@ export class RecipesResource extends BaseResource {
 			outputRewrites,
 			inputRewrites,
 			payloadRewrites,
+			payloadTextRewrites,
 			copiedOutputDatasets,
 		};
 	}

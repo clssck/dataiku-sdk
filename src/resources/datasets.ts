@@ -423,7 +423,7 @@ function buildDatasetCreateBody(opts: {
 	};
 }
 
-function clonedDatasetSettings(
+export function buildDatasetCloneSettings(
 	source: DatasetDetails,
 	targetName: string,
 	projectKey: string,
@@ -437,11 +437,15 @@ function clonedDatasetSettings(
 			? { metastoreTableName: opts.metastoreTableName, }
 			: {}),
 	};
-	const cloned = {
-		...(source as unknown as Record<string, unknown>),
+	const cloned: Record<string, unknown> = {
 		name: targetName,
 		projectKey,
-		params,
+		...(source.type !== undefined ? { type: source.type, } : {}),
+		...(source.managed !== undefined ? { managed: source.managed, } : {}),
+		...(Object.keys(params,).length > 0 ? { params, } : {}),
+		...(source.formatType !== undefined ? { formatType: source.formatType, } : {}),
+		...(source.formatParams !== undefined ? { formatParams: source.formatParams, } : {}),
+		...(source.schema !== undefined ? { schema: source.schema, } : {}),
 	};
 	const settings = opts.overrides ? deepMerge(cloned, opts.overrides,) : cloned;
 	const settingsParams =
@@ -714,14 +718,19 @@ export class DatasetsResource extends BaseResource {
 		};
 	}
 
-	/** Clone dataset settings, preserving storage, format, schema, and extra DSS fields. */
+	/** Clone dataset settings, preserving connection/storage, format, and schema fields. */
 	async clone(
 		sourceName: string,
 		targetName: string,
 		opts: DatasetCloneOptions = {},
 	): Promise<DatasetCloneResult> {
 		const pk = this.resolveProjectKey(opts.projectKey,);
-		const settings = clonedDatasetSettings(await this.get(sourceName, pk,), targetName, pk, opts,);
+		const settings = buildDatasetCloneSettings(
+			await this.get(sourceName, pk,),
+			targetName,
+			pk,
+			opts,
+		);
 		const created = await this.client.post<Record<string, unknown>>(
 			`/public/api/projects/${encodeURIComponent(pk,)}/datasets/`,
 			settings,

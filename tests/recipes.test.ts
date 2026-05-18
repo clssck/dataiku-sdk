@@ -231,7 +231,8 @@ describe("RecipesResource", () => {
 						versionTag: { versionNumber: 12, },
 						neverBuilt: false,
 					},
-					payload: "dataiku.Dataset('old_output').write_with_schema(df)\n",
+					payload:
+						"# old_output should remain in comments\nvalue = 'old_output'\ndataiku.Dataset('old_output').write_with_schema(df)\ndataiku.Dataset('old_output_extra')\n",
 				},);
 				return;
 			}
@@ -271,6 +272,82 @@ describe("RecipesResource", () => {
 		expect((postBody?.recipePrototype as Record<string, unknown>).neverBuilt,).toBeUndefined();
 		expect((postBody?.creationSettings as { script?: string; }).script,).toContain("new_output",);
 		expect(putBody?.payload as string,).toContain("new_output",);
+		expect(putBody?.payload as string,).toContain("# old_output should remain in comments",);
+		expect(putBody?.payload as string,).toContain("value = 'old_output'",);
+		expect(putBody?.payload as string,).toContain("dataiku.Dataset('old_output_extra')",);
+	});
+
+	it("applies explicit payload text rewrites globally", async () => {
+		let putBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			if (req.method === "GET") {
+				sendJson(res, {
+					recipe: {
+						name: "source_recipe",
+						type: "python",
+						outputs: { main: { items: [{ ref: "old_output", },], }, },
+					},
+					payload: "# old_column is a literal note\ndataiku.Dataset('old_output')\n",
+				},);
+				return;
+			}
+			if (req.method === "POST") {
+				sendJson(res, { recipeName: "target_recipe", },);
+				return;
+			}
+			if (req.method === "PUT") {
+				putBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { ok: true, },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await client.recipes.clone("source_recipe", {
+				name: "target_recipe",
+				outputDataset: "new_output",
+				payloadTextRewrites: { old_column: "new_column", },
+			},);
+		},);
+
+		expect(putBody?.payload as string,).toContain("# new_column is a literal note",);
+		expect(putBody?.payload as string,).toContain("dataiku.Dataset('new_output')",);
+	});
+
+	it("rejects one storage override for multiple copied output datasets", async () => {
+		await withRecipeServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/recipes/source_recipe",);
+			sendJson(res, {
+				recipe: {
+					name: "source_recipe",
+					type: "python",
+					outputs: {
+						main: {
+							items: [
+								{ ref: "old_output_a", },
+								{ ref: "old_output_b", },
+							],
+						},
+					},
+				},
+				payload: "",
+			},);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(client.recipes.clone("source_recipe", {
+				name: "target_recipe",
+				outputRewrites: {
+					old_output_a: "new_output_a",
+					old_output_b: "new_output_b",
+				},
+				copyOutputSettings: true,
+				outputPath: "/dataiku/TEST/reused",
+			},),).rejects.toThrow("Cannot reuse --path or --metastore-table",);
+		},);
 	});
 
 	it("downloads recipe code with an inferred file extension", async () => {

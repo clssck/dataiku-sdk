@@ -293,13 +293,12 @@ export class JobsResource extends BaseResource {
 		const projectKey = parsed.searchParams.get("projectKey",) ?? undefined;
 		const jobId = parsed.searchParams.get("jobId",) ?? undefined;
 		const activity = parsed.searchParams.get("activityId",) ?? undefined;
-		const logId = parsed.searchParams.get("logId",) ?? undefined;
-		if (!projectKey || !jobId || !activity || !logId) {
+		if (!projectKey || !jobId || !activity) {
 			throw new Error(
-				"Log URL must include projectKey, jobId, activityId, and logId query parameters.",
+				"Log URL must include projectKey, jobId, and activityId query parameters.",
 			);
 		}
-		return this.log(jobId, { activity, logId, projectKey, maxLogLines: opts?.maxLogLines, },);
+		return this.log(jobId, { activity, projectKey, maxLogLines: opts?.maxLogLines, },);
 	}
 
 	/**

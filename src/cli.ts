@@ -18,6 +18,7 @@ import {
 	saveCredentials,
 } from "./config.js";
 import { DataikuError, dataikuErrorCode, type StableErrorCode, } from "./errors.js";
+import { buildDatasetCloneSettings, } from "./resources/datasets.js";
 import type { FlowZoneItemInput, } from "./resources/flow-zones.js";
 import {
 	type JobBuildTargetType,
@@ -44,21 +45,61 @@ import { sanitizeFileName, } from "./utils/sanitize.js";
 // Utility helpers
 // ---------------------------------------------------------------------------
 
-const CLI_VERSION: string = (() => {
-	try {
-		let dir = dirname(fileURLToPath(import.meta.url,),);
-		for (let i = 0; i < 5; i++) {
-			const candidate = resolve(dir, "package.json",);
-			try {
-				return (JSON.parse(readFileSync(candidate, "utf-8",),) as { version: string; }).version;
-			} catch {
-				dir = dirname(dir,);
-			}
+function findPackageRoot(): string | undefined {
+	let dir = dirname(fileURLToPath(import.meta.url,),);
+	for (let i = 0; i < 5; i++) {
+		try {
+			readFileSync(resolve(dir, "package.json",), "utf-8",);
+			return dir;
+		} catch {
+			dir = dirname(dir,);
 		}
-		return "unknown";
+	}
+	return undefined;
+}
+
+function packageVersion(packageRoot: string | undefined,): string {
+	if (!packageRoot) return "unknown";
+	try {
+		return (JSON.parse(readFileSync(resolve(packageRoot, "package.json",), "utf-8",),) as {
+			version: string;
+		}).version;
 	} catch {
 		return "unknown";
 	}
+}
+
+function gitDirectory(packageRoot: string,): string {
+	try {
+		const gitFile = readFileSync(resolve(packageRoot, ".git",), "utf-8",).trim();
+		if (gitFile.startsWith("gitdir:",)) {
+			return resolve(packageRoot, gitFile.slice("gitdir:".length,).trim(),);
+		}
+	} catch {
+		// Normal checkouts have a .git directory, not a .git file.
+	}
+	return resolve(packageRoot, ".git",);
+}
+
+function gitRevision(packageRoot: string | undefined,): string | undefined {
+	if (!packageRoot) return undefined;
+	try {
+		const gitDir = gitDirectory(packageRoot,);
+		const head = readFileSync(resolve(gitDir, "HEAD",), "utf-8",).trim();
+		if (!head.startsWith("ref:",)) return head.slice(0, 7,);
+		const ref = head.slice("ref:".length,).trim();
+		const full = readFileSync(resolve(gitDir, ref,), "utf-8",).trim();
+		return full.slice(0, 7,);
+	} catch {
+		return undefined;
+	}
+}
+
+const PACKAGE_ROOT = findPackageRoot();
+const CLI_VERSION = packageVersion(PACKAGE_ROOT,);
+const CLI_VERSION_LABEL = (() => {
+	const revision = gitRevision(PACKAGE_ROOT,);
+	return revision ? `${CLI_VERSION}+g${revision}` : CLI_VERSION;
 })();
 function num(v: string | boolean | undefined,): number | undefined {
 	if (typeof v !== "string") return undefined;
@@ -258,23 +299,6 @@ function datasetSourceSummary(details: DatasetDetails,): Record<string, unknown>
 		folderSmartId: params.folderSmartId,
 		formatType: details.formatType,
 	};
-}
-
-function assertDatasetClonePathIsSafe(
-	source: DatasetDetails,
-	target: Record<string, unknown>,
-	allowSamePath: boolean,
-): void {
-	if (allowSamePath || source.managed !== true) return;
-	const sourcePath = typeof source.params?.path === "string" ? source.params.path : undefined;
-	const targetParams = plainRecord(target.params,);
-	const targetPath = typeof targetParams?.path === "string" ? targetParams.path : undefined;
-	if (sourcePath !== undefined && targetPath === sourcePath) {
-		throw new UsageError(
-			`Refusing to clone managed dataset "${source.name}" with the same storage path. Pass --path or --allow-same-path.`,
-			"invalid_enum",
-		);
-	}
 }
 
 function requiredStringFlag(
@@ -1286,6 +1310,7 @@ const VALUE_FLAGS = new Set([
 	"python-interpreter",
 	"replace-input",
 	"replace-output",
+	"replace-payload-text",
 	"retain",
 	"saved-model",
 	"sql",
@@ -1315,6 +1340,7 @@ const REPEATABLE_VALUE_FLAGS = new Set([
 	"recipe",
 	"replace-input",
 	"replace-output",
+	"replace-payload-text",
 ],);
 
 const KNOWN_LONG_FLAGS = new Set([
@@ -2531,20 +2557,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					allowSamePath: f["allow-same-path"] === true,
 				};
 				const current = await c.datasets.get(a[0], pk,);
-				const next = {
-					...(current as unknown as Record<string, unknown>),
-					name: a[1],
-					projectKey: pk,
-					params: {
-						...current.params,
-						...(opts.path !== undefined ? { path: opts.path, } : {}),
-						...(opts.table !== undefined ? { table: opts.table, mode: "table", } : {}),
-						...(opts.metastoreTableName !== undefined
-							? { metastoreTableName: opts.metastoreTableName, }
-							: {}),
-					},
-				};
-				assertDatasetClonePathIsSafe(current, next, opts.allowSamePath,);
+				const next = buildDatasetCloneSettings(current, a[1], pk ?? c.resolveProjectKey(pk,), opts,);
 				const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
 				if (f["dry-run"] === true) {
 					return {
@@ -2834,7 +2847,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		clone: {
 			handler: async (c, a, f,) => {
 				const usage =
-					"dss recipe clone [source|--from SOURCE] (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
+					"dss recipe clone [source|--from SOURCE] (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--replace-payload-text FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
 				const fromFlag = typeof f["from"] === "string" ? f["from"].trim() : "";
 				const sourceName = a[0] ?? fromFlag;
 				if (!sourceName) {
@@ -2855,12 +2868,14 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				}
 				const inputRewrites = rewritePairsFromFlags(f, "replace-input",);
 				const outputRewrites = rewritePairsFromFlags(f, "replace-output",);
+				const payloadTextRewrites = rewritePairsFromFlags(f, "replace-payload-text",);
 				const opts = {
 					projectKey: pk,
 					name,
 					outputDataset: f["output"] as string | undefined,
 					outputRewrites,
 					inputRewrites,
+					payloadTextRewrites,
 					copyOutputSettings: f["copy-output-settings"] === true,
 					outputPath: f["path"] as string | undefined,
 					metastoreTableName: f["metastore-table"] as string | undefined,
@@ -2876,6 +2891,16 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				if (opts.outputDataset !== undefined && outputItems.length === 1) {
 					plannedOutputRewrites[outputItems[0]!.ref!] = opts.outputDataset;
 				}
+				if (
+					opts.copyOutputSettings === true
+					&& Object.keys(plannedOutputRewrites,).length > 1
+					&& (opts.outputPath !== undefined || opts.metastoreTableName !== undefined)
+				) {
+					throw new UsageError(
+						"Cannot reuse --path or --metastore-table for multiple cloned output datasets.",
+						"invalid_enum",
+					);
+				}
 				const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
 				if (f["dry-run"] === true) {
 					return {
@@ -2887,6 +2912,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						inputRewrites,
 						outputRewrites: plannedOutputRewrites,
 						copyOutputSettings: opts.copyOutputSettings,
+						payloadTextRewrites,
 						current: source,
 						...(zoneId ? { zoneId, zoneMove: [{ objectId: name, objectType: "RECIPE", },], } : {}),
 					};
@@ -2901,7 +2927,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return { ...cloned, resource: "recipe", ...moved, };
 			},
 			usage:
-				"dss recipe clone [source|--from SOURCE] (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
+				"dss recipe clone [source|--from SOURCE] (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--replace-payload-text FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
 			description: "Clone a recipe graph/settings/payload into a separate experiment recipe.",
 			examples: [
 				"dss recipe clone compute_orders --name compute_orders_opt --output orders_opt --copy-output-settings --dry-run",
@@ -4511,6 +4537,7 @@ function requireArgs(args: string[], count: number, usage: string,): void {
 // ---------------------------------------------------------------------------
 
 function loadEnvFile(): void {
+	if (process.env.DATAIKU_DISABLE_ENV === "1") return;
 	const dirs = [
 		resolve(dirname(fileURLToPath(import.meta.url,),), "..",),
 		process.cwd(),
@@ -6631,7 +6658,7 @@ async function main(): Promise<void> {
 
 	// --version
 	if (flags["version"] === true) {
-		process.stdout.write(`${CLI_VERSION}\n`,);
+		process.stdout.write(`${CLI_VERSION_LABEL}\n`,);
 		process.exit(0,);
 	}
 
