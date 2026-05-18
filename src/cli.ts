@@ -3229,11 +3229,11 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			},
 			usage:
 				"dss job log <id> [--activity ACTIVITY_ID] [--log-id LOG_ID] [--max-lines N|--max-log-lines N] [--project-key KEY]",
-			description: "Get log output for a job, optionally selecting a DSS activity log id.",
+			description:
+				"Get public API job log output. --log-id is accepted for UI parity but DSS API-key auth cannot select browser-only cat-activity-log files.",
 			examples: [
 				"dss job log JOB_ID",
 				"dss job log JOB_ID --activity main --max-log-lines 200",
-				"dss job log JOB_ID --activity ACTIVITY_ID --log-id /python-recipe/python-output.log",
 			],
 		},
 		"log-url": {
@@ -6480,19 +6480,22 @@ function resolveCredentials(flags: Record<string, string | boolean>,): {
 	tlsRejectUnauthorized?: boolean;
 	caCertPath?: string;
 } {
-	let url = flags["url"] as string | undefined;
-	let apiKey = flags["api-key"] as string | undefined;
-	let projectKey = flags["project-key"] as string | undefined;
+	const hasUrlFlag = Object.hasOwn(flags, "url",);
+	const hasApiKeyFlag = Object.hasOwn(flags, "api-key",);
+	const hasProjectKeyFlag = Object.hasOwn(flags, "project-key",);
+	let url = hasUrlFlag ? flags["url"] as string | undefined : undefined;
+	let apiKey = hasApiKeyFlag ? flags["api-key"] as string | undefined : undefined;
+	let projectKey = hasProjectKeyFlag ? flags["project-key"] as string | undefined : undefined;
 	const saved = loadCredentials();
 
-	url ??= process.env.DATAIKU_URL;
-	apiKey ??= process.env.DATAIKU_API_KEY;
-	projectKey ??= process.env.DATAIKU_PROJECT_KEY;
+	if (!hasUrlFlag) url ??= process.env.DATAIKU_URL;
+	if (!hasApiKeyFlag) apiKey ??= process.env.DATAIKU_API_KEY;
+	if (!hasProjectKeyFlag) projectKey ??= process.env.DATAIKU_PROJECT_KEY;
 
 	if (saved) {
-		url ||= saved.url;
-		apiKey ||= saved.apiKey;
-		projectKey ??= saved.projectKey;
+		if (!hasUrlFlag) url ??= saved.url;
+		if (!hasApiKeyFlag) apiKey ??= saved.apiKey;
+		if (!hasProjectKeyFlag) projectKey ??= saved.projectKey;
 	}
 
 	return {

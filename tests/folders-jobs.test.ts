@@ -215,15 +215,13 @@ describe("JobsResource.log", () => {
 		expect(requestCount,).toBe(2,);
 	});
 
-	it("fetches a selected DSS activity log id", async () => {
+	it("fetches selected activity logs through the public API", async () => {
 		await withDataikuServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			expect(req.method,).toBe("GET",);
-			expect(url.pathname,).toBe("/dip/api/flow/jobs/cat-activity-log",);
-			expect(url.searchParams.get("projectKey",),).toBe("TEST",);
-			expect(url.searchParams.get("jobId",),).toBe("job-3",);
-			expect(url.searchParams.get("activityId",),).toBe("activity-1",);
-			expect(url.searchParams.get("logId",),).toBe("/python-recipe/python-output.log",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/jobs/job-3/log/",);
+			expect(url.searchParams.get("activity",),).toBe("activity-1",);
+			expect(url.searchParams.has("logId",),).toBe(false,);
 			res.statusCode = 200;
 			res.setHeader("Content-Type", "text/plain",);
 			res.end("python stdout\n",);

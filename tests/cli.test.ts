@@ -337,6 +337,31 @@ describe("CLI execution behavior", () => {
 		},);
 	});
 
+	it("routes --log-id through the public activity log endpoint", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/jobs/job-1/log/",);
+			expect(url.searchParams.get("activity",),).toBe("activity-1",);
+			expect(url.searchParams.has("logId",),).toBe(false,);
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end("activity stdout\n",);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss([
+				"job",
+				"log",
+				"job-1",
+				"--activity",
+				"activity-1",
+				"--log-id",
+				"/python-recipe/python-output.log",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toBe("activity stdout\n",);
+			expect(stderr,).toBe("",);
+		},);
+	});
+
 	it("supports --data-file JSON input", async () => {
 		let capturedBody: Record<string, unknown> | undefined;
 		const tmpFile = join(tmpdir(), `dss-cli-data-file-${Date.now()}.json`,);
@@ -2982,26 +3007,62 @@ describe("CLI wait command exit codes", () => {
 
 describe("CLI missing credentials plain text errors", () => {
 	it("missing URL prints plain text error, not JSON", async () => {
-		// --url "" overrides .env-loaded DATAIKU_URL, forcing the missing-URL path
-		const failure = await dssFailure(["--url", "", "project", "list",],);
-		expect(failure.stderr,).not.toContain('{"error"',);
-		expect(failure.stderr,).toContain("Missing Dataiku URL",);
-		expect(failure.code,).toBe(1,);
+		const tmpDir = join(tmpdir(), `dss-cli-missing-url-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		writeFileSync(
+			join(tmpDir, "credentials.json",),
+			JSON.stringify({ url: "http://saved.example", apiKey: "saved-key", },),
+		);
+		try {
+			const failure = await dssFailure(["--url", "", "project", "list",], {
+				env: {
+					PATH: process.env.PATH,
+					HOME: tmpDir,
+					DSS_CONFIG_DIR: tmpDir,
+					DATAIKU_DISABLE_ENV: "1",
+					DATAIKU_URL: "http://env.example",
+					DATAIKU_API_KEY: "env-key",
+				},
+			},);
+			expect(failure.stderr,).not.toContain('{"error"',);
+			expect(failure.stderr,).toContain("Missing Dataiku URL",);
+			expect(failure.code,).toBe(1,);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
 	});
 
 	it("missing API key prints plain text error, not JSON", async () => {
-		// --url forces a URL, --api-key "" forces empty key — even without .env
-		const failure = await dssFailure([
-			"--url",
-			"http://localhost:1",
-			"--api-key",
-			"",
-			"project",
-			"list",
-		],);
-		expect(failure.stderr,).not.toContain('{"error"',);
-		expect(failure.stderr,).toContain("Missing API key",);
-		expect(failure.code,).toBe(1,);
+		const tmpDir = join(tmpdir(), `dss-cli-missing-key-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		writeFileSync(
+			join(tmpDir, "credentials.json",),
+			JSON.stringify({ url: "http://saved.example", apiKey: "saved-key", },),
+		);
+		try {
+			const failure = await dssFailure([
+				"--url",
+				"http://localhost:1",
+				"--api-key",
+				"",
+				"project",
+				"list",
+			], {
+				env: {
+					PATH: process.env.PATH,
+					HOME: tmpDir,
+					DSS_CONFIG_DIR: tmpDir,
+					DATAIKU_DISABLE_ENV: "1",
+					DATAIKU_URL: "http://env.example",
+					DATAIKU_API_KEY: "env-key",
+				},
+			},);
+			expect(failure.stderr,).not.toContain('{"error"',);
+			expect(failure.stderr,).toContain("Missing API key",);
+			expect(failure.code,).toBe(1,);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
 	});
 });
 

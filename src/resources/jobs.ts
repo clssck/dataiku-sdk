@@ -269,21 +269,10 @@ export class JobsResource extends BaseResource {
 		jobId: string,
 		opts?: { activity?: string; logId?: string; maxLogLines?: number; projectKey?: string; },
 	): Promise<string> {
-		let path: string;
-		if (opts?.logId) {
-			if (!opts.activity) throw new Error("activity is required when logId is provided.",);
-			const params = new URLSearchParams({
-				projectKey: this.resolveProjectKey(opts.projectKey,),
-				jobId,
-				activityId: opts.activity,
-				logId: opts.logId,
-			},);
-			path = `/dip/api/flow/jobs/cat-activity-log?${params.toString()}`;
-		} else {
-			const jobEnc = encodeURIComponent(jobId,);
-			const query = opts?.activity ? `?activity=${encodeURIComponent(opts.activity,)}` : "";
-			path = `/public/api/projects/${this.enc(opts?.projectKey,)}/jobs/${jobEnc}/log/${query}`;
-		}
+		const jobEnc = encodeURIComponent(jobId,);
+		const query = opts?.activity ? `?activity=${encodeURIComponent(opts.activity,)}` : "";
+		// DSS cat-activity-log URLs require a browser session; API-key callers must use the public log endpoint.
+		const path = `/public/api/projects/${this.enc(opts?.projectKey,)}/jobs/${jobEnc}/log/${query}`;
 		const log = await this.client.getText(path,);
 		return limitJobLog(log, opts?.maxLogLines,);
 	}
