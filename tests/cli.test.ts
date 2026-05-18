@@ -1096,6 +1096,110 @@ describe("CLI planned command coverage", () => {
 		);
 	});
 
+	it("recipe create dry-run expands repeated and comma-separated inputs", async () => {
+		const { stdout, stderr, } = await dss([
+			"recipe",
+			"create",
+			"--type",
+			"python",
+			"--input",
+			"source_a",
+			"--input",
+			"source_b,source_c",
+			"--output",
+			"target_ds",
+			"--dry-run",
+		], {
+			env: cliEnv("http://127.0.0.1:1",),
+		},);
+
+		expect(stderr,).toBe("",);
+		const result = JSON.parse(stdout,) as { payload: { inputDatasets: string[]; }; };
+		expect(result.payload.inputDatasets,).toEqual(["source_a", "source_b", "source_c",],);
+	});
+
+	it("dataset clone dry-run preserves settings with storage overrides", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/datasets/source_ds",);
+			sendJson(res, {
+				name: "source_ds",
+				type: "S3",
+				managed: true,
+				params: {
+					connection: "s3_conn",
+					path: "/dataiku/TEST/source_ds",
+					metastoreTableName: "source_ds",
+				},
+				formatType: "csv",
+				formatParams: { separator: "\t", parseHeaderRow: true, },
+				schema: { columns: [{ name: "id", type: "bigint", },], },
+			},);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss([
+				"dataset",
+				"clone",
+				"source_ds",
+				"target_ds",
+				"--path",
+				"/dataiku/TEST/target_ds",
+				"--metastore-table",
+				"target_ds",
+				"--dry-run",
+			], { env: cliEnv(url,), },);
+
+			expect(stderr,).toBe("",);
+			const result = JSON.parse(stdout,) as {
+				next: { name: string; params: { path: string; metastoreTableName: string; }; schema: unknown; };
+			};
+			expect(result.next.name,).toBe("target_ds",);
+			expect(result.next.params.path,).toBe("/dataiku/TEST/target_ds",);
+			expect(result.next.params.metastoreTableName,).toBe("target_ds",);
+			expect(result.next.schema,).toEqual({ columns: [{ name: "id", type: "bigint", },], },);
+		},);
+	});
+
+	it("flow-zone summary and find expose compact object membership", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/flow/zones",);
+			sendJson(res, [
+				{
+					id: "zone-1",
+					name: "Raw",
+					items: [{ objectType: "DATASET", objectId: "orders", },],
+				},
+				{
+					id: "zone-2",
+					name: "Recipes",
+					items: [{ objectType: "RECIPE", objectId: "compute_orders", },],
+				},
+			],);
+		}, async (url,) => {
+			const summary = JSON.parse(
+				(await dss(["flow-zone", "list", "--summary", "--object", "RECIPE:compute_orders",], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as Array<{ id: string; itemCount: number; containsMatchingObject: boolean; }>;
+			expect(summary,).toEqual([
+				{ id: "zone-1", name: "Raw", itemCount: 1, containsMatchingObject: false, },
+				{ id: "zone-2", name: "Recipes", itemCount: 1, containsMatchingObject: true, },
+			],);
+
+			const found = JSON.parse(
+				(await dss(["flow-zone", "find", "--recipe", "compute_orders",], { env: cliEnv(url,), },))
+					.stdout,
+			) as Array<{ id: string; containsMatchingObject: boolean; }>;
+			expect(found,).toEqual([{
+				id: "zone-2",
+				name: "Recipes",
+				itemCount: 1,
+				containsMatchingObject: true,
+			},],);
+		},);
+	});
 	it("uses replace mode for variable set without fetching existing values", async () => {
 		let sawGet = false;
 		let capturedBody: Record<string, unknown> | undefined;
@@ -1645,6 +1749,7 @@ describe("CLI recipe get-payload and set-payload", () => {
 					"my_recipe",
 					"--file",
 					filePath,
+					"--no-backup",
 				], { env: cliEnv(url,), },);
 				expect(stdout,).toContain('"updated": "my_recipe"',);
 				expect(putBody,).toBeDefined();
@@ -1691,20 +1796,73 @@ describe("CLI recipe get-payload and set-payload", () => {
 					"--backup-dir",
 					backupDir,
 				], { env: cliEnv(url,), },);
-				const result = JSON.parse(stdout,) as { backupPath: string; };
+				const result = JSON.parse(stdout,) as { backupPath: string; backupCreated: boolean; };
+				expect(result.backupCreated,).toBe(true,);
 				expect(result.backupPath.startsWith(backupDir,),).toBe(true,);
-				expect(readFileSync(result.backupPath, "utf-8",),).toBe("print('remote')\n",);
+				const backup = JSON.parse(readFileSync(result.backupPath, "utf-8",),) as {
+					payload: string;
+					payloadHash: string;
+					recipe: { name: string; };
+				};
+				expect(backup.payload,).toBe("print('remote')\n",);
+				expect(backup.payloadHash,).toHaveLength(64,);
+				expect(backup.recipe.name,).toBe("my_recipe",);
 				expect(putBody,).toBeDefined();
 				expect(JSON.parse(putBody!,).payload,).toBe("print('updated')\n",);
 			},);
 		} finally {
 			expect(requestEvents,).toEqual([
 				"GET /public/api/projects/TEST/recipes/my_recipe?includePayload=true",
-				"GET /public/api/projects/TEST/recipes/my_recipe?includePayload=true",
 				"PUT /public/api/projects/TEST/recipes/my_recipe",
 			],);
 			rmSync(filePath, { force: true, },);
 			rmSync(backupDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("set-payload uses the default backup directory", async () => {
+		const tempDir = join(tmpdir(), `dss-cli-default-backup-${Date.now()}`,);
+		const filePath = join(tempDir, "updated.py",);
+		let putBody: string | undefined;
+
+		try {
+			mkdirSync(tempDir, { recursive: true, },);
+			writeFileSync(filePath, "print('updated')\n", "utf-8",);
+			await withCliServer(async (req, res,) => {
+				if (req.method === "GET") {
+					sendJson(res, {
+						recipe: { type: "python", name: "my_recipe", },
+						payload: "print('remote')\n",
+					},);
+					return;
+				}
+				if (req.method === "PUT") {
+					putBody = await readBody(req,);
+					sendJson(res, {},);
+					return;
+				}
+				res.statusCode = 404;
+				res.end();
+			}, async (url,) => {
+				const result = JSON.parse(
+					(await dss(["recipe", "set-payload", "my_recipe", "--file", filePath,], {
+						cwd: tempDir,
+						env: cliEnv(url,),
+					},)).stdout,
+				) as { backupCreated: boolean; backupPath: string; };
+
+				expect(result.backupCreated,).toBe(true,);
+				expect(result.backupPath.startsWith(join(tempDir, ".dss-backups", "recipes",),),).toBe(true,);
+				const backup = JSON.parse(readFileSync(result.backupPath, "utf-8",),) as {
+					normalizedPayloadHash: string;
+					payload: string;
+				};
+				expect(backup.payload,).toBe("print('remote')\n",);
+				expect(backup.normalizedPayloadHash,).toHaveLength(64,);
+				expect(JSON.parse(putBody!,).payload,).toBe("print('updated')\n",);
+			},);
+		} finally {
+			rmSync(tempDir, { recursive: true, force: true, },);
 		}
 	});
 
@@ -4374,7 +4532,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 				expect(plan.payload.backupPath.startsWith(backupDir,),).toBe(true,);
 				expect(plan.localWrites,).toEqual([{
 					path: plan.payload.backupPath,
-					source: "remote recipe payload",
+					source: "remote recipe backup",
 					before: "PUT",
 				},],);
 			},);

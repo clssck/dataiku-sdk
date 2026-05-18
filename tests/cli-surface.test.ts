@@ -46,7 +46,7 @@ type CommandRegistry = Record<string, Record<string, CommandRegistryEntry>>;
 
 const EXPECTED_COMMANDS: Record<string, string[]> = {
 	project: ["list", "get", "metadata", "flow", "map",],
-	"flow-zone": ["list", "get", "create", "update", "delete", "move", "graph",],
+	"flow-zone": ["list", "find", "get", "create", "update", "delete", "move", "graph",],
 	dashboard: ["list", "get", "create", "update", "delete",],
 	"data-quality": [
 		"rules",
@@ -75,6 +75,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"create",
 		"delete",
 		"update",
+		"clone",
 	],
 	recipe: [
 		"list",
@@ -89,8 +90,11 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"update",
 		"get-payload",
 		"set-payload",
+		"clone",
+		"restore",
+		"assert-unchanged",
 	],
-	job: ["list", "get", "log", "build", "build-and-wait", "wait", "abort",],
+	job: ["list", "get", "log", "log-url", "build", "build-and-wait", "wait", "monitor", "abort",],
 	scenario: ["list", "get", "run", "run-and-wait", "status", "delete", "create", "update",],
 	folder: [
 		"list",
@@ -316,6 +320,12 @@ describe("CLI command surface", () => {
 			name: "backup-dir",
 			kind: "value",
 		},);
+		expect(registry.recipe["set-payload"].flags,).toContainEqual({
+			name: "no-backup",
+			kind: "boolean",
+		},);
+		expect(registry.dataset.clone.cleanupCommand,).toBe("dss dataset delete <name> --if-exists",);
+		expect(registry.recipe.clone.cleanupCommand,).toBe("dss recipe delete <name> --if-exists",);
 		expect(registry.recipe.run.flags,).toContainEqual({ name: "max-log-lines", kind: "value", },);
 		expect(registry.recipe.run.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
 		expect(registry.recipe.run.async,).toBe("job",);

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash, } from "node:crypto";
 import { readFileSync, } from "node:fs";
 import { mkdir, writeFile, } from "node:fs/promises";
 import { dirname, join, resolve, } from "node:path";
@@ -19,7 +20,7 @@ import {
 import { DataikuError, dataikuErrorCode, type StableErrorCode, } from "./errors.js";
 import type { FlowZoneItemInput, } from "./resources/flow-zones.js";
 import type { JobBuildTargetType, JobLogFilter, } from "./resources/jobs.js";
-import type { BuildMode, FlowZoneObjectType, } from "./schemas.js";
+import type { BuildMode, FlowZone, FlowZoneObjectType, } from "./schemas.js";
 import { AGENTS, detectAgents, findWorkspaceRoot, installSkill, } from "./skill.js";
 import {
 	appendCleanupLedgerEntry,
@@ -100,9 +101,83 @@ function jobLogFilterFromFlag(v: string | boolean | undefined,): JobLogFilter | 
 	);
 }
 
-function recipePayloadBackupPath(recipeName: string, backupDir: string,): string {
+function recipeBackupPath(recipeName: string, backupDir: string,): string {
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-",);
-	return join(backupDir, `${sanitizeFileName(recipeName, "recipe",)}-${stamp}.payload`,);
+	return join(backupDir, `${sanitizeFileName(recipeName, "recipe",)}-${stamp}.recipe-backup.json`,);
+}
+
+function sha256Hex(value: string,): string {
+	return createHash("sha256",).update(value,).digest("hex",);
+}
+
+function normalizeLineEndings(value: string,): string {
+	return value.replace(/\r\n/g, "\n",);
+}
+
+function stableJson(value: unknown,): string {
+	if (value === undefined) return "undefined";
+	if (value === null || typeof value !== "object") return JSON.stringify(value,);
+	if (Array.isArray(value,)) return `[${value.map((item,) => stableJson(item,)).join(",",)}]`;
+	const entries = Object.entries(value as Record<string, unknown>,).sort(([a,], [b,],) =>
+		a.localeCompare(b,)
+	);
+	return `{${
+		entries.map(([key, item,],) => `${JSON.stringify(key,)}:${stableJson(item,)}`).join(",",)
+	}}`;
+}
+
+function stableHash(value: unknown,): string {
+	return sha256Hex(stableJson(value,),);
+}
+
+function recipeCodeEnv(recipe: Record<string, unknown>,): unknown {
+	const params = recipe.params;
+	if (!params || typeof params !== "object" || Array.isArray(params,)) return undefined;
+	return (params as Record<string, unknown>).envSelection;
+}
+
+function recipeGraph(recipe: Record<string, unknown>,): Record<string, unknown> {
+	return {
+		inputs: recipe.inputs,
+		outputs: recipe.outputs,
+	};
+}
+
+function recipeBackupDocument(
+	recipeName: string,
+	projectKey: string | undefined,
+	current: { recipe: Record<string, unknown>; payload?: string; },
+): Record<string, unknown> {
+	return {
+		resource: "recipe",
+		recipeName,
+		projectKey,
+		createdAt: new Date().toISOString(),
+		versionTag: current.recipe.versionTag,
+		payloadHash: sha256Hex(current.payload ?? "",),
+		graphHash: stableHash(recipeGraph(current.recipe,),),
+		normalizedPayloadHash: sha256Hex(normalizeLineEndings(current.payload ?? "",),),
+		codeEnvHash: stableHash(recipeCodeEnv(current.recipe,),),
+		codeEnv: recipeCodeEnv(current.recipe,),
+		recipe: current.recipe,
+		payload: current.payload ?? "",
+	};
+}
+
+function readRecipeBackup(backupPath: string,): Record<string, unknown> {
+	const raw = readFileSync(backupPath, "utf-8",);
+	try {
+		const parsed = JSON.parse(raw,) as Record<string, unknown>;
+		if (parsed && typeof parsed === "object" && parsed.resource === "recipe") return parsed;
+	} catch {
+		// Backward-compatible payload-only backups are handled below.
+	}
+	return {
+		resource: "recipe",
+		recipeName: "unknown",
+		payloadHash: sha256Hex(raw,),
+		payload: raw,
+	};
 }
 function recipeRunShouldWait(flags: Record<string, string | boolean>,): boolean {
 	if (flags["wait"] === true && flags["no-wait"] === true) {
@@ -124,6 +199,25 @@ function recipeRunShouldWait(flags: Record<string, string | boolean>,): boolean 
 function splitCsvFlag(v: string | boolean | undefined,): string[] {
 	if (typeof v !== "string") return [];
 	return v.split(",",).map((item,) => item.trim()).filter((item,) => item.length > 0);
+}
+
+function recipeInputDatasetsFromFlags(
+	flags: Record<string, string | boolean>,
+): string[] | undefined {
+	const inputs = splitCsvFlag(flags["input"],);
+	return inputs.length > 0 ? inputs : undefined;
+}
+
+function requiredStringFlag(
+	flags: Record<string, string | boolean>,
+	name: string,
+	usage: string,
+): string {
+	const value = flags[name];
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new UsageError(`--${name} is required. Usage: ${usage}`, "missing_required_flag",);
+	}
+	return value.trim();
 }
 
 function flowZoneId(value: string,): string {
@@ -210,6 +304,55 @@ function flowZoneMoveItems(flags: Record<string, string | boolean>,): FlowZoneIt
 		items.push(parseFlowZoneObject(value,),);
 	}
 	return items;
+}
+
+function flowZoneItems(zone: FlowZone,): FlowZoneItemInput[] {
+	return [...(zone.items ?? []), ...(zone.shared ?? []),];
+}
+
+function flowZoneContains(zone: FlowZone, object: FlowZoneItemInput,): boolean {
+	return flowZoneItems(zone,).some((item,) =>
+		item.objectId === object.objectId
+		&& item.objectType === object.objectType
+		&& (object.projectKey === undefined || item.projectKey === object.projectKey)
+	);
+}
+
+function flowZoneSummary(zone: FlowZone, object?: FlowZoneItemInput,): Record<string, unknown> {
+	const items = flowZoneItems(zone,);
+	return {
+		id: zone.id,
+		name: zone.name,
+		itemCount: items.length,
+		...(object ? { containsMatchingObject: flowZoneContains(zone, object,), } : {}),
+	};
+}
+
+async function resolveFlowZoneIdFromFlags(
+	client: DataikuClient,
+	flags: Record<string, string | boolean>,
+	projectKey?: string,
+): Promise<string | undefined> {
+	const zoneId = typeof flags["zone-id"] === "string" ? flags["zone-id"].trim() : "";
+	if (zoneId) return zoneId;
+	const zone = typeof flags["zone"] === "string" ? flags["zone"].trim() : "";
+	if (!zone) return undefined;
+	const zones = await client.flowZones.list(projectKey,);
+	const match = zones.find((candidate,) => candidate.id === zone || candidate.name === zone);
+	if (!match) throw new UsageError(`Flow zone not found: ${zone}`, "invalid_enum",);
+	return match.id;
+}
+
+async function moveCreatedItemsToZone(
+	client: DataikuClient,
+	flags: Record<string, string | boolean>,
+	items: FlowZoneItemInput[],
+	projectKey?: string,
+): Promise<{ zoneId?: string; moved?: FlowZoneItemInput[]; }> {
+	const zoneId = await resolveFlowZoneIdFromFlags(client, flags, projectKey,);
+	if (!zoneId || items.length === 0) return {};
+	await client.flowZones.moveItems(zoneId, items, projectKey,);
+	return { zoneId, moved: items, };
 }
 
 function json(v: string | boolean | undefined,): Record<string, unknown> | undefined {
@@ -508,7 +651,11 @@ function isFailedWaitResult(result: unknown,): boolean {
 }
 
 function commandFailureExitCode(result: unknown,): number | undefined {
-	return isFailedWaitResult(result,) ? 4 : undefined;
+	if (isFailedWaitResult(result,)) return 4;
+	if (
+		result && typeof result === "object" && (result as Record<string, unknown>).unchanged === false
+	) return 4;
+	return undefined;
 }
 function isNotFoundError(error: unknown,): boolean {
 	if (error instanceof DataikuError) return error.category === "not_found";
@@ -607,7 +754,7 @@ function cleanupLedgerEntry(
 	result: unknown,
 	projectKey: string | undefined,
 ): CleanupLedgerEntry | undefined {
-	if (!(action.startsWith("create",) || action === "upload")) return undefined;
+	if (!(action.startsWith("create",) || action === "clone" || action === "upload")) return undefined;
 	const record = resultRecord(result,);
 	if (record.skipped !== undefined) return undefined;
 	const project = flags["project-key"] as string | undefined ?? projectKey;
@@ -624,8 +771,27 @@ function cleanupLedgerEntry(
 				cleanup: { argv: ["dataset", "delete", name, "--if-exists", ...withProject,], },
 			};
 		}
+		case "dataset.clone": {
+			const name = stringField(record, ["target", "created", "name",],) ?? args[1];
+			if (!name) return undefined;
+			return {
+				...base,
+				name,
+				cleanup: { argv: ["dataset", "delete", name, "--if-exists", ...withProject,], },
+			};
+		}
 		case "recipe.create": {
 			const name = stringField(record, ["created", "recipeName", "name",],)
+				?? flags["name"] as string | undefined;
+			if (!name) return undefined;
+			return {
+				...base,
+				name,
+				cleanup: { argv: ["recipe", "delete", name, "--if-exists", ...withProject,], },
+			};
+		}
+		case "recipe.clone": {
+			const name = stringField(record, ["recipeName", "target", "created", "name",],)
 				?? flags["name"] as string | undefined;
 			if (!name) return undefined;
 			return {
@@ -762,7 +928,10 @@ const BOOLEAN_FLAGS = new Set([
 	"report-json",
 	"no-wait",
 	"force-rebuild",
+	"copy-output-settings",
 	"continue-on-error",
+	"no-backup",
+	"payload-only",
 ],);
 
 const SHORT_FLAGS: Record<string, string> = {
@@ -787,6 +956,7 @@ const VALUE_FLAGS = new Set([
 	"api-key",
 	"build-mode",
 	"backup-dir",
+	"backup",
 	"ca-cert",
 	"catalog",
 	"cell-id",
@@ -823,9 +993,11 @@ const VALUE_FLAGS = new Set([
 	"min-timestamp",
 	"mode",
 	"log-filter",
+	"log-id",
 	"model-evaluation-store",
 	"name",
 	"object",
+	"metastore-table",
 	"output",
 	"output-file",
 	"output-connection",
@@ -854,8 +1026,21 @@ const VALUE_FLAGS = new Set([
 	"target",
 	"target-type",
 	"timeout",
+	"table",
 	"type",
 	"url",
+	"until",
+	"zone",
+	"zone-id",
+],);
+
+const REPEATABLE_VALUE_FLAGS = new Set([
+	"dataset",
+	"folder",
+	"input",
+	"object",
+	"package",
+	"recipe",
 ],);
 
 const KNOWN_LONG_FLAGS = new Set([
@@ -887,6 +1072,19 @@ function requireFlagValue(
 	return next;
 }
 
+function setParsedFlagValue(
+	flags: Record<string, string | boolean>,
+	flagName: string,
+	value: string,
+): void {
+	const current = flags[flagName];
+	if (REPEATABLE_VALUE_FLAGS.has(flagName,) && typeof current === "string" && current.length > 0) {
+		flags[flagName] = `${current},${value}`;
+		return;
+	}
+	flags[flagName] = value;
+}
+
 interface ParsedArgs {
 	positional: string[];
 	flags: Record<string, string | boolean>;
@@ -907,7 +1105,7 @@ function parseArgs(argv: string[],): ParsedArgs {
 			if (eqIdx !== -1) {
 				const raw = arg.slice(2, eqIdx,);
 				const flagName = normalizeLongFlag(raw,);
-				flags[flagName] = arg.slice(eqIdx + 1,);
+				setParsedFlagValue(flags, flagName, arg.slice(eqIdx + 1,),);
 			} else {
 				const rawFlagName = arg.slice(2,);
 				const flagName = normalizeLongFlag(rawFlagName,);
@@ -915,7 +1113,7 @@ function parseArgs(argv: string[],): ParsedArgs {
 					flags[flagName] = true;
 				} else {
 					const next = requireFlagValue(`--${rawFlagName}`, argv[i + 1],);
-					flags[flagName] = next;
+					setParsedFlagValue(flags, flagName, next,);
 					i++;
 				}
 			}
@@ -926,7 +1124,7 @@ function parseArgs(argv: string[],): ParsedArgs {
 					flags[long] = true;
 				} else {
 					const next = requireFlagValue(`-${arg[1]}`, argv[i + 1],);
-					flags[long] = next;
+					setParsedFlagValue(flags, long, next,);
 					i++;
 				}
 			} else {
@@ -1698,10 +1896,38 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 	},
 	"flow-zone": {
 		list: {
-			handler: (c, _a, f,) => c.flowZones.list(f["project-key"] as string | undefined,),
-			usage: "dss flow-zone list [--project-key KEY]",
-			description: "List flow zones in a project.",
-			examples: ["dss flow-zone list",],
+			handler: async (c, _a, f,) => {
+				const zones = await c.flowZones.list(f["project-key"] as string | undefined,);
+				if (f["summary"] !== true) return zones;
+				const objects = flowZoneMoveItems(f,);
+				const object = objects.length === 1 ? objects[0] : undefined;
+				return zones.map((zone,) => flowZoneSummary(zone, object,));
+			},
+			usage: "dss flow-zone list [--summary] [--object TYPE:ID] [--project-key KEY]",
+			description: "List flow zones in a project, optionally as compact summaries.",
+			examples: ["dss flow-zone list", "dss flow-zone list --summary --object RECIPE:compute_orders",],
+		},
+		find: {
+			handler: async (c, _a, f,) => {
+				const objects = flowZoneMoveItems(f,);
+				if (objects.length !== 1) {
+					throw new UsageError(
+						"Exactly one object is required. Use --object TYPE:ID, --dataset DS, or --recipe R.",
+					);
+				}
+				const zones = await c.flowZones.list(f["project-key"] as string | undefined,);
+				const object = objects[0]!;
+				return zones
+					.filter((zone,) => flowZoneContains(zone, object,))
+					.map((zone,) => flowZoneSummary(zone, object,));
+			},
+			usage:
+				"dss flow-zone find (--object TYPE:ID | --dataset DS | --recipe R | --folder F) [--project-key KEY]",
+			description: "Find flow zones containing a specific flow object.",
+			examples: [
+				"dss flow-zone find --object RECIPE:compute_orders",
+				"dss flow-zone find --dataset orders",
+			],
 		},
 		get: {
 			handler: (c, a, f,) => {
@@ -1955,6 +2181,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					dsType,
 					projectKey: pk,
 				};
+				const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
 				if (f["if-not-exists"] === true || f["dry-run"] === true) {
 					const list = await c.datasets.list(pk,);
 					const existing = list.find((d,) => d.name === name);
@@ -1969,18 +2196,81 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 							name,
 							payload,
 							...(existing ? { current: existing, } : {}),
+							...(zoneId ? { zoneId, zoneMove: [{ objectId: name, objectType: "DATASET", },], } : {}),
 						};
 					}
 				}
 				await c.datasets.create(payload,);
-				return { created: name, resource: "dataset", };
+				const moved = await moveCreatedItemsToZone(
+					c,
+					f,
+					[{ objectId: name, objectType: "DATASET", },],
+					pk,
+				);
+				return { created: name, resource: "dataset", ...moved, };
 			},
 			usage:
-				"dss dataset create --name NAME --connection CONN --type TYPE [--if-not-exists] [--dry-run] [--project-key KEY]",
+				"dss dataset create --name NAME --connection CONN --type TYPE [--zone ZONE|--zone-id ID] [--if-not-exists] [--dry-run] [--project-key KEY]",
 			description: "Create a new dataset.",
 			examples: [
 				"dss dataset create --name orders --connection filesystem --type Filesystem",
-				"dss dataset create --name orders --connection filesystem --type Filesystem --dry-run",
+				"dss dataset create --name orders --connection filesystem --type Filesystem --zone Experiments --dry-run",
+			],
+		},
+		clone: {
+			handler: async (c, a, f,) => {
+				const usage =
+					"dss dataset clone <source> <target> [--path PATH] [--table TABLE] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
+				requireArgs(a, 2, usage,);
+				const pk = f["project-key"] as string | undefined;
+				const opts = {
+					projectKey: pk,
+					path: f["path"] as string | undefined,
+					table: f["table"] as string | undefined,
+					metastoreTableName: f["metastore-table"] as string | undefined,
+				};
+				const current = await c.datasets.get(a[0], pk,);
+				const next = {
+					...(current as unknown as Record<string, unknown>),
+					name: a[1],
+					projectKey: pk,
+					params: {
+						...current.params,
+						...(opts.path !== undefined ? { path: opts.path, } : {}),
+						...(opts.table !== undefined ? { table: opts.table, mode: "table", } : {}),
+						...(opts.metastoreTableName !== undefined
+							? { metastoreTableName: opts.metastoreTableName, }
+							: {}),
+					},
+				};
+				const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "clone",
+						resource: "dataset",
+						source: a[0],
+						target: a[1],
+						current,
+						next,
+						...(zoneId ? { zoneId, zoneMove: [{ objectId: a[1], objectType: "DATASET", },], } : {}),
+					};
+				}
+				const cloned = await c.datasets.clone(a[0], a[1], opts,);
+				const moved = await moveCreatedItemsToZone(
+					c,
+					f,
+					[{ objectId: a[1], objectType: "DATASET", },],
+					pk,
+				);
+				return { ...cloned, resource: "dataset", ...moved, };
+			},
+			usage:
+				"dss dataset clone <source> <target> [--path PATH] [--table TABLE] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
+			description: "Clone dataset settings into a new dataset, with storage/table overrides.",
+			examples: [
+				"dss dataset clone source_ds experiment_ds --path /dataiku/TEST/experiment_ds --dry-run",
+				"dss dataset clone source_ds experiment_ds --metastore-table experiment_ds --zone Experiments",
 			],
 		},
 		delete: {
@@ -2181,15 +2471,20 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				}
 				const name = f["name"] as string | undefined;
 				const pk = f["project-key"] as string | undefined;
+				const inputDatasets = recipeInputDatasetsFromFlags(f,);
 				const payload = {
 					type,
 					name,
-					inputDatasets: f["input"] ? [f["input"] as string,] : undefined,
+					inputDatasets,
 					outputDataset,
 					outputFolder,
 					outputConnection: f["output-connection"] as string | undefined,
 					projectKey: pk,
 				};
+				const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
+				const zoneMove = zoneId && name
+					? [{ objectId: name, objectType: "RECIPE" as const, },]
+					: undefined;
 				if ((f["if-not-exists"] === true || f["dry-run"] === true) && name) {
 					const list = await c.recipes.list(pk,);
 					const existing = list.find((r,) => r.name === name);
@@ -2203,24 +2498,92 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 							resource: "recipe",
 							name,
 							payload,
+							...(zoneId ? { zoneId, zoneMove, } : {}),
 							...(existing ? { current: existing, } : {}),
 						};
 					}
 				}
 				if (f["dry-run"] === true) {
-					return { dryRun: true, action: "create", resource: "recipe", payload, };
+					return {
+						dryRun: true,
+						action: "create",
+						resource: "recipe",
+						payload,
+						...(zoneId ? { zoneId, zoneMove, } : {}),
+					};
 				}
 				const created = await c.recipes.create(payload,);
-				return { created: created.recipeName, resource: "recipe", ...created, };
+				const createdName = created.recipeName;
+				const moved = await moveCreatedItemsToZone(c, f, [{
+					objectId: createdName,
+					objectType: "RECIPE",
+				},], pk,);
+				return { created: createdName, resource: "recipe", ...created, ...moved, };
 			},
 			usage:
-				"dss recipe create --type TYPE --input DS (--output DS | --output-folder FOLDER_ID) [--name NAME] [--output-connection CONN] [--if-not-exists] [--dry-run] [--project-key KEY]",
-			description:
-				"Create a recipe with a dataset output, or use --output-folder with --output-connection for a managed-folder output.",
+				"dss recipe create --type TYPE --input DS[,DS2] (--output DS | --output-folder FOLDER_ID) [--name NAME] [--output-connection CONN] [--zone ZONE|--zone-id ID] [--if-not-exists] [--dry-run] [--project-key KEY]",
+			description: "Create a recipe with one or more inputs and a dataset or managed-folder output.",
 			examples: [
-				"dss recipe create --type python --input orders --output orders_clean",
-				"dss recipe create --type python --input orders --output orders_clean --output-connection filesystem",
+				"dss recipe create --type python --input raw_orders,lookup --output orders_clean",
+				"dss recipe create --type python --input orders --input customers --output orders_clean --zone Experiments",
 				"dss recipe create --type python --input orders --output-folder LT7TUHJ8 --output-connection filesystem --dry-run",
+			],
+		},
+		clone: {
+			handler: async (c, a, f,) => {
+				const usage =
+					"dss recipe clone <source> --name NAME [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
+				requireArgs(a, 1, usage,);
+				const pk = f["project-key"] as string | undefined;
+				const name = requiredStringFlag(f, "name", usage,);
+				const opts = {
+					projectKey: pk,
+					name,
+					outputDataset: f["output"] as string | undefined,
+					copyOutputSettings: f["copy-output-settings"] === true,
+					outputPath: f["path"] as string | undefined,
+					metastoreTableName: f["metastore-table"] as string | undefined,
+				};
+				const source = await c.recipes.get(a[0], { includePayload: true, projectKey: pk, },);
+				const outputItems = Object.values(
+					(source.recipe.outputs ?? {}) as Record<
+						string,
+						{ items?: Array<{ ref?: string; type?: string; }>; }
+					>,
+				).flatMap((role,) => role.items ?? []).filter((item,) => typeof item.ref === "string");
+				const outputRewrites: Record<string, string> = {};
+				if (opts.outputDataset !== undefined && outputItems.length === 1) {
+					outputRewrites[outputItems[0]!.ref!] = opts.outputDataset;
+				}
+				const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "clone",
+						resource: "recipe",
+						source: a[0],
+						target: name,
+						outputRewrites,
+						copyOutputSettings: opts.copyOutputSettings,
+						current: source,
+						...(zoneId ? { zoneId, zoneMove: [{ objectId: name, objectType: "RECIPE", },], } : {}),
+					};
+				}
+				const cloned = await c.recipes.clone(a[0], opts,);
+				const moved = await moveCreatedItemsToZone(
+					c,
+					f,
+					[{ objectId: name, objectType: "RECIPE", },],
+					pk,
+				);
+				return { ...cloned, resource: "recipe", ...moved, };
+			},
+			usage:
+				"dss recipe clone <source> --name NAME [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
+			description: "Clone a recipe graph/settings/payload into a separate experiment recipe.",
+			examples: [
+				"dss recipe clone compute_orders --name compute_orders_opt --output orders_opt --copy-output-settings --dry-run",
+				"dss recipe clone compute_orders --name compute_orders_opt --output orders_opt --zone Experiments",
 			],
 		},
 		diff: {
@@ -2308,13 +2671,17 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				const filePath = f["file"] as string;
 				if (!filePath) throw new UsageError("--file is required.",);
 				const content = readFileSync(filePath, "utf-8",);
-				const backupDir = f["backup-dir"] as string | undefined;
-				const backupPath = backupDir ? recipePayloadBackupPath(a[0], backupDir,) : undefined;
+				const pk = f["project-key"] as string | undefined;
+				const shouldBackup = f["no-backup"] !== true;
+				const backupDir = shouldBackup
+					? (f["backup-dir"] as string | undefined) ?? join(process.cwd(), ".dss-backups", "recipes",)
+					: undefined;
+				const backupPath = backupDir ? recipeBackupPath(a[0], backupDir,) : undefined;
+				const current = await c.recipes.get(a[0], {
+					projectKey: pk,
+					includePayload: true,
+				},);
 				if (f["dry-run"] === true) {
-					const current = await c.recipes.get(a[0], {
-						projectKey: f["project-key"] as string | undefined,
-						includePayload: true,
-					},);
 					return {
 						dryRun: true,
 						action: "set-payload",
@@ -2323,34 +2690,142 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						file: filePath,
 						current,
 						next: { ...current, payload: content, },
-						...(backupPath ? { backupPath, } : {}),
+						...(backupPath ? { backupPath, backup: recipeBackupDocument(a[0], pk, current,), } : {}),
 					};
 				}
 				if (backupDir && backupPath) {
-					const current = await c.recipes.get(a[0], {
-						projectKey: f["project-key"] as string | undefined,
-						includePayload: true,
-					},);
 					await mkdir(backupDir, { recursive: true, },);
-					await writeFile(backupPath, current.payload ?? "", "utf-8",);
+					await writeFile(
+						backupPath,
+						`${JSON.stringify(recipeBackupDocument(a[0], pk, current,), null, 2,)}\n`,
+						"utf-8",
+					);
 				}
-				await c.recipes.setPayload(a[0], content, {
-					projectKey: f["project-key"] as string | undefined,
-				},);
+				await c.recipes.replace(a[0], { ...current, payload: content, }, pk,);
 				return {
 					updated: a[0],
 					resource: "recipe",
 					file: filePath,
+					backupCreated: backupPath !== undefined,
 					...(backupPath ? { backupPath, } : {}),
 				};
 			},
 			usage:
-				"dss recipe set-payload <name> --file PATH [--backup-dir DIR] [--dry-run] [--project-key KEY]",
+				"dss recipe set-payload <name> --file PATH [--backup-dir DIR|--no-backup] [--dry-run] [--project-key KEY]",
 			description:
-				"Upload recipe code from a local file, optionally backing up the remote payload first.",
+				"Upload recipe code from a local file, backing up payload, graph, settings, and version metadata by default.",
 			examples: [
 				"dss recipe set-payload compute_orders --file code.py --dry-run",
 				"dss recipe set-payload compute_orders --file code.py --backup-dir ./backups",
+				"dss recipe set-payload compute_orders --file code.py --no-backup",
+			],
+		},
+		restore: {
+			handler: async (c, a, f,) => {
+				const usage =
+					"dss recipe restore <name> --backup FILE [--payload-only] [--dry-run] [--project-key KEY]";
+				requireArgs(a, 1, usage,);
+				const backupPath = requiredStringFlag(f, "backup", usage,);
+				const backup = readRecipeBackup(backupPath,);
+				const payload = typeof backup.payload === "string" ? backup.payload : "";
+				const pk = f["project-key"] as string | undefined;
+				const current = await c.recipes.get(a[0], { includePayload: true, projectKey: pk, },);
+				const backupRecipe =
+					backup.recipe && typeof backup.recipe === "object" && !Array.isArray(backup.recipe,)
+						? backup.recipe as Record<string, unknown>
+						: undefined;
+				const restoredRecipe = backupRecipe
+					? { ...backupRecipe, name: a[0], ...(pk ? { projectKey: pk, } : {}), }
+					: undefined;
+				const next = f["payload-only"] === true || !restoredRecipe
+					? { ...current, payload, }
+					: { ...current, recipe: restoredRecipe, payload, };
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "restore",
+						resource: "recipe",
+						name: a[0],
+						backupPath,
+						current,
+						next,
+					};
+				}
+				await c.recipes.replace(a[0], next as Record<string, unknown>, pk,);
+				return {
+					restored: a[0],
+					resource: "recipe",
+					backupPath,
+					payloadOnly: f["payload-only"] === true,
+				};
+			},
+			usage:
+				"dss recipe restore <name> --backup FILE [--payload-only] [--dry-run] [--project-key KEY]",
+			description: "Restore a recipe from a set-payload backup.",
+			examples: [
+				"dss recipe restore compute_orders --backup .dss-backups/recipes/backup.recipe-backup.json --dry-run",
+			],
+		},
+		"assert-unchanged": {
+			handler: async (c, a, f,) => {
+				const usage = "dss recipe assert-unchanged <name> --since BACKUP [--project-key KEY]";
+				requireArgs(a, 1, usage,);
+				const backupPath = requiredStringFlag(f, "since", usage,);
+				const backup = readRecipeBackup(backupPath,);
+				const current = await c.recipes.get(a[0], {
+					includePayload: true,
+					projectKey: f["project-key"] as string | undefined,
+				},);
+				const payloadHash = sha256Hex(current.payload ?? "",);
+				const normalizedPayloadHash = sha256Hex(normalizeLineEndings(current.payload ?? "",),);
+				const expectedPayloadHash = typeof backup.payloadHash === "string"
+					? backup.payloadHash
+					: undefined;
+				const expectedNormalizedPayloadHash = typeof backup.normalizedPayloadHash === "string"
+					? backup.normalizedPayloadHash
+					: typeof backup.payload === "string"
+					? sha256Hex(normalizeLineEndings(backup.payload,),)
+					: undefined;
+				const checks = [
+					{
+						name: "payload",
+						expected: expectedPayloadHash,
+						actual: payloadHash,
+						unchanged: expectedPayloadHash === payloadHash
+							|| (
+								expectedNormalizedPayloadHash !== undefined
+								&& expectedNormalizedPayloadHash === normalizedPayloadHash
+							),
+						normalizedExpected: expectedNormalizedPayloadHash,
+						normalizedActual: normalizedPayloadHash,
+					},
+					{
+						name: "graph",
+						expected: backup.graphHash,
+						actual: stableHash(recipeGraph(current.recipe,),),
+						unchanged: backup.graphHash === stableHash(recipeGraph(current.recipe,),),
+					},
+					{
+						name: "codeEnv",
+						expected: backup.codeEnvHash,
+						actual: stableHash(recipeCodeEnv(current.recipe,),),
+						unchanged: backup.codeEnvHash === stableHash(recipeCodeEnv(current.recipe,),),
+					},
+				].filter((check,) => typeof check.expected === "string");
+				const failures = checks.filter((check,) => !check.unchanged);
+				return {
+					unchanged: failures.length === 0,
+					resource: "recipe",
+					name: a[0],
+					backupPath,
+					checks,
+					failures,
+				};
+			},
+			usage: "dss recipe assert-unchanged <name> --since BACKUP [--project-key KEY]",
+			description: "Compare current recipe payload, graph, and code env against a backup.",
+			examples: [
+				"dss recipe assert-unchanged compute_orders --since .dss-backups/recipes/backup.recipe-backup.json",
 			],
 		},
 	},
@@ -2376,13 +2851,30 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				requireArgs(a, 1, "dss job log <id>",);
 				return c.jobs.log(a[0], {
 					activity: f["activity"] as string | undefined,
+					logId: f["log-id"] as string | undefined,
 					maxLogLines: maxLogLinesFromFlags(f,),
 					projectKey: f["project-key"] as string | undefined,
 				},);
 			},
-			usage: "dss job log <id> [--activity NAME] [--max-lines N|--max-log-lines N]",
-			description: "Get log output for a job.",
-			examples: ["dss job log JOB_ID", "dss job log JOB_ID --activity main --max-log-lines 200",],
+			usage:
+				"dss job log <id> [--activity ACTIVITY_ID] [--log-id LOG_ID] [--max-lines N|--max-log-lines N] [--project-key KEY]",
+			description: "Get log output for a job, optionally selecting a DSS activity log id.",
+			examples: [
+				"dss job log JOB_ID",
+				"dss job log JOB_ID --activity main --max-log-lines 200",
+				"dss job log JOB_ID --activity ACTIVITY_ID --log-id /python-recipe/python-output.log",
+			],
+		},
+		"log-url": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss job log-url <url>",);
+				return c.jobs.logFromUrl(a[0], { maxLogLines: maxLogLinesFromFlags(f,), },);
+			},
+			usage: "dss job log-url <url> [--max-lines N|--max-log-lines N]",
+			description: "Fetch a DSS cat-activity-log URL pasted from the UI.",
+			examples: [
+				'dss job log-url "https://dss/dip/api/flow/jobs/cat-activity-log?projectKey=TEST&jobId=JOB&activityId=A&logId=L"',
+			],
 		},
 		build: {
 			handler: async (c, a, f,) => {
@@ -2478,6 +2970,26 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				"dss job wait JOB_ID",
 				"dss job wait JOB_ID --include-logs --log-filter stdout --summary --timeout 60000",
 			],
+		},
+		monitor: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss job monitor <id...>",);
+				const options = {
+					includeLogs: f["include-logs"] === true,
+					logFilter: jobLogFilterFromFlag(f["log-filter"],),
+					maxLogLines: maxLogLinesFromFlags(f,),
+					pollIntervalMs: num(f["poll-interval"],),
+					timeoutMs: num(f["timeout"],),
+					summary: f["summary"] !== false,
+					projectKey: f["project-key"] as string | undefined,
+				};
+				const jobs = await Promise.all(a.map((jobId,) => c.jobs.wait(jobId, options,)),);
+				return a.length === 1 ? jobs[0] : { jobs, until: f["until"] ?? "all-done", };
+			},
+			usage:
+				"dss job monitor <id...> [--summary] [--include-logs] [--log-filter stdout|stderr|user|errors] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--until all-done] [--project-key KEY]",
+			description: "Monitor one or more existing jobs and summarize progress counters from logs.",
+			examples: ["dss job monitor JOB_ID --summary", "dss job monitor JOB1 JOB2 --until all-done",],
 		},
 		abort: {
 			handler: async (c, a, f,) => {
@@ -4374,6 +4886,7 @@ const READ_ACTIONS = new Set([
 	"list-jupyter",
 	"list-sql",
 	"log",
+	"log-url",
 	"map",
 	"metadata",
 	"peek",
@@ -4513,7 +5026,7 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "data-quality" && action === "compute") return "write";
 	if (READ_ACTIONS.has(action,)) return "read";
 	if (
-		/^(create|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout)/
+		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout)/
 			.test(action,)
 	) {
 		return "write";
@@ -4534,6 +5047,7 @@ function inferRequiresProject(resource: string, action: string, usage: string,):
 
 const ARRAY_OUTPUT_ACTIONS = new Set([
 	"history",
+	"find",
 	"infer",
 	"last-results",
 	"list",
@@ -4551,6 +5065,7 @@ const STRING_OUTPUT_ACTIONS = new Set([
 	"download-code",
 	"get-payload",
 	"log",
+	"log-url",
 	"preview",
 ],);
 
@@ -4597,7 +5112,7 @@ function inferExitCodes(asyncKind: CommandAsyncKind,): CommandExitCodes {
 }
 
 function cleanupCommandFromDeleteUsage(resource: string, action: string,): string | undefined {
-	if (!action.startsWith("create",)) return undefined;
+	if (!(action.startsWith("create",) || action === "clone")) return undefined;
 	const deleteAction = action === "create-rule" ? "delete-rule" : "delete";
 	const deleteUsage = commands[resource]?.[deleteAction]?.usage;
 	if (!deleteUsage) return undefined;
@@ -4621,7 +5136,9 @@ function inferDestructiveLevel(
 }
 
 function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
-	if (resource === "job" && ["build", "build-and-wait", "wait",].includes(action,)) return "job";
+	if (resource === "job" && ["build", "build-and-wait", "wait", "monitor",].includes(action,)) {
+		return "job";
+	}
 	if (resource === "recipe" && action === "run") return "job";
 	if (resource === "future" && ["get", "peek", "wait", "abort",].includes(action,)) return "future";
 	if (resource === "scenario" && ["run", "run-and-wait", "status",].includes(action,)) {
@@ -4643,7 +5160,7 @@ function inferIdempotency(
 }
 
 function inferCleanupHint(resource: string, action: string,): string | undefined {
-	if (!action.startsWith("create",)) return undefined;
+	if (!(action.startsWith("create",) || action === "clone")) return undefined;
 	if (resource === "code-env") return "Delete with `dss code-env delete <lang> <name> --if-exists`.";
 	if (resource === "data-quality") {
 		return "Delete with `dss data-quality delete-rule <dataset> <rule-id> --if-exists`.";
@@ -5156,8 +5673,11 @@ function commandPlanShape(
 			};
 		case "recipe.set-payload": {
 			const file = requiredPlanFlag(flags, "file", entry.usage,);
-			const backupDir = flags["backup-dir"] as string | undefined;
-			const backupPath = backupDir ? recipePayloadBackupPath(id, backupDir,) : undefined;
+			const backupDir = flags["no-backup"] === true
+				? undefined
+				: (flags["backup-dir"] as string | undefined)
+					?? join(process.cwd(), ".dss-backups", "recipes",);
+			const backupPath = backupDir ? recipeBackupPath(id, backupDir,) : undefined;
 			return {
 				method: "PUT",
 				endpoint: projectEndpoint(`/recipes/${encodeURIComponent(id,)}`,),
@@ -5168,7 +5688,7 @@ function commandPlanShape(
 					...(backupPath ? { backupPath, } : {}),
 				},
 				...(backupPath
-					? { localWrites: [{ path: backupPath, source: "remote recipe payload", before: "PUT", },], }
+					? { localWrites: [{ path: backupPath, source: "remote recipe backup", before: "PUT", },], }
 					: {}),
 			};
 		}

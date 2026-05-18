@@ -212,6 +212,67 @@ describe("RecipesResource", () => {
 		},);
 	});
 
+	it("clones recipe graph, settings, and payload with output rewrites", async () => {
+		const requests: string[] = [];
+		let postBody: Record<string, unknown> | undefined;
+		let putBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}${url.search}`,);
+			if (req.method === "GET") {
+				sendJson(res, {
+					recipe: {
+						name: "source_recipe",
+						type: "python",
+						inputs: { main: { items: [{ ref: "input_ds", },], }, },
+						outputs: { main: { items: [{ ref: "old_output", appendMode: false, },], }, },
+						params: { envSelection: { envMode: "EXPLICIT_ENV", envName: "py39", }, },
+						versionTag: { versionNumber: 12, },
+						neverBuilt: false,
+					},
+					payload: "dataiku.Dataset('old_output').write_with_schema(df)\n",
+				},);
+				return;
+			}
+			if (req.method === "POST") {
+				postBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { recipeName: "target_recipe", },);
+				return;
+			}
+			if (req.method === "PUT") {
+				putBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { ok: true, },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.clone("source_recipe", {
+				name: "target_recipe",
+				outputDataset: "new_output",
+			},);
+			expect(result.outputRewrites,).toEqual({ old_output: "new_output", },);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/recipes/source_recipe?includePayload=true",
+			"POST /public/api/projects/TEST/recipes/",
+			"PUT /public/api/projects/TEST/recipes/target_recipe",
+		],);
+		expect(postBody?.recipePrototype,).toMatchObject({
+			name: "target_recipe",
+			projectKey: "TEST",
+			outputs: { main: { items: [{ ref: "new_output", appendMode: false, },], }, },
+			params: { envSelection: { envMode: "EXPLICIT_ENV", envName: "py39", }, },
+		},);
+		expect((postBody?.recipePrototype as Record<string, unknown>).versionTag,).toBeUndefined();
+		expect((postBody?.recipePrototype as Record<string, unknown>).neverBuilt,).toBeUndefined();
+		expect((postBody?.creationSettings as { script?: string; }).script,).toContain("new_output",);
+		expect(putBody?.payload as string,).toContain("new_output",);
+	});
+
 	it("downloads recipe code with an inferred file extension", async () => {
 		const payloadByRecipeName: Record<string, { type: string; payload: string; ext: string; }> = {
 			"python-recipe": { type: "python", payload: "print('python')\n", ext: ".py", },

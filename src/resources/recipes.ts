@@ -77,6 +77,26 @@ export type RecipeRunResult =
 	& { logSummary?: JobLogSummary; recipeName: string; outputs: RecipeRunOutput[]; }
 	& ({ jobId: string; } | JobWaitResult);
 
+export interface RecipeCloneOptions {
+	projectKey?: string;
+	name: string;
+	outputDataset?: string;
+	outputRewrites?: Record<string, string>;
+	payloadRewrites?: Record<string, string>;
+	copyOutputSettings?: boolean;
+	outputPath?: string;
+	metastoreTableName?: string;
+}
+
+export interface RecipeCloneResult {
+	sourceRecipeName: string;
+	recipeName: string;
+	projectKey: string;
+	outputRewrites: Record<string, string>;
+	payloadRewrites: Record<string, string>;
+	copiedOutputDatasets: string[];
+}
+
 function rootRecipeDefinitionFields(data: Record<string, unknown>,): string[] {
 	return Object.keys(data,).filter((key,) => RECIPE_DEFINITION_FIELDS.has(key,));
 }
@@ -134,6 +154,48 @@ function recipeInputItems(recipe: Record<string, unknown>,): Array<{ ref: string
 		}
 	}
 	return result;
+}
+
+function rewriteRefs(value: unknown, rewrites: Record<string, string>,): unknown {
+	if (Object.keys(rewrites,).length === 0) return value;
+	if (Array.isArray(value,)) return value.map((item,) => rewriteRefs(item, rewrites,));
+	const record = asRecord(value,);
+	if (!record) return value;
+	const next: Record<string, unknown> = {};
+	for (const [key, item,] of Object.entries(record,)) {
+		if (key === "ref" && typeof item === "string" && rewrites[item]) {
+			next[key] = rewrites[item];
+		} else {
+			next[key] = rewriteRefs(item, rewrites,);
+		}
+	}
+	return next;
+}
+
+function rewritePayload(
+	payload: string | undefined,
+	rewrites: Record<string, string>,
+): string | undefined {
+	if (payload === undefined || Object.keys(rewrites,).length === 0) return payload;
+	let next = payload;
+	for (const [from, to,] of Object.entries(rewrites,)) {
+		if (from.length > 0) next = next.split(from,).join(to,);
+	}
+	return next;
+}
+
+function cloneRecipeDefinition(
+	recipe: Record<string, unknown>,
+	targetName: string,
+	projectKey: string,
+	rewrites: Record<string, string>,
+): Record<string, unknown> {
+	const cloned = rewriteRefs(structuredClone(recipe,), rewrites,) as Record<string, unknown>;
+	delete cloned.versionTag;
+	delete cloned.neverBuilt;
+	cloned.name = targetName;
+	cloned.projectKey = projectKey;
+	return cloned;
 }
 
 function inferRecipeCodeExtension(recipeType: unknown,): string {
@@ -705,6 +767,74 @@ export class RecipesResource extends BaseResource {
 			`/public/api/projects/${enc}/recipes/${rnEnc}`,
 			merged,
 		);
+	}
+
+	/** Replace a full recipe API document. */
+	async replace(
+		recipeName: string,
+		document: Record<string, unknown>,
+		projectKey?: string,
+	): Promise<void> {
+		const enc = this.enc(projectKey,);
+		const rnEnc = encodeURIComponent(recipeName,);
+		await this.client.put<Record<string, unknown>>(
+			`/public/api/projects/${enc}/recipes/${rnEnc}`,
+			document,
+		);
+	}
+
+	/** Clone recipe graph/settings and optionally clone a dataset output. */
+	async clone(sourceName: string, opts: RecipeCloneOptions,): Promise<RecipeCloneResult> {
+		const pk = this.resolveProjectKey(opts.projectKey,);
+		const source = await this.get(sourceName, { includePayload: true, projectKey: pk, },);
+		const outputRewrites: Record<string, string> = {};
+		if (opts.outputRewrites) Object.assign(outputRewrites, opts.outputRewrites,);
+		if (opts.outputDataset !== undefined) {
+			const outputs = recipeOutputItems(source.recipe,).filter((item,) =>
+				item.type !== "MANAGED_FOLDER"
+			);
+			if (outputs.length !== 1 && Object.keys(outputRewrites,).length === 0) {
+				throw new Error(
+					`Recipe "${sourceName}" has ${outputs.length} dataset outputs; pass explicit outputRewrites instead of outputDataset.`,
+				);
+			}
+			if (outputs[0]) outputRewrites[outputs[0].ref] = opts.outputDataset;
+		}
+		const payloadRewrites: Record<string, string> = { ...outputRewrites, };
+		if (opts.payloadRewrites) Object.assign(payloadRewrites, opts.payloadRewrites,);
+		const recipe = cloneRecipeDefinition(source.recipe, opts.name, pk, outputRewrites,);
+		const payload = rewritePayload(source.payload, payloadRewrites,);
+		const copiedOutputDatasets: string[] = [];
+		if (opts.copyOutputSettings) {
+			for (const [from, to,] of Object.entries(outputRewrites,)) {
+				await this.client.datasets.clone(from, to, {
+					projectKey: pk,
+					path: opts.outputPath,
+					metastoreTableName: opts.metastoreTableName,
+				},);
+				copiedOutputDatasets.push(to,);
+			}
+		}
+		const rnEnc = encodeURIComponent(opts.name,);
+		await this.client.post<Record<string, unknown>>(
+			`/public/api/projects/${encodeURIComponent(pk,)}/recipes/`,
+			{
+				recipePrototype: recipe,
+				creationSettings: payload !== undefined ? { script: payload, } : {},
+			},
+		);
+		await this.client.put<Record<string, unknown>>(
+			`/public/api/projects/${encodeURIComponent(pk,)}/recipes/${rnEnc}`,
+			{ recipe, ...(payload !== undefined ? { payload, } : {}), },
+		);
+		return {
+			sourceRecipeName: sourceName,
+			recipeName: opts.name,
+			projectKey: pk,
+			outputRewrites,
+			payloadRewrites,
+			copiedOutputDatasets,
+		};
 	}
 
 	/**

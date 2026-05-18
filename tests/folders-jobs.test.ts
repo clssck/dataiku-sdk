@@ -214,6 +214,26 @@ describe("JobsResource.log", () => {
 
 		expect(requestCount,).toBe(2,);
 	});
+
+	it("fetches a selected DSS activity log id", async () => {
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/dip/api/flow/jobs/cat-activity-log",);
+			expect(url.searchParams.get("projectKey",),).toBe("TEST",);
+			expect(url.searchParams.get("jobId",),).toBe("job-3",);
+			expect(url.searchParams.get("activityId",),).toBe("activity-1",);
+			expect(url.searchParams.get("logId",),).toBe("/python-recipe/python-output.log",);
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end("python stdout\n",);
+		}, async (client,) => {
+			await expect(client.jobs.log("job-3", {
+				activity: "activity-1",
+				logId: "/python-recipe/python-output.log",
+			},),).resolves.toBe("python stdout\n",);
+		},);
+	});
 });
 
 describe("JobsResource.wait", () => {
@@ -275,6 +295,44 @@ describe("JobsResource.wait", () => {
 			"GET /public/api/projects/TEST/jobs/job-1/",
 			"GET /public/api/projects/TEST/jobs/job-1/log/?activity=build",
 		],);
+	});
+
+	it("summarizes Dataiku Python progress counters from terminal logs", async () => {
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (url.pathname === "/public/api/projects/TEST/jobs/job-progress/") {
+				sendJson(res, {
+					baseStatus: { def: { id: "job-progress", type: "DATASET_BUILD", }, state: "DONE", },
+					globalState: { done: 1, failed: 0, running: 0, total: 1, },
+				},);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/jobs/job-progress/log/") {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/plain",);
+				res.end([
+					"Scanned 39,520,498, matched 825,328,253",
+					"Scanned 39,520,498, joined 303,833,978, written 15,969,743",
+					"825328253 rows successfully written",
+					"Done! everything committed",
+				].join("\n",),);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (client,) => {
+			const result = await client.jobs.wait("job-progress", {
+				summary: true,
+				maxLogLines: 10,
+				pollIntervalMs: 1,
+			},);
+
+			expect(result.logSummary?.progress?.counters.scanned,).toBe(39_520_498,);
+			expect(result.logSummary?.progress?.counters.matched,).toBe(825_328_253,);
+			expect(result.logSummary?.progress?.counters.joined,).toBe(303_833_978,);
+			expect(result.logSummary?.progress?.counters.written,).toBe(825_328_253,);
+			expect(result.logSummary?.progress?.doneLine,).toBe("Done! everything committed",);
+		},);
 	});
 
 	it("returns a timeout result for non-terminal jobs without fetching logs", async () => {

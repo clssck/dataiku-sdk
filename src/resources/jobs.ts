@@ -20,10 +20,18 @@ const TERMINAL_STATES = new Set([
 export type JobBuildTargetType = "DATASET" | "MANAGED_FOLDER";
 export type JobLogFilter = "stdout" | "stderr" | "user" | "errors";
 
+export interface JobLogProgress {
+	lastProgressLine?: string;
+	doneLine?: string;
+	counters: Record<string, number>;
+	rowsPerMinute?: number;
+}
+
 export interface JobLogSummary {
 	state: string;
 	lineCount: number;
 	lines: string[];
+	progress?: JobLogProgress;
 }
 
 export interface JobBuildTarget {
@@ -48,6 +56,7 @@ export interface JobBuildAndWaitOptions extends JobBuildOptions {
 	pollIntervalMs?: number;
 	timeoutMs?: number;
 	logFilter?: JobLogFilter;
+	logId?: string;
 	summary?: boolean;
 }
 
@@ -171,13 +180,66 @@ function limitJobLog(log: string, maxLines: number | undefined,): string {
 	return hasTrailingLineBreak ? `${tail}\n` : tail;
 }
 
-function summarizeJobLog(state: string, log: string, maxLines: number,): JobLogSummary {
+function parsedCounterValue(value: string,): number {
+	return Number(value.replace(/,/g, "",),);
+}
+
+export function parseJobLogProgress(log: string, elapsedMs?: number,): JobLogProgress | undefined {
+	const counters: Record<string, number> = {};
+	let lastProgressLine: string | undefined;
+	let doneLine: string | undefined;
+	for (const line of jobLogLines(log,)) {
+		const normalized = line.trim();
+		if (!normalized) continue;
+		const lower = normalized.toLowerCase();
+		let matched = false;
+		for (
+			const match of normalized.matchAll(
+				/\b(scanned|matched|joined|written|emitted)\s+([0-9][0-9,]*)/gi,
+			)
+		) {
+			counters[match[1]!.toLowerCase()] = parsedCounterValue(match[2]!,);
+			matched = true;
+		}
+		const written = normalized.match(/\b([0-9][0-9,]*)\s+rows\s+successfully\s+written\b/i,);
+		if (written) {
+			counters.written = parsedCounterValue(written[1]!,);
+			doneLine = normalized;
+			matched = true;
+		}
+		if (lower.includes("done!",)) {
+			doneLine = normalized;
+			matched = true;
+		}
+		if (matched) lastProgressLine = normalized;
+	}
+	if (lastProgressLine === undefined && doneLine === undefined) return undefined;
+	const writtenRows = counters.written ?? counters.emitted;
+	const rowsPerMinute = writtenRows !== undefined && elapsedMs !== undefined && elapsedMs > 0
+		? writtenRows / (elapsedMs / 60_000)
+		: undefined;
+	return {
+		...(lastProgressLine ? { lastProgressLine, } : {}),
+		...(doneLine ? { doneLine, } : {}),
+		counters,
+		...(rowsPerMinute !== undefined ? { rowsPerMinute, } : {}),
+	};
+}
+
+function summarizeJobLog(
+	state: string,
+	log: string,
+	maxLines: number,
+	elapsedMs?: number,
+): JobLogSummary {
 	const lines = jobLogLines(log,).map((line,) => line.trim()).filter((line,) => line.length > 0);
 	const summaryLines = lines.slice(-Math.max(1, maxLines,),);
+	const progress = parseJobLogProgress(log, elapsedMs,);
 	return {
 		state,
 		lineCount: lines.length,
 		lines: summaryLines,
+		...(progress ? { progress, } : {}),
 	};
 }
 export class JobsResource extends BaseResource {
@@ -205,14 +267,39 @@ export class JobsResource extends BaseResource {
 	 */
 	async log(
 		jobId: string,
-		opts?: { activity?: string; maxLogLines?: number; projectKey?: string; },
+		opts?: { activity?: string; logId?: string; maxLogLines?: number; projectKey?: string; },
 	): Promise<string> {
-		const jobEnc = encodeURIComponent(jobId,);
-		const query = opts?.activity ? `?activity=${encodeURIComponent(opts.activity,)}` : "";
-		const log = await this.client.getText(
-			`/public/api/projects/${this.enc(opts?.projectKey,)}/jobs/${jobEnc}/log/${query}`,
-		);
+		let path: string;
+		if (opts?.logId) {
+			if (!opts.activity) throw new Error("activity is required when logId is provided.",);
+			const params = new URLSearchParams({
+				projectKey: this.resolveProjectKey(opts.projectKey,),
+				jobId,
+				activityId: opts.activity,
+				logId: opts.logId,
+			},);
+			path = `/dip/api/flow/jobs/cat-activity-log?${params.toString()}`;
+		} else {
+			const jobEnc = encodeURIComponent(jobId,);
+			const query = opts?.activity ? `?activity=${encodeURIComponent(opts.activity,)}` : "";
+			path = `/public/api/projects/${this.enc(opts?.projectKey,)}/jobs/${jobEnc}/log/${query}`;
+		}
+		const log = await this.client.getText(path,);
 		return limitJobLog(log, opts?.maxLogLines,);
+	}
+
+	async logFromUrl(logUrl: string, opts?: { maxLogLines?: number; },): Promise<string> {
+		const parsed = new URL(logUrl, "http://dss.local",);
+		const projectKey = parsed.searchParams.get("projectKey",) ?? undefined;
+		const jobId = parsed.searchParams.get("jobId",) ?? undefined;
+		const activity = parsed.searchParams.get("activityId",) ?? undefined;
+		const logId = parsed.searchParams.get("logId",) ?? undefined;
+		if (!projectKey || !jobId || !activity || !logId) {
+			throw new Error(
+				"Log URL must include projectKey, jobId, activityId, and logId query parameters.",
+			);
+		}
+		return this.log(jobId, { activity, logId, projectKey, maxLogLines: opts?.maxLogLines, },);
 	}
 
 	/**
@@ -258,6 +345,7 @@ export class JobsResource extends BaseResource {
 			activity: opts?.activity,
 			includeLogs: opts?.includeLogs,
 			logFilter: opts?.logFilter,
+			logId: opts?.logId,
 			maxLogLines: opts?.maxLogLines,
 			pollIntervalMs: opts?.pollIntervalMs,
 			summary: opts?.summary,
@@ -295,6 +383,7 @@ export class JobsResource extends BaseResource {
 			activity?: string;
 			includeLogs?: boolean;
 			logFilter?: JobLogFilter;
+			logId?: string;
 			maxLogLines?: number;
 			pollIntervalMs?: number;
 			summary?: boolean;
@@ -341,12 +430,13 @@ export class JobsResource extends BaseResource {
 					const rawLog = await this.log(jobId, {
 						activity: opts.activity,
 						maxLogLines: opts.summary ? 0 : opts.maxLogLines,
+						logId: opts.logId,
 						projectKey: opts.projectKey,
 					},);
 					const filteredLog = filterJobLog(rawLog, opts.logFilter,);
 					if (opts.includeLogs) log = limitJobLog(filteredLog, opts.maxLogLines,);
 					if (opts.summary) {
-						logSummary = summarizeJobLog(state, filteredLog, opts.maxLogLines ?? 20,);
+						logSummary = summarizeJobLog(state, filteredLog, opts.maxLogLines ?? 20, elapsedMs,);
 					}
 				}
 

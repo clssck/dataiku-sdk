@@ -36,6 +36,8 @@ export { DashboardsResource, } from "./resources/dashboards.js";
 export { DataQualityResource, } from "./resources/data-quality.js";
 export {
 	type DatasetBuildValidationResult,
+	type DatasetCloneOptions,
+	type DatasetCloneResult,
 	type DatasetSchemaColumnInput,
 	DatasetsResource,
 } from "./resources/datasets.js";
@@ -50,12 +52,16 @@ export {
 	type JobBuildTarget,
 	type JobBuildTargetType,
 	type JobLogFilter,
+	type JobLogProgress,
 	type JobLogSummary,
 	JobsResource,
+	parseJobLogProgress,
 } from "./resources/jobs.js";
 export { NotebooksResource, } from "./resources/notebooks.js";
 export { type FlowMapResult, ProjectsResource, } from "./resources/projects.js";
 export {
+	type RecipeCloneOptions,
+	type RecipeCloneResult,
 	type RecipeGraphReference,
 	type RecipeGraphValidationResult,
 	type RecipeRunOptions,

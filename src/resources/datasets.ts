@@ -35,6 +35,22 @@ export interface DatasetSchemaColumnInput {
 	type: string;
 	comment?: string;
 }
+
+export interface DatasetCloneOptions {
+	projectKey?: string;
+	path?: string;
+	table?: string;
+	metastoreTableName?: string;
+	overrides?: Record<string, unknown>;
+}
+
+export interface DatasetCloneResult {
+	source: string;
+	target: string;
+	projectKey: string;
+	created: Record<string, unknown>;
+	settings: Record<string, unknown>;
+}
 // ---------------------------------------------------------------------------
 // Helpers: TSV → CSV streaming conversion
 // ---------------------------------------------------------------------------
@@ -406,6 +422,29 @@ function buildDatasetCreateBody(opts: {
 	};
 }
 
+function clonedDatasetSettings(
+	source: DatasetDetails,
+	targetName: string,
+	projectKey: string,
+	opts: DatasetCloneOptions,
+): Record<string, unknown> {
+	const params = {
+		...source.params,
+		...(opts.path !== undefined ? { path: opts.path, } : {}),
+		...(opts.table !== undefined ? { table: opts.table, mode: "table", } : {}),
+		...(opts.metastoreTableName !== undefined
+			? { metastoreTableName: opts.metastoreTableName, }
+			: {}),
+	};
+	const cloned = {
+		...(source as unknown as Record<string, unknown>),
+		name: targetName,
+		projectKey,
+		params,
+	};
+	return opts.overrides ? deepMerge(cloned, opts.overrides,) : cloned;
+}
+
 // ---------------------------------------------------------------------------
 // Resource
 // ---------------------------------------------------------------------------
@@ -656,6 +695,21 @@ export class DatasetsResource extends BaseResource {
 			formatType,
 			warnings,
 		};
+	}
+
+	/** Clone dataset settings, preserving storage, format, schema, and extra DSS fields. */
+	async clone(
+		sourceName: string,
+		targetName: string,
+		opts: DatasetCloneOptions = {},
+	): Promise<DatasetCloneResult> {
+		const pk = this.resolveProjectKey(opts.projectKey,);
+		const settings = clonedDatasetSettings(await this.get(sourceName, pk,), targetName, pk, opts,);
+		const created = await this.client.post<Record<string, unknown>>(
+			`/public/api/projects/${encodeURIComponent(pk,)}/datasets/`,
+			settings,
+		);
+		return { source: sourceName, target: targetName, projectKey: pk, created, settings, };
 	}
 
 	/** Update a dataset by deep-merging a patch into the current definition. */

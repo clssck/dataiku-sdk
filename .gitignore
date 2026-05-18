@@ -3,3 +3,5 @@ dist/
 .env
 *.tgz
 .claude/
+observations.md
+plan.md
