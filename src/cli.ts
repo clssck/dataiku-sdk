@@ -19,8 +19,18 @@ import {
 } from "./config.js";
 import { DataikuError, dataikuErrorCode, type StableErrorCode, } from "./errors.js";
 import type { FlowZoneItemInput, } from "./resources/flow-zones.js";
-import type { JobBuildTargetType, JobLogFilter, } from "./resources/jobs.js";
-import type { BuildMode, FlowZone, FlowZoneObjectType, } from "./schemas.js";
+import {
+	type JobBuildTargetType,
+	type JobLogFilter,
+	parseJobLogProgress,
+} from "./resources/jobs.js";
+import type {
+	BuildMode,
+	DatasetDetails,
+	FlowZone,
+	FlowZoneObjectType,
+	JobSummary,
+} from "./schemas.js";
 import { AGENTS, detectAgents, findWorkspaceRoot, installSkill, } from "./skill.js";
 import {
 	appendCleanupLedgerEntry,
@@ -208,6 +218,65 @@ function recipeInputDatasetsFromFlags(
 	return inputs.length > 0 ? inputs : undefined;
 }
 
+function rewritePairsFromFlags(
+	flags: Record<string, string | boolean>,
+	flagName: string,
+): Record<string, string> {
+	const rewrites: Record<string, string> = {};
+	for (const spec of splitCsvFlag(flags[flagName],)) {
+		const idx = spec.indexOf("=",);
+		if (idx <= 0 || idx === spec.length - 1) {
+			throw new UsageError(`--${flagName} values must use FROM=TO.`, "invalid_enum",);
+		}
+		const from = spec.slice(0, idx,).trim();
+		const to = spec.slice(idx + 1,).trim();
+		if (!from || !to) throw new UsageError(`--${flagName} values must use FROM=TO.`, "invalid_enum",);
+		rewrites[from] = to;
+	}
+	return rewrites;
+}
+
+function plainRecord(value: unknown,): Record<string, unknown> | undefined {
+	return value && typeof value === "object" && !Array.isArray(value,)
+		? value as Record<string, unknown>
+		: undefined;
+}
+
+function datasetSourceSummary(details: DatasetDetails,): Record<string, unknown> {
+	const params = details.params ?? {};
+	return {
+		resource: "dataset",
+		name: details.name,
+		projectKey: details.projectKey,
+		type: details.type,
+		managed: details.managed,
+		connection: params.connection,
+		catalog: params.catalog,
+		schema: params.schema,
+		table: params.table,
+		path: params.path,
+		folderSmartId: params.folderSmartId,
+		formatType: details.formatType,
+	};
+}
+
+function assertDatasetClonePathIsSafe(
+	source: DatasetDetails,
+	target: Record<string, unknown>,
+	allowSamePath: boolean,
+): void {
+	if (allowSamePath || source.managed !== true) return;
+	const sourcePath = typeof source.params?.path === "string" ? source.params.path : undefined;
+	const targetParams = plainRecord(target.params,);
+	const targetPath = typeof targetParams?.path === "string" ? targetParams.path : undefined;
+	if (sourcePath !== undefined && targetPath === sourcePath) {
+		throw new UsageError(
+			`Refusing to clone managed dataset "${source.name}" with the same storage path. Pass --path or --allow-same-path.`,
+			"invalid_enum",
+		);
+	}
+}
+
 function requiredStringFlag(
 	flags: Record<string, string | boolean>,
 	name: string,
@@ -328,6 +397,13 @@ function flowZoneSummary(zone: FlowZone, object?: FlowZoneItemInput,): Record<st
 	};
 }
 
+function flowZoneDetailSummary(zone: FlowZone,): Record<string, unknown> {
+	return {
+		...flowZoneSummary(zone,),
+		items: flowZoneItems(zone,),
+	};
+}
+
 async function resolveFlowZoneIdFromFlags(
 	client: DataikuClient,
 	flags: Record<string, string | boolean>,
@@ -353,6 +429,191 @@ async function moveCreatedItemsToZone(
 	if (!zoneId || items.length === 0) return {};
 	await client.flowZones.moveItems(zoneId, items, projectKey,);
 	return { zoneId, moved: items, };
+}
+
+function nestedValue(value: unknown, path: string[],): unknown {
+	let current: unknown = value;
+	for (const key of path) {
+		const record = plainRecord(current,);
+		if (!record) return undefined;
+		current = record[key];
+	}
+	return current;
+}
+
+function stringPath(value: unknown, path: string[],): string | undefined {
+	const item = nestedValue(value, path,);
+	return typeof item === "string" && item.length > 0 ? item : undefined;
+}
+
+function numberPath(value: unknown, path: string[],): number | undefined {
+	const item = nestedValue(value, path,);
+	return typeof item === "number" && Number.isFinite(item,) ? item : undefined;
+}
+
+function firstNumberPath(value: unknown, paths: string[][],): number | undefined {
+	for (const path of paths) {
+		const item = numberPath(value, path,);
+		if (item !== undefined) return item;
+	}
+	return undefined;
+}
+
+function jobSummaryId(job: JobSummary | Record<string, unknown>, fallback?: string,): string {
+	return stringPath(job, ["baseStatus", "def", "id",],)
+		?? stringPath(job, ["def", "id",],)
+		?? stringPath(job, ["id",],)
+		?? fallback
+		?? "unknown";
+}
+
+function jobSummaryType(job: JobSummary | Record<string, unknown>,): string {
+	return stringPath(job, ["baseStatus", "def", "type",],)
+		?? stringPath(job, ["def", "type",],)
+		?? stringPath(job, ["type",],)
+		?? "unknown";
+}
+
+function jobSummaryState(job: JobSummary | Record<string, unknown>,): string {
+	return stringPath(job, ["baseStatus", "state",],)
+		?? stringPath(job, ["state",],)
+		?? "unknown";
+}
+
+function filteredJobList(
+	jobs: JobSummary[],
+	flags: Record<string, string | boolean>,
+): JobSummary[] {
+	const state = typeof flags["state"] === "string" ? flags["state"].trim().toUpperCase() : "";
+	const contains = typeof flags["contains"] === "string"
+		? flags["contains"].trim().toLowerCase()
+		: "";
+	const output = typeof flags["output"] === "string" ? flags["output"].trim().toLowerCase() : "";
+	let result = jobs.filter((job,) => {
+		if (state && jobSummaryState(job,).toUpperCase() !== state) return false;
+		const text = JSON.stringify(job,).toLowerCase();
+		if (contains && !text.includes(contains,)) return false;
+		if (output && !text.includes(output,)) return false;
+		return true;
+	},);
+	const limit = flags["latest"] === true ? 1 : num(flags["limit"],);
+	if (limit !== undefined) result = result.slice(0, Math.max(0, limit,),);
+	return result;
+}
+
+function maxNumber(values: number[],): number {
+	return values.length === 0 ? 0 : Math.max(...values,);
+}
+
+function collectWarningCounts(
+	value: unknown,
+	inActivity: boolean,
+	counts: { dss: number[]; activity: number[]; },
+): void {
+	if (Array.isArray(value,)) {
+		for (const item of value) collectWarningCounts(item, inActivity, counts,);
+		return;
+	}
+	const record = plainRecord(value,);
+	if (!record) return;
+	for (const [key, item,] of Object.entries(record,)) {
+		const lower = key.toLowerCase();
+		const nextInActivity = inActivity || lower.includes("activit",);
+		if (lower.includes("warn",)) {
+			const target = nextInActivity ? counts.activity : counts.dss;
+			if (typeof item === "number" && Number.isFinite(item,)) target.push(item,);
+			else if (Array.isArray(item,)) target.push(item.length,);
+		}
+		collectWarningCounts(item, nextInActivity, counts,);
+	}
+}
+
+function jobWarningSummary(
+	details: Record<string, unknown>,
+	log: string | undefined,
+): Record<string, unknown> {
+	const counts = { dss: [] as number[], activity: [] as number[], };
+	collectWarningCounts(details, false, counts,);
+	const warningLines = log
+		? log.split(/\r?\n/,).map((line,) => line.trim()).filter((line,) =>
+			/\bwarn(?:ing)?\b/i.test(line,)
+		)
+		: [];
+	return {
+		dssSummaryWarningCount: maxNumber(counts.dss,),
+		activityWarningCount: maxNumber(counts.activity,),
+		logWarnLineCount: warningLines.length,
+		sampledWarningMessages: warningLines.slice(0, 5,),
+	};
+}
+
+function jobDurationMs(details: Record<string, unknown>,): number | undefined {
+	const started = firstNumberPath(details, [
+		["baseStatus", "startTime",],
+		["baseStatus", "start",],
+		["startTime",],
+		["start",],
+	],);
+	const ended = firstNumberPath(details, [
+		["baseStatus", "endTime",],
+		["baseStatus", "end",],
+		["endTime",],
+		["end",],
+	],);
+	return started !== undefined && ended !== undefined && ended >= started
+		? ended - started
+		: undefined;
+}
+
+async function jobInspectionSummary(
+	client: DataikuClient,
+	jobId: string,
+	flags: Record<string, string | boolean>,
+): Promise<Record<string, unknown>> {
+	const projectKey = flags["project-key"] as string | undefined;
+	const details = await client.jobs.get(jobId, projectKey,);
+	let log: string | undefined;
+	let logError: string | undefined;
+	try {
+		log = await client.jobs.log(jobId, {
+			activity: flags["activity"] as string | undefined,
+			logId: flags["log-id"] as string | undefined,
+			maxLogLines: maxLogLinesFromFlags(flags,),
+			projectKey,
+		},);
+	} catch (error: unknown) {
+		logError = error instanceof Error ? error.message : String(error,);
+	}
+	const durationMs = jobDurationMs(details,);
+	const progress = log ? parseJobLogProgress(log, durationMs,) : undefined;
+	const logLines = log
+		? log.split(/\r?\n/,).map((line,) => line.trim()).filter((line,) => line.length > 0)
+		: [];
+	const maxSummaryLines = Math.max(1, maxLogLinesFromFlags(flags,) ?? 20,);
+	const outputs = nestedValue(details, ["baseStatus", "def", "outputs",],)
+		?? nestedValue(details, ["def", "outputs",],)
+		?? details.outputs;
+	return {
+		resource: "job",
+		jobId: jobSummaryId(details, jobId,),
+		state: jobSummaryState(details,),
+		type: jobSummaryType(details,),
+		...(durationMs !== undefined ? { durationMs, } : {}),
+		...(outputs !== undefined ? { outputs, } : {}),
+		warnings: jobWarningSummary(details, log,),
+		...(progress
+			? {
+				progress,
+				latestUsefulProgressLine: progress.lastProgressLine,
+				doneLine: progress.doneLine,
+			}
+			: {}),
+		logSummary: {
+			lineCount: logLines.length,
+			lines: logLines.slice(-maxSummaryLines,),
+			...(logError ? { error: logError, } : {}),
+		},
+	};
 }
 
 function json(v: string | boolean | undefined,): Record<string, unknown> | undefined {
@@ -910,6 +1171,7 @@ const BOOLEAN_FLAGS = new Set([
 	"global",
 	"list-agents",
 	"include-raw",
+	"raw",
 	"include-payload",
 	"no-payload",
 	"include-logs",
@@ -928,10 +1190,12 @@ const BOOLEAN_FLAGS = new Set([
 	"report-json",
 	"no-wait",
 	"force-rebuild",
+	"latest",
 	"copy-output-settings",
 	"continue-on-error",
 	"no-backup",
 	"payload-only",
+	"allow-same-path",
 ],);
 
 const SHORT_FLAGS: Record<string, string> = {
@@ -948,6 +1212,7 @@ const FLAG_ALIASES: Record<string, string> = {
 	"skip-tls-verify": "insecure",
 	"extra-ca-certs": "ca-cert",
 	explain: "plan",
+	"zone-name": "zone",
 };
 
 const VALUE_FLAGS = new Set([
@@ -963,6 +1228,7 @@ const VALUE_FLAGS = new Set([
 	"allow-types",
 	"color",
 	"connection",
+	"contains",
 	"content",
 	"content-type",
 	"data",
@@ -976,6 +1242,7 @@ const VALUE_FLAGS = new Set([
 	"install-core-packages",
 	"folder",
 	"input",
+	"from",
 	"knowledge-bank",
 	"labeling-task",
 	"lang",
@@ -988,6 +1255,7 @@ const VALUE_FLAGS = new Set([
 	"listed",
 	"max-nodes",
 	"max-rows",
+	"limit",
 	"max-timestamp",
 	"only-monitored",
 	"min-timestamp",
@@ -1016,12 +1284,15 @@ const VALUE_FLAGS = new Set([
 	"retries",
 	"poll-interval",
 	"python-interpreter",
+	"replace-input",
+	"replace-output",
 	"retain",
 	"saved-model",
 	"sql",
 	"schema",
 	"sql-file",
 	"standard",
+	"state",
 	"streaming-endpoint",
 	"target",
 	"target-type",
@@ -1030,6 +1301,7 @@ const VALUE_FLAGS = new Set([
 	"type",
 	"url",
 	"until",
+	"to",
 	"zone",
 	"zone-id",
 ],);
@@ -1041,6 +1313,8 @@ const REPEATABLE_VALUE_FLAGS = new Set([
 	"object",
 	"package",
 	"recipe",
+	"replace-input",
+	"replace-output",
 ],);
 
 const KNOWN_LONG_FLAGS = new Set([
@@ -1908,23 +2182,34 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			examples: ["dss flow-zone list", "dss flow-zone list --summary --object RECIPE:compute_orders",],
 		},
 		find: {
-			handler: async (c, _a, f,) => {
+			handler: async (c, a, f,) => {
+				const zones = await c.flowZones.list(f["project-key"] as string | undefined,);
 				const objects = flowZoneMoveItems(f,);
+				const query = a[0]?.trim();
+				if (query && objects.length === 0) {
+					const normalized = query.toLowerCase();
+					return zones
+						.filter((zone,) =>
+							zone.id.toLowerCase().includes(normalized,)
+							|| zone.name.toLowerCase().includes(normalized,)
+						)
+						.map((zone,) => flowZoneDetailSummary(zone,));
+				}
 				if (objects.length !== 1) {
 					throw new UsageError(
-						"Exactly one object is required. Use --object TYPE:ID, --dataset DS, or --recipe R.",
+						"Exactly one zone name/id or object is required. Use <name>, --object TYPE:ID, --dataset DS, or --recipe R.",
 					);
 				}
-				const zones = await c.flowZones.list(f["project-key"] as string | undefined,);
 				const object = objects[0]!;
 				return zones
 					.filter((zone,) => flowZoneContains(zone, object,))
 					.map((zone,) => flowZoneSummary(zone, object,));
 			},
 			usage:
-				"dss flow-zone find (--object TYPE:ID | --dataset DS | --recipe R | --folder F) [--project-key KEY]",
-			description: "Find flow zones containing a specific flow object.",
+				"dss flow-zone find [name-or-id] [--object TYPE:ID | --dataset DS | --recipe R | --folder F] [--project-key KEY]",
+			description: "Find flow zones by name/id or by contained flow object.",
 			examples: [
+				"dss flow-zone find ATH_SNW_MAP_FRG49",
 				"dss flow-zone find --object RECIPE:compute_orders",
 				"dss flow-zone find --dataset orders",
 			],
@@ -2025,34 +2310,38 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		},
 		move: {
 			handler: async (c, a, f,) => {
-				requireArgs(
-					a,
-					1,
-					"dss flow-zone move <id> [--dataset DS] [--recipe R] [--folder F] [--object TYPE:ID]",
-				);
+				const pk = f["project-key"] as string | undefined;
+				const zoneId = a[0] ? flowZoneId(a[0],) : await resolveFlowZoneIdFromFlags(c, f, pk,);
+				if (!zoneId) {
+					throw new UsageError(
+						"A zone id or --zone/--zone-id is required. Usage: dss flow-zone move <id> [--dataset DS] [--recipe R] [--folder F] [--object TYPE:ID]",
+					);
+				}
 				const items = flowZoneMoveItems(f,);
 				if (items.length === 0) {
 					throw new UsageError(
 						"At least one object is required. Use --dataset, --recipe, --folder, or --object TYPE:ID.",
 					);
 				}
+
 				if (f["dry-run"] === true) {
 					return {
 						dryRun: true,
 						action: "move",
 						resource: "flow-zone",
-						id: flowZoneId(a[0],),
+						id: zoneId,
 						items,
 					};
 				}
-				return c.flowZones.moveItems(flowZoneId(a[0],), items, f["project-key"] as string | undefined,);
+				return c.flowZones.moveItems(zoneId, items, pk,);
 			},
 			usage:
-				"dss flow-zone move <id> [--dataset DS[,DS2]] [--recipe R] [--folder F] [--object TYPE:ID] [--dry-run] [--project-key KEY]",
-			description: "Move datasets, recipes, managed folders, or other flow objects into a zone.",
+				"dss flow-zone move [id] [--zone ZONE|--zone-id ID] [--dataset DS[,DS2]] [--recipe R] [--folder F] [--object TYPE:ID] [--dry-run] [--project-key KEY]",
+			description:
+				"Move datasets, recipes, managed folders, or other flow objects into a zone by id or --zone name.",
 			examples: [
 				"dss flow-zone move ZONE_ID --dataset orders --dry-run",
-				"dss flow-zone move ZONE_ID --dataset raw_orders,clean_orders --recipe prepare_orders",
+				"dss flow-zone move --zone ATH_SNW_MAP_FRG49 --dataset raw_orders,clean_orders --recipe prepare_orders",
 				"dss flow-zone move ZONE_ID --folder FOLDER_ID",
 				"dss flow-zone move ZONE_ID --object SAVED_MODEL:model_id",
 			],
@@ -2092,6 +2381,17 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			usage: "dss dataset schema <name> [--project-key KEY]",
 			description: "Show the column schema of a dataset.",
 			examples: ["dss dataset schema orders",],
+		},
+		source: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss dataset source <name>",);
+				return datasetSourceSummary(
+					await c.datasets.get(a[0], f["project-key"] as string | undefined,),
+				);
+			},
+			usage: "dss dataset source <name> [--project-key KEY]",
+			description: "Show backing connection, catalog/schema/table, path, and format for a dataset.",
+			examples: ["dss dataset source orders",],
 		},
 		"refresh-schema": {
 			handler: async (c, a, f,) => {
@@ -2220,7 +2520,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		clone: {
 			handler: async (c, a, f,) => {
 				const usage =
-					"dss dataset clone <source> <target> [--path PATH] [--table TABLE] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
+					"dss dataset clone <source> <target> [--path PATH] [--table TABLE] [--metastore-table TABLE] [--allow-same-path] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
 				requireArgs(a, 2, usage,);
 				const pk = f["project-key"] as string | undefined;
 				const opts = {
@@ -2228,6 +2528,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					path: f["path"] as string | undefined,
 					table: f["table"] as string | undefined,
 					metastoreTableName: f["metastore-table"] as string | undefined,
+					allowSamePath: f["allow-same-path"] === true,
 				};
 				const current = await c.datasets.get(a[0], pk,);
 				const next = {
@@ -2243,6 +2544,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 							: {}),
 					},
 				};
+				assertDatasetClonePathIsSafe(current, next, opts.allowSamePath,);
 				const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
 				if (f["dry-run"] === true) {
 					return {
@@ -2266,11 +2568,11 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return { ...cloned, resource: "dataset", ...moved, };
 			},
 			usage:
-				"dss dataset clone <source> <target> [--path PATH] [--table TABLE] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
+				"dss dataset clone <source> <target> [--path PATH] [--table TABLE] [--metastore-table TABLE] [--allow-same-path] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
 			description: "Clone dataset settings into a new dataset, with storage/table overrides.",
 			examples: [
 				"dss dataset clone source_ds experiment_ds --path /dataiku/TEST/experiment_ds --dry-run",
-				"dss dataset clone source_ds experiment_ds --metastore-table experiment_ds --zone Experiments",
+				"dss dataset clone source_ds experiment_ds --allow-same-path",
 			],
 		},
 		delete: {
@@ -2532,28 +2834,47 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		clone: {
 			handler: async (c, a, f,) => {
 				const usage =
-					"dss recipe clone <source> --name NAME [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
-				requireArgs(a, 1, usage,);
+					"dss recipe clone [source|--from SOURCE] (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
+				const fromFlag = typeof f["from"] === "string" ? f["from"].trim() : "";
+				const sourceName = a[0] ?? fromFlag;
+				if (!sourceName) {
+					throw new UsageError(`Source recipe is required. Usage: ${usage}`, "missing_required_flag",);
+				}
+				if (a[0] && fromFlag && a[0] !== fromFlag) {
+					throw new UsageError(
+						"Positional source and --from must match when both are provided.",
+						"invalid_enum",
+					);
+				}
 				const pk = f["project-key"] as string | undefined;
-				const name = requiredStringFlag(f, "name", usage,);
+				const toFlag = typeof f["to"] === "string" ? f["to"].trim() : "";
+				const nameFlag = typeof f["name"] === "string" ? f["name"].trim() : "";
+				const name = toFlag || nameFlag;
+				if (!name) {
+					throw new UsageError(`--name or --to is required. Usage: ${usage}`, "missing_required_flag",);
+				}
+				const inputRewrites = rewritePairsFromFlags(f, "replace-input",);
+				const outputRewrites = rewritePairsFromFlags(f, "replace-output",);
 				const opts = {
 					projectKey: pk,
 					name,
 					outputDataset: f["output"] as string | undefined,
+					outputRewrites,
+					inputRewrites,
 					copyOutputSettings: f["copy-output-settings"] === true,
 					outputPath: f["path"] as string | undefined,
 					metastoreTableName: f["metastore-table"] as string | undefined,
 				};
-				const source = await c.recipes.get(a[0], { includePayload: true, projectKey: pk, },);
+				const source = await c.recipes.get(sourceName, { includePayload: true, projectKey: pk, },);
 				const outputItems = Object.values(
 					(source.recipe.outputs ?? {}) as Record<
 						string,
 						{ items?: Array<{ ref?: string; type?: string; }>; }
 					>,
 				).flatMap((role,) => role.items ?? []).filter((item,) => typeof item.ref === "string");
-				const outputRewrites: Record<string, string> = {};
+				const plannedOutputRewrites = { ...outputRewrites, };
 				if (opts.outputDataset !== undefined && outputItems.length === 1) {
-					outputRewrites[outputItems[0]!.ref!] = opts.outputDataset;
+					plannedOutputRewrites[outputItems[0]!.ref!] = opts.outputDataset;
 				}
 				const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
 				if (f["dry-run"] === true) {
@@ -2561,15 +2882,16 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						dryRun: true,
 						action: "clone",
 						resource: "recipe",
-						source: a[0],
+						source: sourceName,
 						target: name,
-						outputRewrites,
+						inputRewrites,
+						outputRewrites: plannedOutputRewrites,
 						copyOutputSettings: opts.copyOutputSettings,
 						current: source,
 						...(zoneId ? { zoneId, zoneMove: [{ objectId: name, objectType: "RECIPE", },], } : {}),
 					};
 				}
-				const cloned = await c.recipes.clone(a[0], opts,);
+				const cloned = await c.recipes.clone(sourceName, opts,);
 				const moved = await moveCreatedItemsToZone(
 					c,
 					f,
@@ -2579,7 +2901,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return { ...cloned, resource: "recipe", ...moved, };
 			},
 			usage:
-				"dss recipe clone <source> --name NAME [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
+				"dss recipe clone [source|--from SOURCE] (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
 			description: "Clone a recipe graph/settings/payload into a separate experiment recipe.",
 			examples: [
 				"dss recipe clone compute_orders --name compute_orders_opt --output orders_opt --copy-output-settings --dry-run",
@@ -2658,12 +2980,23 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				}
 				return payload;
 			},
-			usage: "dss recipe get-payload <name> [--output PATH] [--project-key KEY]",
-			description: "Print the recipe code payload to stdout.",
+			usage: "dss recipe get-payload <name> [--raw] [--output PATH] [--project-key KEY]",
+			description: "Print the recipe code payload to stdout; use --raw for pipeable code bytes.",
 			examples: [
-				"dss recipe get-payload compute_orders",
+				"dss recipe get-payload compute_orders --raw",
 				"dss recipe get-payload compute_orders -o code.py",
 			],
+		},
+		cat: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss recipe cat <name> [--raw]",);
+				return c.recipes.getPayload(a[0], {
+					projectKey: f["project-key"] as string | undefined,
+				},);
+			},
+			usage: "dss recipe cat <name> [--raw] [--project-key KEY]",
+			description: "Print a recipe code payload; combine with --raw for shell pipes and diffs.",
+			examples: ["dss recipe cat compute_orders --raw",],
 		},
 		"set-payload": {
 			handler: async (c, a, f,) => {
@@ -2832,10 +3165,12 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 
 	job: {
 		list: {
-			handler: (c, _a, f,) => c.jobs.list(f["project-key"] as string | undefined,),
-			usage: "dss job list [--project-key KEY]",
-			description: "List recent jobs.",
-			examples: ["dss job list",],
+			handler: async (c, _a, f,) =>
+				filteredJobList(await c.jobs.list(f["project-key"] as string | undefined,), f,),
+			usage:
+				"dss job list [--state STATE] [--contains TEXT] [--output ID] [--latest] [--limit N] [--project-key KEY]",
+			description: "List recent jobs, optionally filtered for automation.",
+			examples: ["dss job list --state DONE --latest", "dss job list --contains WLM225S --limit 10",],
 		},
 		get: {
 			handler: (c, a, f,) => {
@@ -2845,6 +3180,16 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			usage: "dss job get <id> [--project-key KEY]",
 			description: "Get job details.",
 			examples: ["dss job get JOB_ID",],
+		},
+		summary: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss job summary <id>",);
+				return jobInspectionSummary(c, a[0], f,);
+			},
+			usage:
+				"dss job summary <id> [--activity ACTIVITY_ID] [--log-id LOG_ID] [--max-lines N|--max-log-lines N] [--project-key KEY]",
+			description: "Summarize job state, outputs, warnings, progress, and useful terminal log lines.",
+			examples: ["dss job summary JOB_ID --max-log-lines 200",],
 		},
 		log: {
 			handler: (c, a, f,) => {
@@ -2990,6 +3335,26 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				"dss job monitor <id...> [--summary] [--include-logs] [--log-filter stdout|stderr|user|errors] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--until all-done] [--project-key KEY]",
 			description: "Monitor one or more existing jobs and summarize progress counters from logs.",
 			examples: ["dss job monitor JOB_ID --summary", "dss job monitor JOB1 JOB2 --until all-done",],
+		},
+		watch: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss job watch <id...>",);
+				const options = {
+					includeLogs: f["include-logs"] === true,
+					logFilter: jobLogFilterFromFlag(f["log-filter"],),
+					maxLogLines: maxLogLinesFromFlags(f,),
+					pollIntervalMs: num(f["poll-interval"],),
+					timeoutMs: num(f["timeout"],),
+					summary: true,
+					projectKey: f["project-key"] as string | undefined,
+				};
+				const jobs = await Promise.all(a.map((jobId,) => c.jobs.wait(jobId, options,)),);
+				return a.length === 1 ? jobs[0] : { jobs, until: f["until"] ?? "all-done", };
+			},
+			usage:
+				"dss job watch <id...> [--include-logs] [--log-filter stdout|stderr|user|errors] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--until all-done] [--project-key KEY]",
+			description: "Watch one or more existing jobs with progress extraction enabled.",
+			examples: ["dss job watch JOB_ID", "dss job watch JOB1 JOB2 --until all-done",],
 		},
 		abort: {
 			handler: async (c, a, f,) => {
@@ -4866,6 +5231,7 @@ interface CommandRegistryEntry {
 }
 
 const READ_ACTIONS = new Set([
+	"cat",
 	"contents",
 	"diff",
 	"download",
@@ -4890,7 +5256,10 @@ const READ_ACTIONS = new Set([
 	"map",
 	"metadata",
 	"peek",
+	"source",
+	"summary",
 	"wait",
+	"watch",
 	"preview",
 	"query",
 	"schema",
@@ -5064,6 +5433,7 @@ const STRING_OUTPUT_ACTIONS = new Set([
 	"download",
 	"download-code",
 	"get-payload",
+	"cat",
 	"log",
 	"log-url",
 	"preview",
@@ -5136,7 +5506,9 @@ function inferDestructiveLevel(
 }
 
 function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
-	if (resource === "job" && ["build", "build-and-wait", "wait", "monitor",].includes(action,)) {
+	if (
+		resource === "job" && ["build", "build-and-wait", "wait", "monitor", "watch",].includes(action,)
+	) {
 		return "job";
 	}
 	if (resource === "recipe" && action === "run") return "job";
@@ -6627,7 +6999,11 @@ async function main(): Promise<void> {
 		const entry = cleanupLedgerEntry(resource, action, args, flags, result, projectKey,);
 		if (entry) await appendCleanupLedgerEntry(flags["record-cleanup"], entry,);
 	}
-	writeCommandResult(result,);
+	if (flags["raw"] === true && typeof result === "string") {
+		process.stdout.write(result,);
+	} else {
+		writeCommandResult(result,);
+	}
 	const failureExitCode = commandFailureExitCode(result,);
 	if (failureExitCode !== undefined) process.exit(failureExitCode,);
 }

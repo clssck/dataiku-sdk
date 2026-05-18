@@ -1118,6 +1118,50 @@ describe("CLI planned command coverage", () => {
 		expect(result.payload.inputDatasets,).toEqual(["source_a", "source_b", "source_c",],);
 	});
 
+	it("recipe clone dry-run accepts from/to and input/output rewrites", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/recipes/source_recipe",);
+			expect(url.searchParams.get("includePayload",),).toBe("true",);
+			sendJson(res, {
+				recipe: {
+					name: "source_recipe",
+					type: "python",
+					inputs: { main: { items: [{ ref: "old_input", },], }, },
+					outputs: { main: { items: [{ ref: "old_output", },], }, },
+				},
+				payload: "dataiku.Dataset('old_input').get_dataframe()\n",
+			},);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss([
+				"recipe",
+				"clone",
+				"--from",
+				"source_recipe",
+				"--to",
+				"target_recipe",
+				"--replace-input",
+				"old_input=new_input",
+				"--replace-output",
+				"old_output=new_output",
+				"--dry-run",
+			], { env: cliEnv(url,), },);
+
+			expect(stderr,).toBe("",);
+			const result = JSON.parse(stdout,) as {
+				inputRewrites: Record<string, string>;
+				outputRewrites: Record<string, string>;
+				source: string;
+				target: string;
+			};
+			expect(result.source,).toBe("source_recipe",);
+			expect(result.target,).toBe("target_recipe",);
+			expect(result.inputRewrites,).toEqual({ old_input: "new_input", },);
+			expect(result.outputRewrites,).toEqual({ old_output: "new_output", },);
+		},);
+	});
+
 	it("dataset clone dry-run preserves settings with storage overrides", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
@@ -1160,6 +1204,61 @@ describe("CLI planned command coverage", () => {
 		},);
 	});
 
+	it("dataset source returns compact backing storage details", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/datasets/source_ds",);
+			sendJson(res, {
+				name: "source_ds",
+				type: "PostgreSQL",
+				projectKey: "TEST",
+				managed: false,
+				params: {
+					connection: "warehouse",
+					catalog: "prod",
+					schema: "public",
+					table: "orders",
+				},
+				formatType: "csv",
+			},);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss(["dataset", "source", "source_ds",], {
+				env: cliEnv(url,),
+			},);
+			expect(stderr,).toBe("",);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				resource: "dataset",
+				name: "source_ds",
+				connection: "warehouse",
+				catalog: "prod",
+				schema: "public",
+				table: "orders",
+			},);
+		},);
+	});
+
+	it("dataset clone refuses to reuse managed storage paths by default", async () => {
+		await withCliServer((_req, res,) => {
+			sendJson(res, {
+				name: "source_ds",
+				type: "S3",
+				managed: true,
+				params: { connection: "s3_conn", path: "/dataiku/TEST/source_ds", },
+			},);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"dataset",
+				"clone",
+				"source_ds",
+				"target_ds",
+				"--dry-run",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toContain("Refusing to clone managed dataset",);
+		},);
+	});
+
 	it("flow-zone summary and find expose compact object membership", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
@@ -1198,6 +1297,95 @@ describe("CLI planned command coverage", () => {
 				itemCount: 1,
 				containsMatchingObject: true,
 			},],);
+
+			const foundByName = JSON.parse(
+				(await dss(["flow-zone", "find", "Recipes",], { env: cliEnv(url,), },)).stdout,
+			) as Array<{ id: string; items: unknown[]; }>;
+			expect(foundByName,).toEqual([{
+				id: "zone-2",
+				name: "Recipes",
+				itemCount: 1,
+				items: [{ objectType: "RECIPE", objectId: "compute_orders", },],
+			},],);
+		},);
+	});
+
+	it("job list filters and summary normalize progress and warnings", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/") {
+				sendJson(res, [
+					{
+						baseStatus: {
+							def: { id: "job-1", type: "DATASET_BUILD", outputs: [{ id: "target_ds", },], },
+							state: "DONE",
+						},
+					},
+					{
+						baseStatus: {
+							def: { id: "job-2", type: "DATASET_BUILD", outputs: [{ id: "other_ds", },], },
+							state: "FAILED",
+						},
+					},
+				],);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-1/") {
+				sendJson(res, {
+					baseStatus: {
+						def: { id: "job-1", type: "DATASET_BUILD", outputs: [{ id: "target_ds", },], },
+						state: "DONE",
+						startTime: 1000,
+						endTime: 61_000,
+						warningCount: 7,
+					},
+					activities: [{ warningCount: 2, },],
+				},);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-1/log/") {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/plain",);
+				res.end([
+					"WARN first warning",
+					"Scanned 10, written 5",
+					"5 rows successfully written",
+					"Done! completed",
+				].join("\n",),);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const list = JSON.parse(
+				(await dss(["job", "list", "--state", "DONE", "--output", "target_ds", "--latest",], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as unknown[];
+			expect(list,).toHaveLength(1,);
+
+			const summary = JSON.parse(
+				(await dss(["job", "summary", "job-1", "--max-log-lines", "10",], { env: cliEnv(url,), },))
+					.stdout,
+			) as {
+				durationMs: number;
+				warnings: {
+					dssSummaryWarningCount: number;
+					activityWarningCount: number;
+					logWarnLineCount: number;
+				};
+				doneLine: string;
+				progress: { counters: { written: number; }; rowsPerMinute: number; };
+			};
+			expect(summary.durationMs,).toBe(60_000,);
+			expect(summary.warnings,).toMatchObject({
+				dssSummaryWarningCount: 7,
+				activityWarningCount: 2,
+				logWarnLineCount: 1,
+			},);
+			expect(summary.progress.counters.written,).toBe(5,);
+			expect(summary.progress.rowsPerMinute,).toBe(5,);
+			expect(summary.doneLine,).toBe("Done! completed",);
 		},);
 	});
 	it("uses replace mode for variable set without fetching existing values", async () => {
@@ -1693,6 +1881,21 @@ describe("CLI recipe get-payload and set-payload", () => {
 		}, async (url,) => {
 			const { stdout, } = await dss(["recipe", "get-payload", "my_recipe",], { env: cliEnv(url,), },);
 			expect(JSON.parse(stdout,),).toBe("print('hello')\n",);
+		},);
+	});
+
+	it("get-payload --raw preserves payload bytes on stdout", async () => {
+		await withCliServer((_req, res,) => {
+			sendJson(res, {
+				recipe: { type: "python", },
+				payload: "print('hello')\r\nprint('bye')\n",
+			},);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss(["recipe", "get-payload", "my_recipe", "--raw",], {
+				env: cliEnv(url,),
+			},);
+			expect(stderr,).toBe("",);
+			expect(stdout,).toBe("print('hello')\r\nprint('bye')\n",);
 		},);
 	});
 

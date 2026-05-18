@@ -82,6 +82,7 @@ export interface RecipeCloneOptions {
 	name: string;
 	outputDataset?: string;
 	outputRewrites?: Record<string, string>;
+	inputRewrites?: Record<string, string>;
 	payloadRewrites?: Record<string, string>;
 	copyOutputSettings?: boolean;
 	outputPath?: string;
@@ -93,6 +94,7 @@ export interface RecipeCloneResult {
 	recipeName: string;
 	projectKey: string;
 	outputRewrites: Record<string, string>;
+	inputRewrites: Record<string, string>;
 	payloadRewrites: Record<string, string>;
 	copiedOutputDatasets: string[];
 }
@@ -800,9 +802,12 @@ export class RecipesResource extends BaseResource {
 			}
 			if (outputs[0]) outputRewrites[outputs[0].ref] = opts.outputDataset;
 		}
-		const payloadRewrites: Record<string, string> = { ...outputRewrites, };
+		const inputRewrites: Record<string, string> = {};
+		if (opts.inputRewrites) Object.assign(inputRewrites, opts.inputRewrites,);
+		const graphRewrites: Record<string, string> = { ...inputRewrites, ...outputRewrites, };
+		const payloadRewrites: Record<string, string> = { ...graphRewrites, };
 		if (opts.payloadRewrites) Object.assign(payloadRewrites, opts.payloadRewrites,);
-		const recipe = cloneRecipeDefinition(source.recipe, opts.name, pk, outputRewrites,);
+		const recipe = cloneRecipeDefinition(source.recipe, opts.name, pk, graphRewrites,);
 		const payload = rewritePayload(source.payload, payloadRewrites,);
 		const copiedOutputDatasets: string[] = [];
 		if (opts.copyOutputSettings) {
@@ -832,6 +837,7 @@ export class RecipesResource extends BaseResource {
 			recipeName: opts.name,
 			projectKey: pk,
 			outputRewrites,
+			inputRewrites,
 			payloadRewrites,
 			copiedOutputDatasets,
 		};

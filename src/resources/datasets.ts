@@ -42,6 +42,7 @@ export interface DatasetCloneOptions {
 	table?: string;
 	metastoreTableName?: string;
 	overrides?: Record<string, unknown>;
+	allowSamePath?: boolean;
 }
 
 export interface DatasetCloneResult {
@@ -442,7 +443,23 @@ function clonedDatasetSettings(
 		projectKey,
 		params,
 	};
-	return opts.overrides ? deepMerge(cloned, opts.overrides,) : cloned;
+	const settings = opts.overrides ? deepMerge(cloned, opts.overrides,) : cloned;
+	const settingsParams =
+		settings.params && typeof settings.params === "object" && !Array.isArray(settings.params,)
+			? settings.params as Record<string, unknown>
+			: {};
+	const sourcePath = typeof source.params?.path === "string" ? source.params.path : undefined;
+	if (
+		opts.allowSamePath !== true
+		&& source.managed === true
+		&& sourcePath !== undefined
+		&& settingsParams.path === sourcePath
+	) {
+		throw new Error(
+			`Refusing to clone managed dataset "${source.name}" with the same storage path. Pass a new path or allowSamePath: true.`,
+		);
+	}
+	return settings;
 }
 
 // ---------------------------------------------------------------------------

@@ -67,6 +67,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"list",
 		"get",
 		"schema",
+		"source",
 		"validate-build",
 		"refresh-schema",
 		"preview",
@@ -89,12 +90,25 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"diff",
 		"update",
 		"get-payload",
+		"cat",
 		"set-payload",
 		"clone",
 		"restore",
 		"assert-unchanged",
 	],
-	job: ["list", "get", "log", "log-url", "build", "build-and-wait", "wait", "monitor", "abort",],
+	job: [
+		"list",
+		"get",
+		"summary",
+		"log",
+		"log-url",
+		"build",
+		"build-and-wait",
+		"wait",
+		"monitor",
+		"watch",
+		"abort",
+	],
 	scenario: ["list", "get", "run", "run-and-wait", "status", "delete", "create", "update",],
 	folder: [
 		"list",
@@ -324,8 +338,19 @@ describe("CLI command surface", () => {
 			name: "no-backup",
 			kind: "boolean",
 		},);
+		expect(registry.recipe["get-payload"].flags,).toContainEqual({
+			name: "raw",
+			kind: "boolean",
+		},);
+		expect(registry.recipe.cat.outputShape,).toBe("string",);
 		expect(registry.dataset.clone.cleanupCommand,).toBe("dss dataset delete <name> --if-exists",);
 		expect(registry.recipe.clone.cleanupCommand,).toBe("dss recipe delete <name> --if-exists",);
+		expect(registry.dataset.clone.flags,).toContainEqual({
+			name: "allow-same-path",
+			kind: "boolean",
+		},);
+		expect(registry.job.summary.sideEffect,).toBe("read",);
+		expect(registry.job.watch.async,).toBe("job",);
 		expect(registry.recipe.run.flags,).toContainEqual({ name: "max-log-lines", kind: "value", },);
 		expect(registry.recipe.run.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
 		expect(registry.recipe.run.async,).toBe("job",);
