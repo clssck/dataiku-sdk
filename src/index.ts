@@ -69,7 +69,17 @@ export {
 	type RecipeRunResult,
 	RecipesResource,
 } from "./resources/recipes.js";
-export { ScenariosResource, } from "./resources/scenarios.js";
+export {
+	normalizeScenarioUpdateData,
+	SCENARIO_CANONICAL_EDITABLE_FIELDS,
+	type ScenarioFieldChange,
+	type ScenarioFieldMismatch,
+	ScenariosResource,
+	type ScenarioUpdateNormalization,
+	type ScenarioUpdatePreview,
+	scenarioUpdatePreview,
+	type ScenarioUpdateResult,
+} from "./resources/scenarios.js";
 export { SqlResource, } from "./resources/sql.js";
 export { VariablesResource, } from "./resources/variables.js";
 export { WikiResource, } from "./resources/wiki.js";

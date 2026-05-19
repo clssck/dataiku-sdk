@@ -1,3 +1,4 @@
+import { DataikuError, } from "../errors.js";
 import type {
 	ScenarioDetails,
 	ScenarioStatus,
@@ -12,6 +13,213 @@ import {
 import { deepMerge, } from "../utils/deep-merge.js";
 import { BaseResource, } from "./base.js";
 import { computeNextPollDelayMs, } from "./jobs.js";
+
+export const SCENARIO_CANONICAL_EDITABLE_FIELDS = [
+	"params.steps",
+	"params.triggers",
+	"params.reporters",
+	"params.customScript",
+	"active",
+	"name",
+] as const;
+
+export interface ScenarioUpdateNormalization {
+	from: string;
+	to: string;
+	action: "promoted" | "ignored";
+	message: string;
+}
+
+export interface ScenarioFieldChange {
+	path: string;
+	before: unknown;
+	after: unknown;
+}
+
+export interface ScenarioFieldMismatch {
+	path: string;
+	expected: unknown;
+	actual: unknown;
+}
+
+export interface ScenarioUpdatePreview {
+	canonicalEditableFields: typeof SCENARIO_CANONICAL_EDITABLE_FIELDS;
+	normalization: ScenarioUpdateNormalization[];
+	normalizedData: Record<string, unknown>;
+	current: Record<string, unknown>;
+	next: Record<string, unknown>;
+	changes: ScenarioFieldChange[];
+	unchangedPaths: string[];
+}
+
+export interface ScenarioUpdateResult extends ScenarioUpdatePreview {
+	after: Record<string, unknown>;
+	verified: true;
+	mismatches: [];
+}
+
+function isRecord(value: unknown,): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value,);
+}
+
+function jsonValueEqual(left: unknown, right: unknown,): boolean {
+	if (Object.is(left, right,)) return true;
+	if (Array.isArray(left,) || Array.isArray(right,)) {
+		if (!Array.isArray(left,) || !Array.isArray(right,) || left.length !== right.length) return false;
+		return left.every((value, index,) => jsonValueEqual(value, right[index],));
+	}
+	if (!isRecord(left,) || !isRecord(right,)) return false;
+	const leftKeys = Object.keys(left,);
+	const rightKeys = Object.keys(right,);
+	if (leftKeys.length !== rightKeys.length) return false;
+	return leftKeys.every((key,) =>
+		Object.hasOwn(right, key,) && jsonValueEqual(left[key], right[key],)
+	);
+}
+
+function jsonValueContains(actual: unknown, expected: unknown,): boolean {
+	if (jsonValueEqual(actual, expected,)) return true;
+	if (Array.isArray(actual,) || Array.isArray(expected,)) {
+		if (!Array.isArray(actual,) || !Array.isArray(expected,) || actual.length !== expected.length) {
+			return false;
+		}
+		return expected.every((value, index,) => jsonValueContains(actual[index], value,));
+	}
+	if (!isRecord(actual,) || !isRecord(expected,)) return false;
+	return Object.entries(expected,).every(([key, value,],) =>
+		Object.hasOwn(actual, key,) && jsonValueContains(actual[key], value,)
+	);
+}
+
+function collectPatchPaths(value: unknown, prefix = "", paths: string[] = [],): string[] {
+	if (!isRecord(value,)) {
+		if (prefix) paths.push(prefix,);
+		return paths;
+	}
+
+	const entries = Object.entries(value,);
+	if (entries.length === 0) {
+		if (prefix) paths.push(prefix,);
+		return paths;
+	}
+
+	for (const [key, child,] of entries) {
+		collectPatchPaths(child, prefix ? `${prefix}.${key}` : key, paths,);
+	}
+	return paths;
+}
+
+function valueAtPath(value: unknown, path: string,): unknown {
+	let current = value;
+	for (const part of path.split(".",)) {
+		if (!isRecord(current,)) return undefined;
+		current = current[part];
+	}
+	return current;
+}
+
+function scenarioFieldChanges(
+	before: Record<string, unknown>,
+	after: Record<string, unknown>,
+	patch: Record<string, unknown>,
+): { changes: ScenarioFieldChange[]; unchangedPaths: string[]; } {
+	const changes: ScenarioFieldChange[] = [];
+	const unchangedPaths: string[] = [];
+	for (const path of collectPatchPaths(patch,)) {
+		const beforeValue = valueAtPath(before, path,);
+		const afterValue = valueAtPath(after, path,);
+		if (jsonValueEqual(beforeValue, afterValue,)) {
+			unchangedPaths.push(path,);
+			continue;
+		}
+		changes.push({ path, before: beforeValue, after: afterValue, },);
+	}
+	return { changes, unchangedPaths, };
+}
+
+function scenarioFieldMismatches(
+	actual: Record<string, unknown>,
+	expected: Record<string, unknown>,
+	patch: Record<string, unknown>,
+): ScenarioFieldMismatch[] {
+	const mismatches: ScenarioFieldMismatch[] = [];
+	for (const path of collectPatchPaths(patch,)) {
+		const actualValue = valueAtPath(actual, path,);
+		const expectedValue = valueAtPath(expected, path,);
+		if (!jsonValueContains(actualValue, expectedValue,)) {
+			mismatches.push({ path, expected: expectedValue, actual: actualValue, },);
+		}
+	}
+	return mismatches;
+}
+
+export function normalizeScenarioUpdateData(
+	data: Record<string, unknown>,
+): { normalizedData: Record<string, unknown>; normalization: ScenarioUpdateNormalization[]; } {
+	const normalizedData: Record<string, unknown> = { ...data, };
+	const normalization: ScenarioUpdateNormalization[] = [];
+	const rawParams = data.rawParams;
+	if (!isRecord(rawParams,) || !isRecord(rawParams.params,)) {
+		return { normalizedData, normalization, };
+	}
+
+	const canonicalParams = isRecord(data.params,) ? data.params : undefined;
+	const mergedParams = canonicalParams === undefined
+		? rawParams.params
+		: deepMerge(rawParams.params, canonicalParams,);
+	const promoted = canonicalParams === undefined || !jsonValueEqual(mergedParams, canonicalParams,);
+	if (promoted) normalizedData.params = mergedParams;
+
+	const rawParamsWithoutParams = { ...rawParams, };
+	delete rawParamsWithoutParams.params;
+	if (Object.keys(rawParamsWithoutParams,).length === 0) delete normalizedData.rawParams;
+	else normalizedData.rawParams = rawParamsWithoutParams;
+
+	normalization.push({
+		from: "rawParams.params",
+		to: "params",
+		action: promoted ? "promoted" : "ignored",
+		message: promoted
+			? "rawParams.params is a DSS echo; the editable scenario definition uses params."
+			: "rawParams.params was ignored because canonical params already supplied the same editable fields.",
+	},);
+	return { normalizedData, normalization, };
+}
+
+export function scenarioUpdatePreview(
+	current: Record<string, unknown>,
+	data: Record<string, unknown>,
+): ScenarioUpdatePreview {
+	const { normalizedData, normalization, } = normalizeScenarioUpdateData(data,);
+	const next = deepMerge(current, normalizedData,);
+	const { changes, unchangedPaths, } = scenarioFieldChanges(current, next, normalizedData,);
+	return {
+		canonicalEditableFields: SCENARIO_CANONICAL_EDITABLE_FIELDS,
+		normalization,
+		normalizedData,
+		current,
+		next,
+		changes,
+		unchangedPaths,
+	};
+}
+
+function scenarioUpdateVerificationError(
+	mismatches: ScenarioFieldMismatch[],
+	normalization: ScenarioUpdateNormalization[],
+): DataikuError {
+	const mismatchPaths = mismatches.map((mismatch,) => mismatch.path).join(", ",);
+	return new DataikuError(
+		400,
+		"Scenario Update Verification Failed",
+		JSON.stringify({
+			message: `Scenario update did not persist requested fields after refetch: ${mismatchPaths}`,
+			mismatches,
+			canonicalEditableFields: SCENARIO_CANONICAL_EDITABLE_FIELDS,
+			...(normalization.length > 0 ? { normalization, } : {}),
+		},),
+	);
+}
 
 export class ScenariosResource extends BaseResource {
 	/** List all scenarios in a project. */
@@ -78,22 +286,39 @@ export class ScenariosResource extends BaseResource {
 		return this.client.safeParse(ScenarioStatusSchema, raw, "scenarios.status",);
 	}
 
-	/** Merge-update a scenario's definition. */
+	/** Merge-update a scenario's definition, then refetch and verify requested fields persisted. */
 	async update(
 		scenarioId: string,
 		data: Record<string, unknown>,
 		projectKey?: string,
-	): Promise<void> {
+	): Promise<ScenarioUpdateResult> {
 		const scEnc = encodeURIComponent(scenarioId,);
 		const pkEnc = this.enc(projectKey,);
 		const current = await this.client.get<Record<string, unknown>>(
 			`/public/api/projects/${pkEnc}/scenarios/${scEnc}/`,
 		);
-		const merged = deepMerge(current, data,);
+		const preview = scenarioUpdatePreview(current, data,);
 		await this.client.put<Record<string, unknown>>(
 			`/public/api/projects/${pkEnc}/scenarios/${scEnc}/`,
-			merged,
+			preview.next,
 		);
+		const after = await this.client.get<Record<string, unknown>>(
+			`/public/api/projects/${pkEnc}/scenarios/${scEnc}/`,
+		);
+		const mismatches = scenarioFieldMismatches(after, preview.next, preview.normalizedData,);
+		if (mismatches.length > 0) {
+			throw scenarioUpdateVerificationError(mismatches, preview.normalization,);
+		}
+
+		const verified = scenarioFieldChanges(current, after, preview.normalizedData,);
+		return {
+			...preview,
+			after,
+			changes: verified.changes,
+			unchangedPaths: verified.unchangedPaths,
+			verified: true,
+			mismatches: [],
+		};
 	}
 
 	/** Delete a scenario. */

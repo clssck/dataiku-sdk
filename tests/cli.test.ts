@@ -365,7 +365,11 @@ describe("CLI execution behavior", () => {
 	it("supports --data-file JSON input", async () => {
 		let capturedBody: Record<string, unknown> | undefined;
 		const tmpFile = join(tmpdir(), `dss-cli-data-file-${Date.now()}.json`,);
-		writeFileSync(tmpFile, JSON.stringify({ nested: { added: "from-file", }, },), "utf-8",);
+		writeFileSync(
+			tmpFile,
+			`\ufeff${JSON.stringify({ nested: { added: "from-file", }, },)}`,
+			"utf-8",
+		);
 		try {
 			await withCliServer(async (req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);
@@ -393,6 +397,87 @@ describe("CLI execution behavior", () => {
 		} finally {
 			rmSync(tmpFile, { force: true, },);
 		}
+	});
+
+	it("normalizes scenario rawParams dry-run to canonical params", async () => {
+		const step = { type: "build_flowitem", name: "Build FRG", };
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/scenarios/BUILD_FRG/") {
+				sendJson(res, {
+					id: "BUILD_FRG",
+					type: "step_based",
+					params: { steps: [], },
+					rawParams: { params: { steps: [], }, },
+				},);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss([
+				"scenario",
+				"update",
+				"BUILD_FRG",
+				"--data",
+				JSON.stringify({ rawParams: { params: { steps: [step,], }, }, },),
+				"--dry-run",
+			], { env: cliEnv(url,), },);
+			expect(stderr,).toBe("",);
+			const result = JSON.parse(stdout,) as Record<string, unknown>;
+			expect(result.normalization,).toEqual([{
+				from: "rawParams.params",
+				to: "params",
+				action: "promoted",
+				message: expect.stringContaining("editable scenario definition uses params",),
+			},],);
+			expect(result.normalizedData,).toEqual({ params: { steps: [step,], }, },);
+			expect(result.changes,).toEqual([{
+				path: "params.steps",
+				before: [],
+				after: [step,],
+			},],);
+			expect(result.next,).toHaveProperty("params.steps", [step,],);
+		},);
+	});
+
+	it("fails scenario update when refetch does not include requested fields", async () => {
+		let capturedBody: Record<string, unknown> | undefined;
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/scenarios/BUILD_FRG/") {
+				sendJson(res, { id: "BUILD_FRG", type: "step_based", params: { steps: [], }, },);
+				return;
+			}
+			if (req.method === "PUT" && url.pathname === "/public/api/projects/TEST/scenarios/BUILD_FRG/") {
+				capturedBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { ok: true, }, 204,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"scenario",
+				"update",
+				"BUILD_FRG",
+				"--data",
+				JSON.stringify({ params: { steps: [{ type: "build_flowitem", },], }, },),
+				"--report-json",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(2,);
+			expect(capturedBody,).toHaveProperty("params.steps.0.type", "build_flowitem",);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "validation_failed",
+				category: "dss",
+				status: 400,
+				resource: "scenario",
+				action: "update",
+			},);
+			expect(report.message,).toContain("Scenario update did not persist requested fields",);
+			expect(report.message,).toContain("params.steps",);
+		},);
 	});
 
 	it("supports --stdin JSON input", async () => {
@@ -3368,6 +3453,11 @@ describe("CLI command behavioral smoke coverage", () => {
 		let recipeUpdateBody: Record<string, unknown> | undefined;
 		let scenarioCreateBody: Record<string, unknown> | undefined;
 		let scenarioUpdateBody: Record<string, unknown> | undefined;
+		let scenarioDefinition: Record<string, unknown> = {
+			id: "scenario-1",
+			name: "Scenario 1",
+			params: { steps: [], },
+		};
 		try {
 			await withCliServer(async (req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);
@@ -3420,7 +3510,7 @@ describe("CLI command behavioral smoke coverage", () => {
 				if (
 					req.method === "GET" && url.pathname === "/public/api/projects/TEST/scenarios/scenario-1/"
 				) {
-					sendJson(res, { id: "scenario-1", name: "Scenario 1", params: { steps: [], }, },);
+					sendJson(res, scenarioDefinition,);
 					return;
 				}
 				if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/scenarios/") {
@@ -3432,6 +3522,7 @@ describe("CLI command behavioral smoke coverage", () => {
 					req.method === "PUT" && url.pathname === "/public/api/projects/TEST/scenarios/scenario-1/"
 				) {
 					scenarioUpdateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+					scenarioDefinition = scenarioUpdateBody;
 					sendJson(res, { ok: true, }, 204,);
 					return;
 				}
@@ -3559,7 +3650,7 @@ describe("CLI command behavioral smoke coverage", () => {
 					name: "Scenario 1",
 					projectKey: "TEST",
 				},);
-				expect(JSON.parse(
+				const scenarioUpdate = JSON.parse(
 					(await dss([
 						"scenario",
 						"update",
@@ -3567,7 +3658,18 @@ describe("CLI command behavioral smoke coverage", () => {
 						"--data",
 						'{"active":false}',
 					], { env: cliEnv(url,), },)).stdout,
-				),).toEqual({ updated: "scenario-1", resource: "scenario", },);
+				) as Record<string, unknown>;
+				expect(scenarioUpdate,).toMatchObject({
+					updated: "scenario-1",
+					resource: "scenario",
+					verified: true,
+					changed: true,
+				},);
+				expect(scenarioUpdate.changes,).toEqual([{
+					path: "active",
+					before: undefined,
+					after: false,
+				},],);
 				expect(scenarioUpdateBody,).toMatchObject({ id: "scenario-1", active: false, },);
 				expect(
 					JSON.parse((await dss(["scenario", "run", "scenario-1",], { env: cliEnv(url,), },)).stdout,),

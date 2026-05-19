@@ -25,6 +25,7 @@ import {
 	type JobLogFilter,
 	parseJobLogProgress,
 } from "./resources/jobs.js";
+import { scenarioUpdatePreview, } from "./resources/scenarios.js";
 import type {
 	BuildMode,
 	DatasetDetails,
@@ -640,9 +641,36 @@ async function jobInspectionSummary(
 	};
 }
 
-function json(v: string | boolean | undefined,): Record<string, unknown> | undefined {
+function stripUtf8Bom(text: string,): string {
+	return text.charCodeAt(0,) === 0xfeff ? text.slice(1,) : text;
+}
+
+function parseJsonValue(text: string, source: string,): unknown {
+	try {
+		return JSON.parse(stripUtf8Bom(text,),) as unknown;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error,);
+		throw new UsageError(`Invalid JSON in ${source}: ${message}`, "validation_failed",);
+	}
+}
+
+function expectJsonObject(value: unknown, source: string,): Record<string, unknown> {
+	if (value && typeof value === "object" && !Array.isArray(value,)) {
+		return value as Record<string, unknown>;
+	}
+	throw new UsageError(`Expected JSON object in ${source}.`, "validation_failed",);
+}
+
+function parseJsonObject(text: string, source: string,): Record<string, unknown> {
+	return expectJsonObject(parseJsonValue(text, source,), source,);
+}
+
+function json(
+	v: string | boolean | undefined,
+	source = "JSON flag",
+): Record<string, unknown> | undefined {
 	if (typeof v !== "string") return undefined;
-	return JSON.parse(v,) as Record<string, unknown>;
+	return parseJsonObject(v, source,);
 }
 
 type TlsSettings = Pick<DssCredentials, "tlsRejectUnauthorized" | "caCertPath">;
@@ -655,24 +683,20 @@ function readStdinText(): string {
 }
 
 function jsonInput(flags: Record<string, string | boolean>,): Record<string, unknown> | undefined {
-	if (flags["stdin"] === true) {
-		return JSON.parse(readStdinText(),) as Record<string, unknown>;
-	}
+	if (flags["stdin"] === true) return parseJsonObject(readStdinText(), "stdin",);
 	if (typeof flags["data-file"] === "string") {
-		return JSON.parse(readFileSync(flags["data-file"], "utf-8",),) as Record<string, unknown>;
+		return parseJsonObject(readFileSync(flags["data-file"], "utf-8",), flags["data-file"],);
 	}
-	if (typeof flags["data"] === "string") {
-		return JSON.parse(flags["data"],) as Record<string, unknown>;
-	}
+	if (typeof flags["data"] === "string") return parseJsonObject(flags["data"], "--data",);
 	return undefined;
 }
 
 function unknownJsonInput(flags: Record<string, string | boolean>,): unknown {
-	if (flags["stdin"] === true) return JSON.parse(readStdinText(),) as unknown;
+	if (flags["stdin"] === true) return parseJsonValue(readStdinText(), "stdin",);
 	if (typeof flags["data-file"] === "string") {
-		return JSON.parse(readFileSync(flags["data-file"], "utf-8",),) as unknown;
+		return parseJsonValue(readFileSync(flags["data-file"], "utf-8",), flags["data-file"],);
 	}
-	if (typeof flags["data"] === "string") return JSON.parse(flags["data"],) as unknown;
+	if (typeof flags["data"] === "string") return parseJsonValue(flags["data"], "--data",);
 	return undefined;
 }
 
@@ -726,7 +750,7 @@ function requiredJsonInput(
 	message: string,
 ): Record<string, unknown> {
 	const data = jsonInput(flags,);
-	if (!data) throw new UsageError(message,);
+	if (data === undefined) throw new UsageError(message,);
 	return data;
 }
 
@@ -3418,7 +3442,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.scenarios.get(a[0], { projectKey: f["project-key"] as string | undefined, },);
 			},
 			usage: "dss scenario get <id> [--project-key KEY]",
-			description: "Get scenario definition.",
+			description:
+				"Get raw scenario definition. For step-based scenario edits, patch params.steps; rawParams.params is DSS echo data.",
 			examples: ["dss scenario get my_scenario",],
 		},
 		run: {
@@ -3559,7 +3584,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin]",);
 				const data = jsonInput(f,);
-				if (!data) {
+				if (data === undefined) {
 					throw new UsageError(
 						"--data, --data-file, or --stdin is required. Usage: dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin]",
 					);
@@ -3567,16 +3592,42 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				const pk = f["project-key"] as string | undefined;
 				if (f["dry-run"] === true) {
 					const current = await c.scenarios.get(a[0], { projectKey: pk, },);
-					const next = deepMerge(current as unknown as Record<string, unknown>, data,);
-					return { dryRun: true, action: "update", resource: "scenario", id: a[0], current, next, };
+					const preview = scenarioUpdatePreview(current as unknown as Record<string, unknown>, data,);
+					return {
+						dryRun: true,
+						action: "update",
+						resource: "scenario",
+						id: a[0],
+						canonicalEditableFields: preview.canonicalEditableFields,
+						normalization: preview.normalization,
+						normalizedData: preview.normalizedData,
+						changes: preview.changes,
+						unchangedPaths: preview.unchangedPaths,
+						current: preview.current,
+						next: preview.next,
+					};
 				}
-				await c.scenarios.update(a[0], data, pk,);
-				return { updated: a[0], resource: "scenario", };
+				const result = await c.scenarios.update(a[0], data, pk,);
+				return {
+					updated: a[0],
+					resource: "scenario",
+					verified: result.verified,
+					changed: result.changes.length > 0,
+					canonicalEditableFields: result.canonicalEditableFields,
+					normalization: result.normalization,
+					...(result.normalization.length > 0 ? { normalizedData: result.normalizedData, } : {}),
+					changes: result.changes,
+					unchangedPaths: result.unchangedPaths,
+				};
 			},
 			usage:
 				"dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
-			description: "Update scenario settings via JSON merge.",
-			examples: ["dss scenario update my_scenario --data-file settings.json --dry-run",],
+			description:
+				"Update scenario settings via JSON merge; edit step-based scenario steps at params.steps, not rawParams.params.steps.",
+			examples: [
+				'dss scenario update my_scenario --data \'{"params":{"steps":[]}}\' --dry-run',
+				"dss scenario update my_scenario --data-file settings.json --dry-run",
+			],
 		},
 	},
 
@@ -5725,7 +5776,7 @@ function optionalJsonFlag(
 	name: string,
 ): Record<string, unknown> | undefined {
 	const value = flags[name];
-	return typeof value === "string" ? JSON.parse(value,) as Record<string, unknown> : undefined;
+	return typeof value === "string" ? parseJsonObject(value, `--${name}`,) : undefined;
 }
 
 function requiredPlanJsonInput(
