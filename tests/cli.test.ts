@@ -599,6 +599,50 @@ describe("CLI execution behavior", () => {
 		}
 	});
 
+	it("strips a UTF-8 BOM from --sql-file input", async () => {
+		let capturedBody: Record<string, unknown> | undefined;
+		const tmpFile = join(tmpdir(), `dss-cli-sql-bom-${Date.now()}.sql`,);
+		writeFileSync(
+			tmpFile,
+			'\ufeffSELECT * FROM "prod-icmc-dg-ilab-db".workbook LIMIT 5',
+			"utf-8",
+		);
+		try {
+			await withCliServer(async (req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+					capturedBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+					sendJson(res, { queryId: "q-file-bom", hasResults: true, schema: [], },);
+					return;
+				}
+				if (req.method === "GET" && url.pathname === "/public/api/sql/queries/q-file-bom/stream") {
+					res.statusCode = 200;
+					res.setHeader("Content-Type", "application/json",);
+					res.end("[]",);
+					return;
+				}
+				if (
+					req.method === "GET" && url.pathname === "/public/api/sql/queries/q-file-bom/finish-streaming"
+				) {
+					res.statusCode = 200;
+					res.end("",);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("not found",);
+			}, async (url,) => {
+				await dss(["sql", "query", "--sql-file", tmpFile, "--connection", "CONN",], {
+					env: cliEnv(url,),
+				},);
+			},);
+			expect(capturedBody?.query,).toBe(
+				'SELECT * FROM "prod-icmc-dg-ilab-db".workbook LIMIT 5',
+			);
+		} finally {
+			rmSync(tmpFile, { force: true, },);
+		}
+	});
+
 	it("writes SQL query results to --output", async () => {
 		const outputPath = join(tmpdir(), `dss-cli-sql-output-${Date.now()}.json`,);
 		try {
@@ -695,6 +739,40 @@ describe("CLI execution behavior", () => {
 				columns: [],
 				rows: [],
 			},);
+		},);
+		expect(capturedBody?.query,).toBe('SELECT * FROM "prod-icmc-dg-ilab-db".workbook LIMIT 5',);
+	});
+
+	it("strips a UTF-8 BOM from stdin SQL input", async () => {
+		let capturedBody: Record<string, unknown> | undefined;
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+				capturedBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { queryId: "q-stdin-bom", hasResults: true, schema: [], },);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/sql/queries/q-stdin-bom/stream") {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "application/json",);
+				res.end("[]",);
+				return;
+			}
+			if (
+				req.method === "GET" && url.pathname === "/public/api/sql/queries/q-stdin-bom/finish-streaming"
+			) {
+				res.statusCode = 200;
+				res.end("",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			await dssWithInput(
+				["sql", "query", "--stdin", "--connection", "CONN",],
+				'\ufeffSELECT * FROM "prod-icmc-dg-ilab-db".workbook LIMIT 5',
+				{ env: cliEnv(url,), },
+			);
 		},);
 		expect(capturedBody?.query,).toBe('SELECT * FROM "prod-icmc-dg-ilab-db".workbook LIMIT 5',);
 	});

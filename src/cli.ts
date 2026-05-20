@@ -863,7 +863,7 @@ function resolveSqlInput(args: string[], flags: Record<string, string | boolean>
 		);
 	}
 
-	const query = sources[0]!.read();
+	const query = stripUtf8Bom(sources[0]!.read(),);
 	if (query.trim().length === 0) {
 		throw new UsageError(
 			`SQL input from ${sources[0]!.label} must not be empty. Usage: ${SQL_QUERY_USAGE}`,
