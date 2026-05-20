@@ -429,6 +429,211 @@ function flowZoneDetailSummary(zone: FlowZone,): Record<string, unknown> {
 	};
 }
 
+interface FlowZoneOrganizeZonePlan {
+	id?: string;
+	name?: string;
+	color?: string;
+	items: FlowZoneItemInput[];
+}
+
+interface FlowZoneOrganizePlan {
+	zones: FlowZoneOrganizeZonePlan[];
+}
+
+function optionalStringField(
+	record: Record<string, unknown>,
+	keys: string[],
+): string | undefined {
+	for (const key of keys) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim().length > 0) return value.trim();
+	}
+	return undefined;
+}
+
+function requiredStringArray(value: unknown, source: string,): string[] {
+	if (!Array.isArray(value,)) {
+		throw new UsageError(`${source} must be an array of strings.`, "validation_failed",);
+	}
+	return value.map((item, index,) => {
+		if (typeof item !== "string" || item.trim().length === 0) {
+			throw new UsageError(`${source}[${index}] must be a non-empty string.`, "validation_failed",);
+		}
+		return item.trim();
+	},);
+}
+
+function flowZonePlanColor(value: unknown, source: string,): string | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "string" || !/^#[0-9a-fA-F]{6}$/.test(value.trim(),)) {
+		throw new UsageError(`${source} must be a hex color like #2ab1ac.`, "validation_failed",);
+	}
+	return value.trim();
+}
+
+function parseFlowZonePlanItem(value: unknown, source: string,): FlowZoneItemInput {
+	if (typeof value === "string") return parseFlowZoneObject(value,);
+	const record = plainRecord(value,);
+	if (!record) {
+		throw new UsageError(`${source} must be TYPE:ID or an object.`, "validation_failed",);
+	}
+	const object = optionalStringField(record, ["object",],);
+	if (object) return parseFlowZoneObject(object,);
+	const objectType = optionalStringField(record, ["objectType", "type",],);
+	const objectId = optionalStringField(record, ["objectId", "id", "name",],);
+	if (!objectType || !objectId) {
+		throw new UsageError(
+			`${source} must include objectType/type and objectId/id, or object as TYPE:ID.`,
+			"validation_failed",
+		);
+	}
+	const projectKey = optionalStringField(record, ["projectKey", "project",],);
+	return {
+		objectType: flowZoneObjectType(objectType,),
+		objectId,
+		...(projectKey ? { projectKey, } : {}),
+	};
+}
+
+function addFlowZonePlanTypedItems(
+	items: FlowZoneItemInput[],
+	record: Record<string, unknown>,
+	key: string,
+	objectType: FlowZoneObjectType,
+	source: string,
+): void {
+	if (record[key] === undefined) return;
+	for (const objectId of requiredStringArray(record[key], `${source}.${key}`,)) {
+		items.push({ objectType, objectId, },);
+	}
+}
+
+function dedupeFlowZonePlanItems(items: FlowZoneItemInput[],): FlowZoneItemInput[] {
+	const seen = new Set<string>();
+	const result: FlowZoneItemInput[] = [];
+	for (const item of items) {
+		const key = `${item.projectKey ?? ""}\0${item.objectType}\0${item.objectId}`;
+		if (seen.has(key,)) continue;
+		seen.add(key,);
+		result.push(item,);
+	}
+	return result;
+}
+
+function parseFlowZoneOrganizePlan(input: Record<string, unknown>,): FlowZoneOrganizePlan {
+	const zones = input.zones;
+	if (!Array.isArray(zones,) || zones.length === 0) {
+		throw new UsageError(
+			"Flow zone organize plan must include a non-empty zones array.",
+			"validation_failed",
+		);
+	}
+	return {
+		zones: zones.map((value, index,) => {
+			const source = `zones[${index}]`;
+			const record = plainRecord(value,);
+			if (!record) throw new UsageError(`${source} must be an object.`, "validation_failed",);
+			const id = optionalStringField(record, ["id", "zoneId",],);
+			const name = optionalStringField(record, ["name",],);
+			if (!id && !name) {
+				throw new UsageError(`${source} must include name or id.`, "validation_failed",);
+			}
+			const items: FlowZoneItemInput[] = [];
+			const rawItems = record.items ?? record.objects;
+			if (rawItems !== undefined) {
+				if (!Array.isArray(rawItems,)) {
+					throw new UsageError(`${source}.items must be an array.`, "validation_failed",);
+				}
+				rawItems.forEach((item, itemIndex,) => {
+					items.push(parseFlowZonePlanItem(item, `${source}.items[${itemIndex}]`,),);
+				},);
+			}
+			addFlowZonePlanTypedItems(items, record, "datasets", "DATASET", source,);
+			addFlowZonePlanTypedItems(items, record, "recipes", "RECIPE", source,);
+			addFlowZonePlanTypedItems(items, record, "folders", "MANAGED_FOLDER", source,);
+			addFlowZonePlanTypedItems(items, record, "savedModels", "SAVED_MODEL", source,);
+			addFlowZonePlanTypedItems(
+				items,
+				record,
+				"modelEvaluationStores",
+				"MODEL_EVALUATION_STORE",
+				source,
+			);
+			addFlowZonePlanTypedItems(
+				items,
+				record,
+				"streamingEndpoints",
+				"STREAMING_ENDPOINT",
+				source,
+			);
+			addFlowZonePlanTypedItems(items, record, "labelingTasks", "LABELING_TASK", source,);
+			addFlowZonePlanTypedItems(items, record, "knowledgeBanks", "RETRIEVABLE_KNOWLEDGE", source,);
+			return {
+				...(id ? { id, } : {}),
+				...(name ? { name, } : {}),
+				...(record.color !== undefined
+					? { color: flowZonePlanColor(record.color, `${source}.color`,), }
+					: {}),
+				items: dedupeFlowZonePlanItems(items,),
+			};
+		},),
+	};
+}
+
+function readFlowZoneOrganizePlan(
+	flags: Record<string, string | boolean>,
+	usage: string,
+): FlowZoneOrganizePlan {
+	const data = typeof flags["file"] === "string"
+		? parseJsonObject(readFileSync(flags["file"], "utf-8",), flags["file"],)
+		: jsonInput(flags,);
+	if (!data) {
+		throw new UsageError(
+			`--data, --data-file, --file, or --stdin is required. Usage: ${usage}`,
+			"missing_required_flag",
+		);
+	}
+	return parseFlowZoneOrganizePlan(data,);
+}
+
+function findFlowZoneForPlan(
+	zones: FlowZone[],
+	plan: FlowZoneOrganizeZonePlan,
+): FlowZone | undefined {
+	if (plan.id) {
+		const byId = zones.find((zone,) => zone.id === plan.id);
+		if (byId) return byId;
+	}
+	if (!plan.name) return undefined;
+	const byName = zones.filter((zone,) => zone.name === plan.name);
+	if (byName.length > 1) {
+		throw new UsageError(
+			`Multiple flow zones named "${plan.name}" exist; use id.`,
+			"validation_failed",
+		);
+	}
+	return byName[0];
+}
+
+function flowZoneOrganizeStep(
+	plan: FlowZoneOrganizeZonePlan,
+	existing: FlowZone | undefined,
+): Record<string, unknown> {
+	const update: Record<string, unknown> = {};
+	if (existing && plan.name && plan.name !== existing.name) update.name = plan.name;
+	if (existing && plan.color && plan.color !== existing.color) update.color = plan.color;
+	return {
+		target: {
+			...(plan.id ? { id: plan.id, } : {}),
+			...(plan.name ? { name: plan.name, } : {}),
+			...(plan.color ? { color: plan.color, } : {}),
+		},
+		...(existing ? { existing: flowZoneSummary(existing,), } : { create: true, }),
+		...(Object.keys(update,).length > 0 ? { update, } : {}),
+		moveItems: plan.items,
+	};
+}
+
 async function resolveFlowZoneIdFromFlags(
 	client: DataikuClient,
 	flags: Record<string, string | boolean>,
@@ -2394,6 +2599,91 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				"dss flow-zone move --zone ATH_SNW_MAP_FRG49 --dataset raw_orders,clean_orders --recipe prepare_orders",
 				"dss flow-zone move ZONE_ID --folder FOLDER_ID",
 				"dss flow-zone move ZONE_ID --object SAVED_MODEL:model_id",
+			],
+		},
+		organize: {
+			handler: async (c, _a, f,) => {
+				const usage =
+					"dss flow-zone organize (--data JSON|--data-file PATH|--file PATH|--stdin) [--dry-run] [--project-key KEY]";
+				const pk = f["project-key"] as string | undefined;
+				const plan = readFlowZoneOrganizePlan(f, usage,);
+				const zones = await c.flowZones.list(pk,);
+				const planned = plan.zones.map((zonePlan,) =>
+					flowZoneOrganizeStep(zonePlan, findFlowZoneForPlan(zones, zonePlan,),)
+				);
+				const itemCount = plan.zones.reduce((count, zonePlan,) => count + zonePlan.items.length, 0,);
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "organize",
+						resource: "flow-zone",
+						projectKey: pk,
+						zoneCount: plan.zones.length,
+						itemCount,
+						planned,
+					};
+				}
+
+				const currentZones = [...zones,];
+				const created: FlowZone[] = [];
+				const updated: FlowZone[] = [];
+				const moved: Array<{ zoneId: string; name: string; items: FlowZoneItemInput[]; }> = [];
+
+				for (const zonePlan of plan.zones) {
+					let zone = findFlowZoneForPlan(currentZones, zonePlan,);
+					if (!zone) {
+						if (!zonePlan.name) {
+							throw new UsageError(
+								`Flow zone ${zonePlan.id ?? "<unknown>"} was not found and cannot be created without name.`,
+								"validation_failed",
+							);
+						}
+						zone = await c.flowZones.create({
+							name: zonePlan.name,
+							color: zonePlan.color,
+							projectKey: pk,
+						},);
+						currentZones.push(zone,);
+						created.push(zone,);
+					} else {
+						const patch = {
+							...(zonePlan.name && zonePlan.name !== zone.name ? { name: zonePlan.name, } : {}),
+							...(zonePlan.color && zonePlan.color !== zone.color ? { color: zonePlan.color, } : {}),
+							projectKey: pk,
+						};
+						if (patch.name !== undefined || patch.color !== undefined) {
+							zone = await c.flowZones.update(zone.id, patch,);
+							const index = currentZones.findIndex((candidate,) => candidate.id === zone!.id);
+							if (index !== -1) currentZones[index] = zone;
+							updated.push(zone,);
+						}
+					}
+
+					if (zonePlan.items.length > 0) {
+						await c.flowZones.moveItems(zone.id, zonePlan.items, pk,);
+						moved.push({ zoneId: zone.id, name: zone.name, items: zonePlan.items, },);
+					}
+				}
+
+				return {
+					organized: true,
+					action: "organize",
+					resource: "flow-zone",
+					projectKey: pk,
+					zoneCount: plan.zones.length,
+					itemCount,
+					created,
+					updated,
+					moved,
+				};
+			},
+			usage:
+				"dss flow-zone organize (--data JSON|--data-file PATH|--file PATH|--stdin) [--dry-run] [--project-key KEY]",
+			description:
+				"Create/update flow zones and move objects from a declarative visual organization plan.",
+			examples: [
+				"dss flow-zone organize --file flow-zones.json --dry-run",
+				`dss flow-zone organize --data '{"zones":[{"name":"Raw","color":"#64748b","datasets":["raw_orders"]}]}'`,
 			],
 		},
 		graph: {

@@ -2871,6 +2871,130 @@ describe("CLI flow zone commands", () => {
 		],);
 	});
 
+	it("flow-zone organize plans declarative visual grouping without mutating", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/flow/zones",);
+			sendJson(res, [
+				{ id: "zone-raw", name: "Raw", color: "#111111", items: [], },
+			],);
+		}, async (url,) => {
+			const plan = {
+				zones: [
+					{
+						name: "Raw",
+						color: "#64748b",
+						datasets: ["raw_orders",],
+						recipes: ["prepare_orders",],
+					},
+					{
+						name: "Prepared",
+						color: "#2ab1ac",
+						items: [
+							"DATASET:clean_orders",
+							{ objectType: "MANAGED_FOLDER", objectId: "folder-id", },
+						],
+					},
+				],
+			};
+			const { stdout, stderr, } = await dss([
+				"flow-zone",
+				"organize",
+				"--data",
+				JSON.stringify(plan,),
+				"--dry-run",
+			], { env: cliEnv(url,), },);
+
+			expect(stderr,).toBe("",);
+			const result = JSON.parse(stdout,) as {
+				dryRun: true;
+				itemCount: number;
+				planned: Array<{ create?: boolean; update?: Record<string, unknown>; moveItems: unknown[]; }>;
+			};
+			expect(result.dryRun,).toBe(true,);
+			expect(result.itemCount,).toBe(4,);
+			expect(result.planned[0].update,).toEqual({ color: "#64748b", },);
+			expect(result.planned[0].moveItems,).toEqual([
+				{ objectType: "DATASET", objectId: "raw_orders", },
+				{ objectType: "RECIPE", objectId: "prepare_orders", },
+			],);
+			expect(result.planned[1].create,).toBe(true,);
+		},);
+	});
+
+	it("flow-zone organize creates missing zones and moves grouped objects", async () => {
+		const requests: string[] = [];
+		const moveBodies: unknown[] = [];
+		let createBody: Record<string, unknown> | undefined;
+
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/flow/zones") {
+				sendJson(res, [
+					{ id: "zone-raw", name: "Raw", color: "#64748b", items: [], },
+				],);
+				return;
+			}
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/flow/zones") {
+				createBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { id: "zone-prepared", name: "Prepared", color: "#2ab1ac", items: [], },);
+				return;
+			}
+			if (req.method === "POST" && url.pathname.endsWith("/add-items",)) {
+				const body = JSON.parse(await readBody(req,),);
+				moveBodies.push(body,);
+				const zoneId = url.pathname.includes("zone-raw",) ? "zone-raw" : "zone-prepared";
+				const name = zoneId === "zone-raw" ? "Raw" : "Prepared";
+				sendJson(res, { id: zoneId, name, items: body, },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const plan = {
+				zones: [
+					{ name: "Raw", color: "#64748b", datasets: ["raw_orders",], },
+					{ name: "Prepared", color: "#2ab1ac", recipes: ["prepare_orders",], },
+				],
+			};
+			const { stdout, stderr, } = await dss([
+				"flow-zone",
+				"organize",
+				"--data",
+				JSON.stringify(plan,),
+			], { env: cliEnv(url,), },);
+
+			expect(stderr,).toBe("",);
+			const result = JSON.parse(stdout,) as {
+				organized: boolean;
+				created: Array<{ id: string; name: string; }>;
+				moved: Array<{ zoneId: string; items: unknown[]; }>;
+			};
+			expect(result.organized,).toBe(true,);
+			expect(result.created,).toEqual([{
+				id: "zone-prepared",
+				name: "Prepared",
+				color: "#2ab1ac",
+				items: [],
+			},],);
+			expect(result.moved.map((move,) => move.zoneId),).toEqual(["zone-raw", "zone-prepared",],);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/flow/zones",
+			"POST /public/api/projects/TEST/flow/zones/zone-raw/add-items",
+			"POST /public/api/projects/TEST/flow/zones",
+			"POST /public/api/projects/TEST/flow/zones/zone-prepared/add-items",
+		],);
+		expect(createBody,).toEqual({ name: "Prepared", color: "#2ab1ac", },);
+		expect(moveBodies,).toEqual([
+			[{ objectId: "raw_orders", objectType: "DATASET", },],
+			[{ objectId: "prepare_orders", objectType: "RECIPE", },],
+		],);
+	});
+
 	it("flow-zone create rejects invalid colors before calling DSS", async () => {
 		await withCliServer(() => {
 			throw new Error("server should not be called for invalid flow-zone color",);
