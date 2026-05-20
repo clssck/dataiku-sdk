@@ -88,6 +88,7 @@ export interface RecipeCloneOptions {
 	copyOutputSettings?: boolean;
 	outputPath?: string;
 	metastoreTableName?: string;
+	recipeType?: string;
 }
 
 export interface RecipeCloneResult {
@@ -180,10 +181,46 @@ function escapedRegExp(value: string,): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&",);
 }
 
+function isSqlRecipeType(recipeType: unknown,): boolean {
+	return typeof recipeType === "string" && recipeType.toLowerCase().includes("sql",);
+}
+
+function rewriteSqlTableReferences(
+	payload: string,
+	rewrites: Record<string, string>,
+): string {
+	let next = payload;
+	for (const [from, to,] of Object.entries(rewrites,)) {
+		if (!from) continue;
+		const escaped = escapedRegExp(from,);
+		const pattern = new RegExp(
+			String
+				.raw`\b(FROM|JOIN)(\s+)(?:(["\`])${escaped}\3|(\[)${escaped}\]|${escaped})(?![A-Za-z0-9_.])`,
+			"gi",
+		);
+		next = next.replace(
+			pattern,
+			(
+				_match: string,
+				keyword: string,
+				space: string,
+				quote: string | undefined,
+				bracket: string | undefined,
+			) => {
+				if (quote) return `${keyword}${space}${quote}${to}${quote}`;
+				if (bracket) return `${keyword}${space}[${to}]`;
+				return `${keyword}${space}${to}`;
+			},
+		);
+	}
+	return next;
+}
+
 function rewritePayload(
 	payload: string | undefined,
 	rewrites: Record<string, string>,
 	payloadTextRewrites: Record<string, string> = {},
+	recipeType?: unknown,
 ): string | undefined {
 	if (
 		payload === undefined
@@ -199,6 +236,9 @@ function rewritePayload(
 			new RegExp(`\\bdataiku\\.(Dataset|Folder)\\(\\s*(['"])${escaped}\\2\\s*\\)`, "g",),
 			(_match, kind: string, quote: string,) => `dataiku.${kind}(${quote}${to}${quote})`,
 		);
+	}
+	if (isSqlRecipeType(recipeType,)) {
+		next = rewriteSqlTableReferences(next, rewrites,);
 	}
 	for (const [from, to,] of Object.entries(payloadTextRewrites,)) {
 		if (from.length > 0) next = next.split(from,).join(to,);
@@ -839,7 +879,12 @@ export class RecipesResource extends BaseResource {
 		const payloadTextRewrites: Record<string, string> = {};
 		if (opts.payloadTextRewrites) Object.assign(payloadTextRewrites, opts.payloadTextRewrites,);
 		const recipe = cloneRecipeDefinition(source.recipe, opts.name, pk, graphRewrites,);
-		const payload = rewritePayload(source.payload, payloadRewrites, payloadTextRewrites,);
+		const payload = rewritePayload(
+			source.payload,
+			payloadRewrites,
+			payloadTextRewrites,
+			opts.recipeType ?? source.recipe.type,
+		);
 		const copiedOutputDatasets: string[] = [];
 		if (opts.copyOutputSettings) {
 			for (const [from, to,] of Object.entries(outputRewrites,)) {

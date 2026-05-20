@@ -316,6 +316,55 @@ describe("RecipesResource", () => {
 		expect(putBody?.payload as string,).toContain("dataiku.Dataset('new_output')",);
 	});
 
+	it("rewrites SQL FROM and JOIN table references without global text replacement", async () => {
+		let putBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			if (req.method === "GET") {
+				sendJson(res, {
+					recipe: {
+						name: "source_recipe",
+						type: "sql_query",
+						inputs: {
+							main: { items: [{ ref: "old_input", },], },
+							lookup: { items: [{ ref: "old_lookup", },], },
+						},
+						outputs: { main: { items: [{ ref: "old_output", },], }, },
+					},
+					payload:
+						'SELECT *\nFROM old_input oi\nJOIN "old_lookup" l ON oi.id = l.id\nJOIN old_input_extra untouched ON true\n',
+				},);
+				return;
+			}
+			if (req.method === "POST") {
+				sendJson(res, { recipeName: "target_recipe", },);
+				return;
+			}
+			if (req.method === "PUT") {
+				putBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { ok: true, },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await client.recipes.clone("source_recipe", {
+				name: "target_recipe",
+				inputRewrites: {
+					old_input: "new_input",
+					old_lookup: "new_lookup",
+				},
+			},);
+		},);
+
+		const payload = putBody?.payload as string;
+		expect(payload,).toContain("FROM new_input oi",);
+		expect(payload,).toContain('JOIN "new_lookup" l',);
+		expect(payload,).toContain("JOIN old_input_extra untouched",);
+		expect(payload,).not.toContain("FROM old_input oi",);
+	});
+
 	it("rejects one storage override for multiple copied output datasets", async () => {
 		await withRecipeServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);

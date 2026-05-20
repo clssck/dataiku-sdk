@@ -1355,6 +1355,48 @@ describe("CLI planned command coverage", () => {
 		},);
 	});
 
+	it("recipe clone rejects one storage override for multiple copied outputs", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/recipes/source_recipe",);
+			sendJson(res, {
+				recipe: {
+					name: "source_recipe",
+					type: "python",
+					outputs: {
+						main: {
+							items: [
+								{ ref: "old_output_a", },
+								{ ref: "old_output_b", },
+							],
+						},
+					},
+				},
+				payload: "",
+			},);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"recipe",
+				"clone",
+				"source_recipe",
+				"--to",
+				"target_recipe",
+				"--replace-output",
+				"old_output_a=new_output_a",
+				"--replace-output",
+				"old_output_b=new_output_b",
+				"--copy-output-settings",
+				"--path",
+				"/dataiku/TEST/reused",
+				"--dry-run",
+			], { env: cliEnv(url,), },);
+
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toContain("Cannot reuse --path or --metastore-table",);
+		},);
+	});
+
 	it("dataset clone dry-run preserves settings with storage overrides", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
@@ -1369,6 +1411,7 @@ describe("CLI planned command coverage", () => {
 					connection: "s3_conn",
 					path: "/dataiku/TEST/source_ds",
 					metastoreTableName: "source_ds",
+					internalState: "server-managed",
 				},
 				formatType: "csv",
 				formatParams: { separator: "\t", parseHeaderRow: true, },
@@ -1394,13 +1437,20 @@ describe("CLI planned command coverage", () => {
 					id?: string;
 					versionTag?: unknown;
 					name: string;
-					params: { path: string; metastoreTableName: string; };
+					params: {
+						connection: string;
+						path: string;
+						metastoreTableName: string;
+						internalState?: unknown;
+					};
 					schema: unknown;
 				};
 			};
 			expect(result.next.name,).toBe("target_ds",);
+			expect(result.next.params.connection,).toBe("s3_conn",);
 			expect(result.next.params.path,).toBe("/dataiku/TEST/target_ds",);
 			expect(result.next.params.metastoreTableName,).toBe("target_ds",);
+			expect(result.next.params.internalState,).toBeUndefined();
 			expect(result.next.schema,).toEqual({ columns: [{ name: "id", type: "bigint", },], },);
 			expect(result.next.id,).toBeUndefined();
 			expect(result.next.versionTag,).toBeUndefined();

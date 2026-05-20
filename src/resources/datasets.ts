@@ -423,6 +423,29 @@ function buildDatasetCreateBody(opts: {
 	};
 }
 
+const DATASET_CLONE_PARAM_KEYS = [
+	"connection",
+	"path",
+	"table",
+	"schema",
+	"catalog",
+	"folderSmartId",
+	"metastoreTableName",
+	"mode",
+] as const;
+
+function cloneDatasetParams(params: DatasetDetails["params"],): Record<string, unknown> {
+	const sourceParams = params && typeof params === "object" && !Array.isArray(params,)
+		? params as Record<string, unknown>
+		: {};
+	const cloned: Record<string, unknown> = {};
+	for (const key of DATASET_CLONE_PARAM_KEYS) {
+		const value = sourceParams[key];
+		if (value !== undefined) cloned[key] = value;
+	}
+	return cloned;
+}
+
 export function buildDatasetCloneSettings(
 	source: DatasetDetails,
 	targetName: string,
@@ -430,7 +453,7 @@ export function buildDatasetCloneSettings(
 	opts: DatasetCloneOptions,
 ): Record<string, unknown> {
 	const params = {
-		...source.params,
+		...cloneDatasetParams(source.params,),
 		...(opts.path !== undefined ? { path: opts.path, } : {}),
 		...(opts.table !== undefined ? { table: opts.table, mode: "table", } : {}),
 		...(opts.metastoreTableName !== undefined

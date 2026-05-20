@@ -8,6 +8,7 @@ import { join, resolve, } from "node:path";
 import { gunzipSync, } from "node:zlib";
 import { DataikuError, } from "../src/errors.js";
 import { DataikuClient, type JupyterNotebookContent, } from "../src/index.js";
+import { buildDatasetCloneSettings, } from "../src/resources/datasets.js";
 
 async function withTestServer(
 	handler: (req: IncomingMessage, res: ServerResponse,) => Promise<void> | void,
@@ -239,6 +240,48 @@ describe("DatasetsResource.create", () => {
 				path: "/dataiku/TEST/output_ds",
 			},
 			managed: true,
+		},);
+	});
+});
+
+describe("buildDatasetCloneSettings", () => {
+	it("omits server-managed params while preserving cloneable storage fields", () => {
+		const settings = buildDatasetCloneSettings(
+			{
+				name: "source_ds",
+				type: "Filesystem",
+				projectKey: "TEST",
+				managed: true,
+				params: {
+					connection: "filesystem",
+					path: "/dataiku/TEST/source_ds",
+					table: "source_table",
+					schema: "analytics",
+					catalog: "prod",
+					folderSmartId: "folder-id",
+					metastoreTableName: "source_ds",
+					mode: "table",
+					internalX: "server-managed",
+				} as Record<string, unknown>,
+				formatType: "csv",
+			},
+			"target_ds",
+			"TEST",
+			{
+				path: "/dataiku/TEST/target_ds",
+				metastoreTableName: "target_ds",
+			},
+		);
+
+		expect(settings.params,).toEqual({
+			connection: "filesystem",
+			path: "/dataiku/TEST/target_ds",
+			table: "source_table",
+			schema: "analytics",
+			catalog: "prod",
+			folderSmartId: "folder-id",
+			metastoreTableName: "target_ds",
+			mode: "table",
 		},);
 	});
 });
