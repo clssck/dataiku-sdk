@@ -2935,6 +2935,7 @@ describe("CLI flow zone commands", () => {
 					{
 						name: "Raw",
 						color: "#64748b",
+						position: { x: 100, y: 200, },
 						datasets: ["raw_orders",],
 						recipes: ["prepare_orders",],
 					},
@@ -2964,7 +2965,7 @@ describe("CLI flow zone commands", () => {
 			};
 			expect(result.dryRun,).toBe(true,);
 			expect(result.itemCount,).toBe(4,);
-			expect(result.planned[0].update,).toEqual({ color: "#64748b", },);
+			expect(result.planned[0].update,).toEqual({ color: "#64748b", position: { x: 100, y: 200, }, },);
 			expect(result.planned[0].moveItems,).toEqual([
 				{ objectType: "DATASET", objectId: "raw_orders", },
 				{ objectType: "RECIPE", objectId: "prepare_orders", },
@@ -2975,7 +2976,7 @@ describe("CLI flow zone commands", () => {
 
 	it("flow-zone organize creates missing zones and moves grouped objects", async () => {
 		const requests: string[] = [];
-		const moveBodies: unknown[] = [];
+		const moveBodies: Array<{ path: string; body: unknown; }> = [];
 		let createBody: Record<string, unknown> | undefined;
 
 		await withCliServer(async (req, res,) => {
@@ -2983,7 +2984,12 @@ describe("CLI flow zone commands", () => {
 			requests.push(`${req.method} ${url.pathname}`,);
 			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/flow/zones") {
 				sendJson(res, [
-					{ id: "zone-raw", name: "Raw", color: "#64748b", items: [], },
+					{
+						id: "zone-raw",
+						name: "Raw",
+						color: "#64748b",
+						items: [{ objectType: "DATASET", objectId: "old_extra", },],
+					},
 				],);
 				return;
 			}
@@ -2994,8 +3000,12 @@ describe("CLI flow zone commands", () => {
 			}
 			if (req.method === "POST" && url.pathname.endsWith("/add-items",)) {
 				const body = JSON.parse(await readBody(req,),);
-				moveBodies.push(body,);
-				const zoneId = url.pathname.includes("zone-raw",) ? "zone-raw" : "zone-prepared";
+				moveBodies.push({ path: url.pathname, body, },);
+				const zoneId = url.pathname.includes("zone-raw",)
+					? "zone-raw"
+					: url.pathname.includes("zone-prepared",)
+					? "zone-prepared"
+					: "default";
 				const name = zoneId === "zone-raw" ? "Raw" : "Prepared";
 				sendJson(res, { id: zoneId, name, items: body, },);
 				return;
@@ -3014,6 +3024,7 @@ describe("CLI flow zone commands", () => {
 				"organize",
 				"--data",
 				JSON.stringify(plan,),
+				"--sync",
 			], { env: cliEnv(url,), },);
 
 			expect(stderr,).toBe("",);
@@ -3021,6 +3032,7 @@ describe("CLI flow zone commands", () => {
 				organized: boolean;
 				created: Array<{ id: string; name: string; }>;
 				moved: Array<{ zoneId: string; items: unknown[]; }>;
+				pruned: Array<{ zoneId: string; items: unknown[]; }>;
 			};
 			expect(result.organized,).toBe(true,);
 			expect(result.created,).toEqual([{
@@ -3030,19 +3042,84 @@ describe("CLI flow zone commands", () => {
 				items: [],
 			},],);
 			expect(result.moved.map((move,) => move.zoneId),).toEqual(["zone-raw", "zone-prepared",],);
+			expect(result.pruned,).toEqual([{
+				zoneId: "default",
+				fromZoneId: "zone-raw",
+				name: "Raw",
+				items: [{ objectId: "old_extra", objectType: "DATASET", },],
+			},],);
 		},);
 
 		expect(requests,).toEqual([
 			"GET /public/api/projects/TEST/flow/zones",
 			"POST /public/api/projects/TEST/flow/zones/zone-raw/add-items",
+			"POST /public/api/projects/TEST/flow/zones/default/add-items",
 			"POST /public/api/projects/TEST/flow/zones",
 			"POST /public/api/projects/TEST/flow/zones/zone-prepared/add-items",
 		],);
 		expect(createBody,).toEqual({ name: "Prepared", color: "#2ab1ac", },);
 		expect(moveBodies,).toEqual([
-			[{ objectId: "raw_orders", objectType: "DATASET", },],
-			[{ objectId: "prepare_orders", objectType: "RECIPE", },],
+			{
+				path: "/public/api/projects/TEST/flow/zones/zone-raw/add-items",
+				body: [{ objectId: "raw_orders", objectType: "DATASET", },],
+			},
+			{
+				path: "/public/api/projects/TEST/flow/zones/default/add-items",
+				body: [{ objectId: "old_extra", objectType: "DATASET", },],
+			},
+			{
+				path: "/public/api/projects/TEST/flow/zones/zone-prepared/add-items",
+				body: [{ objectId: "prepare_orders", objectType: "RECIPE", },],
+			},
 		],);
+	});
+
+	it("flow-zone organize validates objects before moving", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/flow/zones") {
+				sendJson(res, [
+					{ id: "zone-raw", name: "Raw", color: "#64748b", items: [], },
+				],);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/flow/graph/") {
+				sendJson(res, { datasets: ["known_orders",], recipes: [], folders: [], nodes: {}, },);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [{ name: "known_orders", },],);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				sendJson(res, [],);
+				return;
+			}
+			res.statusCode = 500;
+			res.end("unexpected mutation",);
+		}, async (url,) => {
+			const plan = { zones: [{ name: "Raw", datasets: ["missing_orders",], },], };
+			const failure = await dssFailure([
+				"flow-zone",
+				"organize",
+				"--data",
+				JSON.stringify(plan,),
+				"--validate-objects",
+				"--dry-run",
+			], { env: cliEnv(url,), },);
+
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toContain("Flow zone organize validation failed",);
+			expect(failure.stderr,).toContain("DATASET:missing_orders",);
+		},);
+
+		expect(requests.every((request,) => request.startsWith("GET ",)),).toBe(true,);
 	});
 
 	it("flow-zone create rejects invalid colors before calling DSS", async () => {

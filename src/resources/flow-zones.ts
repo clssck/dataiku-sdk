@@ -47,17 +47,19 @@ export class FlowZonesResource extends BaseResource {
 			{
 				name: opts.name,
 				color: opts.color ?? "#2ab1ac",
+				...(opts.position !== undefined ? { position: opts.position, } : {}),
 			},
 		);
 		return this.client.safeParse(FlowZoneSchema, raw, "flowZones.create",);
 	}
 
-	/** Update flow zone settings such as name and color. */
+	/** Update flow zone settings such as name, color, and manual position. */
 	async update(zoneId: string, opts: FlowZoneUpdateOptions,): Promise<FlowZone> {
 		const current = await this.get(zoneId, opts.projectKey,);
 		const merged = deepMerge(current as unknown as Record<string, unknown>, {
 			...(opts.name !== undefined ? { name: opts.name, } : {}),
 			...(opts.color !== undefined ? { color: opts.color, } : {}),
+			...(opts.position !== undefined ? { position: opts.position, } : {}),
 		},);
 		await this.client.putVoid(
 			`/public/api/projects/${this.enc(opts.projectKey,)}/flow/zones/${encodeURIComponent(zoneId,)}`,

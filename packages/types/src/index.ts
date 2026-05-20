@@ -408,6 +408,12 @@ export const FlowZoneItemSchema = Type.Object({
 }, { additionalProperties: true, },);
 export type FlowZoneItem = Static<typeof FlowZoneItemSchema>;
 
+export const FlowZonePositionSchema = Type.Object({
+	x: Type.Number(),
+	y: Type.Number(),
+}, { additionalProperties: false, },);
+export type FlowZonePosition = Static<typeof FlowZonePositionSchema>;
+
 export const FlowZoneSchema = Type.Object({
 	id: Type.String(),
 	name: Type.String(),
@@ -415,6 +421,7 @@ export const FlowZoneSchema = Type.Object({
 	projectKey: Type.Optional(Type.String(),),
 	items: Type.Optional(Type.Array(FlowZoneItemSchema,),),
 	shared: Type.Optional(Type.Array(FlowZoneItemSchema,),),
+	position: Type.Optional(FlowZonePositionSchema,),
 }, { additionalProperties: true, },);
 export type FlowZone = Static<typeof FlowZoneSchema>;
 
@@ -424,6 +431,7 @@ export const FlowZoneCreateOptionsSchema = Type.Object({
 	name: Type.String(),
 	color: Type.Optional(Type.String(),),
 	projectKey: Type.Optional(Type.String(),),
+	position: Type.Optional(FlowZonePositionSchema,),
 }, { additionalProperties: false, },);
 export type FlowZoneCreateOptions = Static<typeof FlowZoneCreateOptionsSchema>;
 
@@ -431,6 +439,7 @@ export const FlowZoneUpdateOptionsSchema = Type.Object({
 	name: Type.Optional(Type.String(),),
 	color: Type.Optional(Type.String(),),
 	projectKey: Type.Optional(Type.String(),),
+	position: Type.Optional(FlowZonePositionSchema,),
 }, { additionalProperties: false, },);
 export type FlowZoneUpdateOptions = Static<typeof FlowZoneUpdateOptionsSchema>;
 

@@ -90,7 +90,7 @@ describe("FlowZonesResource", () => {
 		],);
 	});
 
-	it("creates flow zones with default and explicit colors", async () => {
+	it("creates flow zones with default and explicit colors and position", async () => {
 		const requestBodies: unknown[] = [];
 
 		await withDataikuServer(async (req, res,) => {
@@ -107,11 +107,17 @@ describe("FlowZonesResource", () => {
 		}, async (client,) => {
 			await client.flowZones.create({ name: "Exports", },);
 			await client.flowZones.create({ name: "Exports", color: "#cc0000", },);
+			await client.flowZones.create({
+				name: "Exports",
+				color: "#cc0000",
+				position: { x: 10, y: 20, },
+			},);
 		},);
 
 		expect(requestBodies,).toEqual([
 			{ name: "Exports", color: "#2ab1ac", },
 			{ name: "Exports", color: "#cc0000", },
+			{ name: "Exports", color: "#cc0000", position: { x: 10, y: 20, }, },
 		],);
 	});
 
@@ -142,6 +148,7 @@ describe("FlowZonesResource", () => {
 			const updated = await client.flowZones.update("zone-1", {
 				name: "Curated exports",
 				color: "#cc0000",
+				position: { x: 30, y: 40, },
 			},);
 			expect(updated.name,).toBe("Curated exports",);
 			expect(updated.color,).toBe("#cc0000",);
@@ -152,7 +159,7 @@ describe("FlowZonesResource", () => {
 			name: "Curated exports",
 			color: "#cc0000",
 			items: [{ objectType: "DATASET", objectId: "orders", },],
-			position: { x: 10, y: 20, },
+			position: { x: 30, y: 40, },
 		},);
 	});
 
