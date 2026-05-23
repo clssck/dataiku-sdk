@@ -1,5 +1,5 @@
 import { describe, expect, it, } from "bun:test";
-import { mkdtemp, readFile, rm, } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
 import { tmpdir, } from "node:os";
@@ -410,6 +410,7 @@ describe("RecipesResource", () => {
 		};
 		const requestedPaths: string[] = [];
 		const tempDir = await mkdtemp(join(tmpdir(), "recipes-download-",),);
+		const resolvedTempDir = await realpath(tempDir,);
 		const originalCwd = process.cwd();
 
 		try {
@@ -431,7 +432,7 @@ describe("RecipesResource", () => {
 				const client = createClient(url,);
 				for (const [recipeName, expected,] of Object.entries(payloadByRecipeName,)) {
 					const filePath = await client.recipes.downloadCode(recipeName,);
-					expect(filePath,).toBe(resolve(tempDir, `${recipeName}${expected.ext}`,),);
+					expect(filePath,).toBe(resolve(resolvedTempDir, `${recipeName}${expected.ext}`,),);
 					expect(await readFile(filePath, "utf-8",),).toBe(expected.payload,);
 				}
 			},);

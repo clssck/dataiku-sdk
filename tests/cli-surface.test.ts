@@ -153,9 +153,10 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"clear-sql-history",
 	],
 	wiki: ["settings", "list", "get", "create", "update", "delete",],
-	auth: ["login", "status", "logout",],
+	auth: ["login",],
 	doctor: ["run",],
 	commands: ["run",],
+	version: ["run",],
 	"install-skill": ["run",],
 	cleanup: ["run",],
 	fixtures: ["run",],
@@ -181,7 +182,7 @@ function expectedCleanupCommand(deleteUsage: string,): string {
 
 describe("CLI command surface", () => {
 	it("exposes every supported resource/action in the machine-readable registry", async () => {
-		const { stdout, } = await dss(["commands",],);
+		const { stdout, } = await dss(["commands", "run",],);
 		const registry = JSON.parse(stdout,) as CommandRegistry;
 
 		for (const [resource, actions,] of Object.entries(EXPECTED_COMMANDS,)) {
@@ -189,7 +190,7 @@ describe("CLI command surface", () => {
 			for (const action of actions) {
 				const meta = registry[resource]?.[action];
 				const usageOmitsRunAction = action === "run"
-					&& ["commands", "doctor", "install-skill", "cleanup", "fixtures",].includes(resource,);
+					&& ["doctor", "install-skill", "cleanup", "fixtures", "version",].includes(resource,);
 				const expectedUsagePrefix = usageOmitsRunAction
 					? `dss ${resource}`
 					: `dss ${resource} ${action}`;
@@ -318,6 +319,7 @@ describe("CLI command surface", () => {
 		},);
 		expect(registry.auth.login.sideEffect,).toBe("auth",);
 		expect(registry.auth.login.requiresAuth,).toBe(false,);
+		expect(registry.auth.login.requiresProject,).toBe(false,);
 		expect(registry.doctor.run.sideEffect,).toBe("read",);
 		expect(registry.doctor.run.requiresAuth,).toBe(true,);
 		expect(registry.commands.run.sideEffect,).toBe("read",);
@@ -366,15 +368,16 @@ describe("CLI command surface", () => {
 		},);
 	});
 
-	it("prints action help for every registered command without resolving credentials", async () => {
-		const { stdout, } = await dss(["commands",],);
+	it("does not advertise removed help or report-json flags", async () => {
+		const { stdout, } = await dss(["commands", "run",],);
 		const registry = JSON.parse(stdout,) as CommandRegistry;
 
 		for (const [resource, actions,] of Object.entries(registry,)) {
-			for (const action of Object.keys(actions,)) {
-				const { stderr, } = await dss([resource, action, "--help",],);
-				expect(stderr, `${resource} ${action} help`,).toContain("Usage:",);
+			for (const [action, meta,] of Object.entries(actions,)) {
+				const flagNames = meta.flags.map((flag,) => flag.name);
+				expect(flagNames, `${resource} ${action} flags`,).not.toContain("help",);
+				expect(flagNames, `${resource} ${action} flags`,).not.toContain("report-json",);
 			}
 		}
-	}, 90_000,);
+	});
 });

@@ -4,17 +4,13 @@ import { createHash, } from "node:crypto";
 import { readFileSync, } from "node:fs";
 import { mkdir, writeFile, } from "node:fs/promises";
 import { dirname, join, resolve, } from "node:path";
-import { createInterface, } from "node:readline";
-import { Writable, } from "node:stream";
 import { fileURLToPath, } from "node:url";
 import { validateCredentials, } from "./auth.js";
 import { DataikuClient, } from "./client.js";
 import {
-	deleteCredentials,
 	type DssCredentials,
 	getCredentialsPath,
 	loadCredentials,
-	maskApiKey,
 	saveCredentials,
 } from "./config.js";
 import { DataikuError, dataikuErrorCode, type StableErrorCode, } from "./errors.js";
@@ -34,7 +30,13 @@ import type {
 	FlowZonePosition,
 	JobSummary,
 } from "./schemas.js";
-import { AGENTS, detectAgents, findWorkspaceRoot, installSkill, } from "./skill.js";
+import {
+	AGENTS,
+	detectAgents,
+	findWorkspaceRoot,
+	installSkill,
+	planSkillInstalls,
+} from "./skill.js";
 import {
 	appendCleanupLedgerEntry,
 	type CleanupLedgerEntry,
@@ -99,10 +101,11 @@ function gitRevision(packageRoot: string | undefined,): string | undefined {
 
 const PACKAGE_ROOT = findPackageRoot();
 const CLI_VERSION = packageVersion(PACKAGE_ROOT,);
-const CLI_VERSION_LABEL = (() => {
-	const revision = gitRevision(PACKAGE_ROOT,);
-	return revision ? `${CLI_VERSION}+g${revision}` : CLI_VERSION;
-})();
+const CLI_GIT_REVISION = gitRevision(PACKAGE_ROOT,);
+function cliVersionResult(): { version: string; gitRevision: string | null; } {
+	return { version: CLI_VERSION, gitRevision: CLI_GIT_REVISION ?? null, };
+}
+
 function num(v: string | boolean | undefined,): number | undefined {
 	if (typeof v !== "string") return undefined;
 	const n = Number(v,);
@@ -1393,6 +1396,7 @@ function addTransientTargetContext(error: unknown, target: string, elapsedMs: nu
 			error.statusText,
 			transientBodyWithTargetContext(error.body, target, elapsedMs,),
 			error.retry,
+			error.requestId,
 		);
 	}
 	throw error;
@@ -1659,7 +1663,6 @@ function cleanupLedgerEntry(
 // ---------------------------------------------------------------------------
 
 const BOOLEAN_FLAGS = new Set([
-	"help",
 	"verbose",
 	"version",
 	"stdin",
@@ -1683,7 +1686,6 @@ const BOOLEAN_FLAGS = new Set([
 	"if-not-exists",
 	"if-exists",
 	"json",
-	"report-json",
 	"no-wait",
 	"force-rebuild",
 	"latest",
@@ -1697,7 +1699,6 @@ const BOOLEAN_FLAGS = new Set([
 ],);
 
 const SHORT_FLAGS: Record<string, string> = {
-	h: "help",
 	v: "verbose",
 	V: "version",
 	o: "output",
@@ -1825,6 +1826,7 @@ const KNOWN_LONG_FLAGS = new Set([
 ],);
 
 function normalizeLongFlag(rawFlagName: string,): string {
+	if (rawFlagName === "help") throw unsupportedHelpFlag();
 	const flagName = FLAG_ALIASES[rawFlagName] ?? rawFlagName;
 	if (!KNOWN_LONG_FLAGS.has(rawFlagName,) && !KNOWN_LONG_FLAGS.has(flagName,)) {
 		throw new UsageError(`Unknown flag: --${rawFlagName}`, "unknown_flag",);
@@ -1902,6 +1904,7 @@ function parseArgs(argv: string[],): ParsedArgs {
 					i++;
 				}
 			} else {
+				if (arg[1] === "h") throw unsupportedHelpFlag();
 				throw new UsageError(`Unknown flag: -${arg[1]}`, "unknown_flag",);
 			}
 		} else {
@@ -3593,7 +3596,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return payload;
 			},
 			usage: "dss recipe get-payload <name> [--raw] [--output PATH] [--project-key KEY]",
-			description: "Print the recipe code payload to stdout; use --raw for pipeable code bytes.",
+			description: "Print the recipe code payload as JSON; use --raw for raw bytes, not JSON.",
 			examples: [
 				"dss recipe get-payload compute_orders --raw",
 				"dss recipe get-payload compute_orders -o code.py",
@@ -3607,7 +3610,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				},);
 			},
 			usage: "dss recipe cat <name> [--raw] [--project-key KEY]",
-			description: "Print a recipe code payload; combine with --raw for shell pipes and diffs.",
+			description: "Print a recipe code payload as JSON; use --raw for raw bytes, not JSON.",
 			examples: ["dss recipe cat compute_orders --raw",],
 		},
 		"set-payload": {
@@ -5038,7 +5041,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 };
 
 // ---------------------------------------------------------------------------
-// Help
+// Agent-facing command inventory
 // ---------------------------------------------------------------------------
 
 const RESOURCE_NAMES = [
@@ -5051,75 +5054,6 @@ const RESOURCE_NAMES = [
 ]
 	.sort();
 
-function printTopLevelHelp(): void {
-	const lines = [
-		"Usage: dss <resource> <action> [args...] [--flags]",
-		"",
-		"Global flags:",
-		"  -h, --help               Show help",
-		"  -v, --verbose            Log HTTP requests to stderr",
-		"  -V, --version            Show version",
-		"      --json               Emit JSON output (default)",
-		"  -o, --output PATH        Write output to file (recipe get-payload)",
-		"      --url URL            Dataiku DSS base URL (env: DATAIKU_URL)",
-		"      --api-key KEY        API key              (env: DATAIKU_API_KEY)",
-		"      --project-key KEY    Default project key   (env: DATAIKU_PROJECT_KEY)",
-		"      --timeout MS         Operation timeout (build-and-wait, run-and-wait, recipe run)",
-		"      --request-timeout MS HTTP request timeout in ms (default: 30000)",
-		"      --dry-run            Preview destructive actions without executing",
-		"      --if-not-exists      Skip create if resource already exists",
-		"      --if-exists          Skip delete if resource is already missing",
-		"      --insecure           Disable TLS certificate verification",
-		"      --ca-cert PATH       Extra PEM CA bundle (env: NODE_EXTRA_CA_CERTS)",
-		"",
-		"Resources:",
-		...RESOURCE_NAMES.map((r,) => `  ${r}`),
-		"",
-		"Quick start:",
-		"  dss auth login                         Save DSS credentials",
-		"  dss auth status                        Verify connection",
-		"  dss doctor                            Run JSON connectivity diagnostics",
-		"  dss project list                       List accessible projects",
-		"  dss dataset list                       List datasets in default project",
-		"  dss dataset preview <name>             Preview dataset rows as CSV",
-		"  dss recipe get-payload <name>          Print recipe code to stdout",
-		"  dss recipe download-code <name>        Download recipe code to a file",
-		"  dss job log <id>                       View job log output",
-		"  dss install-skill                      Install agent skill for coding agents",
-	];
-	process.stderr.write(`${lines.join("\n",)}\n`,);
-}
-
-function printResourceHelp(resource: string,): void {
-	const actions = commands[resource];
-	if (!actions) return;
-	const maxName = Math.max(...Object.keys(actions,).map((n,) => n.length),);
-	const lines = [
-		`Usage: dss ${resource} <action> [args...] [--flags]`,
-		"",
-		"Actions:",
-		...Object.entries(actions,).map(
-			([name, meta,],) => `  ${name.padEnd(maxName + 2,)}${meta.description ?? meta.usage}`,
-		),
-		"",
-		`Run 'dss ${resource} <action> --help' for details and examples.`,
-	];
-	process.stderr.write(`${lines.join("\n",)}\n`,);
-}
-
-function printActionHelp(resource: string, action: string,): void {
-	const meta = commands[resource]?.[action];
-	if (!meta) return;
-	const lines: string[] = [];
-	if (meta.description) lines.push(meta.description, "",);
-	lines.push(`Usage: ${meta.usage}`,);
-	if (meta.examples && meta.examples.length > 0) {
-		lines.push("", "Examples:",);
-		for (const ex of meta.examples) lines.push(`  ${ex}`,);
-	}
-	process.stderr.write(`${lines.join("\n",)}\n`,);
-}
-
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
@@ -5127,13 +5061,71 @@ function printActionHelp(resource: string, action: string,): void {
 class UsageError extends Error {
 	readonly code: StableErrorCode;
 	readonly hint?: string;
+	readonly details?: Record<string, unknown>;
 
-	constructor(message: string, code: StableErrorCode = "usage_error", hint?: string,) {
+	constructor(
+		message: string,
+		code: StableErrorCode = "usage_error",
+		hint?: string,
+		details?: Record<string, unknown>,
+	) {
 		super(message,);
 		this.name = "UsageError";
 		this.code = code;
 		this.hint = hint;
+		this.details = details;
 	}
+}
+
+const COMMANDS_RUN_HINT = "Use `dss commands run` for machine-readable command discovery.";
+
+function unsupportedHelpFlag(): UsageError {
+	return new UsageError(
+		"Help screens are not supported.",
+		"usage_error",
+		COMMANDS_RUN_HINT,
+		{ command: "dss commands run", },
+	);
+}
+
+function noCommandError(): UsageError {
+	return new UsageError(
+		"No command provided.",
+		"usage_error",
+		COMMANDS_RUN_HINT,
+		{ command: "dss commands run", resources: RESOURCE_NAMES, },
+	);
+}
+
+function missingActionError(resource: string, validActions: string[], usage?: string,): UsageError {
+	return new UsageError(
+		`Missing action for ${resource}.`,
+		"usage_error",
+		usage ?? COMMANDS_RUN_HINT,
+		{ resource, validActions, },
+	);
+}
+
+function unknownResourceError(resource: string,): UsageError {
+	return new UsageError(
+		`Unknown resource: ${resource}.`,
+		"usage_error",
+		COMMANDS_RUN_HINT,
+		{ resource, validResources: RESOURCE_NAMES, },
+	);
+}
+
+function unknownActionError(
+	resource: string,
+	action: string | undefined,
+	validActions: string[],
+): UsageError {
+	return new UsageError(
+		`Unknown action: ${resource} ${action ?? ""}`.trim(),
+		"usage_error",
+		COMMANDS_RUN_HINT,
+		{ resource, action, validActions, },
+	);
 }
 
 function requireArgs(args: string[], count: number, usage: string,): void {
@@ -5149,8 +5141,12 @@ function requireArgs(args: string[], count: number, usage: string,): void {
 // .env auto-loading
 // ---------------------------------------------------------------------------
 
+function dataikuEnvironmentEnabled(): boolean {
+	return process.env.DATAIKU_DISABLE_ENV !== "1";
+}
+
 function loadEnvFile(): void {
-	if (process.env.DATAIKU_DISABLE_ENV === "1") return;
+	if (!dataikuEnvironmentEnabled()) return;
 	const dirs = [
 		resolve(dirname(fileURLToPath(import.meta.url,),), "..",),
 		process.cwd(),
@@ -5178,33 +5174,43 @@ function loadEnvFile(): void {
 // ---------------------------------------------------------------------------
 
 const AUTH_ACTIONS: Record<string, {
-	handler: (flags: Record<string, string | boolean>,) => Promise<void>;
+	handler: (flags: Record<string, string | boolean>,) => Promise<unknown>;
 	usage: string;
 	description?: string;
 	examples?: string[];
+	requiredFlags?: string[];
 }> = {
 	login: {
 		handler: async (flags,) => {
 			const tlsSettings = resolveTlsSettings(flags,);
-			let { url, apiKey, projectKey, } = resolveCredentials(flags,);
+			const useEnv = dataikuEnvironmentEnabled();
+			const url = typeof flags["url"] === "string"
+				? flags["url"]
+				: useEnv
+				? process.env.DATAIKU_URL ?? ""
+				: "";
+			const apiKey = typeof flags["api-key"] === "string"
+				? flags["api-key"]
+				: useEnv
+				? process.env.DATAIKU_API_KEY ?? ""
+				: "";
+			const projectKey = typeof flags["project-key"] === "string"
+				? flags["project-key"]
+				: useEnv
+				? process.env.DATAIKU_PROJECT_KEY
+				: undefined;
 
 			if (!url || !apiKey) {
-				if (!process.stdin.isTTY) {
-					throw new UsageError(
-						"Missing --url and/or --api-key. Provide them as flags or run interactively.",
-					);
-				}
-				if (!url) url = await promptLine("DSS URL: ",);
-				if (!apiKey) apiKey = await promptSecret("API key: ",);
-				if (!projectKey) projectKey = (await promptLine("Project key (optional): ",)) || undefined;
+				throw new UsageError(
+					"Missing --url and/or --api-key for auth login.",
+					"missing_required_flag",
+					"Pass --url and --api-key, or set DATAIKU_URL and DATAIKU_API_KEY.",
+					{ requiredFlags: ["url", "api-key",], env: ["DATAIKU_URL", "DATAIKU_API_KEY",], },
+				);
 			}
 
-			if (!url) throw new UsageError("URL is required.",);
-			if (!apiKey) throw new UsageError("API key is required.",);
-			process.stderr.write("Validating credentials... ",);
 			const result = await validateCredentials(url, apiKey, tlsSettings,);
 			if (!result.valid) {
-				process.stderr.write("Failed\n",);
 				if (result.dataikuError) throw result.dataikuError;
 				throw new DataikuError(
 					0,
@@ -5212,58 +5218,18 @@ const AUTH_ACTIONS: Record<string, {
 					result.error ?? "Credential validation failed",
 				);
 			}
-			process.stderr.write("Connected\n",);
 
+			const path = getCredentialsPath();
 			saveCredentials({ url, apiKey, projectKey, ...tlsSettings, },);
-			process.stderr.write(`Credentials saved to ${getCredentialsPath()}\n`,);
+			return { saved: true, path, };
 		},
-		usage:
-			"dss auth login [--url URL] [--api-key KEY] [--project-key KEY] [--insecure] [--ca-cert PATH]",
-		description: "Save DSS credentials (interactive or via flags).",
+		usage: "dss auth login --url URL --api-key KEY [--project-key KEY] [--insecure] [--ca-cert PATH]",
+		description: "Validate and save DSS credentials from flags or environment variables.",
 		examples: [
 			"dss auth login --url https://dss.example.com --api-key YOUR_KEY",
 			"dss auth login --url https://dss.example.com --api-key YOUR_KEY --project-key MYPROJ",
 		],
-	},
-	status: {
-		handler: async (flags,) => {
-			const creds = loadCredentials();
-			if (!creds) {
-				process.stderr.write("No saved credentials. Run: dss auth login\n",);
-				process.exit(1,);
-			}
-			const tlsSettings = resolveTlsSettings(flags, creds,);
-			const lines = [
-				`URL:         ${creds.url}`,
-				`API key:     ${maskApiKey(creds.apiKey,)}`,
-				`Project key: ${creds.projectKey ?? "(not set)"}`,
-				`TLS verify:  ${tlsSettings.tlsRejectUnauthorized === false ? "disabled" : "strict"}`,
-				`CA cert:     ${tlsSettings.caCertPath ?? "(default trust store)"}`,
-			];
-			for (const line of lines) process.stderr.write(`${line}\n`,);
-
-			const result = await validateCredentials(creds.url, creds.apiKey, tlsSettings,);
-			if (result.valid) {
-				process.stderr.write("Connection:  valid\n",);
-			} else {
-				process.stderr.write(`Connection:  failed (${result.error ?? "unknown error"})\n`,);
-				process.stderr.write(`Config:      ${getCredentialsPath()}\n`,);
-				process.exit(1,);
-			}
-			process.stderr.write(`Config:      ${getCredentialsPath()}\n`,);
-		},
-		usage: "dss auth status [--insecure] [--ca-cert PATH]",
-		description: "Show saved credentials and verify the connection.",
-		examples: ["dss auth status",],
-	},
-	logout: {
-		handler: async (_flags,) => {
-			deleteCredentials();
-			process.stderr.write("Credentials removed.\n",);
-		},
-		usage: "dss auth logout",
-		description: "Remove saved credentials.",
-		examples: ["dss auth logout",],
+		requiredFlags: ["url", "api-key",],
 	},
 };
 
@@ -5707,7 +5673,7 @@ async function runDoctor(flags: Record<string, string | boolean>,): Promise<{
 		ok: credentialsOk,
 		message: credentialsOk
 			? "Dataiku URL and API key are configured."
-			: "Missing Dataiku URL and/or API key. Set DATAIKU_URL/DATAIKU_API_KEY, pass flags, or run dss auth login.",
+			: "Missing Dataiku URL and/or API key. Set DATAIKU_URL/DATAIKU_API_KEY or pass --url/--api-key.",
 	},);
 
 	let accessibleProjects: unknown[] | undefined;
@@ -5792,16 +5758,20 @@ async function runFixtures(
 ): Promise<FixtureDiscoveryResult> {
 	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
 	if (!url) {
-		throw new UsageError("Missing Dataiku URL. Set DATAIKU_URL, pass --url, or run: dss auth login",);
+		throw new UsageError(
+			"Missing Dataiku URL. Set DATAIKU_URL or pass --url.",
+			"missing_required_flag",
+		);
 	}
 	if (!apiKey) {
 		throw new UsageError(
-			"Missing API key. Set DATAIKU_API_KEY, pass --api-key, or run: dss auth login",
+			"Missing API key. Set DATAIKU_API_KEY or pass --api-key.",
+			"missing_required_flag",
 		);
 	}
 	if (!projectKey) {
 		throw new UsageError(
-			"Missing project key. Set DATAIKU_PROJECT_KEY, pass --project-key, or run: dss auth login",
+			"Missing project key. Set DATAIKU_PROJECT_KEY or pass --project-key.",
 			"missing_required_flag",
 		);
 	}
@@ -5929,7 +5899,7 @@ const PROJECT_SCOPED_RESOURCES = new Set([
 	"wiki",
 ],);
 
-const GLOBAL_AGENT_FLAGS = ["help", "json", "report-json", "verbose",];
+const GLOBAL_AGENT_FLAGS = ["json", "verbose",];
 const AUTHENTICATED_AGENT_FLAGS = [
 	"url",
 	"api-key",
@@ -5938,9 +5908,12 @@ const AUTHENTICATED_AGENT_FLAGS = [
 	"insecure",
 	"ca-cert",
 ];
-const COMMANDS_USAGE = "dss commands [--json]";
+const COMMANDS_USAGE = "dss commands run [--json]";
 const COMMANDS_DESCRIPTION = "Print the machine-readable command registry for agent planning.";
-const COMMANDS_EXAMPLES = ["dss commands", "dss commands --json",];
+const COMMANDS_EXAMPLES = ["dss commands run", "dss commands run --json",];
+const VERSION_USAGE = "dss version";
+const VERSION_DESCRIPTION = "Print the CLI version and git revision as JSON.";
+const VERSION_EXAMPLES = ["dss version", "dss --version",];
 const INSTALL_SKILL_USAGE =
 	"dss install-skill [--global] [--agent NAME] [--target PATH] [--list-agents] [--dry-run] [--plan]";
 const INSTALL_SKILL_DESCRIPTION = "Install the dataiku-dss agent skill for detected coding agents.";
@@ -6030,7 +6003,12 @@ function extractPositionals(usage: string,): string[] {
 
 function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "auth") return "auth";
-	if (resource === "doctor" || resource === "commands" || resource === "fixtures") return "read";
+	if (
+		resource === "doctor" || resource === "commands" || resource === "fixtures"
+		|| resource === "version"
+	) {
+		return "read";
+	}
 	if (resource === "install-skill") return "write";
 	if (resource === "data-quality" && action === "compute") return "write";
 	if (READ_ACTIONS.has(action,)) return "read";
@@ -6044,11 +6022,19 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 }
 
 function inferRequiresAuth(resource: string,): boolean {
-	return resource !== "auth" && resource !== "commands" && resource !== "install-skill";
+	return resource !== "auth"
+		&& resource !== "commands"
+		&& resource !== "install-skill"
+		&& resource !== "version";
 }
 
 function inferRequiresProject(resource: string, action: string, usage: string,): boolean {
-	if (resource === "doctor" || resource === "commands" || resource === "install-skill") return false;
+	if (
+		resource === "auth" || resource === "doctor" || resource === "commands"
+		|| resource === "install-skill" || resource === "version"
+	) {
+		return false;
+	}
 	if (PROJECT_SCOPED_RESOURCES.has(resource,)) return true;
 	if (resource === "project" && action !== "list") return true;
 	return usage.includes("--project-key",);
@@ -6080,7 +6066,12 @@ const STRING_OUTPUT_ACTIONS = new Set([
 ],);
 
 function inferOutputShape(resource: string, action: string,): CommandOutputShape {
-	if (resource === "auth" || resource === "install-skill") return "void";
+	if (
+		resource === "auth" || resource === "commands" || resource === "install-skill"
+		|| resource === "version"
+	) {
+		return "object";
+	}
 	if (ARRAY_OUTPUT_ACTIONS.has(action,)) return "array";
 	if (STRING_OUTPUT_ACTIONS.has(action,)) return "string";
 	return "object";
@@ -6264,6 +6255,14 @@ function buildCommandRegistry(): Record<string, Record<string, CommandRegistryEn
 			examples: COMMANDS_EXAMPLES,
 		},),
 	};
+	registry.version = {
+		run: buildRegistryEntry("version", "run", {
+			handler: async () => undefined,
+			usage: VERSION_USAGE,
+			description: VERSION_DESCRIPTION,
+			examples: VERSION_EXAMPLES,
+		},),
+	};
 	registry["install-skill"] = {
 		run: buildRegistryEntry("install-skill", "run", {
 			handler: async () => undefined,
@@ -6295,6 +6294,7 @@ function buildCommandRegistry(): Record<string, Record<string, CommandRegistryEn
 			usage: meta.usage,
 			description: meta.description,
 			examples: meta.examples,
+			requiredFlags: meta.requiredFlags,
 		},);
 	}
 	return registry;
@@ -6997,11 +6997,15 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 
 	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
 	if (!url) {
-		throw new UsageError("Missing Dataiku URL. Set DATAIKU_URL, pass --url, or run: dss auth login",);
+		throw new UsageError(
+			"Missing Dataiku URL. Set DATAIKU_URL or pass --url.",
+			"missing_required_flag",
+		);
 	}
 	if (!apiKey) {
 		throw new UsageError(
-			"Missing API key. Set DATAIKU_API_KEY, pass --api-key, or run: dss auth login",
+			"Missing API key. Set DATAIKU_API_KEY or pass --api-key.",
+			"missing_required_flag",
 		);
 	}
 	const requestTimeoutMs = num(flags["request-timeout"],);
@@ -7050,39 +7054,6 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 }
 
 // ---------------------------------------------------------------------------
-// Interactive prompts
-// ---------------------------------------------------------------------------
-
-function promptLine(label: string,): Promise<string> {
-	return new Promise((res, rej,) => {
-		const rl = createInterface({ input: process.stdin, output: process.stderr, },);
-		rl.on("close", () => rej(new UsageError("Input closed before a value was provided.",),),);
-		rl.question(label, (answer,) => {
-			rl.close();
-			res(answer.trim(),);
-		},);
-	},);
-}
-
-function promptSecret(label: string,): Promise<string> {
-	return new Promise((res, rej,) => {
-		const muted = new Writable({
-			write(_chunk, _encoding, cb,) {
-				cb();
-			},
-		},);
-		const rl = createInterface({ input: process.stdin, output: muted, terminal: true, },);
-		rl.on("close", () => rej(new UsageError("Input closed before a value was provided.",),),);
-		process.stderr.write(label,);
-		rl.question("", (answer,) => {
-			rl.close();
-			process.stderr.write("\n",);
-			res(answer.trim(),);
-		},);
-	},);
-}
-
-// ---------------------------------------------------------------------------
 // Credential resolution
 // ---------------------------------------------------------------------------
 
@@ -7100,10 +7071,13 @@ function resolveCredentials(flags: Record<string, string | boolean>,): {
 	let apiKey = hasApiKeyFlag ? flags["api-key"] as string | undefined : undefined;
 	let projectKey = hasProjectKeyFlag ? flags["project-key"] as string | undefined : undefined;
 	const saved = loadCredentials();
+	const useEnv = dataikuEnvironmentEnabled();
 
-	if (!hasUrlFlag) url ??= process.env.DATAIKU_URL;
-	if (!hasApiKeyFlag) apiKey ??= process.env.DATAIKU_API_KEY;
-	if (!hasProjectKeyFlag) projectKey ??= process.env.DATAIKU_PROJECT_KEY;
+	if (useEnv) {
+		if (!hasUrlFlag) url ??= process.env.DATAIKU_URL;
+		if (!hasApiKeyFlag) apiKey ??= process.env.DATAIKU_API_KEY;
+		if (!hasProjectKeyFlag) projectKey ??= process.env.DATAIKU_PROJECT_KEY;
+	}
 
 	if (saved) {
 		if (!hasUrlFlag) url ??= saved.url;
@@ -7120,9 +7094,12 @@ function resolveCredentials(flags: Record<string, string | boolean>,): {
 }
 
 interface ErrorReportEnvelope {
+	ok: false;
+	error: string;
 	code: StableErrorCode;
 	category: "usage" | "dss" | "internal";
 	message: string;
+	exitCode: number;
 	hint?: string;
 	resource?: string;
 	action?: string;
@@ -7134,13 +7111,6 @@ interface ErrorReportEnvelope {
 }
 
 let currentCommandContext: { resource?: string; action?: string; projectKey?: string; } = {};
-
-function isReportJsonRequested(): boolean {
-	return process.env.DSS_REPORT_JSON === "1"
-		|| process.argv.slice(2,).some((arg,) =>
-			arg === "--report-json" || arg.startsWith("--report-json=",)
-		);
-}
 
 function rawFlagValue(argv: string[], flagName: string,): string | undefined {
 	const longFlag = `--${flagName}`;
@@ -7183,7 +7153,7 @@ function rawCommandContext(): { resource?: string; action?: string; projectKey?:
 		projectKey: currentCommandContext.projectKey
 			?? rawFlagValue(argv, "project-key",)
 			?? rawFlagValue(argv, "project",)
-			?? process.env.DATAIKU_PROJECT_KEY,
+			?? (dataikuEnvironmentEnabled() ? process.env.DATAIKU_PROJECT_KEY : undefined),
 	};
 }
 
@@ -7197,26 +7167,40 @@ function requestIdFromBody(body: string,): string | undefined {
 	}
 }
 
+function errorExitCode(err: unknown,): number {
+	if (err instanceof UsageError) return 1;
+	if (err instanceof DataikuError) return err.category === "transient" ? 3 : 2;
+	return 2;
+}
+
 function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 	const context = rawCommandContext();
+	const exitCode = errorExitCode(err,);
 	if (err instanceof UsageError) {
 		return {
+			ok: false,
+			error: err.message,
 			code: err.code,
 			category: "usage",
 			message: err.message,
+			exitCode,
 			...(err.hint ? { hint: err.hint, } : {}),
+			...(err.details ? { details: err.details, } : {}),
 			...context,
 		};
 	}
 	if (err instanceof DataikuError) {
 		return {
+			ok: false,
+			error: err.message,
 			code: dataikuErrorCode(err.category,),
 			category: "dss",
 			message: err.message,
+			exitCode,
 			hint: err.retryHint,
 			status: err.status,
 			retryable: err.retryable,
-			requestId: requestIdFromBody(err.body,),
+			requestId: err.requestId ?? requestIdFromBody(err.body,),
 			details: {
 				dssCategory: err.category,
 				statusText: err.statusText,
@@ -7228,40 +7212,18 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 	}
 	const message = err instanceof Error ? err.message : String(err,);
 	return {
+		ok: false,
+		error: message,
 		code: "internal_error",
 		category: "internal",
 		message,
+		exitCode,
 		...context,
 	};
 }
 
 function writeErrorReport(err: unknown,): void {
 	process.stderr.write(`${JSON.stringify(buildErrorReport(err,), null, 2,)}\n`,);
-}
-
-function commandRegistryEntry(resource: string, action: string,): CommandRegistryEntry | undefined {
-	return buildCommandRegistry()[resource]?.[action];
-}
-
-function writeReportHelp(resource: string, action: string,): void {
-	const entry = commandRegistryEntry(resource, action,);
-	if (entry) {
-		process.stderr.write(`${JSON.stringify(entry, null, 2,)}\n`,);
-		return;
-	}
-	process.stderr.write(`${
-		JSON.stringify(
-			{
-				code: "usage_error",
-				category: "usage",
-				message: `No registry entry for ${resource} ${action}.`,
-				resource,
-				action,
-			},
-			null,
-			2,
-		)
-	}\n`,);
 }
 
 // ---------------------------------------------------------------------------
@@ -7272,183 +7234,77 @@ async function main(): Promise<void> {
 	loadEnvFile();
 	const { positional, flags, } = parseArgs(process.argv.slice(2,),);
 
-	// --version
 	if (flags["version"] === true) {
-		process.stdout.write(`${CLI_VERSION_LABEL}\n`,);
-		process.exit(0,);
+		writeCommandResult(cliVersionResult(),);
+		return;
 	}
 
-	// Top-level help
-	if (positional.length === 0 || (positional.length === 0 && flags["help"])) {
-		printTopLevelHelp();
-		if (flags["help"]) process.exit(0,);
-		process.exit(1,);
-	}
+	if (positional.length === 0) throw noCommandError();
 
-	const resource = positional[0];
+	const resource = positional[0]!;
 	currentCommandContext = {
 		resource,
 		action: positional[1],
 		projectKey: typeof flags["project-key"] === "string"
 			? flags["project-key"]
-			: process.env.DATAIKU_PROJECT_KEY,
+			: dataikuEnvironmentEnabled()
+			? process.env.DATAIKU_PROJECT_KEY
+			: undefined,
 	};
 
 	if (resource === "doctor") {
 		const action = positional[1];
-		if (flags["help"] === true) {
-			if (flags["report-json"] === true) writeReportHelp("doctor", "run",);
-			else printActionHelp("doctor", "run",);
-			process.exit(0,);
-		}
+		currentCommandContext.action = action ?? "run";
 		if (action !== undefined && action !== "run") {
-			throw new UsageError("Usage: dss doctor [--project-key KEY] [--capabilities] [--fast]",);
+			throw unknownActionError("doctor", action, ["run",],);
 		}
 		const { result, exitCode, } = await runDoctor(flags,);
 		writeCommandResult(result,);
-		process.exit(exitCode,);
-	}
-
-	// Auth commands — dispatched before client creation
-	if (resource === "auth") {
-		const action = positional[1];
-		if (!action) {
-			const maxName = Math.max(...Object.keys(AUTH_ACTIONS,).map((n,) => n.length),);
-			const lines = [
-				"Usage: dss auth <action> [--flags]",
-				"",
-				"Actions:",
-				...Object.entries(AUTH_ACTIONS,).map(
-					([name, meta,],) => `  ${name.padEnd(maxName + 2,)}${meta.description ?? meta.usage}`,
-				),
-				"",
-				"Run 'dss auth <action> --help' for details and examples.",
-			];
-			process.stderr.write(`${lines.join("\n",)}\n`,);
-			process.exit(flags["help"] === true ? 0 : 1,);
-		}
-		const authMeta = AUTH_ACTIONS[action];
-		if (!authMeta) {
-			if (flags["report-json"] === true) {
-				throw new UsageError(
-					`Unknown action: auth ${action}. Available: ${Object.keys(AUTH_ACTIONS,).join(", ",)}`,
-				);
-			}
-			process.stderr.write(
-				`Unknown action: auth ${action}\nAvailable: ${Object.keys(AUTH_ACTIONS,).join(", ",)}\n`,
-			);
-			process.exit(1,);
-		}
-		if (flags["help"] === true) {
-			if (flags["report-json"] === true) {
-				writeReportHelp("auth", action,);
-			} else {
-				const lines: string[] = [];
-				if (authMeta.description) lines.push(authMeta.description, "",);
-				lines.push(`Usage: ${authMeta.usage}`,);
-				if (authMeta.examples && authMeta.examples.length > 0) {
-					lines.push("", "Examples:",);
-					for (const ex of authMeta.examples) lines.push(`  ${ex}`,);
-				}
-				process.stderr.write(`${lines.join("\n",)}\n`,);
-			}
-			process.exit(0,);
-		}
-		await authMeta.handler(flags,);
+		if (exitCode !== 0) process.exit(exitCode,);
 		return;
 	}
 
-	// install-skill — dispatched before client creation
-	if (resource === "install-skill") {
-		const installSkillAction = positional[1];
-		if (flags["help"] === true) {
-			if (flags["report-json"] === true) {
-				writeReportHelp("install-skill", "run",);
-			} else {
-				const lines = [
-					`Usage: ${INSTALL_SKILL_USAGE}`,
-					"",
-					INSTALL_SKILL_DESCRIPTION,
-					"",
-					"Flags:",
-					"  --global         Install to user-level global scope (default: project)",
-					"  --agent NAME     Target a specific agent: claude, codex, cursor, pi, omp",
-					"  --target PATH    Project directory to install into (default: workspace root)",
-					"  --list-agents    Print detected agents and exit",
-					"  --dry-run        Print planned skill installs without writing files",
-					"  --plan           Print planned skill installs without writing files",
-				];
-				process.stderr.write(`${lines.join("\n",)}\n`,);
-			}
-			process.exit(0,);
+	if (resource === "auth") {
+		const action = positional[1];
+		const validActions = Object.keys(AUTH_ACTIONS,);
+		if (!action) {
+			throw missingActionError("auth", validActions, "dss auth login --url URL --api-key KEY",);
 		}
-		if (installSkillAction !== undefined && installSkillAction !== "run") {
-			throw new UsageError(`Usage: ${INSTALL_SKILL_USAGE}`,);
+		currentCommandContext.action = action;
+		const authMeta = AUTH_ACTIONS[action];
+		if (!authMeta) throw unknownActionError("auth", action, validActions,);
+		const result = await authMeta.handler(flags,);
+		writeCommandResult(result,);
+		return;
+	}
+
+	if (resource === "install-skill") {
+		const action = positional[1];
+		currentCommandContext.action = action ?? "run";
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("install-skill", action, ["run",],);
 		}
 
-		const listOnly = flags["list-agents"] === true;
 		const agentFilter = typeof flags["agent"] === "string" ? flags["agent"] : undefined;
 		const isGlobal = flags["global"] === true;
 		const targetDir = typeof flags["target"] === "string" ? flags["target"] : undefined;
 
-		// Resolve target agents
-		let targets;
-		if (agentFilter) {
+		const targets = (() => {
+			if (!agentFilter) return detectAgents();
 			const def = AGENTS[agentFilter];
 			if (!def) {
 				throw new UsageError(
-					`Unknown agent: ${agentFilter}. Available: ${Object.keys(AGENTS,).join(", ",)}`,
+					`Unknown agent: ${agentFilter}.`,
+					"usage_error",
+					COMMANDS_RUN_HINT,
+					{ agent: agentFilter, validAgents: Object.keys(AGENTS,), },
 				);
 			}
-			targets = [{ id: agentFilter, def, via: "flag" as const, },];
-		} else {
-			targets = detectAgents();
-		}
+			return [{ id: agentFilter, def, via: "flag" as const, },];
+		})();
 
-		if (listOnly) {
-			if (targets.length === 0) {
-				process.stderr.write("No coding agents detected.\n",);
-			} else {
-				process.stderr.write("Detected agents:\n",);
-				for (const t of targets) {
-					process.stderr.write(`  ${t.id}  (${t.def.name}, via ${t.via})\n`,);
-				}
-			}
-			process.exit(0,);
-		}
-
-		if (targets.length === 0) {
-			throw new UsageError(
-				"No coding agents detected. Install one (claude, codex, cursor, pi, omp) or use --agent NAME.",
-			);
-		}
-
-		const scope = isGlobal ? "global" : "project";
-		const cwd = targetDir ?? (isGlobal ? process.cwd() : findWorkspaceRoot(process.cwd(),));
-		if (flags["plan"] === true) {
-			writeCommandResult(planResult("install-skill", "run", {
-				identifiers: { scope, target: cwd, },
-				payload: {
-					agents: targets.map((target,) => ({
-						id: target.id,
-						name: target.def.name,
-						via: target.via,
-					})),
-				},
-				idempotency: "none",
-				asyncKind: "none",
-				exitCodesOnFailure: { usage: 1, error: 2, transient: 3, },
-				plannedAndDryRun: flags["dry-run"] === true,
-			},),);
-			return;
-		}
-		if (flags["dry-run"] === true) {
+		if (flags["list-agents"] === true) {
 			writeCommandResult({
-				dryRun: true,
-				action: "install-skill",
-				resource: "install-skill",
-				scope,
-				target: cwd,
 				agents: targets.map((target,) => ({
 					id: target.id,
 					name: target.def.name,
@@ -7457,147 +7313,101 @@ async function main(): Promise<void> {
 			},);
 			return;
 		}
-		process.stderr.write(`Installing dataiku-dss skill (${scope} scope):\n`,);
-		const results = installSkill(targets, { global: isGlobal, cwd, },);
 
-		for (const r of results) {
-			process.stderr.write(`  ${r.agent}  ->  ${r.path}\n`,);
+		if (targets.length === 0) {
+			throw new UsageError(
+				"No coding agents detected.",
+				"usage_error",
+				"Use --agent NAME to choose one of the supported agents.",
+				{ validAgents: Object.keys(AGENTS,), },
+			);
 		}
-		if (results.length > 0) {
-			process.stderr.write(`\nDone. ${results.length} skill(s) installed.\n`,);
+
+		const scope = isGlobal ? "global" : "project";
+		const cwd = targetDir ?? (isGlobal ? process.cwd() : findWorkspaceRoot(process.cwd(),));
+		const installed = planSkillInstalls(targets, { global: isGlobal, cwd, },);
+
+		if (flags["plan"] === true) {
+			writeCommandResult(planResult("install-skill", "run", {
+				identifiers: { scope, target: cwd, },
+				payload: { installed, },
+				idempotency: "none",
+				asyncKind: "none",
+				exitCodesOnFailure: { usage: 1, error: 2, transient: 3, },
+				plannedAndDryRun: flags["dry-run"] === true,
+			},),);
+			return;
 		}
+
+		writeCommandResult({
+			scope,
+			target: cwd,
+			installed: flags["dry-run"] === true
+				? installed
+				: installSkill(targets, { global: isGlobal, cwd, },),
+			...(flags["dry-run"] === true ? { dryRun: true, } : {}),
+		},);
 		return;
 	}
 
-	// commands — machine-readable introspection (no auth needed)
 	if (resource === "commands") {
 		const action = positional[1];
-		if (flags["help"] === true) {
-			if (flags["report-json"] === true) {
-				writeReportHelp("commands", "run",);
-			} else {
-				const lines = [
-					`Usage: ${COMMANDS_USAGE}`,
-					"",
-					COMMANDS_DESCRIPTION,
-					"",
-					"Examples:",
-					...COMMANDS_EXAMPLES.map((example,) => `  ${example}`),
-				];
-				process.stderr.write(`${lines.join("\n",)}\n`,);
-			}
-			process.exit(0,);
-		}
-		if (action !== undefined && action !== "run") {
-			throw new UsageError(`Usage: ${COMMANDS_USAGE}`,);
-		}
+		if (!action) throw missingActionError("commands", ["run",], COMMANDS_USAGE,);
+		currentCommandContext.action = action;
+		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
 		writeCommandResult(buildCommandRegistry(),);
+		return;
+	}
+
+	if (resource === "version") {
+		const action = positional[1];
+		currentCommandContext.action = action ?? "run";
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("version", action, ["run",],);
+		}
+		writeCommandResult(cliVersionResult(),);
 		return;
 	}
 
 	if (resource === "cleanup") {
 		const action = positional[1];
-		if (flags["help"] === true) {
-			if (flags["report-json"] === true) {
-				writeReportHelp("cleanup", "run",);
-			} else {
-				const lines = [
-					`Usage: ${CLEANUP_USAGE}`,
-					"",
-					CLEANUP_DESCRIPTION,
-					"",
-					"Examples:",
-					...CLEANUP_EXAMPLES.map((example,) => `  ${example}`),
-				];
-				process.stderr.write(`${lines.join("\n",)}\n`,);
-			}
-			process.exit(0,);
-		}
+		currentCommandContext.action = action ?? "run";
 		if (action !== undefined && action !== "run") {
-			throw new UsageError(`Usage: ${CLEANUP_USAGE}`,);
+			throw unknownActionError("cleanup", action, ["run",],);
 		}
 		const { result, exitCode, } = await runCleanup(flags,);
 		writeCommandResult(result,);
-		process.exit(exitCode,);
+		if (exitCode !== 0) process.exit(exitCode,);
+		return;
 	}
 
 	if (resource === "fixtures") {
 		const action = positional[1];
-		currentCommandContext.action = "run";
-		if (flags["help"] === true) {
-			if (flags["report-json"] === true) {
-				writeReportHelp("fixtures", "run",);
-			} else {
-				const lines = [
-					`Usage: ${FIXTURES_USAGE}`,
-					"",
-					FIXTURES_DESCRIPTION,
-					"",
-					"Examples:",
-					...FIXTURES_EXAMPLES.map((example,) => `  ${example}`),
-				];
-				process.stderr.write(`${lines.join("\n",)}\n`,);
-			}
-			process.exit(0,);
-		}
+		currentCommandContext.action = action ?? "run";
 		if (action !== undefined && action !== "run") {
-			throw new UsageError(`Usage: ${FIXTURES_USAGE}`,);
+			throw unknownActionError("fixtures", action, ["run",],);
 		}
 		const result = await runFixtures(flags,);
 		writeCommandResult(result,);
 		return;
 	}
 
-	// Unknown resource
-	if (!commands[resource]) {
-		if (flags["help"]) {
-			printTopLevelHelp();
-			process.exit(0,);
-		}
-		if (flags["report-json"] === true) {
-			throw new UsageError(`Unknown resource: ${resource}. Available: ${RESOURCE_NAMES.join(", ",)}`,);
-		}
-		process.stderr.write(
-			`Unknown resource: ${resource} \nAvailable: ${RESOURCE_NAMES.join(", ",)} \n`,
+	if (!commands[resource]) throw unknownResourceError(resource,);
+
+	const resourceActions = commands[resource]!;
+	if (positional.length === 1) {
+		throw missingActionError(
+			resource,
+			Object.keys(resourceActions,),
+			`dss ${resource} <action> [args...]`,
 		);
-		process.exit(1,);
 	}
 
-	// Resource-level help
-	if (positional.length === 1 || flags["help"] === true) {
-		if (positional.length === 1) {
-			printResourceHelp(resource,);
-			if (flags["help"]) process.exit(0,);
-			process.exit(1,);
-		}
-	}
+	const action = positional[1]!;
+	currentCommandContext.action = action;
+	const actionMeta = resourceActions[action];
 
-	const action = positional[1];
-	const actionMeta = commands[resource][action];
-
-	// Unknown action
-	if (!actionMeta) {
-		if (flags["report-json"] === true) {
-			throw new UsageError(
-				`Unknown action: ${resource} ${action}. Available actions for ${resource}: ${
-					Object.keys(commands[resource],).join(", ",)
-				}`,
-			);
-		}
-		process.stderr.write(
-			`Unknown action: ${resource} ${action} \nAvailable actions for ${resource}: ${
-				Object.keys(commands[resource],).join(", ",)
-			} \n`,
-		);
-		process.exit(1,);
-	}
-
-	// Action-level help
-	if (flags["help"] === true) {
-		if (flags["report-json"] === true) writeReportHelp(resource, action,);
-		else printActionHelp(resource, action,);
-		process.exit(0,);
-	}
+	if (!actionMeta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
 
 	const args = positional.slice(2,);
 	if (flags["plan"] === true) {
@@ -7605,16 +7415,24 @@ async function main(): Promise<void> {
 		writeCommandResult(plan,);
 		return;
 	}
-	// Resolve credentials: flags > env > saved > .env
+
 	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
 	currentCommandContext.projectKey = projectKey;
 
 	if (!url) {
-		throw new UsageError("Missing Dataiku URL. Set DATAIKU_URL, pass --url, or run: dss auth login",);
+		throw new UsageError(
+			"Missing Dataiku URL.",
+			"missing_required_flag",
+			"Set DATAIKU_URL or pass --url.",
+			{ requiredFlags: ["url",], env: ["DATAIKU_URL",], },
+		);
 	}
 	if (!apiKey) {
 		throw new UsageError(
-			"Missing API key. Set DATAIKU_API_KEY, pass --api-key, or run: dss auth login",
+			"Missing API key.",
+			"missing_required_flag",
+			"Set DATAIKU_API_KEY or pass --api-key.",
+			{ requiredFlags: ["api-key",], env: ["DATAIKU_API_KEY",], },
 		);
 	}
 
@@ -7642,7 +7460,7 @@ async function main(): Promise<void> {
 		const entry = cleanupLedgerEntry(resource, action, args, flags, result, projectKey,);
 		if (entry) await appendCleanupLedgerEntry(flags["record-cleanup"], entry,);
 	}
-	if (flags["raw"] === true && typeof result === "string") {
+	if (flags["raw"] === true && typeof result === "string" && typeof flags["output"] !== "string") {
 		process.stdout.write(result,);
 	} else {
 		writeCommandResult(result,);
@@ -7652,27 +7470,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown,) => {
-	if (isReportJsonRequested()) {
-		writeErrorReport(err,);
-		if (err instanceof UsageError) process.exit(1,);
-		if (err instanceof DataikuError) process.exit(err.category === "transient" ? 3 : 2,);
-		process.exit(2,);
-	}
-	if (err instanceof UsageError) {
-		process.stderr.write(`${JSON.stringify({ error: err.message, code: "usage", }, null, 2,)}\n`,);
-		process.exit(1,);
-	}
-	if (err instanceof DataikuError) {
-		const payload: Record<string, unknown> = {
-			error: err.message,
-			category: err.category,
-			retryable: err.retryable,
-		};
-		if (err.retryHint) payload.retryHint = err.retryHint;
-		process.stderr.write(`${JSON.stringify(payload, null, 2,)} \n`,);
-		process.exit(err.category === "transient" ? 3 : 2,);
-	}
-	const message = err instanceof Error ? err.message : String(err,);
-	process.stderr.write(`${JSON.stringify({ error: message, }, null, 2,)} \n`,);
-	process.exit(1,);
+	writeErrorReport(err,);
+	process.exit(errorExitCode(err,),);
 },);

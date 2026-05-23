@@ -1,6 +1,6 @@
 import { describe, expect, it, } from "bun:test";
 import { execFile, spawn, } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync, } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync, } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
 import { tmpdir, } from "node:os";
@@ -20,7 +20,7 @@ async function dss(
 	args: string[],
 	opts: CliExecOptions = {},
 ): Promise<{ stdout: string; stderr: string; }> {
-	return exec(BUN, ["run", CLI_PATH, ...args,], {
+	return exec(BUN, ["--no-env-file", "run", CLI_PATH, ...args,], {
 		cwd: opts.cwd ?? SDK_ROOT,
 		env: opts.env ?? process.env,
 	},);
@@ -32,7 +32,7 @@ async function dssWithInput(
 	opts: CliExecOptions = {},
 ): Promise<{ stdout: string; stderr: string; }> {
 	return new Promise((resolvePromise, rejectPromise,) => {
-		const child = spawn(BUN, ["run", CLI_PATH, ...args,], {
+		const child = spawn(BUN, ["--no-env-file", "run", CLI_PATH, ...args,], {
 			cwd: opts.cwd ?? SDK_ROOT,
 			env: opts.env ?? process.env,
 		},);
@@ -77,6 +77,15 @@ async function dssFailure(args: string[], opts: CliExecOptions = {},): Promise<C
 			stdout: failure.stdout ?? "",
 			stderr: failure.stderr ?? "",
 		};
+	}
+}
+
+function readFileExists(path: string,): boolean {
+	try {
+		readFileSync(path,);
+		return true;
+	} catch {
+		return false;
 	}
 }
 
@@ -140,61 +149,143 @@ async function withCliServer(
 	}
 }
 
-describe("CLI help output", () => {
-	it("dss --help shows top-level usage", async () => {
-		const { stderr, } = await dss(["--help",],);
-		expect(stderr,).toContain("Usage: dss <resource> <action>",);
+describe("CLI agent-only command surface", () => {
+	it("dss with no args emits a JSON usage envelope pointing at commands run", async () => {
+		const failure = await dssFailure([],);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stdout,).toBe("",);
+		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			ok: false,
+			error: expect.any(String,),
+			code: "usage_error",
+			category: "usage",
+			exitCode: 1,
+			hint: "Use `dss commands run` for machine-readable command discovery.",
+		},);
+		expect((report.details as Record<string, unknown>).command,).toBe("dss commands run",);
 	});
 
-	it("dss project --help lists project actions", async () => {
-		const { stderr, } = await dss(["project", "--help",],);
-		expect(stderr,).toContain("Actions:",);
-		expect(stderr,).toContain("list",);
+	it("--help and -h fail as JSON usage envelopes", async () => {
+		for (const flag of ["--help", "-h",]) {
+			const failure = await dssFailure([flag,],);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stdout,).toBe("",);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				ok: false,
+				error: "Help screens are not supported.",
+				code: "usage_error",
+				category: "usage",
+				message: "Help screens are not supported.",
+				exitCode: 1,
+			},);
+			expect((report.details as Record<string, unknown>).command,).toBe("dss commands run",);
+		}
 	});
 
-	it("dss --help lists JSON and TLS flags", async () => {
-		const { stderr, } = await dss(["--help",],);
-		expect(stderr,).toContain("--json",);
-		expect(stderr,).not.toContain("--format",);
-		expect(stderr,).toContain("--verbose",);
-		expect(stderr,).toContain("--insecure",);
-		expect(stderr,).toContain("--ca-cert PATH",);
+	it("--version and version command emit JSON", async () => {
+		for (const args of [["--version",], ["version",], ["version", "run",],]) {
+			const { stdout, stderr, } = await dss(args,);
+			expect(stderr,).toBe("",);
+			const version = JSON.parse(stdout,) as Record<string, unknown>;
+			expect(version.version,).toEqual(expect.any(String,),);
+			expect(version,).toHaveProperty("gitRevision",);
+		}
 	});
 
-	it("dss dataset --help lists update action", async () => {
-		const { stderr, } = await dss(["dataset", "--help",],);
-		expect(stderr,).toContain("update",);
-	});
-
-	it("dss notebook --help lists save-jupyter and clear-sql-history", async () => {
-		const { stderr, } = await dss(["notebook", "--help",],);
-		expect(stderr,).toContain("save-jupyter",);
-		expect(stderr,).toContain("clear-sql-history",);
-	});
-
-	it("prints command registry help when --report-json is set", async () => {
-		const { stderr, } = await dss(["dataset", "list", "--help", "--report-json",],);
-		const help = JSON.parse(stderr,) as {
-			resource?: string;
-			action?: string;
-			usage?: string;
-			flags?: unknown[];
-		};
-		expect(help,).toMatchObject({
+	it("commands run prints the machine-readable registry", async () => {
+		const { stdout, stderr, } = await dss(["commands", "run",],);
+		expect(stderr,).toBe("",);
+		const registry = JSON.parse(stdout,) as Record<string, Record<string, unknown>>;
+		expect(registry.version.run,).toMatchObject({
+			resource: "version",
+			action: "run",
+			usage: "dss version",
+			requiresAuth: false,
+			outputShape: "object",
+		},);
+		expect(registry.auth.login,).toMatchObject({
+			resource: "auth",
+			action: "login",
+			requiredFlags: ["url", "api-key",],
+			outputShape: "object",
+		},);
+		expect(registry.auth,).not.toHaveProperty("status",);
+		expect(registry.auth,).not.toHaveProperty("logout",);
+		expect(registry.dataset.list,).toMatchObject({
 			resource: "dataset",
 			action: "list",
-			usage: "dss dataset list [--project-key KEY]",
 		},);
-		expect(Array.isArray(help.flags,),).toBe(true,);
+	});
+	it("--report-json is rejected as an unknown flag", async () => {
+		const failure = await dssFailure(["commands", "run", "--report-json",],);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stdout,).toBe("",);
+		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			ok: false,
+			error: "Unknown flag: --report-json",
+			code: "unknown_flag",
+			category: "usage",
+			exitCode: 1,
+		},);
+	});
+
+	it("unknown resource and action envelopes include valid options", async () => {
+		const unknownResource = await dssFailure(["not-a-resource",],);
+		expect(unknownResource.code,).toBe(1,);
+		const resourceReport = JSON.parse(unknownResource.stderr,) as Record<string, unknown>;
+		expect(resourceReport,).toMatchObject({
+			ok: false,
+			error: expect.any(String,),
+			code: "usage_error",
+			category: "usage",
+			resource: "not-a-resource",
+			exitCode: 1,
+		},);
+		expect((resourceReport.details as Record<string, unknown>).validResources,).toEqual(
+			expect.arrayContaining(["project", "commands", "install-skill",],),
+		);
+
+		const unknownAction = await dssFailure(["project", "not-an-action",],);
+		expect(unknownAction.code,).toBe(1,);
+		const actionReport = JSON.parse(unknownAction.stderr,) as Record<string, unknown>;
+		expect(actionReport,).toMatchObject({
+			ok: false,
+			error: expect.any(String,),
+			code: "usage_error",
+			category: "usage",
+			resource: "project",
+			action: "not-an-action",
+			exitCode: 1,
+		},);
+		expect((actionReport.details as Record<string, unknown>).validActions,).toEqual(
+			expect.arrayContaining(["list", "get",],),
+		);
+
+		const specialRunAction = await dssFailure(["version", "bogus",],);
+		expect(specialRunAction.code,).toBe(1,);
+		const specialReport = JSON.parse(specialRunAction.stderr,) as Record<string, unknown>;
+		expect(specialReport,).toMatchObject({
+			ok: false,
+			error: expect.any(String,),
+			code: "usage_error",
+			category: "usage",
+			resource: "version",
+			action: "bogus",
+			exitCode: 1,
+		},);
+		expect((specialReport.details as Record<string, unknown>).validActions,).toEqual(["run",],);
 	});
 });
 
 describe("CLI missing credentials", () => {
-	it("exits non-zero when no credentials are available", async () => {
+	it("exits with a JSON envelope when no credentials are available", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-creds-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		try {
-			await dss(["project", "list",], {
+			const failure = await dssFailure(["project", "list",], {
 				cwd: tmpDir,
 				env: {
 					PATH: process.env.PATH,
@@ -203,17 +294,24 @@ describe("CLI missing credentials", () => {
 					DATAIKU_DISABLE_ENV: "1",
 				},
 			},);
-			throw new Error("should have exited non-zero",);
-		} catch (e: unknown) {
-			const err = e as { code?: number; stderr?: string; stdout?: string; };
-			expect(err.code !== 0 || err.stderr,).toBeTruthy();
+			expect(failure.code,).toBe(1,);
+			expect(failure.stdout,).toBe("",);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "missing_required_flag",
+				category: "usage",
+				message: "Missing Dataiku URL.",
+				resource: "project",
+				action: "list",
+				exitCode: 1,
+			},);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
 	});
 
 	it("emits stable report JSON for usage errors", async () => {
-		const failure = await dssFailure(["flow-zone", "list", "--wat", "yes", "--report-json",], {
+		const failure = await dssFailure(["flow-zone", "list", "--wat", "yes",], {
 			env: {
 				...process.env,
 				DATAIKU_PROJECT_KEY: "TEST",
@@ -234,7 +332,7 @@ describe("CLI missing credentials", () => {
 	});
 
 	it("emits stable report JSON for missing positional arguments", async () => {
-		const failure = await dssFailure(["scenario", "delete", "--report-json",], {
+		const failure = await dssFailure(["scenario", "delete",], {
 			env: {
 				...process.env,
 				DATAIKU_PROJECT_KEY: "TEST",
@@ -258,7 +356,7 @@ describe("CLI missing credentials", () => {
 		await withCliServer((_req, res,) => {
 			sendJson(res, { message: "Access denied", requestId: "req-123", }, 403,);
 		}, async (url,) => {
-			const failure = await dssFailure(["scenario", "list", "--report-json",], {
+			const failure = await dssFailure(["scenario", "list",], {
 				env: cliEnv(url,),
 			},);
 			expect(failure.code,).toBe(2,);
@@ -276,30 +374,103 @@ describe("CLI missing credentials", () => {
 			expect(report.message,).toContain("Access denied",);
 		},);
 	});
+
+	it("uses DSS request id headers when response body omits requestId", async () => {
+		await withCliServer((_req, res,) => {
+			res.setHeader("X-Request-Id", "rid-header-only",);
+			sendJson(res, { message: "Temporary failure", }, 500,);
+		}, async (url,) => {
+			const failure = await dssFailure(["project", "list", "--retries", "1",], {
+				env: cliEnv(url,),
+			},);
+			expect(failure.code,).toBe(3,);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				ok: false,
+				code: "transient",
+				category: "dss",
+				resource: "project",
+				action: "list",
+				requestId: "rid-header-only",
+				status: 500,
+				retryable: true,
+				exitCode: 3,
+			},);
+		},);
+	});
 });
 
 describe("CLI .env loading", () => {
 	it("loads .env from CWD and uses those credentials", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-env-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
-		writeFileSync(
-			join(tmpDir, ".env",),
-			"DATAIKU_URL=http://dss-env-test-sentinel.invalid\nDATAIKU_API_KEY=fake-key\n",
-		);
 		try {
-			await dss(["--help",], {
-				cwd: tmpDir,
-				env: {
-					PATH: process.env.PATH,
-					HOME: process.env.HOME,
-					DATAIKU_URL: "",
-					DATAIKU_API_KEY: "",
-				},
+			await withCliServer((_req, res,) => {
+				sendJson(res, [{ projectKey: "ENV", name: "From env", },],);
+			}, async (url,) => {
+				writeFileSync(
+					join(tmpDir, ".env",),
+					`DATAIKU_URL=${url}\nDATAIKU_API_KEY=fake-key\n`,
+				);
+				const { stdout, stderr, } = await dss(["project", "list",], {
+					cwd: tmpDir,
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: join(tmpDir, "config",),
+					},
+				},);
+				expect(stderr,).toBe("",);
+				expect(JSON.parse(stdout,),).toEqual([{ projectKey: "ENV", name: "From env", },],);
 			},);
-		} catch (e: unknown) {
-			const err = e as { stderr?: string; stdout?: string; message?: string; };
-			const output = `${err.stderr ?? ""}${err.stdout ?? ""}${err.message ?? ""}`;
-			expect(output,).not.toContain("DATAIKU_URL is required",);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("DATAIKU_DISABLE_ENV skips .env and falls back to saved credentials", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-env-disabled-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await withCliServer((_req, res,) => {
+				sendJson(res, [{ projectKey: "DOTENV", name: "From dotenv", },],);
+			}, async (dotenvUrl,) => {
+				await withCliServer((_req, res,) => {
+					sendJson(res, [{ projectKey: "ENVVAR", name: "From process env", },],);
+				}, async (envUrl,) => {
+					await withCliServer((_req, res,) => {
+						sendJson(res, [{ projectKey: "SAVED", name: "From saved credentials", },],);
+					}, async (savedUrl,) => {
+						writeFileSync(
+							join(tmpDir, ".env",),
+							`DATAIKU_URL=${dotenvUrl}\nDATAIKU_API_KEY=dotenv-key\n`,
+						);
+						const env = {
+							PATH: process.env.PATH,
+							HOME: process.env.HOME,
+							DSS_CONFIG_DIR: join(tmpDir, "config",),
+							DATAIKU_DISABLE_ENV: "1",
+							DATAIKU_URL: envUrl,
+							DATAIKU_API_KEY: "env-key",
+						};
+						await dss([
+							"auth",
+							"login",
+							"--url",
+							savedUrl,
+							"--api-key",
+							"saved-key",
+							"--project-key",
+							"SAVED",
+						], { cwd: tmpDir, env, },);
+						const { stdout, stderr, } = await dss(["project", "list",], { cwd: tmpDir, env, },);
+						expect(stderr,).toBe("",);
+						expect(JSON.parse(stdout,),).toEqual([
+							{ projectKey: "SAVED", name: "From saved credentials", },
+						],);
+					},);
+				},);
+			},);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
@@ -463,7 +634,6 @@ describe("CLI execution behavior", () => {
 				"BUILD_FRG",
 				"--data",
 				JSON.stringify({ params: { steps: [{ type: "build_flowitem", },], }, },),
-				"--report-json",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(2,);
 			expect(capturedBody,).toHaveProperty("params.steps.0.type", "build_flowitem",);
@@ -818,7 +988,7 @@ describe("CLI execution behavior", () => {
 		expect(longFailure.code,).toBe(1,);
 		expect(longFailure.stderr,).toContain("Unknown flag: --format",);
 
-		const shortFailure = await dssFailure(["-f", "table", "--help",],);
+		const shortFailure = await dssFailure(["-f", "table",],);
 		expect(shortFailure.code,).toBe(1,);
 		expect(shortFailure.stderr,).toContain("Unknown flag: -f",);
 	});
@@ -1245,13 +1415,13 @@ describe("CLI execution behavior", () => {
 		}, async (url,) => {
 			const apiError = await dssFailure(["dataset", "get", "missing",], { env: cliEnv(url,), },);
 			expect(apiError.code,).toBe(2,);
-			expect(apiError.stderr,).toContain('"category": "not_found"',);
+			expect(apiError.stderr,).toContain('"code": "not_found"',);
 
 			const transientError = await dssFailure(["dataset", "delete", "transient",], {
 				env: cliEnv(url,),
 			},);
 			expect(transientError.code,).toBe(3,);
-			expect(transientError.stderr,).toContain('"category": "transient"',);
+			expect(transientError.stderr,).toContain('"code": "transient"',);
 		},);
 	});
 
@@ -1507,7 +1677,7 @@ describe("CLI planned command coverage", () => {
 				"target_ds",
 				"--dry-run",
 			], { env: cliEnv(url,), },);
-			expect(failure.code,).toBe(1,);
+			expect(failure.code,).toBe(2,);
 			expect(failure.stderr,).toContain("Refusing to clone managed dataset",);
 		},);
 	});
@@ -1728,7 +1898,8 @@ describe("CLI planned command coverage", () => {
 				req.method === "GET"
 				&& url.pathname === "/public/api/projects/TEST/managedfolders/fld-123/contents/"
 			) {
-				sendJson(res, { message: "temporary gateway failure", requestId: "req-123", }, 503,);
+				res.setHeader("X-Request-Id", "req-123",);
+				sendJson(res, { message: "temporary gateway failure", }, 503,);
 				return;
 			}
 			res.statusCode = 404;
@@ -1740,7 +1911,6 @@ describe("CLI planned command coverage", () => {
 				"Named folder",
 				"--retries",
 				"1",
-				"--report-json",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(3,);
 			const report = JSON.parse(failure.stderr,) as {
@@ -1770,7 +1940,6 @@ describe("CLI planned command coverage", () => {
 				"Named folder",
 				"--retries",
 				"1",
-				"--report-json",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(3,);
 			const report = JSON.parse(failure.stderr,) as {
@@ -1853,21 +2022,58 @@ describe("CLI planned command coverage", () => {
 });
 
 describe("CLI auth commands", () => {
-	it("dss auth --help shows auth actions", async () => {
-		const { stderr, } = await dss(["auth", "--help",],);
-		expect(stderr,).toContain("login",);
-		expect(stderr,).toContain("status",);
-		expect(stderr,).toContain("logout",);
+	it("dss auth login requires URL and API key without prompting", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-missing-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			const failure = await dssFailure(["auth", "login",], {
+				env: {
+					PATH: process.env.PATH,
+					HOME: process.env.HOME,
+					DSS_CONFIG_DIR: tmpDir,
+					DATAIKU_DISABLE_ENV: "1",
+				},
+			},);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stdout,).toBe("",);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "missing_required_flag",
+				category: "usage",
+				resource: "auth",
+				action: "login",
+				exitCode: 1,
+			},);
+			expect((report.details as Record<string, unknown>).requiredFlags,).toEqual(["url", "api-key",],);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
 	});
 
-	it("dss auth login saves credentials and validates", async () => {
+	it("dss auth status and logout are rejected", async () => {
+		for (const action of ["status", "logout",]) {
+			const failure = await dssFailure(["auth", action,],);
+			expect(failure.code,).toBe(1,);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "usage_error",
+				category: "usage",
+				resource: "auth",
+				action,
+				exitCode: 1,
+			},);
+			expect((report.details as Record<string, unknown>).validActions,).toEqual(["login",],);
+		}
+	});
+
+	it("dss auth login saves credentials and returns JSON", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-auth-login-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		try {
-			await withCliServer((req, res,) => {
+			await withCliServer((_req, res,) => {
 				sendJson(res, [],);
 			}, async (url,) => {
-				const { stderr, } = await dss([
+				const { stdout, stderr, } = await dss([
 					"auth",
 					"login",
 					"--url",
@@ -1883,10 +2089,10 @@ describe("CLI auth commands", () => {
 						DSS_CONFIG_DIR: tmpDir,
 					},
 				},);
-				expect(stderr,).toContain("Connected",);
-				expect(stderr,).toContain("Credentials saved",);
+				expect(stderr,).toBe("",);
+				const result = JSON.parse(stdout,) as Record<string, unknown>;
+				expect(result,).toEqual({ saved: true, path: join(tmpDir, "credentials.json",), },);
 
-				// Verify the file was written
 				const creds = JSON.parse(readFileSync(join(tmpDir, "credentials.json",), "utf-8",),);
 				expect(creds.url,).toBe(url,);
 				expect(creds.apiKey,).toBe("test-key",);
@@ -1903,10 +2109,10 @@ describe("CLI auth commands", () => {
 		mkdirSync(tmpDir, { recursive: true, },);
 		writeFileSync(caPath, "-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----\n", "utf-8",);
 		try {
-			await withCliServer((req, res,) => {
+			await withCliServer((_req, res,) => {
 				sendJson(res, [],);
 			}, async (url,) => {
-				const { stderr, } = await dss([
+				const { stdout, stderr, } = await dss([
 					"auth",
 					"login",
 					"--url",
@@ -1923,7 +2129,11 @@ describe("CLI auth commands", () => {
 						DSS_CONFIG_DIR: tmpDir,
 					},
 				},);
-				expect(stderr,).toContain("Credentials saved",);
+				expect(stderr,).toBe("",);
+				expect(JSON.parse(stdout,),).toMatchObject({
+					saved: true,
+					path: join(tmpDir, "credentials.json",),
+				},);
 				const creds = JSON.parse(readFileSync(join(tmpDir, "credentials.json",), "utf-8",),);
 				expect(creds.tlsRejectUnauthorized,).toBe(false,);
 				expect(creds.caCertPath,).toBe(caPath,);
@@ -1954,88 +2164,22 @@ describe("CLI auth commands", () => {
 						DSS_CONFIG_DIR: tmpDir,
 					},
 				},);
-				// Process should exit as an API/auth failure, not transient transport.
 				expect(failure.code,).toBe(2,);
-				expect(failure.stderr,).toContain('"category": "forbidden"',);
-				expect(failure.stderr,).toContain("401 Unauthorized",);
-				// Credentials file should NOT have been written
-				const exists = (() => {
-					try {
-						readFileSync(join(tmpDir, "credentials.json",),);
-						return true;
-					} catch {
-						return false;
-					}
-				})();
-				expect(exists,).toBe(false,);
-			},);
-		} finally {
-			rmSync(tmpDir, { recursive: true, force: true, },);
-		}
-	});
-
-	it("dss auth status shows saved credentials with working server", async () => {
-		const tmpDir = join(tmpdir(), `dss-cli-auth-status-${Date.now()}`,);
-		mkdirSync(tmpDir, { recursive: true, },);
-		try {
-			await withCliServer((_req, res,) => {
-				sendJson(res, [],);
-			}, async (url,) => {
-				writeFileSync(
-					join(tmpDir, "credentials.json",),
-					JSON.stringify({ url, apiKey: "dkuaps-longenoughkey123", projectKey: "PROJ", },),
-				);
-				const { stderr, } = await dss(["auth", "status",], {
-					env: {
-						PATH: process.env.PATH,
-						HOME: process.env.HOME,
-						DSS_CONFIG_DIR: tmpDir,
-					},
+				expect(failure.stdout,).toBe("",);
+				const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+				expect(report,).toMatchObject({
+					category: "dss",
+					resource: "auth",
+					action: "login",
+					status: 401,
+					exitCode: 2,
 				},);
-				expect(stderr,).toContain("URL:",);
-				expect(stderr,).toContain("API key:",);
-				expect(stderr,).toContain("Project key:",);
-				expect(stderr,).toContain("PROJ",);
-				expect(stderr,).toContain("Connection:  valid",);
+				expect(readFileExists(join(tmpDir, "credentials.json",),),).toBe(false,);
 			},);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
 	});
-
-	it("dss auth logout removes credentials", async () => {
-		const tmpDir = join(tmpdir(), `dss-cli-auth-logout-${Date.now()}`,);
-		mkdirSync(tmpDir, { recursive: true, },);
-		writeFileSync(join(tmpDir, "credentials.json",), "{}",);
-		try {
-			const { stderr, } = await dss(["auth", "logout",], {
-				env: {
-					PATH: process.env.PATH,
-					HOME: process.env.HOME,
-					DSS_CONFIG_DIR: tmpDir,
-				},
-			},);
-			expect(stderr,).toContain("Credentials removed",);
-			// File should be gone
-			const exists = (() => {
-				try {
-					readFileSync(join(tmpDir, "credentials.json",),);
-					return true;
-				} catch {
-					return false;
-				}
-			})();
-			expect(exists,).toBe(false,);
-		} finally {
-			rmSync(tmpDir, { recursive: true, force: true, },);
-		}
-	});
-
-	// Note: cannot reliably test saved-credential resolution through CLI subprocess
-	// because loadEnvFile() always reads .env from the SDK root (resolved via import.meta.url),
-	// which provides DATAIKU_API_KEY before resolveCredentials() can consult saved creds.
-	// The credential precedence chain is tested indirectly: config read/write is covered by
-	// config.test.ts, and auth login/status verify the saved-cred round-trip end-to-end.
 });
 
 describe("CLI --timeout flag", () => {
@@ -2300,6 +2444,7 @@ describe("CLI recipe get-payload and set-payload", () => {
 				res.statusCode = 404;
 				res.end();
 			}, async (url,) => {
+				const resolvedTempDir = realpathSync(tempDir,);
 				const result = JSON.parse(
 					(await dss(["recipe", "set-payload", "my_recipe", "--file", filePath,], {
 						cwd: tempDir,
@@ -2308,7 +2453,9 @@ describe("CLI recipe get-payload and set-payload", () => {
 				) as { backupCreated: boolean; backupPath: string; };
 
 				expect(result.backupCreated,).toBe(true,);
-				expect(result.backupPath.startsWith(join(tempDir, ".dss-backups", "recipes",),),).toBe(true,);
+				expect(result.backupPath.startsWith(join(resolvedTempDir, ".dss-backups", "recipes",),),).toBe(
+					true,
+				);
 				const backup = JSON.parse(readFileSync(result.backupPath, "utf-8",),) as {
 					normalizedPayloadHash: string;
 					payload: string;
@@ -2328,6 +2475,38 @@ describe("CLI recipe get-payload and set-payload", () => {
 		},);
 		expect(failure.code,).toBe(1,);
 		expect(failure.stderr,).toContain("--file is required",);
+	});
+
+	it("get-payload writes --raw payloads to --output and returns the path as JSON", async () => {
+		let requests = 0;
+		const outputPath = join(tmpdir(), `dss-raw-output-${Date.now()}.py`,);
+		try {
+			await withCliServer((req, res,) => {
+				requests++;
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				expect(url.pathname,).toBe("/public/api/projects/TEST/recipes/my_recipe",);
+				expect(url.searchParams.get("includePayload",),).toBe("true",);
+				sendJson(res, {
+					recipe: { name: "my_recipe", type: "python", },
+					payload: "print('remote')\n",
+				},);
+			}, async (url,) => {
+				const { stdout, stderr, } = await dss([
+					"recipe",
+					"get-payload",
+					"my_recipe",
+					"--raw",
+					"--output",
+					outputPath,
+				], { env: cliEnv(url,), },);
+				expect(stderr,).toBe("",);
+				expect(JSON.parse(stdout,),).toBe(outputPath,);
+				expect(readFileSync(outputPath, "utf-8",),).toBe("print('remote')\n",);
+			},);
+			expect(requests,).toBe(1,);
+		} finally {
+			rmSync(outputPath, { force: true, },);
+		}
 	});
 
 	it("recipe run resolves managed-folder outputs and waits for logs", async () => {
@@ -2449,60 +2628,116 @@ describe("CLI recipe get-payload and set-payload", () => {
 	});
 });
 
-describe("CLI help improvements", () => {
-	it("help shows --timeout flag", async () => {
-		const { stderr, } = await dss(["--help",],);
-		expect(stderr,).toContain("--timeout MS",);
-	});
-
-	it("help omits removed table and TSV format options", async () => {
-		const { stderr, } = await dss(["--help",],);
-		expect(stderr,).not.toContain("--format",);
-		expect(stderr,).not.toContain("tsv",);
-		expect(stderr,).not.toContain("table",);
-	});
-
-	it("help shows quick start examples", async () => {
-		const { stderr, } = await dss(["--help",],);
-		expect(stderr,).toContain("Quick start:",);
-		expect(stderr,).toContain("dss auth login",);
-		expect(stderr,).toContain("dss recipe get-payload",);
-	});
-
-	it("help lists auth as a resource", async () => {
-		const { stderr, } = await dss(["--help",],);
-		expect(stderr,).toContain("auth",);
-	});
-
-	it("help shows get-payload and set-payload in recipe actions", async () => {
-		const { stderr, } = await dss(["recipe", "--help",],);
-		expect(stderr,).toContain("get-payload",);
-		expect(stderr,).toContain("set-payload",);
+describe("CLI command registry discovery", () => {
+	it("registry exposes flags and recipe actions instead of help text", async () => {
+		const { stdout, stderr, } = await dss(["commands", "run",],);
+		expect(stderr,).toBe("",);
+		const registry = JSON.parse(stdout,) as Record<
+			string,
+			Record<string, {
+				flags?: Array<{ name: string; kind: string; }>;
+				action?: string;
+			}>
+		>;
+		const projectFlags = registry.project.list.flags?.map((flag,) => flag.name) ?? [];
+		expect(projectFlags,).toEqual(expect.arrayContaining(["json", "verbose", "url", "api-key",],),);
+		expect(projectFlags,).not.toContain("help",);
+		expect(projectFlags,).not.toContain("report-json",);
+		expect(registry.recipe["get-payload"].action,).toBe("get-payload",);
+		expect(registry.recipe["set-payload"].action,).toBe("set-payload",);
 	});
 });
 
 describe("CLI --version flag", () => {
-	it("dss --version prints version string to stdout", async () => {
-		const { stdout, } = await dss(["--version",],);
-		expect(stdout.trim(),).toMatch(/^\d+\.\d+\.\d+(?:\+g[0-9a-f]{7})?/,);
-		expect(stdout.trim(),).toContain("+g",);
+	for (const flag of ["--version", "-V",]) {
+		it(`dss ${flag} prints version JSON to stdout`, async () => {
+			const { stdout, stderr, } = await dss([flag,],);
+			expect(stderr,).toBe("",);
+			const result = JSON.parse(stdout,) as Record<string, unknown>;
+			expect(result.version,).toEqual(expect.any(String,),);
+			expect(result,).toHaveProperty("gitRevision",);
+		});
+	}
+});
+
+describe("CLI bin entrypoints", () => {
+	const binShim = join(SDK_ROOT, "bin", "dss",);
+	const binJs = join(SDK_ROOT, "bin", "dss.js",);
+
+	it("source checkout entrypoints emit version JSON", async () => {
+		for (
+			const [cmd, args,] of [
+				[binShim, ["version",],],
+				[binJs, ["version",],],
+				["node", [binJs, "version",],],
+			] as const
+		) {
+			const { stdout, stderr, } = await exec(cmd, args, {
+				cwd: SDK_ROOT,
+				env: {
+					...process.env,
+					DATAIKU_URL: "",
+					DATAIKU_API_KEY: "",
+					DATAIKU_PROJECT_KEY: "",
+					DATAIKU_DISABLE_ENV: "1",
+				},
+			},);
+			expect(stderr,).toBe("",);
+			const result = JSON.parse(stdout,) as Record<string, unknown>;
+			expect(result.version,).toEqual(expect.any(String,),);
+			expect(result,).toHaveProperty("gitRevision",);
+		}
 	});
 
-	it("dss -V prints version string to stdout", async () => {
-		const { stdout, } = await dss(["-V",],);
-		expect(stdout.trim(),).toMatch(/^\d+\.\d+\.\d+/,);
+	it("node bin source fallback preserves JSON error envelopes", async () => {
+		const tmpDir = join(tmpdir(), `dss-bin-entrypoint-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await exec("node", [binJs, "project", "list",], {
+				cwd: tmpDir,
+				env: {
+					...process.env,
+					DSS_CONFIG_DIR: join(tmpDir, "config",),
+					DATAIKU_URL: "",
+					DATAIKU_API_KEY: "",
+					DATAIKU_PROJECT_KEY: "",
+					DATAIKU_DISABLE_ENV: "1",
+				},
+			},);
+			throw new Error("expected bin command to fail",);
+		} catch (error: unknown) {
+			const failure = error as { code?: number; stdout?: string; stderr?: string; };
+			expect(failure.code,).toBe(1,);
+			expect(failure.stdout ?? "",).toBe("",);
+			const report = JSON.parse(failure.stderr ?? "",) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				ok: false,
+				error: "Missing Dataiku URL.",
+				code: "missing_required_flag",
+				exitCode: 1,
+				resource: "project",
+				action: "list",
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
 	});
 });
 
 describe("CLI short flags", () => {
-	it("-h shows top-level help", async () => {
-		const { stderr, } = await dss(["-h",],);
-		expect(stderr,).toContain("Usage: dss",);
-		expect(stderr,).toContain("Global flags:",);
+	it("-h fails with the unsupported help JSON envelope", async () => {
+		const failure = await dssFailure(["-h",],);
+		expect(failure.code,).toBe(1,);
+		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			code: "usage_error",
+			message: "Help screens are not supported.",
+			exitCode: 1,
+		},);
 	});
 
 	it("-f is rejected after the JSON-only output cutover", async () => {
-		const failure = await dssFailure(["-f", "table", "--help",],);
+		const failure = await dssFailure(["-f", "table",],);
 		expect(failure.code,).toBe(1,);
 		expect(failure.stderr,).toContain("Unknown flag: -f",);
 	});
@@ -2510,18 +2745,10 @@ describe("CLI short flags", () => {
 
 describe("CLI boolean flag does not swallow next positional", () => {
 	it("--verbose does not consume the next positional arg", async () => {
-		const { stderr, } = await dss(["--verbose", "project", "--help",],);
-		// If --verbose swallowed 'project', this would show top-level help or error.
-		// With the fix, 'project' is a positional and --help shows project actions.
-		expect(stderr,).toContain("project",);
-		expect(stderr,).toContain("list",);
-	});
-
-	it("--help does not consume the next positional arg", async () => {
-		const { stderr, } = await dss(["--help", "project",],);
-		// --help is boolean, so 'project' stays positional.
-		// Since positional[0] = 'project', this should show project-level help.
-		expect(stderr,).toContain("project",);
+		const { stdout, stderr, } = await dss(["--verbose", "commands", "run",],);
+		expect(stderr,).toBe("",);
+		const registry = JSON.parse(stdout,) as Record<string, unknown>;
+		expect(registry,).toHaveProperty("project",);
 	});
 });
 
@@ -3480,48 +3707,89 @@ describe("CLI missing credentials plain text errors", () => {
 	});
 });
 
-describe("CLI help text includes short flags", () => {
-	it("help shows short flag aliases", async () => {
-		const { stderr, } = await dss(["--help",],);
-		expect(stderr,).toContain("-h, --help",);
-		expect(stderr,).toContain("-v, --verbose",);
-		expect(stderr,).toContain("-V, --version",);
-		expect(stderr,).not.toContain("-f, --format",);
-		expect(stderr,).toContain("-o, --output",);
+describe("CLI command registry short flags", () => {
+	it("registry exposes supported short-alias-backed flags without help metadata", async () => {
+		const { stdout, stderr, } = await dss(["commands", "run",],);
+		expect(stderr,).toBe("",);
+		const registry = JSON.parse(stdout,) as Record<
+			string,
+			Record<string, { flags?: Array<{ name: string; }>; }>
+		>;
+		const projectFlags = registry.project.list.flags?.map((flag,) => flag.name) ?? [];
+		expect(projectFlags,).toContain("verbose",);
+		expect(projectFlags,).not.toContain("help",);
 	});
 });
 
 describe("CLI install-skill command", () => {
-	it("dss install-skill --help shows usage", async () => {
-		const { stderr, } = await dss(["install-skill", "--help",],);
-		expect(stderr,).toContain("Usage: dss install-skill",);
-		expect(stderr,).toContain("--global",);
-		expect(stderr,).toContain("--agent",);
-		expect(stderr,).toContain("--list-agents",);
+	it("dss install-skill --dry-run emits JSON without writing files", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-skill-dry-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			const { stdout, stderr, } = await dss([
+				"install-skill",
+				"--agent",
+				"claude",
+				"--target",
+				tmpDir,
+				"--dry-run",
+			],);
+			expect(stderr,).toBe("",);
+			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				scope: "project",
+				target: tmpDir,
+				dryRun: true,
+				installed: [{ agent: "claude", path: skillPath, via: "flag", },],
+			},);
+			expect(readFileExists(skillPath,),).toBe(false,);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
 	});
 
-	it("dss install-skill --list-agents exits cleanly", async () => {
-		// CI has no agents; local dev has some. Either way, exits 0.
-		const { stderr, } = await dss(["install-skill", "--list-agents",],);
-		expect(stderr,).toMatch(/Detected agents:|No coding agents detected/,);
+	it("dss install-skill --list-agents emits JSON", async () => {
+		const { stdout, stderr, } = await dss(["install-skill", "--agent", "omp", "--list-agents",],);
+		expect(stderr,).toBe("",);
+		const result = JSON.parse(stdout,) as { agents: Array<Record<string, unknown>>; };
+		expect(result.agents,).toEqual([{ id: "omp", name: "OhMyPi", via: "flag", },],);
 	});
 
 	it("dss install-skill --agent claude writes SKILL.md to project dir", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-skill-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		try {
-			const { stderr, } = await dss(["install-skill", "--agent", "claude",], { cwd: tmpDir, },);
-			expect(stderr,).toContain("Installing dataiku-dss skill",);
-			expect(stderr,).toContain("claude",);
-			expect(stderr,).toContain("Done.",);
+			const { stdout, stderr, } = await dss(["install-skill", "--agent", "claude",], {
+				cwd: tmpDir,
+			},);
+			expect(stderr,).toBe("",);
+			const result = JSON.parse(stdout,) as {
+				scope: string;
+				installed: Array<{ agent: string; path: string; via: string; }>;
+			};
+			expect(result.scope,).toBe("project",);
+			expect(result.installed,).toHaveLength(1,);
+			expect(result.installed[0],).toMatchObject({ agent: "claude", via: "flag", },);
+			expect(result.installed[0]!.path,).toEndWith(
+				join(".claude", "skills", "dataiku-dss", "SKILL.md",),
+			);
+			const skillPath = result.installed[0]!.path;
 
-			// Verify the file was written
-			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
 			expect(content,).toContain("name: dataiku-dss",);
-			expect(content,).toContain("dss auth login",);
-			expect(content,).toContain("dss project list",);
+			expect(content,).toContain("dss commands run",);
+			expect(content,).toContain("dss auth login --url",);
 			expect(content,).toContain("~/.config/dataiku/credentials.json",);
+			expect(content,).toContain("For disposable agent tests, set `DSS_CONFIG_DIR`",);
+			expect(content,).toContain("bun --no-env-file src/cli.ts",);
+			expect(content,).toContain("/path/to/dataiku-sdk/bin/dss",);
+			expect(content,).toContain("command's current working directory",);
+			expect(content,).toContain('[{"projectKey":"MYPROJ","name":"My Project"}]',);
+			expect(content,).toContain('{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}',);
+			expect(content,).not.toContain("--help",);
+			expect(content,).not.toContain("--report-json",);
+			expect(content,).not.toContain("dss auth status",);
+			expect(content,).not.toContain("dss auth logout",);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
@@ -3577,9 +3845,19 @@ describe("CLI install-skill command", () => {
 		const tmpDir = join(tmpdir(), `dss-cli-skill-target-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		try {
-			const { stderr, } = await dss(["install-skill", "--agent", "claude", "--target", tmpDir,],);
-			expect(stderr,).toContain("Installing dataiku-dss skill",);
+			const { stdout, stderr, } = await dss([
+				"install-skill",
+				"--agent",
+				"claude",
+				"--target",
+				tmpDir,
+			],);
+			expect(stderr,).toBe("",);
 			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				target: tmpDir,
+				installed: [{ agent: "claude", path: skillPath, via: "flag", },],
+			},);
 			const content = readFileSync(skillPath, "utf-8",);
 			expect(content,).toContain("name: dataiku-dss",);
 		} finally {
@@ -3588,15 +3866,12 @@ describe("CLI install-skill command", () => {
 	});
 
 	it("workspace detection finds .git parent for project installs", async () => {
-		// Create workspace/.git and workspace/sub/
 		const workspace = join(tmpdir(), `dss-cli-skill-ws-${Date.now()}`,);
 		const subdir = join(workspace, "sub",);
 		mkdirSync(join(workspace, ".git",), { recursive: true, },);
 		mkdirSync(subdir, { recursive: true, },);
 		try {
-			// Run from sub/ — should detect workspace/ as root via .git
 			await dss(["install-skill", "--agent", "claude",], { cwd: subdir, },);
-			// Skill should be at workspace/.claude/skills/... not sub/.claude/skills/...
 			const skillPath = join(workspace, ".claude", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
 			expect(content,).toContain("name: dataiku-dss",);
@@ -3636,15 +3911,12 @@ describe("CLI install-skill command", () => {
 	});
 
 	it("--target overrides workspace detection", async () => {
-		// Create workspace/.git and a separate target dir
 		const workspace = join(tmpdir(), `dss-cli-skill-override-${Date.now()}`,);
 		const target = join(tmpdir(), `dss-cli-skill-target2-${Date.now()}`,);
 		mkdirSync(join(workspace, ".git",), { recursive: true, },);
 		mkdirSync(target, { recursive: true, },);
 		try {
-			// Run from workspace/ but --target points elsewhere
 			await dss(["install-skill", "--agent", "claude", "--target", target,], { cwd: workspace, },);
-			// Skill should be at target, not workspace
 			const skillPath = join(target, ".claude", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
 			expect(content,).toContain("name: dataiku-dss",);
@@ -3654,9 +3926,11 @@ describe("CLI install-skill command", () => {
 		}
 	});
 
-	it("help lists install-skill in resources and quick start", async () => {
-		const { stderr, } = await dss(["--help",],);
-		expect(stderr,).toContain("install-skill",);
+	it("commands run lists install-skill as a resource", async () => {
+		const { stdout, stderr, } = await dss(["commands", "run",],);
+		expect(stderr,).toBe("",);
+		const registry = JSON.parse(stdout,) as Record<string, unknown>;
+		expect(registry,).toHaveProperty("install-skill",);
 	});
 });
 
@@ -5328,13 +5602,17 @@ describe("CLI agent-readiness mutation contracts", () => {
 					env: { PATH: process.env.PATH, HOME: process.env.HOME, },
 				},)).stdout,
 			) as Record<string, unknown>;
+			const installed = result.installed as Array<Record<string, unknown>>;
 			expect(result,).toMatchObject({
 				dryRun: true,
-				action: "install-skill",
-				resource: "install-skill",
 				scope: "project",
 				target: tmpDir,
 			},);
+			expect(installed,).toEqual([{
+				agent: "omp",
+				path: join(tmpDir, ".omp", "skills", "dataiku-dss", "SKILL.md",),
+				via: "flag",
+			},],);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}

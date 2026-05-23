@@ -283,24 +283,24 @@ async function sdkValue(kind: SdkParityKind, client: DataikuClient,): Promise<un
 }
 
 describeIntegration("Rigorous integration: CLI discoverability and local validation", () => {
-	it("prints help for every registered command without resolving DSS resources", async () => {
-		const registryResult = await dssRaw(["commands",],);
-		const registry = parseCliJson(registryResult, "commands",) as Record<
+	it("prints a registry for every command without resolving DSS resources", async () => {
+		const registryResult = await dssRaw(["commands", "run",],);
+		const registry = parseCliJson(registryResult, "commands run",) as Record<
 			string,
-			Record<string, unknown>
+			Record<string, { flags?: Array<{ name: string; }>; }>
 		>;
 
 		for (const [resource, actions,] of Object.entries(registry,)) {
-			for (const action of Object.keys(actions,)) {
-				const help = await dssRaw([resource, action, "--help",],);
-				expect(help.code, `${resource} ${action} --help`,).toBe(0,);
-				expect(help.stderr, `${resource} ${action} --help`,).toContain("Usage:",);
+			for (const [action, meta,] of Object.entries(actions,)) {
+				const flagNames = meta.flags?.map((flag,) => flag.name) ?? [];
+				expect(flagNames, `${resource} ${action} flags`,).not.toContain("help",);
+				expect(flagNames, `${resource} ${action} flags`,).not.toContain("report-json",);
 			}
 		}
 	}, 60_000,);
 
 	it("aligns read-only matrix expectations with registry metadata", async () => {
-		const registryResult = await dssRaw(["commands",],);
+		const registryResult = await dssRaw(["commands", "run",],);
 		const registry = parseCliJson(registryResult, "commands",) as Record<
 			string,
 			Record<string, Record<string, unknown>>

@@ -3,12 +3,10 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, }
 import { tmpdir, } from "node:os";
 import { join, } from "node:path";
 import {
-	deleteCredentials,
 	type DssCredentials,
 	getConfigDir,
 	getCredentialsPath,
 	loadCredentials,
-	maskApiKey,
 	saveCredentials,
 } from "../src/config.js";
 
@@ -115,17 +113,6 @@ describe("credentials CRUD", () => {
 		expect(raw,).toContain('  "url"',);
 	});
 
-	it("deleteCredentials removes the file", () => {
-		saveCredentials({ url: "https://dss.example.com", apiKey: "key", },);
-		expect(existsSync(getCredentialsPath(),),).toBe(true,);
-		deleteCredentials();
-		expect(loadCredentials(),).toBeNull();
-	});
-
-	it("deleteCredentials is idempotent (no error if missing)", () => {
-		expect(() => deleteCredentials()).not.toThrow();
-	});
-
 	it("saveCredentials creates intermediate directories", () => {
 		process.env.DSS_CONFIG_DIR = join(tmpDir, "a", "b", "c",);
 		saveCredentials({ url: "https://dss.example.com", apiKey: "key", },);
@@ -140,29 +127,5 @@ describe("credentials CRUD", () => {
 	it("loadCredentials returns null for non-object JSON", () => {
 		writeFileSync(getCredentialsPath(), "[]", "utf-8",);
 		expect(loadCredentials(),).toBeNull();
-	});
-});
-
-describe("maskApiKey", () => {
-	it("masks long keys showing first 6 and last 6 chars", () => {
-		const masked = maskApiKey("dkuaps-abc123xyz789",);
-		expect(masked,).toBe("dkuaps...xyz789",);
-	});
-
-	it("returns *** for short keys", () => {
-		expect(maskApiKey("short",),).toBe("***",);
-	});
-
-	it("returns *** for empty string", () => {
-		expect(maskApiKey("",),).toBe("***",);
-	});
-
-	it("returns *** for keys with exactly 12 chars", () => {
-		expect(maskApiKey("123456789012",),).toBe("***",);
-	});
-
-	it("masks 13-char key correctly", () => {
-		const masked = maskApiKey("1234567890123",);
-		expect(masked,).toBe("123456...890123",);
 	});
 });

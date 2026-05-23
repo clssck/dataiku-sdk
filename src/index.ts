@@ -8,12 +8,10 @@ export {
 	validateCredentials,
 } from "./auth.js";
 export {
-	deleteCredentials,
 	type DssCredentials,
 	getConfigDir,
 	getCredentialsPath,
 	loadCredentials,
-	maskApiKey,
 	saveCredentials,
 } from "./config.js";
 

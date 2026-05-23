@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, readFileSync, unlinkSync, writeFileSync, } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync, } from "node:fs";
 import { homedir, } from "node:os";
 import { dirname, join, resolve, } from "node:path";
 
@@ -63,18 +63,4 @@ export function saveCredentials(creds: DssCredentials,): void {
 	if (creds.caCertPath) data.caCertPath = creds.caCertPath;
 	writeFileSync(path, `${JSON.stringify(data, null, 2,)}\n`, "utf-8",);
 	chmodSync(path, 0o600,);
-}
-
-export function deleteCredentials(): void {
-	try {
-		unlinkSync(getCredentialsPath(),);
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
-		throw err;
-	}
-}
-
-export function maskApiKey(apiKey: string,): string {
-	if (apiKey.length <= 12) return "***";
-	return `${apiKey.slice(0, 6,)}...${apiKey.slice(-6,)}`;
 }

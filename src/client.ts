@@ -58,7 +58,7 @@ export interface DataikuClientConfig {
 	caCertPath?: string;
 	/**
 	 * Called when an API response fails schema validation but data is still usable.
-	 * Default: writes to stderr. Set to a throwing function for strict mode.
+	 * Default: ignored. Set to a recording or throwing function for strict mode.
 	 * @param method - resource method that triggered the warning (e.g. "datasets.list")
 	 * @param errors - human-readable validation error strings
 	 */
@@ -69,10 +69,7 @@ export interface DataikuClientConfig {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function defaultValidationWarning(method: string, errors: string[],): void {
-	process.stderr.write(
-		`[dataiku-sdk] Schema validation warning in ${method}:\n  ${errors.join("\n  ",)}\n`,
-	);
+function defaultValidationWarning(_method: string, _errors: string[],): void {
 }
 
 function sleep(ms: number,): Promise<void> {
@@ -153,74 +150,74 @@ export class DataikuClient {
 	private readonly onValidationWarning: (method: string, errors: string[],) => void;
 
 	/* Resource namespaces — lazily initialized to break circular imports */
-	private _projects?: ProjectsResource;
-	private _datasets?: DatasetsResource;
-	private _recipes?: RecipesResource;
-	private _dashboards?: DashboardsResource;
-	private _dataQuality?: DataQualityResource;
-	private _jobs?: JobsResource;
+	private projectsResource?: ProjectsResource;
+	private datasetsResource?: DatasetsResource;
+	private recipesResource?: RecipesResource;
+	private dashboardsResource?: DashboardsResource;
+	private dataQualityResource?: DataQualityResource;
+	private jobsResource?: JobsResource;
 	private futuresResource?: FuturesResource;
-	private _scenarios?: ScenariosResource;
-	private _folders?: FoldersResource;
-	private _flowZones?: FlowZonesResource;
-	private _variables?: VariablesResource;
-	private _connections?: ConnectionsResource;
-	private _codeEnvs?: CodeEnvsResource;
-	private _insights?: InsightsResource;
-	private _sql?: SqlResource;
-	private _notebooks?: NotebooksResource;
-	private _wiki?: WikiResource;
+	private scenariosResource?: ScenariosResource;
+	private foldersResource?: FoldersResource;
+	private flowZonesResource?: FlowZonesResource;
+	private variablesResource?: VariablesResource;
+	private connectionsResource?: ConnectionsResource;
+	private codeEnvsResource?: CodeEnvsResource;
+	private insightsResource?: InsightsResource;
+	private sqlResource?: SqlResource;
+	private notebooksResource?: NotebooksResource;
+	private wikiResource?: WikiResource;
 
 	get projects(): ProjectsResource {
-		return (this._projects ??= new ProjectsResource(this,));
+		return (this.projectsResource ??= new ProjectsResource(this,));
 	}
 	get datasets(): DatasetsResource {
-		return (this._datasets ??= new DatasetsResource(this,));
+		return (this.datasetsResource ??= new DatasetsResource(this,));
 	}
 	get dashboards(): DashboardsResource {
-		return (this._dashboards ??= new DashboardsResource(this,));
+		return (this.dashboardsResource ??= new DashboardsResource(this,));
 	}
 	get dataQuality(): DataQualityResource {
-		return (this._dataQuality ??= new DataQualityResource(this,));
+		return (this.dataQualityResource ??= new DataQualityResource(this,));
 	}
 	get recipes(): RecipesResource {
-		return (this._recipes ??= new RecipesResource(this,));
+		return (this.recipesResource ??= new RecipesResource(this,));
 	}
 	get jobs(): JobsResource {
-		return (this._jobs ??= new JobsResource(this,));
+		return (this.jobsResource ??= new JobsResource(this,));
 	}
 	get futures(): FuturesResource {
 		return (this.futuresResource ??= new FuturesResource(this,));
 	}
 	get scenarios(): ScenariosResource {
-		return (this._scenarios ??= new ScenariosResource(this,));
+		return (this.scenariosResource ??= new ScenariosResource(this,));
 	}
 	get folders(): FoldersResource {
-		return (this._folders ??= new FoldersResource(this,));
+		return (this.foldersResource ??= new FoldersResource(this,));
 	}
 	get flowZones(): FlowZonesResource {
-		return (this._flowZones ??= new FlowZonesResource(this,));
+		return (this.flowZonesResource ??= new FlowZonesResource(this,));
 	}
 	get variables(): VariablesResource {
-		return (this._variables ??= new VariablesResource(this,));
+		return (this.variablesResource ??= new VariablesResource(this,));
 	}
 	get connections(): ConnectionsResource {
-		return (this._connections ??= new ConnectionsResource(this,));
+		return (this.connectionsResource ??= new ConnectionsResource(this,));
 	}
 	get codeEnvs(): CodeEnvsResource {
-		return (this._codeEnvs ??= new CodeEnvsResource(this,));
+		return (this.codeEnvsResource ??= new CodeEnvsResource(this,));
 	}
 	get insights(): InsightsResource {
-		return (this._insights ??= new InsightsResource(this,));
+		return (this.insightsResource ??= new InsightsResource(this,));
 	}
 	get sql(): SqlResource {
-		return (this._sql ??= new SqlResource(this,));
+		return (this.sqlResource ??= new SqlResource(this,));
 	}
 	get notebooks(): NotebooksResource {
-		return (this._notebooks ??= new NotebooksResource(this,));
+		return (this.notebooksResource ??= new NotebooksResource(this,));
 	}
 	get wiki(): WikiResource {
-		return (this._wiki ??= new WikiResource(this,));
+		return (this.wikiResource ??= new WikiResource(this,));
 	}
 
 	constructor(config: DataikuClientConfig,) {
@@ -385,6 +382,22 @@ export class DataikuClient {
 
 	/* ---- private: JSON parsing ---- */
 
+	private requestIdFromHeaders(headers: Headers,): string | undefined {
+		for (
+			const name of [
+				"x-request-id",
+				"x-dku-request-id",
+				"x-dataiku-request-id",
+				"x-correlation-id",
+				"x-amzn-requestid",
+			]
+		) {
+			const value = headers.get(name,);
+			if (value) return value;
+		}
+		return undefined;
+	}
+
 	private async parseJsonResponse<T,>(res: Response,): Promise<T> {
 		const text = await res.text();
 		// SAFETY: Empty 2xx responses from DSS are surfaced to callers as undefined
@@ -399,6 +412,8 @@ export class DataikuClient {
 				res.status,
 				res.statusText || "Invalid JSON response",
 				`Expected JSON response body but got non-JSON content: ${summary}`,
+				undefined,
+				this.requestIdFromHeaders(res.headers,),
 			);
 		}
 	}
@@ -445,6 +460,7 @@ export class DataikuClient {
 						res.statusText,
 						text,
 						buildRetryMetadata(method, retryEnabled, maxAttempts, attempt, delaysMs, false,),
+						this.requestIdFromHeaders(res.headers,),
 					);
 				}
 				return res;

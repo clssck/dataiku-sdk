@@ -210,12 +210,14 @@ export class DataikuError extends Error {
 	public retryable: boolean;
 	public retryHint: string;
 	public retry?: DataikuRetryMetadata;
+	public requestId?: string;
 
 	constructor(
 		public status: number,
 		public statusText: string,
 		public body: string,
 		retry?: DataikuRetryMetadata,
+		requestId?: string,
 	) {
 		const details = DataikuError.buildDetails(status, statusText, body, retry,);
 		super(details.message,);
@@ -224,6 +226,7 @@ export class DataikuError extends Error {
 		this.retryable = details.retryable;
 		this.retryHint = details.retryHint;
 		this.retry = retry;
+		this.requestId = requestId;
 	}
 
 	private static extractSummary(_status: number, _statusText: string, body: string,): string {

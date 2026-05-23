@@ -21,6 +21,7 @@
 	},
 	"scripts": {
 		"build": "tsc && cd packages/types && npx tsc",
+		"prepack": "bun run build",
 		"prepublishOnly": "bun run build",
 		"check": "tsc --noEmit",
 		"lint": "oxlint src/",

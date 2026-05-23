@@ -26,125 +26,99 @@ export interface AgentDef {
 	content: () => string;
 }
 
-const SKILL_BODY = `# Dataiku DSS CLI
+const SKILL_BODY = `# Dataiku DSS agent CLI
 
-The \`dss\` CLI (npm: dataiku-sdk) manages Dataiku DSS resources from the terminal.
+Use \`dss\` when an agent needs to inspect or change Dataiku DSS resources: projects, datasets, recipes, jobs, scenarios, folders, notebooks, SQL, variables, code envs, and connections.
+If the installed \`dss\` binary is unavailable but the repository checkout is the current workspace, use \`./bin/dss ...\` or \`bun --no-env-file src/cli.ts ...\` with the same arguments; from another working directory, call \`/path/to/dataiku-sdk/bin/dss ...\`.
+\`--no-env-file\` disables Bun's automatic preloading only; the CLI still applies its documented \`.env\` handling unless \`DATAIKU_DISABLE_ENV=1\` is set.
 
-## When to use
+## Contract
 
-- Query, create, or modify DSS projects, datasets, recipes, jobs, or scenarios.
-- Build datasets or run scenarios and wait for completion.
-- Download or upload recipe code, dataset data, or managed folder files.
-- Run SQL queries against DSS connections.
-- Inspect project flows, job logs, or dataset schemas.
+- Success writes exactly one JSON result to stdout.
+- Failure writes exactly one JSON error envelope to stderr with \`ok:false\`, \`error\`, \`code\`, and \`exitCode\`.
+- \`--verbose\` may add HTTP trace lines to stderr.
+- No prompts, help screens, tables, banners, or prose output are part of the contract.
+- Exit codes: 0 success, 1 usage/configuration error, 2 DSS or internal error, 3 transient/retryable DSS error, 4 completed command with failed long-running DSS work.
+- \`--raw\` is the only stdout escape hatch: recipe payload commands emit raw bytes, not JSON.
 
-## Installation
-
-Requires [Bun](https://bun.sh) runtime.
-
-\`\`\`bash
-bun add -g dataiku-sdk              # global install \u2014 provides the \`dss\` command
-\`\`\`
-
-Or run without installing:
+## Discover commands
 
 \`\`\`bash
-bunx dataiku-sdk <command>           # e.g. bunx dataiku-sdk auth login
+dss commands run
 \`\`\`
+
+The registry is the canonical schema for resources, actions, flags, positional arguments, side effects, auth requirements, output shape, idempotency, dry-run support, payload schemas, cleanup hints, and exit codes. Use it before choosing command syntax.
+Credential lookup order is flags first, then \`DATAIKU_*\` environment variables, then saved credentials.
+Set \`DATAIKU_DISABLE_ENV=1\` when a test must ignore both \`.env\` files and \`DATAIKU_*\` environment variables.
+When \`.env\` loading is enabled, the CLI reads \`.env\` from the CLI build/root directory and from the command's current working directory; put test-specific \`.env\` files in the directory where you invoke \`dss\`.
+For disposable agent tests, set \`DSS_CONFIG_DIR\` to a temporary directory so saved credentials never touch the real profile.
 
 ## Authentication
 
-\`\`\`bash
-dss auth login                       # interactive: prompts for URL, API key, project key
-dss auth login --url https://dss.example.com --api-key YOUR_KEY
-dss auth status                      # verify connection
-\`\`\`
-
-Credentials are saved to \`~/.config/dataiku/credentials.json\`. Alternatively set environment variables:
+Prefer environment variables for ephemeral agent runs:
 
 \`\`\`bash
 export DATAIKU_URL=https://dss.example.com
 export DATAIKU_API_KEY=your-api-key
-export DATAIKU_PROJECT_KEY=MYPROJ    # optional default project
+export DATAIKU_PROJECT_KEY=MYPROJ
 \`\`\`
 
-## Workflows
-
-### Inspect a project
+To persist credentials for later invocations:
 
 \`\`\`bash
-dss project list                              # find the project key
-dss dataset list --project-key MYPROJ         # list its datasets
-dss dataset preview orders --max-rows 10      # peek at data
-dss dataset schema orders                     # inspect columns
+dss auth login --url https://dss.example.com --api-key YOUR_KEY --project-key MYPROJ
 \`\`\`
 
-### Edit recipe code
+The command saves credentials and returns \`{"saved":true,"path":"..."}\`. Credentials are saved to \`~/.config/dataiku/credentials.json\` unless \`DSS_CONFIG_DIR\` or platform config env vars redirect the path.
+\`auth login\` validates by listing accessible projects before saving credentials, so the API key must be allowed to call DSS project-list APIs.
+
+TLS flags: \`--insecure\` disables certificate verification; \`--ca-cert PATH\` adds a PEM CA bundle. Environment equivalents: \`NODE_TLS_REJECT_UNAUTHORIZED\`, \`NODE_EXTRA_CA_CERTS\`.
+
+## Common workflows
 
 \`\`\`bash
-dss recipe download-code my-recipe -o code.py # download
-# ... edit code.py ...
-dss recipe diff my-recipe --file code.py      # review changes
-dss recipe set-payload my-recipe --file code.py  # upload
+dss version
+dss project list
+dss doctor --fast
+dss dataset list --project-key MYPROJ
+dss dataset preview orders --max-rows 10 --project-key MYPROJ
+dss recipe get-payload compute_orders --project-key MYPROJ
+dss recipe get-payload compute_orders --raw --project-key MYPROJ
+dss recipe diff compute_orders --file code.py --project-key MYPROJ
+dss recipe set-payload compute_orders --file code.py --project-key MYPROJ
+dss job build-and-wait orders --include-logs --project-key MYPROJ
+dss scenario run daily_build --project-key MYPROJ
+dss sql query --connection analytics --sql "select 1" --project-key MYPROJ
+\`\`\`
+For fake-DSS smoke tests, return project lists as JSON arrays such as \`[{"projectKey":"MYPROJ","name":"My Project"}]\` from \`/public/api/projects/\`; recipe payload commands read \`/public/api/projects/<PROJECT>/recipes/<NAME>?includePayload=true\` and expect a JSON object shaped like \`{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}\`.
+
+## Error envelope
+
+Parse stderr as JSON when exit code is non-zero:
+
+\`\`\`json
+{
+  "ok": false,
+  "error": "Missing API key.",
+  "code": "usage_error",
+  "category": "usage",
+  "message": "Missing API key.",
+  "exitCode": 1,
+  "resource": "dataset",
+  "action": "list"
+}
 \`\`\`
 
-### Build and monitor
-
-\`\`\`bash
-dss job build-and-wait my-dataset --include-logs  # build + wait + stream logs
-dss job list                                      # recent jobs
-dss job log <job-id>                               # full log output
-\`\`\`
-
-### Run a scenario
-
-\`\`\`bash
-dss scenario run my-scenario
-dss scenario status my-scenario               # check if finished
-\`\`\`
-
-## Command reference
-
-\`\`\`
-dss <resource> <action> [args...] [--flags]
-
-Resources: project, dataset, recipe, job, scenario, folder, notebook,
-           variable, code-env, connection, sql, auth, install-skill
-\`\`\`
-
-Use \`dss <resource> --help\` to see all actions and flags for any resource.
-
-## Key flags
-
-\`\`\`
--f, --format FORMAT    json (default) | tsv | table | quiet
--o, --output PATH      write output to file instead of stdout
--v, --verbose          log HTTP requests to stderr
-    --project-key KEY  override default project for any command
-    --timeout MS       request timeout (default: 30000)
-    --insecure         disable TLS certificate verification
-    --ca-cert PATH     trust an extra PEM CA bundle
-    --stdin            read command input from stdin (JSON or SQL, depending on command)
-\`\`\`
-
-## Gotchas
-
-- **Most commands need a project key.** Set it once via \`dss auth login\` or \`DATAIKU_PROJECT_KEY\` to avoid passing \`--project-key\` on every call.
-- **Output is JSON by default.** Use \`-f table\` when showing results to a user; use \`-f tsv\` when piping to scripts.
-- **\`dss job build\` returns immediately.** Use \`dss job build-and-wait\` to block until the build finishes. Add \`--include-logs\` to stream log output.
-- **Folder commands accept names or IDs.** If a folder name contains spaces, quote it. The CLI resolves names to IDs automatically.
-- **Recipe set-payload overwrites the entire payload.** Always download first, edit, diff, then upload.
-- **Transient errors exit code 3, API errors exit code 2, usage errors exit code 1.** Check exit codes to distinguish retriable failures.
+Use \`code\`, \`category\`, \`exitCode\`, \`retryable\`, \`status\`, and \`details\` for recovery logic. Do not scrape message text when a structured field is available.
 `;
 
 const SKILL_FRONTMATTER = `---
 name: dataiku-dss
 description: >-
-  Interact with Dataiku DSS from the command line \u2014 list projects, query datasets,
-  download and upload recipe code, build datasets, run scenarios, and manage jobs.
-  Use when the user wants to work with Dataiku DSS resources, inspect a DSS project,
-  modify recipes, trigger builds, check job logs, or run SQL against DSS connections,
-  even if they don't explicitly mention the dss CLI.
+  Agent-only JSON CLI for Dataiku DSS. Use to inspect or mutate DSS projects,
+  datasets, recipes, jobs, scenarios, folders, notebooks, SQL, variables,
+  code envs, and connections. Discover the full machine-readable surface with
+  dss commands run.
 ---
 
 `;
@@ -266,36 +240,40 @@ export function findWorkspaceRoot(startDir: string,): string {
 export interface InstallResult {
 	agent: string;
 	path: string;
+	via: DetectedAgent["via"];
 }
 
-export function installSkill(
+export function planSkillInstalls(
 	agents: DetectedAgent[],
 	opts: { global: boolean; cwd: string; },
 ): InstallResult[] {
 	const home = homedir();
 	const results: InstallResult[] = [];
 
-	for (const { id, def, } of agents) {
-		let dir: string;
-		if (opts.global) {
-			const globalDir = def.globalPath(home,);
-			if (!globalDir) {
-				process.stderr.write(`  ${def.name}: skipped (no global path available)\n`,);
-				continue;
-			}
-			dir = globalDir;
-		} else {
-			if (!def.projectPath) {
-				process.stderr.write(`  ${def.name}: skipped (no project path available)\n`,);
-				continue;
-			}
-			dir = join(opts.cwd, def.projectPath,);
-		}
+	for (const { id, def, via, } of agents) {
+		const dir = opts.global
+			? def.globalPath(home,)
+			: def.projectPath
+			? join(opts.cwd, def.projectPath,)
+			: undefined;
+		if (!dir) continue;
+		results.push({ agent: id, path: join(dir, def.filename,), via, },);
+	}
 
-		mkdirSync(dir, { recursive: true, },);
-		const filePath = join(dir, def.filename,);
-		writeFileSync(filePath, def.content(), "utf-8",);
-		results.push({ agent: id, path: filePath, },);
+	return results;
+}
+
+export function installSkill(
+	agents: DetectedAgent[],
+	opts: { global: boolean; cwd: string; },
+): InstallResult[] {
+	const results = planSkillInstalls(agents, opts,);
+
+	for (const result of results) {
+		const def = AGENTS[result.agent];
+		if (!def) continue;
+		mkdirSync(dirname(result.path,), { recursive: true, },);
+		writeFileSync(result.path, def.content(), "utf-8",);
 	}
 
 	return results;
