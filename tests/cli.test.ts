@@ -1,6 +1,6 @@
 import { describe, expect, it, } from "bun:test";
 import { execFile, spawn, } from "node:child_process";
-import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync, } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
 import { tmpdir, } from "node:os";
@@ -229,6 +229,42 @@ describe("CLI agent-only command surface", () => {
 			code: "unknown_flag",
 			category: "usage",
 			exitCode: 1,
+		},);
+	});
+
+	it("DSS_REPORT_JSON no longer changes success or failure output", async () => {
+		const success = await dss(["commands", "run",], {
+			env: {
+				...process.env,
+				DSS_REPORT_JSON: "1",
+				DATAIKU_URL: "",
+				DATAIKU_API_KEY: "",
+				DATAIKU_PROJECT_KEY: "",
+				DATAIKU_DISABLE_ENV: "1",
+			},
+		},);
+		expect(success.stderr,).toBe("",);
+		expect(JSON.parse(success.stdout,),).toHaveProperty("commands",);
+
+		const failure = await dssFailure(["project", "list",], {
+			env: {
+				...process.env,
+				DSS_REPORT_JSON: "1",
+				DATAIKU_URL: "",
+				DATAIKU_API_KEY: "",
+				DATAIKU_PROJECT_KEY: "",
+				DATAIKU_DISABLE_ENV: "1",
+			},
+		},);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stdout,).toBe("",);
+		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			ok: false,
+			code: "missing_required_flag",
+			exitCode: 1,
+			resource: "project",
+			action: "list",
 		},);
 	});
 
@@ -2664,6 +2700,13 @@ describe("CLI bin entrypoints", () => {
 	const binShim = join(SDK_ROOT, "bin", "dss",);
 	const binJs = join(SDK_ROOT, "bin", "dss.js",);
 
+	it("package metadata exposes the executable dss bin", () => {
+		const pkg = JSON.parse(readFileSync(join(SDK_ROOT, "package.json",), "utf-8",),) as {
+			bin?: Record<string, string>;
+		};
+		expect(pkg.bin?.dss,).toBe("bin/dss.js",);
+		expect((statSync(binJs,).mode & 0o111) !== 0,).toBe(true,);
+	});
 	it("source checkout entrypoints emit version JSON", async () => {
 		for (
 			const [cmd, args,] of [
@@ -3638,16 +3681,26 @@ describe("CLI wait command exit codes", () => {
 				env: cliEnv(url,),
 			},);
 			expect(failure.code,).toBe(4,);
-			const payload = JSON.parse(failure.stdout,) as Record<string, unknown>;
-			expect(payload.success,).toBe(false,);
-			expect(payload.timedOut,).toBe(true,);
-			expect(payload.state,).toBe("RUNNING",);
+			expect(failure.stdout,).toBe("",);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				ok: false,
+				code: "long_running_failure",
+				category: "dss",
+				exitCode: 4,
+				resource: "job",
+				action: "wait",
+			},);
+			const details = report.details as { result: Record<string, unknown>; };
+			expect(details.result.success,).toBe(false,);
+			expect(details.result.timedOut,).toBe(true,);
+			expect(details.result.state,).toBe("RUNNING",);
 		},);
 	});
 });
 
-describe("CLI missing credentials plain text errors", () => {
-	it("missing URL prints plain text error, not JSON", async () => {
+describe("CLI explicit empty credential errors", () => {
+	it("empty --url emits a JSON error envelope", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-missing-url-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		writeFileSync(
@@ -3665,15 +3718,23 @@ describe("CLI missing credentials plain text errors", () => {
 					DATAIKU_API_KEY: "env-key",
 				},
 			},);
-			expect(failure.stderr,).not.toContain('{"error"',);
-			expect(failure.stderr,).toContain("Missing Dataiku URL",);
 			expect(failure.code,).toBe(1,);
+			expect(failure.stdout,).toBe("",);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				ok: false,
+				code: "missing_required_flag",
+				message: "Missing Dataiku URL.",
+				exitCode: 1,
+				resource: "project",
+				action: "list",
+			},);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
 	});
 
-	it("missing API key prints plain text error, not JSON", async () => {
+	it("empty --api-key emits a JSON error envelope", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-missing-key-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		writeFileSync(
@@ -3698,9 +3759,17 @@ describe("CLI missing credentials plain text errors", () => {
 					DATAIKU_API_KEY: "env-key",
 				},
 			},);
-			expect(failure.stderr,).not.toContain('{"error"',);
-			expect(failure.stderr,).toContain("Missing API key",);
 			expect(failure.code,).toBe(1,);
+			expect(failure.stdout,).toBe("",);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				ok: false,
+				code: "missing_required_flag",
+				message: "Missing API key.",
+				exitCode: 1,
+				resource: "project",
+				action: "list",
+			},);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
@@ -3786,6 +3855,10 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain("command's current working directory",);
 			expect(content,).toContain('[{"projectKey":"MYPROJ","name":"My Project"}]',);
 			expect(content,).toContain('{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}',);
+			expect(content,).toContain(
+				"dss recipe get-payload compute_orders --raw --output code.py --project-key MYPROJ",
+			);
+			expect(content,).toContain("stdout is the JSON string equal to `PATH`",);
 			expect(content,).not.toContain("--help",);
 			expect(content,).not.toContain("--report-json",);
 			expect(content,).not.toContain("dss auth status",);

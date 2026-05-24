@@ -39,7 +39,7 @@ If the installed \`dss\` binary is unavailable but the repository checkout is th
 - \`--verbose\` may add HTTP trace lines to stderr.
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: 0 success, 1 usage/configuration error, 2 DSS or internal error, 3 transient/retryable DSS error, 4 completed command with failed long-running DSS work.
-- \`--raw\` is the only stdout escape hatch: recipe payload commands emit raw bytes, not JSON.
+- \`--raw\` is the only stdout escape hatch: recipe payload commands emit raw bytes to stdout unless \`--output PATH\` is also set; with \`--output\`, stdout is the JSON string equal to \`PATH\` and the file receives exact raw bytes.
 
 ## Discover commands
 
@@ -84,6 +84,7 @@ dss dataset list --project-key MYPROJ
 dss dataset preview orders --max-rows 10 --project-key MYPROJ
 dss recipe get-payload compute_orders --project-key MYPROJ
 dss recipe get-payload compute_orders --raw --project-key MYPROJ
+dss recipe get-payload compute_orders --raw --output code.py --project-key MYPROJ
 dss recipe diff compute_orders --file code.py --project-key MYPROJ
 dss recipe set-payload compute_orders --file code.py --project-key MYPROJ
 dss job build-and-wait orders --include-logs --project-key MYPROJ

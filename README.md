@@ -12,7 +12,7 @@ Examples below assume the installed `dss` binary. From this checkout, use `./bin
 - `--verbose` may add HTTP trace lines to stderr.
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: `0` success, `1` usage/configuration error, `2` DSS/internal error, `3` transient DSS error, `4` completed command with failed long-running DSS work.
-- `--raw` is only for recipe payload commands and emits raw bytes, not JSON.
+- `--raw` is only for recipe payload commands. Without `--output`, stdout is raw bytes; with `--output PATH`, stdout is the JSON string equal to `PATH` and the file contains the exact raw bytes.
 
 Discover the complete machine-readable command surface:
 
@@ -21,6 +21,27 @@ dss commands run
 ```
 
 Agents should parse `commands run` before choosing syntax; inspect `flags`, `requiresAuth`, `requiresProject`, `sideEffect`, and `outputShape` instead of guessing.
+
+## Agent skill installation
+
+```bash
+dss install-skill --list-agents
+dss install-skill --agent omp --target .
+dss install-skill --agent omp --target . --dry-run
+dss install-skill --global --agent omp
+```
+
+`--list-agents` only reports targetable agents; it does not write files. Auto-detection checks supported agent binaries/config directories (`claude`, `codex`, `cursor`, `pi`, `omp`). Passing `--agent NAME` forces one entry and reports `via:"flag"`.
+
+Project installs write `SKILL.md` under the target workspace:
+
+- Claude: `.claude/skills/dataiku-dss/SKILL.md`
+- Codex: `.codex/skills/dataiku-dss/SKILL.md`
+- Cursor: `.cursor/skills/dataiku-dss/SKILL.md`
+- Pi: `.pi/skills/dataiku-dss/SKILL.md`
+- OMP: `.omp/skills/dataiku-dss/SKILL.md`
+
+Global installs write under the agent's home config path, for example OMP: `~/.omp/agent/skills/dataiku-dss/SKILL.md`.
 
 ## Credentials
 
@@ -55,6 +76,7 @@ dss project list
 dss dataset list --project-key MYPROJ
 dss recipe get-payload compute_orders --project-key MYPROJ
 dss recipe get-payload compute_orders --raw --project-key MYPROJ
+dss recipe get-payload compute_orders --raw --output code.py --project-key MYPROJ
 dss install-skill --dry-run
 ```
 

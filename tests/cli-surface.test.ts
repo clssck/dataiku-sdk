@@ -184,6 +184,7 @@ describe("CLI command surface", () => {
 	it("exposes every supported resource/action in the machine-readable registry", async () => {
 		const { stdout, } = await dss(["commands", "run",],);
 		const registry = JSON.parse(stdout,) as CommandRegistry;
+		expect(Object.keys(registry,).sort(),).toEqual(Object.keys(EXPECTED_COMMANDS,).sort(),);
 
 		for (const [resource, actions,] of Object.entries(EXPECTED_COMMANDS,)) {
 			expect(Object.keys(registry[resource] ?? {},).sort(),).toEqual(actions.slice().sort(),);

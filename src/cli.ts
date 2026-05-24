@@ -1418,6 +1418,32 @@ function commandFailureExitCode(result: unknown,): number | undefined {
 	) return 4;
 	return undefined;
 }
+
+class CommandResultFailure extends Error {
+	readonly result: unknown;
+	readonly exitCode: number;
+
+	constructor(result: unknown, exitCode: number,) {
+		super(commandFailureMessage(result,),);
+		this.name = "CommandResultFailure";
+		this.result = result;
+		this.exitCode = exitCode;
+	}
+}
+
+function commandFailureMessage(result: unknown,): string {
+	if (isFailedWaitResult(result,)) {
+		const record = result as Record<string, unknown>;
+		const state = typeof record.state === "string" ? record.state : record.outcome;
+		return `Command completed with failed long-running result${state ? `: ${state}` : ""}.`;
+	}
+	if (
+		result && typeof result === "object" && (result as Record<string, unknown>).unchanged === false
+	) {
+		return "Command completed with failed assertion result.";
+	}
+	return "Command completed with failed result.";
+}
 function isNotFoundError(error: unknown,): boolean {
 	if (error instanceof DataikuError) return error.category === "not_found";
 	if (error instanceof Error) return /not found|does not exist|unknown/i.test(error.message,);
@@ -7168,6 +7194,7 @@ function requestIdFromBody(body: string,): string | undefined {
 }
 
 function errorExitCode(err: unknown,): number {
+	if (err instanceof CommandResultFailure) return err.exitCode;
 	if (err instanceof UsageError) return 1;
 	if (err instanceof DataikuError) return err.category === "transient" ? 3 : 2;
 	return 2;
@@ -7186,6 +7213,18 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			exitCode,
 			...(err.hint ? { hint: err.hint, } : {}),
 			...(err.details ? { details: err.details, } : {}),
+			...context,
+		};
+	}
+	if (err instanceof CommandResultFailure) {
+		return {
+			ok: false,
+			error: err.message,
+			code: "long_running_failure",
+			category: "dss",
+			message: err.message,
+			exitCode: err.exitCode,
+			details: { result: err.result, },
 			...context,
 		};
 	}
@@ -7460,13 +7499,13 @@ async function main(): Promise<void> {
 		const entry = cleanupLedgerEntry(resource, action, args, flags, result, projectKey,);
 		if (entry) await appendCleanupLedgerEntry(flags["record-cleanup"], entry,);
 	}
+	const failureExitCode = commandFailureExitCode(result,);
+	if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);
 	if (flags["raw"] === true && typeof result === "string" && typeof flags["output"] !== "string") {
 		process.stdout.write(result,);
 	} else {
 		writeCommandResult(result,);
 	}
-	const failureExitCode = commandFailureExitCode(result,);
-	if (failureExitCode !== undefined) process.exit(failureExitCode,);
 }
 
 main().catch((err: unknown,) => {
