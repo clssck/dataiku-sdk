@@ -3818,6 +3818,28 @@ describe("CLI command registry short flags", () => {
 });
 
 describe("CLI install-skill command", () => {
+	it("error envelope example in the skill matches a real envelope", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-skill-parity-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await dss(["install-skill", "--agent", "claude",], { cwd: tmpDir, },);
+			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+			const jsonBlock = readFileSync(skillPath, "utf-8",).match(/```json\n([\s\S]*?)\n```/,);
+			expect(jsonBlock,).not.toBeNull();
+			const documented = JSON.parse(jsonBlock![1]!,) as Record<string, unknown>;
+			const failure = await dssFailure(["dataset", "frobnicate",], {
+				env: { PATH: process.env.PATH ?? "", DATAIKU_DISABLE_ENV: "1", DSS_CONFIG_DIR: tmpDir, },
+			},);
+			const real = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			for (const key of Object.keys(documented,)) {
+				expect(real, `skill envelope documents "${key}" but a real envelope omits it`,)
+					.toHaveProperty(key,);
+			}
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
 	it("dss install-skill --dry-run emits JSON without writing files", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-skill-dry-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);

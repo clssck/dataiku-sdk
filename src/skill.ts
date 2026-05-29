@@ -40,6 +40,7 @@ If the installed \`dss\` binary is unavailable but the repository checkout is th
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: 0 success, 1 usage/configuration error, 2 DSS or internal error, 3 transient/retryable DSS error, 4 completed command with failed long-running DSS work.
 - \`--raw\` is the only stdout escape hatch: recipe payload commands emit raw bytes to stdout unless \`--output PATH\` is also set; with \`--output\`, stdout is the JSON string equal to \`PATH\` and the file receives exact raw bytes.
+- \`--fields a,b,c\` projects those top-level fields from object or array-of-objects results (missing fields become \`null\`); string and scalar results pass through unchanged.
 
 ## Discover commands
 
@@ -50,7 +51,7 @@ dss commands run
 The registry is the canonical schema for resources, actions, flags, positional arguments, side effects, auth requirements, output shape, idempotency, dry-run support, payload schemas, cleanup hints, and exit codes. Use it before choosing command syntax.
 Credential lookup order is flags first, then \`DATAIKU_*\` environment variables, then saved credentials.
 Set \`DATAIKU_DISABLE_ENV=1\` when a test must ignore both \`.env\` files and \`DATAIKU_*\` environment variables.
-When \`.env\` loading is enabled, the CLI reads \`.env\` from the CLI build/root directory and from the command's current working directory; put test-specific \`.env\` files in the directory where you invoke \`dss\`.
+When \`.env\` loading is enabled, the CLI reads \`.env\` from the command's current working directory first and then the CLI build/root directory; the invocation directory wins on conflicting keys. Put test-specific \`.env\` files in the directory where you invoke \`dss\`.
 For disposable agent tests, set \`DSS_CONFIG_DIR\` to a temporary directory so saved credentials never touch the real profile.
 
 ## Authentication
@@ -81,6 +82,7 @@ dss version
 dss project list
 dss doctor --fast
 dss dataset list --project-key MYPROJ
+dss dataset list --project-key MYPROJ --fields name,type
 dss dataset preview orders --max-rows 10 --project-key MYPROJ
 dss recipe get-payload compute_orders --project-key MYPROJ
 dss recipe get-payload compute_orders --raw --project-key MYPROJ
@@ -103,7 +105,6 @@ Parse stderr as JSON when exit code is non-zero:
   "error": "Missing API key.",
   "code": "usage_error",
   "category": "usage",
-  "message": "Missing API key.",
   "exitCode": 1,
   "resource": "dataset",
   "action": "list"
