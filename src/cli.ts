@@ -6472,6 +6472,16 @@ function buildCommandRegistry(): Record<string, Record<string, CommandRegistryEn
 			examples: FIXTURES_EXAMPLES,
 		},),
 	};
+	registry.batch = {
+		run: buildRegistryEntry("batch", "run", {
+			handler: async () => undefined,
+			usage: BATCH_USAGE,
+			description: BATCH_DESCRIPTION,
+			examples: BATCH_EXAMPLES,
+			examplePayload: BATCH_EXAMPLE_PAYLOAD,
+			payloadSchema: { stdin: true, dataFlag: true, dataFileFlag: true, jsonShape: "array", },
+		},),
+	};
 	registry.auth = {};
 	for (const [action, meta,] of Object.entries(AUTH_ACTIONS,)) {
 		registry.auth[action] = buildRegistryEntry("auth", action, {
@@ -7238,6 +7248,171 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 	};
 }
 
+const BATCH_USAGE =
+	"dss batch (--data JSON|--data-file PATH|--stdin) [--continue-on-error] [--dry-run]";
+const BATCH_DESCRIPTION =
+	"Run a sequence of dss commands from a JSON array of argv arrays. Fail-fast by default; returns one envelope with a per-step ok/result/error and exits non-zero if any step failed.";
+const BATCH_HINT =
+	'Pass a JSON array of argv arrays, e.g. [["dataset","list"],["recipe","update","r","--data-file","p.json"]].';
+const BATCH_EXAMPLE_PAYLOAD: string[][] = [
+	["recipe", "set-payload", "compute_orders", "--file", "code.py", "--no-backup",],
+	["recipe", "update", "compute_orders", "--data-file", "env.json",],
+	["dataset", "update", "orders", "--data-file", "ds.json",],
+];
+const BATCH_EXAMPLES = [
+	"dss batch --data-file steps.json",
+	"dss batch --stdin --continue-on-error",
+];
+
+interface BatchStepResult {
+	index: number;
+	args: string[];
+	resource?: string;
+	action?: string;
+	ok: boolean | null;
+	result?: unknown;
+	error?: ErrorReportEnvelope;
+	skipped?: boolean;
+}
+
+function parseBatchSteps(payload: unknown,): string[][] {
+	if (!Array.isArray(payload,)) {
+		throw new UsageError(
+			"Batch payload must be a JSON array of command-argument arrays.",
+			"validation_failed",
+			BATCH_HINT,
+			{ example: BATCH_EXAMPLE_PAYLOAD, },
+		);
+	}
+	return payload.map((step, index,) => {
+		if (!Array.isArray(step,) || !step.every((token,) => typeof token === "string")) {
+			throw new UsageError(
+				`Batch step ${index} must be an array of string arguments.`,
+				"validation_failed",
+				BATCH_HINT,
+			);
+		}
+		return step as string[];
+	},);
+}
+
+async function runBatch(flags: Record<string, string | boolean>,): Promise<{
+	result: Record<string, unknown>;
+	exitCode: number;
+}> {
+	const payload = unknownJsonInput(flags,);
+	if (payload === undefined) {
+		throw new UsageError(
+			`Provide steps via --data, --data-file, or --stdin. Usage: ${BATCH_USAGE}`,
+			"missing_required_flag",
+			BATCH_HINT,
+		);
+	}
+	const steps = parseBatchSteps(payload,);
+
+	if (flags["dry-run"] === true) {
+		const planned = steps.map((argv, index,) => {
+			const { positional, } = parseArgs(argv,);
+			const resource = positional[0];
+			const action = positional[1];
+			const runnable = Boolean(resource && action && commands[resource]?.[action],);
+			return { index, args: argv, resource, action, runnable, };
+		},);
+		return {
+			result: { dryRun: true, total: steps.length, steps: planned, },
+			exitCode: planned.every((step,) => step.runnable) ? 0 : 1,
+		};
+	}
+
+	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
+	if (!url) {
+		throw new UsageError(
+			"Missing Dataiku URL.",
+			"missing_required_flag",
+			"Set DATAIKU_URL or pass --url.",
+			{
+				requiredFlags: ["url",],
+				env: ["DATAIKU_URL",],
+			},
+		);
+	}
+	if (!apiKey) {
+		throw new UsageError(
+			"Missing API key.",
+			"missing_required_flag",
+			"Set DATAIKU_API_KEY or pass --api-key.",
+			{
+				requiredFlags: ["api-key",],
+				env: ["DATAIKU_API_KEY",],
+			},
+		);
+	}
+	const client = new DataikuClient({
+		url,
+		apiKey,
+		projectKey,
+		verbose: flags["verbose"] === true,
+		requestTimeoutMs: num(flags["request-timeout"],),
+		retryMaxAttempts: num(flags["retries"],),
+		tlsRejectUnauthorized,
+		caCertPath,
+	},);
+
+	const continueOnError = flags["continue-on-error"] === true;
+	const results: BatchStepResult[] = [];
+	let firstFailureExit: number | undefined;
+
+	for (let index = 0; index < steps.length; index++) {
+		const argv = steps[index]!;
+		const { positional, flags: stepFlags, } = parseArgs(argv,);
+		const resource = positional[0];
+		const action = positional[1];
+		if (firstFailureExit !== undefined && !continueOnError) {
+			results.push({ index, args: argv, resource, action, ok: null, skipped: true, },);
+			continue;
+		}
+		currentCommandContext = {
+			resource,
+			action,
+			projectKey: typeof stepFlags["project-key"] === "string" ? stepFlags["project-key"] : projectKey,
+		};
+		try {
+			if (!resource) throw noCommandError();
+			const resourceActions = commands[resource];
+			if (!resourceActions) throw unknownResourceError(resource,);
+			if (!action) {
+				throw missingActionError(resource, Object.keys(resourceActions,), `dss ${resource} <action>`,);
+			}
+			const meta = resourceActions[action];
+			if (!meta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
+			const result = await meta.handler(client, positional.slice(2,), stepFlags,);
+			const failureExitCode = commandFailureExitCode(result,);
+			if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);
+			const stepFieldsFlag = stepFlags["fields"];
+			const stepFields = typeof stepFieldsFlag === "string"
+				? stepFieldsFlag.split(",",).map((field,) => field.trim()).filter((field,) => field.length > 0)
+				: [];
+			const stepResult = stepFields.length > 0 ? projectResultFields(result, stepFields,) : result;
+			results.push({ index, args: argv, resource, action, ok: true, result: stepResult, },);
+		} catch (error) {
+			const envelope = buildErrorReport(error,);
+			results.push({ index, args: argv, resource, action, ok: false, error: envelope, },);
+			if (firstFailureExit === undefined) firstFailureExit = envelope.exitCode;
+		}
+	}
+
+	const ok = firstFailureExit === undefined;
+	return {
+		result: {
+			ok,
+			total: steps.length,
+			completed: results.filter((step,) => step.ok !== null).length,
+			steps: results,
+		},
+		exitCode: ok ? 0 : firstFailureExit ?? 2,
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Credential resolution
 // ---------------------------------------------------------------------------
@@ -7604,6 +7779,18 @@ async function main(): Promise<void> {
 		}
 		const result = await runFixtures(flags,);
 		writeCommandResult(result,);
+		return;
+	}
+
+	if (resource === "batch") {
+		const action = positional[1];
+		currentCommandContext.action = action ?? "run";
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("batch", action, ["run",],);
+		}
+		const { result, exitCode, } = await runBatch(flags,);
+		writeCommandResult(result,);
+		if (exitCode !== 0) process.exit(exitCode,);
 		return;
 	}
 

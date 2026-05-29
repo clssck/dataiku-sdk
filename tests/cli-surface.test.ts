@@ -163,6 +163,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 	"install-skill": ["run",],
 	cleanup: ["run",],
 	fixtures: ["run",],
+	batch: ["run",],
 };
 
 async function dss(args: string[],): Promise<{ stdout: string; stderr: string; }> {
@@ -194,7 +195,7 @@ describe("CLI command surface", () => {
 			for (const action of actions) {
 				const meta = registry[resource]?.[action];
 				const usageOmitsRunAction = action === "run"
-					&& ["doctor", "install-skill", "cleanup", "fixtures", "version",].includes(resource,);
+					&& ["doctor", "install-skill", "cleanup", "fixtures", "version", "batch",].includes(resource,);
 				const expectedUsagePrefix = usageOmitsRunAction
 					? `dss ${resource}`
 					: `dss ${resource} ${action}`;
