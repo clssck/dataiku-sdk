@@ -1371,11 +1371,20 @@ function formatLineDiff(
 
 let outputFieldProjection: string[] | undefined;
 
+function resolveFieldPath(source: Record<string, unknown>, field: string,): unknown {
+	let current: unknown = source;
+	for (const segment of field.split(".",)) {
+		if (current === null || typeof current !== "object" || Array.isArray(current,)) return null;
+		current = (current as Record<string, unknown>)[segment];
+	}
+	return current ?? null;
+}
+
 function pickResultFields(item: unknown, fields: string[],): unknown {
 	if (!item || typeof item !== "object" || Array.isArray(item,)) return item;
 	const source = item as Record<string, unknown>;
 	const picked: Record<string, unknown> = {};
-	for (const field of fields) picked[field] = source[field] ?? null;
+	for (const field of fields) picked[field] = resolveFieldPath(source, field,);
 	return picked;
 }
 
@@ -6123,7 +6132,6 @@ const STRING_OUTPUT_ACTIONS = new Set([
 	"cat",
 	"log",
 	"log-url",
-	"preview",
 ],);
 
 function inferOutputShape(resource: string, action: string,): CommandOutputShape {

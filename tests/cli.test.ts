@@ -1044,6 +1044,20 @@ describe("CLI execution behavior", () => {
 			},);
 			expect(JSON.parse(projected.stdout,),).toEqual([{ name: "One", missingField: null, },],);
 		},);
+
+		await withCliServer((_req, res,) => {
+			sendJson(res, [{ name: "P1", formatParams: { separator: "\t", charset: "utf8", }, },],);
+		}, async (url,) => {
+			const projected = await dss([
+				"project",
+				"list",
+				"--fields",
+				"name,formatParams.separator,formatParams.missing",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(projected.stdout,),).toEqual([
+				{ "name": "P1", "formatParams.separator": "\t", "formatParams.missing": null, },
+			],);
+		},);
 	});
 
 	it("rejects removed output format flags", async () => {
@@ -4154,7 +4168,7 @@ describe("CLI command behavioral smoke coverage", () => {
 					(await dss(["dataset", "preview", "orders", "--max-rows", "1",], {
 						env: cliEnv(url,),
 					},)).stdout,
-				),).toBe("order_id\nA1",);
+				),).toEqual({ columns: [{ name: "order_id", },], rows: [["A1",],], rowCount: 1, },);
 				expect(
 					JSON.parse((await dss(["dataset", "metadata", "orders",], { env: cliEnv(url,), },)).stdout,),
 				)

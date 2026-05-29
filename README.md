@@ -10,7 +10,7 @@ Examples below assume the installed `dss` binary. From this checkout, use `./bin
 - Success: stdout contains one JSON result.
 - Failure: stderr contains one JSON error envelope with `ok:false`, `error`, `code`, and `exitCode`.
 - `--verbose` may add HTTP trace lines to stderr.
-- `--fields a,b,c` projects those top-level fields from an object or array-of-objects result (missing fields become `null`); string and scalar results pass through unchanged.
+- `--fields a,b,c` projects those fields from an object or array-of-objects result; dotted paths (`a.b.c`) drill into nested objects, and missing fields become `null`; string and scalar results pass through unchanged.
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: `0` success, `1` usage/configuration error, `2` DSS/internal error, `3` transient DSS error, `4` completed command with failed long-running DSS work.
 - `--raw` is only for recipe payload commands. Without `--output`, stdout is raw bytes; with `--output PATH`, stdout is the JSON string equal to `PATH` and the file contains the exact raw bytes.

@@ -259,18 +259,33 @@ async function readChunkWithTimeout(
 	},);
 }
 
-async function collectPreviewCsv(
+async function collectPreviewRows(
 	body: ReadableStream<Uint8Array>,
 	maxDataRows: number,
 	timeoutMs: number,
 	onHeader?: (headerRow: string[],) => void,
-): Promise<string> {
+): Promise<{ columns: string[]; rows: string[][]; }> {
 	const state = createTsvStreamState();
-	const emittedRows = { value: 0, };
-	const lines: string[] = [];
+	let columns: string[] | undefined;
+	const rows: string[][] = [];
 	let done = false;
 	const startedAt = Date.now();
 	const reader = body.getReader();
+
+	const handleRow = (row: string[],): void => {
+		if (done || isBlankRow(row,)) return;
+		if (columns === undefined) {
+			columns = row;
+			onHeader?.(row,);
+			return;
+		}
+		if (rows.length >= maxDataRows) {
+			done = true;
+			return;
+		}
+		rows.push(row,);
+		if (rows.length >= maxDataRows) done = true;
+	};
 
 	try {
 		while (true) {
@@ -282,24 +297,12 @@ async function collectPreviewCsv(
 			if (remainingMs <= 0) throw buildPreviewTimeoutError(timeoutMs,);
 			const result = await readChunkWithTimeout(reader, remainingMs, timeoutMs,);
 			if (result.done) break;
-			consumeTsvChunk(Buffer.from(result.value,).toString("utf-8",), state, (row,) => {
-				if (done) return;
-				done = emitCsvLineWithLimit(row, maxDataRows, emittedRows, (line,) => {
-					lines.push(line,);
-				}, onHeader,);
-			},);
+			consumeTsvChunk(Buffer.from(result.value,).toString("utf-8",), state, handleRow,);
 		}
 
-		if (!done) {
-			flushTsvStream(state, (row,) => {
-				if (done) return;
-				done = emitCsvLineWithLimit(row, maxDataRows, emittedRows, (line,) => {
-					lines.push(line,);
-				}, onHeader,);
-			},);
-		}
+		if (!done) flushTsvStream(state, handleRow,);
 
-		return lines.join("\n",);
+		return { columns: columns ?? [], rows, };
 	} finally {
 		reader.releaseLock();
 	}
@@ -534,9 +537,9 @@ export class DatasetsResource extends BaseResource {
 	}
 
 	/**
-	 * Preview dataset data as CSV text.
-	 * Streams TSV from the API, converts to CSV, and returns up to `maxRows`
-	 * data rows (plus header).
+	 * Preview dataset rows as structured data: column names plus row arrays,
+	 * mirroring the sql query shape ({ columns, rows, rowCount }). Streams TSV
+	 * from the API and returns up to `maxRows` data rows.
 	 *
 	 * If `validateColumns` is provided, the first TSV row (header) is checked
 	 * against the column names. Mismatches emit a warning via onValidationWarning.
@@ -549,7 +552,7 @@ export class DatasetsResource extends BaseResource {
 			validateColumns?: { name: string; }[];
 			timeoutMs?: number;
 		},
-	): Promise<string> {
+	): Promise<{ columns: Array<{ name: string; }>; rows: string[][]; rowCount: number; }> {
 		const maxRows = Math.max(1, Math.min(opts?.maxRows ?? 50, 500,),);
 		const timeoutMs = Math.max(1, opts?.timeoutMs ?? this.client.getRequestTimeoutMs(),);
 		const dsEnc = encodeURIComponent(datasetName,);
@@ -566,8 +569,14 @@ export class DatasetsResource extends BaseResource {
 				}
 			}
 			: undefined;
-		if (!res.body) return "";
-		return collectPreviewCsv(res.body as ReadableStream<Uint8Array>, maxRows, timeoutMs, onHeader,);
+		if (!res.body) return { columns: [], rows: [], rowCount: 0, };
+		const { columns, rows, } = await collectPreviewRows(
+			res.body as ReadableStream<Uint8Array>,
+			maxRows,
+			timeoutMs,
+			onHeader,
+		);
+		return { columns: columns.map((name,) => ({ name, })), rows, rowCount: rows.length, };
 	}
 
 	/** Get dataset metadata (tags, custom fields, checklists). */

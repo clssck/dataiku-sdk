@@ -58,7 +58,7 @@ async function readRequestBody(req: IncomingMessage,): Promise<string> {
 }
 
 describe("DatasetsResource.preview", () => {
-	it("returns CSV preview rows", async () => {
+	it("returns structured preview rows", async () => {
 		await withTestServer((req, res,) => {
 			expect(req.method,).toBe("GET",);
 			expect(req.url,).toContain(
@@ -70,7 +70,11 @@ describe("DatasetsResource.preview", () => {
 		}, async (url,) => {
 			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
 			const preview = await client.datasets.preview("sample", { maxRows: 2, },);
-			expect(preview,).toBe("name,city\nAlice,Paris\nBob,Berlin",);
+			expect(preview,).toEqual({
+				columns: [{ name: "name", }, { name: "city", },],
+				rows: [["Alice", "Paris",], ["Bob", "Berlin",],],
+				rowCount: 2,
+			},);
 		},);
 	});
 

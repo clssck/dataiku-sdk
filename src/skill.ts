@@ -40,7 +40,7 @@ If the installed \`dss\` binary is unavailable but the repository checkout is th
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: 0 success, 1 usage/configuration error, 2 DSS or internal error, 3 transient/retryable DSS error, 4 completed command with failed long-running DSS work.
 - \`--raw\` is the only stdout escape hatch: recipe payload commands emit raw bytes to stdout unless \`--output PATH\` is also set; with \`--output\`, stdout is the JSON string equal to \`PATH\` and the file receives exact raw bytes.
-- \`--fields a,b,c\` projects those top-level fields from object or array-of-objects results (missing fields become \`null\`); string and scalar results pass through unchanged.
+- \`--fields a,b,c\` projects those fields from object or array-of-objects results; dotted paths (\`a.b.c\`) drill into nested objects, and missing fields become \`null\`; string and scalar results pass through unchanged.
 
 ## Discover commands
 
