@@ -1960,6 +1960,7 @@ interface CommandPayloadSchema {
 
 interface CommandRegistryOverride {
 	requiredFlags?: string[];
+	requiredOneOf?: CommandFlagChoice[];
 	optionalFlags?: string[];
 	payloadSchema?: CommandPayloadSchema;
 	examplePayload?: unknown;
@@ -5173,9 +5174,12 @@ function dataikuEnvironmentEnabled(): boolean {
 
 function loadEnvFile(): void {
 	if (!dataikuEnvironmentEnabled()) return;
+	// The invocation cwd takes precedence over the CLI install/root directory, so a
+	// project-local .env where `dss` is invoked overrides defaults shipped beside the
+	// CLI. First writer wins below, so cwd must be listed first.
 	const dirs = [
-		resolve(dirname(fileURLToPath(import.meta.url,),), "..",),
 		process.cwd(),
+		resolve(dirname(fileURLToPath(import.meta.url,),), "..",),
 	];
 	for (const dir of dirs) {
 		try {
@@ -5822,7 +5826,7 @@ type CommandSideEffect = "read" | "write" | "auth";
 type CommandOutputShape = "object" | "array" | "string" | "void";
 type CommandDestructiveLevel = "none" | "reversible" | "destructive";
 type CommandAsyncKind = "none" | "job" | "future";
-type CommandIdempotency = "safe" | "if-not-exists" | "if-exists" | "none";
+type CommandIdempotency = "safe" | "convergent" | "if-not-exists" | "if-exists" | "none";
 
 interface CommandInputContract {
 	stdin?: boolean;
@@ -5838,13 +5842,19 @@ interface CommandExitCodes {
 	longRunningFailure?: 4;
 }
 
+interface CommandFlagChoice {
+	oneOf: string[][];
+}
+
 interface CommandRegistryEntry {
 	resource: string;
 	action: string;
 	usage: string;
 	description?: string;
 	examples?: string[];
-	flags: Array<{ name: string; kind: "boolean" | "value"; }>;
+	flags: Array<
+		{ name: string; kind: "boolean" | "value"; valueType?: string; enumValues?: string[]; }
+	>;
 	positionals: string[];
 	sideEffect: CommandSideEffect;
 	requiresAuth: boolean;
@@ -5858,6 +5868,7 @@ interface CommandRegistryEntry {
 	idempotency: CommandIdempotency;
 	dryRun: boolean;
 	requiredFlags: string[];
+	requiredOneOf?: CommandFlagChoice[];
 	optionalFlags: string[];
 	payloadSchema?: CommandPayloadSchema;
 	examplePayload?: unknown;
@@ -6115,8 +6126,104 @@ function stripOptionalUsageGroups(usage: string,): string {
 	return usage.replace(/\[[^\]]*\]/g, " ",);
 }
 
-function extractRequiredUsageFlags(usage: string,): string[] {
-	return extractUsageFlags(stripOptionalUsageGroups(usage,),);
+function stripAllUsageGroups(usage: string,): string {
+	return usage.replace(/\[[^\]]*\]/g, " ",).replace(/\([^)]*\)/g, " ",);
+}
+
+function topLevelParenGroups(usage: string,): string[] {
+	const groups: string[] = [];
+	let depth = 0;
+	let current = "";
+	for (const char of usage) {
+		if (char === "(") {
+			if (depth > 0) current += char;
+			else current = "";
+			depth++;
+		} else if (char === ")") {
+			depth--;
+			if (depth === 0) groups.push(current,);
+			else current += char;
+		} else if (depth > 0) {
+			current += char;
+		}
+	}
+	return groups;
+}
+
+function splitTopLevelChoices(group: string,): string[] {
+	const parts: string[] = [];
+	let depth = 0;
+	let current = "";
+	for (const char of group) {
+		if (char === "[" || char === "(") depth++;
+		else if (char === "]" || char === ")") depth--;
+		if (char === "|" && depth === 0) {
+			parts.push(current,);
+			current = "";
+		} else {
+			current += char;
+		}
+	}
+	parts.push(current,);
+	return parts;
+}
+
+function flagsInUsageFragment(fragment: string,): string[] {
+	return extractUsageFlags(fragment.replace(/\[[^\]]*\]/g, " ",),);
+}
+
+/**
+ * Split required usage flags into unconditional flags and mutually-exclusive
+ * choice groups. A required `(--a X | --b Y)` group becomes a requiredOneOf entry
+ * (pick exactly one alternative; an alternative listing several flags must be
+ * supplied together) instead of marking every flag as unconditionally required.
+ */
+function deriveRequiredUsage(
+	usage: string,
+): { requiredFlags: string[]; requiredOneOf: CommandFlagChoice[]; } {
+	const requiredFlags = extractUsageFlags(stripAllUsageGroups(usage,),);
+	const requiredOneOf: CommandFlagChoice[] = [];
+	for (const group of topLevelParenGroups(usage,)) {
+		const alternatives = splitTopLevelChoices(group,);
+		if (alternatives.length <= 1) {
+			requiredFlags.push(...flagsInUsageFragment(group,),);
+			continue;
+		}
+		const oneOf = alternatives
+			.map((alternative,) => flagsInUsageFragment(alternative,))
+			.filter((alternativeFlags,) => alternativeFlags.length > 0);
+		if (oneOf.length > 1) requiredOneOf.push({ oneOf, },);
+		else if (oneOf.length === 1) requiredFlags.push(...oneOf[0]!,);
+	}
+	return { requiredFlags: uniqueStrings(requiredFlags,), requiredOneOf, };
+}
+
+const GLOBAL_FLAG_VALUE_HINTS: Record<string, { valueType: string; enumValues?: string[]; }> = {
+	url: { valueType: "URL", },
+	"api-key": { valueType: "KEY", },
+	"request-timeout": { valueType: "MS", },
+	retries: { valueType: "N", },
+	"ca-cert": { valueType: "PATH", },
+	"project-key": { valueType: "KEY", },
+	"record-cleanup": { valueType: "PATH", },
+};
+
+/** Derive a value placeholder (and enum members) for each value flag from its usage token. */
+function extractFlagValueHints(
+	usage: string,
+): Map<string, { valueType: string; enumValues?: string[]; }> {
+	const hints = new Map<string, { valueType: string; enumValues?: string[]; }>();
+	for (const match of usage.matchAll(/--([a-z0-9-]+)\s+([a-z]+(?:\|[a-z]+)+)/g,)) {
+		const flag = FLAG_ALIASES[match[1]!] ?? match[1]!;
+		if (!hints.has(flag,)) {
+			hints.set(flag, { valueType: "enum", enumValues: match[2]!.split("|",), },);
+		}
+	}
+	for (const match of usage.matchAll(/--([a-z0-9-]+)\s+(<[^>]+>|[A-Z][A-Za-z0-9_]*)/g,)) {
+		const flag = FLAG_ALIASES[match[1]!] ?? match[1]!;
+		if (!hints.has(flag,)) hints.set(flag, { valueType: match[2]!, },);
+	}
+	return hints;
 }
 
 function inferPayloadSchema(
@@ -6185,6 +6292,7 @@ function inferIdempotency(
 	if (sideEffect === "read") return "safe";
 	if (action.startsWith("create",) && usage.includes("--if-not-exists",)) return "if-not-exists";
 	if (action.startsWith("delete",) && usage.includes("--if-exists",)) return "if-exists";
+	if (/^(clear|refresh|set|save)/.test(action,)) return "convergent";
 	return "none";
 }
 
@@ -6219,12 +6327,18 @@ function buildRegistryEntry(
 		...(requiresAuth ? AUTHENTICATED_AGENT_FLAGS : []),
 		...(requiresProject ? ["project-key",] : []),
 	],);
+	const derivedRequired = deriveRequiredUsage(meta.usage,);
 	const requiredFlags = meta.requiredFlags
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.requiredFlags
-		?? extractRequiredUsageFlags(meta.usage,);
+		?? derivedRequired.requiredFlags;
+	const requiredOneOf = meta.requiredOneOf
+		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.requiredOneOf
+		?? derivedRequired.requiredOneOf;
+	const oneOfFlags = new Set(requiredOneOf.flatMap((choice,) => choice.oneOf.flat()),);
 	const optionalFlags = meta.optionalFlags
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.optionalFlags
-		?? flags.filter((flag,) => !requiredFlags.includes(flag,));
+		?? flags.filter((flag,) => !requiredFlags.includes(flag,) && !oneOfFlags.has(flag,));
+	const valueHints = extractFlagValueHints(meta.usage,);
 	const inputContract = inferInputContract(meta.usage,);
 	const cleanupHint = inferCleanupHint(resource, action,);
 	const payloadSchema = meta.payloadSchema
@@ -6241,7 +6355,18 @@ function buildRegistryEntry(
 		usage: meta.usage,
 		description: meta.description,
 		examples: meta.examples,
-		flags: flags.map((name,) => ({ name, kind: flagKind(name,), })),
+		flags: flags.map((name,) => {
+			const kind = flagKind(name,);
+			if (kind === "boolean") return { name, kind, };
+			const hint = valueHints.get(name,) ?? GLOBAL_FLAG_VALUE_HINTS[name];
+			if (!hint) return { name, kind, };
+			return {
+				name,
+				kind,
+				valueType: hint.valueType,
+				...(hint.enumValues ? { enumValues: hint.enumValues, } : {}),
+			};
+		},),
 		positionals: extractPositionals(meta.usage,),
 		sideEffect,
 		requiresAuth,
@@ -6257,6 +6382,7 @@ function buildRegistryEntry(
 		dryRun: meta.usage.includes("--dry-run",),
 		requiredFlags: uniqueStrings(requiredFlags,),
 		optionalFlags: uniqueStrings(optionalFlags,),
+		...(requiredOneOf.length > 0 ? { requiredOneOf, } : {}),
 		...(payloadSchema ? { payloadSchema, } : {}),
 		...(examplePayload !== undefined ? { examplePayload, } : {}),
 		...(cleanupCommand ? { cleanupCommand, } : {}),
@@ -7124,7 +7250,6 @@ interface ErrorReportEnvelope {
 	error: string;
 	code: StableErrorCode;
 	category: "usage" | "dss" | "internal";
-	message: string;
 	exitCode: number;
 	hint?: string;
 	resource?: string;
@@ -7151,6 +7276,15 @@ function rawFlagValue(argv: string[], flagName: string,): string | undefined {
 	return undefined;
 }
 
+function commandIsProjectScoped(
+	resource: string | undefined,
+	action: string | undefined,
+): boolean {
+	if (!resource) return false;
+	const usage = commands[resource]?.[action ?? ""]?.usage ?? "";
+	return inferRequiresProject(resource, action ?? "", usage,);
+}
+
 function rawCommandContext(): { resource?: string; action?: string; projectKey?: string; } {
 	const argv = process.argv.slice(2,);
 	const positionals: string[] = [];
@@ -7173,13 +7307,19 @@ function rawCommandContext(): { resource?: string; action?: string; projectKey?:
 		}
 		positionals.push(arg,);
 	}
+	const resource = currentCommandContext.resource ?? positionals[0];
+	const action = currentCommandContext.action ?? positionals[1];
+	const explicitProjectKey = rawFlagValue(argv, "project-key",) ?? rawFlagValue(argv, "project",);
+	const ambientProjectKey = dataikuEnvironmentEnabled()
+		? process.env.DATAIKU_PROJECT_KEY
+		: undefined;
 	return {
-		resource: currentCommandContext.resource ?? positionals[0],
-		action: currentCommandContext.action ?? positionals[1],
-		projectKey: currentCommandContext.projectKey
-			?? rawFlagValue(argv, "project-key",)
-			?? rawFlagValue(argv, "project",)
-			?? (dataikuEnvironmentEnabled() ? process.env.DATAIKU_PROJECT_KEY : undefined),
+		resource,
+		action,
+		projectKey: explicitProjectKey
+			?? (commandIsProjectScoped(resource, action,)
+				? currentCommandContext.projectKey ?? ambientProjectKey
+				: undefined),
 	};
 }
 
@@ -7209,7 +7349,6 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			error: err.message,
 			code: err.code,
 			category: "usage",
-			message: err.message,
 			exitCode,
 			...(err.hint ? { hint: err.hint, } : {}),
 			...(err.details ? { details: err.details, } : {}),
@@ -7222,7 +7361,6 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			error: err.message,
 			code: "long_running_failure",
 			category: "dss",
-			message: err.message,
 			exitCode: err.exitCode,
 			details: { result: err.result, },
 			...context,
@@ -7234,7 +7372,6 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			error: err.message,
 			code: dataikuErrorCode(err.category,),
 			category: "dss",
-			message: err.message,
 			exitCode,
 			hint: err.retryHint,
 			status: err.status,
@@ -7255,7 +7392,6 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 		error: message,
 		code: "internal_error",
 		category: "internal",
-		message,
 		exitCode,
 		...context,
 	};

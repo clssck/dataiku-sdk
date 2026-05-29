@@ -177,7 +177,6 @@ describe("CLI agent-only command surface", () => {
 				error: "Help screens are not supported.",
 				code: "usage_error",
 				category: "usage",
-				message: "Help screens are not supported.",
 				exitCode: 1,
 			},);
 			expect((report.details as Record<string, unknown>).command,).toBe("dss commands run",);
@@ -336,7 +335,7 @@ describe("CLI missing credentials", () => {
 			expect(report,).toMatchObject({
 				code: "missing_required_flag",
 				category: "usage",
-				message: "Missing Dataiku URL.",
+				error: "Missing Dataiku URL.",
 				resource: "project",
 				action: "list",
 				exitCode: 1,
@@ -364,7 +363,7 @@ describe("CLI missing credentials", () => {
 			action: "list",
 			projectKey: "TEST",
 		},);
-		expect(report.message,).toContain("Unknown flag: --wat",);
+		expect(report.error,).toContain("Unknown flag: --wat",);
 	});
 
 	it("emits stable report JSON for missing positional arguments", async () => {
@@ -385,7 +384,7 @@ describe("CLI missing credentials", () => {
 			action: "delete",
 			projectKey: "TEST",
 		},);
-		expect(report.message,).toContain("Expected 1 argument(s), got 0",);
+		expect(report.error,).toContain("Expected 1 argument(s), got 0",);
 	});
 
 	it("emits stable report JSON for DSS permission errors", async () => {
@@ -407,7 +406,7 @@ describe("CLI missing credentials", () => {
 				status: 403,
 				retryable: false,
 			},);
-			expect(report.message,).toContain("Access denied",);
+			expect(report.error,).toContain("Access denied",);
 		},);
 	});
 
@@ -681,8 +680,8 @@ describe("CLI execution behavior", () => {
 				resource: "scenario",
 				action: "update",
 			},);
-			expect(report.message,).toContain("Scenario update did not persist requested fields",);
-			expect(report.message,).toContain("params.steps",);
+			expect(report.error,).toContain("Scenario update did not persist requested fields",);
+			expect(report.error,).toContain("params.steps",);
 		},);
 	});
 
@@ -2774,7 +2773,7 @@ describe("CLI short flags", () => {
 		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			code: "usage_error",
-			message: "Help screens are not supported.",
+			error: "Help screens are not supported.",
 			exitCode: 1,
 		},);
 	});
@@ -3724,7 +3723,7 @@ describe("CLI explicit empty credential errors", () => {
 			expect(report,).toMatchObject({
 				ok: false,
 				code: "missing_required_flag",
-				message: "Missing Dataiku URL.",
+				error: "Missing Dataiku URL.",
 				exitCode: 1,
 				resource: "project",
 				action: "list",
@@ -3765,7 +3764,7 @@ describe("CLI explicit empty credential errors", () => {
 			expect(report,).toMatchObject({
 				ok: false,
 				code: "missing_required_flag",
-				message: "Missing API key.",
+				error: "Missing API key.",
 				exitCode: 1,
 				resource: "project",
 				action: "list",

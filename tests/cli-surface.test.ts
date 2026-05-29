@@ -15,7 +15,9 @@ type CommandRegistryEntry = {
 	usage: string;
 	description?: string;
 	examples?: string[];
-	flags: Array<{ name: string; kind: "boolean" | "value"; }>;
+	flags: Array<
+		{ name: string; kind: "boolean" | "value"; valueType?: string; enumValues?: string[]; }
+	>;
 	positionals: string[];
 	sideEffect: "read" | "write" | "auth";
 	outputShape: "object" | "array" | "string" | "void";
@@ -24,10 +26,11 @@ type CommandRegistryEntry = {
 	producesLocalFile: boolean;
 	mutatesDss: boolean;
 	async: "none" | "job" | "future";
-	idempotency: "safe" | "if-not-exists" | "if-exists" | "none";
+	idempotency: "safe" | "convergent" | "if-not-exists" | "if-exists" | "none";
 	dryRun: boolean;
 	requiredFlags: string[];
 	optionalFlags: string[];
+	requiredOneOf?: Array<{ oneOf: string[][]; }>;
 	payloadSchema?: {
 		stdin?: boolean;
 		dataFlag?: boolean;
@@ -219,7 +222,7 @@ describe("CLI command surface", () => {
 				expect(typeof meta?.mutatesDss, `${resource} ${action} mutatesDss`,).toBe("boolean",);
 				expect(["none", "job", "future",], `${resource} ${action} async`,).toContain(meta?.async,);
 				expect(
-					["safe", "if-not-exists", "if-exists", "none",],
+					["safe", "convergent", "if-not-exists", "if-exists", "none",],
 					`${resource} ${action} idempotency`,
 				).toContain(meta?.idempotency,);
 				expect(typeof meta?.dryRun, `${resource} ${action} dryRun`,).toBe("boolean",);
@@ -236,6 +239,26 @@ describe("CLI command surface", () => {
 						meta?.flags.some((registered,) => registered.name === flag),
 						`${resource} ${action} optional flag ${flag} registered`,
 					).toBe(true,);
+				}
+				for (const choice of meta?.requiredOneOf ?? []) {
+					expect(
+						choice.oneOf.length,
+						`${resource} ${action} requiredOneOf alternatives`,
+					).toBeGreaterThan(1,);
+					for (const alternative of choice.oneOf.flat()) {
+						expect(
+							meta?.flags.some((registered,) => registered.name === alternative),
+							`${resource} ${action} oneOf flag ${alternative} registered`,
+						).toBe(true,);
+						expect(
+							meta?.requiredFlags.includes(alternative,),
+							`${resource} ${action} oneOf flag ${alternative} not also required`,
+						).toBe(false,);
+						expect(
+							meta?.optionalFlags.includes(alternative,),
+							`${resource} ${action} oneOf flag ${alternative} not also optional`,
+						).toBe(false,);
+					}
 				}
 				expect(meta?.exitCodes, `${resource} ${action} exitCodes`,).toEqual({
 					ok: 0,
@@ -261,13 +284,16 @@ describe("CLI command surface", () => {
 
 		expect(registry.dataset.delete.sideEffect,).toBe("write",);
 		expect(registry.dataset.delete.requiresProject,).toBe(true,);
-		expect(registry.dataset.delete.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
+		expect(registry.dataset.delete.flags,).toContainEqual(
+			expect.objectContaining({ name: "dry-run", kind: "boolean", },),
+		);
 		expect(registry.dataset.delete.dryRun,).toBe(true,);
-		expect(registry.dataset.create.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
-		expect(registry.dataset.create.flags,).toContainEqual({
-			name: "if-not-exists",
-			kind: "boolean",
-		},);
+		expect(registry.dataset.create.flags,).toContainEqual(
+			expect.objectContaining({ name: "dry-run", kind: "boolean", },),
+		);
+		expect(registry.dataset.create.flags,).toContainEqual(
+			expect.objectContaining({ name: "if-not-exists", kind: "boolean", },),
+		);
 		expect(registry.dataset.create.requiredFlags,).toEqual(["name", "connection", "type",],);
 		expect(registry.dataset.create.optionalFlags,).toContain("dry-run",);
 		expect(registry.dataset.create.cleanupCommand,).toBe("dss dataset delete <name> --if-exists",);
@@ -283,10 +309,16 @@ describe("CLI command surface", () => {
 		expect(registry.project.list.requiresProject,).toBe(false,);
 		expect(registry.wiki.settings.sideEffect,).toBe("read",);
 		expect(registry.wiki.settings.requiresProject,).toBe(true,);
-		expect(registry.wiki.create.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
-		expect(registry.dashboard.create.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
+		expect(registry.wiki.create.flags,).toContainEqual(
+			expect.objectContaining({ name: "dry-run", kind: "boolean", },),
+		);
+		expect(registry.dashboard.create.flags,).toContainEqual(
+			expect.objectContaining({ name: "dry-run", kind: "boolean", },),
+		);
 		expect(registry.dashboard.create.cleanupCommand,).toBe("dss dashboard delete <id> --if-exists",);
-		expect(registry.insight.create.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
+		expect(registry.insight.create.flags,).toContainEqual(
+			expect.objectContaining({ name: "dry-run", kind: "boolean", },),
+		);
 		expect(registry.insight.create.cleanupCommand,).toBe("dss insight delete <id> --if-exists",);
 		expect(registry["data-quality"].rules.sideEffect,).toBe("read",);
 		expect(registry["data-quality"].status.sideEffect,).toBe("read",);
@@ -295,29 +327,27 @@ describe("CLI command surface", () => {
 			"dss data-quality delete-rule <dataset> <rule-id> --if-exists",
 		);
 		expect(registry["data-quality"].compute.sideEffect,).toBe("write",);
-		expect(registry.job.build.flags,).toContainEqual({ name: "wait", kind: "boolean", },);
+		expect(registry.job.build.flags,).toContainEqual(
+			expect.objectContaining({ name: "wait", kind: "boolean", },),
+		);
 		expect(registry.job.build.async,).toBe("job",);
 		expect(registry.job.build.exitCodes.longRunningFailure,).toBe(4,);
 		expect(registry.job.build.destructive,).toBe("reversible",);
-		expect(registry["data-quality"]["project-status"].flags,).toContainEqual({
-			name: "only-monitored",
-			kind: "value",
-		},);
-		expect(registry["data-quality"].compute.flags,).toContainEqual({
-			name: "wait",
-			kind: "boolean",
-		},);
+		expect(registry["data-quality"]["project-status"].flags,).toContainEqual(
+			expect.objectContaining({ name: "only-monitored", kind: "value", },),
+		);
+		expect(registry["data-quality"].compute.flags,).toContainEqual(
+			expect.objectContaining({ name: "wait", kind: "boolean", },),
+		);
 		expect(registry.future.wait.sideEffect,).toBe("read",);
 		expect(registry.future.wait.requiresProject,).toBe(false,);
 		expect(registry.future.abort.sideEffect,).toBe("write",);
-		expect(registry["data-quality"]["create-rule"].flags,).toContainEqual({
-			name: "dry-run",
-			kind: "boolean",
-		},);
-		expect(registry["code-env"]["update-packages"].flags,).toContainEqual({
-			name: "force-rebuild",
-			kind: "boolean",
-		},);
+		expect(registry["data-quality"]["create-rule"].flags,).toContainEqual(
+			expect.objectContaining({ name: "dry-run", kind: "boolean", },),
+		);
+		expect(registry["code-env"]["update-packages"].flags,).toContainEqual(
+			expect.objectContaining({ name: "force-rebuild", kind: "boolean", },),
+		);
 		expect(registry.auth.login.sideEffect,).toBe("auth",);
 		expect(registry.auth.login.requiresAuth,).toBe(false,);
 		expect(registry.auth.login.requiresProject,).toBe(false,);
@@ -327,46 +357,78 @@ describe("CLI command surface", () => {
 		expect(registry.commands.run.requiresAuth,).toBe(false,);
 		expect(registry["install-skill"].run.sideEffect,).toBe("write",);
 		expect(registry["install-skill"].run.requiresAuth,).toBe(false,);
-		expect(registry["install-skill"].run.flags,).toContainEqual({
-			name: "dry-run",
-			kind: "boolean",
-		},);
+		expect(registry["install-skill"].run.flags,).toContainEqual(
+			expect.objectContaining({ name: "dry-run", kind: "boolean", },),
+		);
 		expect(registry.recipe["set-payload"].inputContract.dataFlag,).toBeUndefined();
 		expect(registry.recipe["set-payload"].destructive,).toBe("reversible",);
-		expect(registry.recipe["set-payload"].flags,).toContainEqual({
-			name: "backup-dir",
-			kind: "value",
-		},);
-		expect(registry.recipe["set-payload"].flags,).toContainEqual({
-			name: "no-backup",
-			kind: "boolean",
-		},);
-		expect(registry.recipe["get-payload"].flags,).toContainEqual({
-			name: "raw",
-			kind: "boolean",
-		},);
+		expect(registry.recipe["set-payload"].flags,).toContainEqual(
+			expect.objectContaining({ name: "backup-dir", kind: "value", },),
+		);
+		expect(registry.recipe["set-payload"].flags,).toContainEqual(
+			expect.objectContaining({ name: "no-backup", kind: "boolean", },),
+		);
+		expect(registry.recipe["get-payload"].flags,).toContainEqual(
+			expect.objectContaining({ name: "raw", kind: "boolean", },),
+		);
 		expect(registry.recipe.cat.outputShape,).toBe("string",);
 		expect(registry.dataset.clone.cleanupCommand,).toBe("dss dataset delete <name> --if-exists",);
 		expect(registry.recipe.clone.cleanupCommand,).toBe("dss recipe delete <name> --if-exists",);
-		expect(registry.dataset.clone.flags,).toContainEqual({
-			name: "allow-same-path",
-			kind: "boolean",
-		},);
+		expect(registry.dataset.clone.flags,).toContainEqual(
+			expect.objectContaining({ name: "allow-same-path", kind: "boolean", },),
+		);
 		expect(registry.job.summary.sideEffect,).toBe("read",);
 		expect(registry.job.watch.async,).toBe("job",);
-		expect(registry.recipe.run.flags,).toContainEqual({ name: "max-log-lines", kind: "value", },);
-		expect(registry.recipe.run.flags,).toContainEqual({ name: "dry-run", kind: "boolean", },);
+		expect(registry.recipe.run.flags,).toContainEqual(
+			expect.objectContaining({ name: "max-log-lines", kind: "value", },),
+		);
+		expect(registry.recipe.run.flags,).toContainEqual(
+			expect.objectContaining({ name: "dry-run", kind: "boolean", },),
+		);
 		expect(registry.recipe.run.async,).toBe("job",);
-		expect(registry.sql.query.flags,).toContainEqual({ name: "output-file", kind: "value", },);
-		expect(registry.sql.query.flags,).toContainEqual({ name: "output", kind: "value", },);
+		expect(registry.sql.query.flags,).toContainEqual(
+			expect.objectContaining({ name: "output-file", kind: "value", },),
+		);
+		expect(registry.sql.query.flags,).toContainEqual(
+			expect.objectContaining({ name: "output", kind: "value", },),
+		);
 		expect(registry.sql.query.producesLocalFile,).toBe(true,);
 		expect(registry.connection.schemas.outputShape,).toBe("array",);
-		expect(registry.connection.tables.flags,).toContainEqual({ name: "schema", kind: "value", },);
+		expect(registry.connection.tables.flags,).toContainEqual(
+			expect.objectContaining({ name: "schema", kind: "value", },),
+		);
 		expect(registry.dataset["refresh-schema"].sideEffect,).toBe("write",);
-		expect(registry.dataset["refresh-schema"].flags,).toContainEqual({
-			name: "data",
-			kind: "value",
-		},);
+		expect(registry.dataset["refresh-schema"].flags,).toContainEqual(
+			expect.objectContaining({ name: "data", kind: "value", },),
+		);
+		expect(registry.sql.query.requiredFlags,).toEqual([],);
+		expect(registry.sql.query.requiredOneOf,).toEqual([{
+			oneOf: [["connection",], ["dataset",],],
+		},],);
+		expect(registry.sql.query.optionalFlags,).not.toContain("connection",);
+		expect(registry.sql.query.optionalFlags,).not.toContain("dataset",);
+		expect(registry.insight.create.requiredOneOf,).toEqual([
+			{ oneOf: [["data",], ["data-file",], ["stdin",], ["name", "type",],], },
+		],);
+		expect(registry.recipe.create.requiredOneOf,).toEqual([{
+			oneOf: [["output",], ["output-folder",],],
+		},],);
+		expect(registry.recipe.clone.requiredOneOf,).toEqual([{ oneOf: [["name",], ["to",],], },],);
+		expect(registry.dataset.create.requiredOneOf,).toBeUndefined();
+		expect(registry.recipe.create.flags.find((flag,) => flag.name === "output")?.valueType,).toBe(
+			"DS",
+		);
+		expect(registry.sql.query.flags.find((flag,) => flag.name === "output")?.valueType,).toBe(
+			"PATH",
+		);
+		expect(registry.sql.query.flags.find((flag,) => flag.name === "connection")?.valueType,).toBe(
+			"CONN",
+		);
+		expect(
+			registry["code-env"]["set-jupyter"].flags.find((flag,) => flag.name === "active"),
+		).toEqual({ name: "active", kind: "value", valueType: "enum", enumValues: ["true", "false",], },);
+		expect(registry.dataset["refresh-schema"].idempotency,).toBe("convergent",);
+		expect(registry.notebook["clear-jupyter-outputs"].idempotency,).toBe("convergent",);
 	});
 
 	it("does not advertise removed help or report-json flags", async () => {
