@@ -1369,8 +1369,31 @@ function formatLineDiff(
 	return lines.join("\n",);
 }
 
+let outputFieldProjection: string[] | undefined;
+
+function pickResultFields(item: unknown, fields: string[],): unknown {
+	if (!item || typeof item !== "object" || Array.isArray(item,)) return item;
+	const source = item as Record<string, unknown>;
+	const picked: Record<string, unknown> = {};
+	for (const field of fields) picked[field] = source[field] ?? null;
+	return picked;
+}
+
+/**
+ * Project the top-level fields callers asked for via --fields. Arrays are mapped
+ * element-wise; scalars and string results pass through untouched. Requested keys
+ * that are absent become null so every row keeps a stable, predictable shape.
+ */
+function projectResultFields(result: unknown, fields: string[],): unknown {
+	if (Array.isArray(result,)) return result.map((item,) => pickResultFields(item, fields,));
+	return pickResultFields(result, fields,);
+}
+
 function writeCommandResult(result: unknown,): void {
-	process.stdout.write(`${JSON.stringify(result ?? { ok: true, }, null, 2,)}\n`,);
+	const projected = outputFieldProjection
+		? projectResultFields(result, outputFieldProjection,)
+		: result;
+	process.stdout.write(`${JSON.stringify(projected ?? { ok: true, }, null, 2,)}\n`,);
 }
 
 function transientBodyWithTargetContext(body: string, target: string, elapsedMs: number,): string {
@@ -1741,6 +1764,7 @@ const FLAG_ALIASES: Record<string, string> = {
 };
 
 const VALUE_FLAGS = new Set([
+	"fields",
 	"activity",
 	"agent",
 	"api-key",
@@ -5936,7 +5960,7 @@ const PROJECT_SCOPED_RESOURCES = new Set([
 	"wiki",
 ],);
 
-const GLOBAL_AGENT_FLAGS = ["json", "verbose",];
+const GLOBAL_AGENT_FLAGS = ["json", "verbose", "fields",];
 const AUTHENTICATED_AGENT_FLAGS = [
 	"url",
 	"api-key",
@@ -6200,6 +6224,7 @@ function deriveRequiredUsage(
 
 const GLOBAL_FLAG_VALUE_HINTS: Record<string, { valueType: string; enumValues?: string[]; }> = {
 	url: { valueType: "URL", },
+	fields: { valueType: "CSV", },
 	"api-key": { valueType: "KEY", },
 	"request-timeout": { valueType: "MS", },
 	retries: { valueType: "N", },
@@ -7408,6 +7433,13 @@ function writeErrorReport(err: unknown,): void {
 async function main(): Promise<void> {
 	loadEnvFile();
 	const { positional, flags, } = parseArgs(process.argv.slice(2,),);
+	const fieldsFlag = flags["fields"];
+	if (typeof fieldsFlag === "string") {
+		const selected = fieldsFlag.split(",",).map((field,) => field.trim()).filter((field,) =>
+			field.length > 0
+		);
+		if (selected.length > 0) outputFieldProjection = selected;
+	}
 
 	if (flags["version"] === true) {
 		writeCommandResult(cliVersionResult(),);

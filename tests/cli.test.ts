@@ -1018,6 +1018,34 @@ describe("CLI execution behavior", () => {
 		},);
 	});
 
+	it("projects only the requested top-level fields with --fields", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(url.pathname,).toBe("/public/api/projects/",);
+			sendJson(res, [
+				{ projectKey: "P1", name: "One", projectStatus: "Sandbox", tags: ["a",], },
+				{ projectKey: "P2", name: "Two", projectStatus: "Production", tags: [], },
+			],);
+		}, async (url,) => {
+			const projected = await dss(["project", "list", "--fields", "projectKey,name",], {
+				env: cliEnv(url,),
+			},);
+			expect(JSON.parse(projected.stdout,),).toEqual([
+				{ projectKey: "P1", name: "One", },
+				{ projectKey: "P2", name: "Two", },
+			],);
+		},);
+
+		await withCliServer((_req, res,) => {
+			sendJson(res, [{ projectKey: "P1", name: "One", },],);
+		}, async (url,) => {
+			const projected = await dss(["project", "list", "--fields", "name, missingField",], {
+				env: cliEnv(url,),
+			},);
+			expect(JSON.parse(projected.stdout,),).toEqual([{ name: "One", missingField: null, },],);
+		},);
+	});
+
 	it("rejects removed output format flags", async () => {
 		const longFailure = await dssFailure(["project", "list", "--format", "table",],);
 		expect(longFailure.code,).toBe(1,);
