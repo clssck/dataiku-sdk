@@ -13,6 +13,7 @@ Examples below assume the installed `dss` binary. From this checkout, use `./bin
 - `--fields a,b,c` projects those fields from an object or array-of-objects result; dotted paths (`a.b.c`) drill into nested objects, and missing fields become `null`; string and scalar results pass through unchanged.
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: `0` success, `1` usage/configuration error, `2` DSS/internal error, `3` transient DSS error, `4` completed command with failed long-running DSS work.
+- The exit code is the success signal: chain mutations with `&&` and never infer success from piped output that discards the exit code (e.g. `dss ... 2>&1 | helper; echo done` reports success even when the command failed).
 - `--raw` is only for recipe payload commands. Without `--output`, stdout is raw bytes; with `--output PATH`, stdout is the JSON string equal to `PATH` and the file contains the exact raw bytes.
 
 Discover the complete machine-readable command surface:

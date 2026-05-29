@@ -95,6 +95,14 @@ dss sql query --connection analytics --sql "select 1" --project-key MYPROJ
 \`\`\`
 For fake-DSS smoke tests, return project lists as JSON arrays such as \`[{"projectKey":"MYPROJ","name":"My Project"}]\` from \`/public/api/projects/\`; recipe payload commands read \`/public/api/projects/<PROJECT>/recipes/<NAME>?includePayload=true\` and expect a JSON object shaped like \`{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}\`.
 
+## Confirming mutations
+
+Mutations print a small JSON ack to stdout and exit 0 on success (e.g. \`{"updated":"NAME","resource":"recipe"}\`); on failure they print the error envelope to stderr and exit non-zero. The exit code is the source of truth.
+
+- Chain steps with \`&&\` so a failed step halts the sequence: \`dss recipe set-payload R --file r.py --project-key P && dss recipe update R --data-file env.json --project-key P\`.
+- Never pipe a mutation into a command that prints a fixed string or merges stderr (e.g. \`dss ... 2>&1 | helper; echo done\`): the pipeline returns the helper's exit code, so a failed mutation is reported as success.
+- To branch in code, key off the exit code or the JSON ack on stdout — never a hardcoded label.
+
 ## Error envelope
 
 Parse stderr as JSON when exit code is non-zero:
