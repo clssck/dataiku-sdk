@@ -92,6 +92,7 @@ dss recipe set-payload compute_orders --file code.py --project-key MYPROJ
 dss job build-and-wait orders --include-logs --project-key MYPROJ
 dss scenario run daily_build --project-key MYPROJ
 dss sql query --connection analytics --sql "select 1" --project-key MYPROJ
+dss batch --data-file steps.json
 \`\`\`
 For fake-DSS smoke tests, return project lists as JSON arrays such as \`[{"projectKey":"MYPROJ","name":"My Project"}]\` from \`/public/api/projects/\`; recipe payload commands read \`/public/api/projects/<PROJECT>/recipes/<NAME>?includePayload=true\` and expect a JSON object shaped like \`{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}\`.
 
@@ -102,6 +103,14 @@ Mutations print a small JSON ack to stdout and exit 0 on success (e.g. \`{"updat
 - Chain steps with \`&&\` so a failed step halts the sequence: \`dss recipe set-payload R --file r.py --project-key P && dss recipe update R --data-file env.json --project-key P\`.
 - Never pipe a mutation into a command that prints a fixed string or merges stderr (e.g. \`dss ... 2>&1 | helper; echo done\`): the pipeline returns the helper's exit code, so a failed mutation is reported as success.
 - To branch in code, key off the exit code or the JSON ack on stdout — never a hardcoded label.
+- For multi-step writes, prefer \`dss batch\` (payload: a JSON array of argv arrays): it runs fail-fast, returns one envelope with per-step \`ok\`/\`result\`/\`error\`, and exits non-zero if any step fails — no shell chaining or per-step parsing.
+
+## Platform & debugging notes
+
+- Pass code and SQL via \`--file\`/\`--sql-file\`, not inline: shells (especially PowerShell) mangle quotes, \`$\`, and newlines in multi-line snippets.
+- On a non-UTF-8 console (e.g. Windows cp1252), don't print non-ASCII results; write them to a UTF-8 file and read that, or use \`--output PATH\`.
+- Build failures: job logs are one long line with JVM noise. Search for \`Error in Python process: At line <N>\` — \`<N>\` is the line in your recipe payload, mapping straight to your source file.
+- Schema changes aren't automatic: after changing a recipe's output columns run \`dss dataset refresh-schema\` (or rebuild) before downstream reads, and \`dss dataset validate-build\` to catch file-backed misconfig before launching a build.
 
 ## Error envelope
 
