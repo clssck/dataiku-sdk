@@ -109,7 +109,7 @@ Mutations print a small JSON ack to stdout and exit 0 on success (e.g. \`{"updat
 
 - Pass code and SQL via \`--file\`/\`--sql-file\`, not inline: shells (especially PowerShell) mangle quotes, \`$\`, and newlines in multi-line snippets.
 - On a non-UTF-8 console (e.g. Windows cp1252), don't print non-ASCII results; write them to a UTF-8 file and read that, or use \`--output PATH\`.
-- Build failures: job logs are one long line with JVM noise. Search for \`Error in Python process: At line <N>\` — \`<N>\` is the line in your recipe payload, mapping straight to your source file.
+- Build failures: \`dss job log <id> --errors-only\` surfaces just error/traceback lines, and \`--output PATH\` saves the full log to a file. Logs are one long line with JVM noise; the \`Error in Python process: At line <N>\` marker maps \`<N>\` straight to your recipe payload's source line.
 - Schema changes aren't automatic: after changing a recipe's output columns run \`dss dataset refresh-schema\` (or rebuild) before downstream reads, and \`dss dataset validate-build\` to catch file-backed misconfig before launching a build.
 - \`dss dataset download\` is capped (default 100k rows) and returns \`{ path, rows, truncated, limit }\`: check \`truncated\` and raise \`--limit N\` when you need more — treat it as a sample, not a guaranteed full export. For very large tables, aggregate in SQL or read inside a recipe instead.
 
