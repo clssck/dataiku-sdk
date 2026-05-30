@@ -4177,7 +4177,7 @@ describe("CLI command behavioral smoke coverage", () => {
 					(await dss(["dataset", "download", "orders", "--output", datasetOut,], {
 						env: cliEnv(url,),
 					},)).stdout,
-				),).toBe(datasetOut,);
+				),).toMatchObject({ path: datasetOut, truncated: false, },);
 				expect(readFileSync(datasetOut, "utf-8",),).toBe("order_id\nA1\n",);
 			},);
 		} finally {

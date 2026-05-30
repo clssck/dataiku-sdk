@@ -3133,10 +3133,12 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				return c.datasets.download(a[0], {
 					outputPath: f["output"] as string | undefined,
 					projectKey: f["project-key"] as string | undefined,
+					limit: num(f["limit"],),
 				},);
 			},
-			usage: "dss dataset download <name> [--output PATH] [--project-key KEY]",
-			description: "Download dataset contents as CSV.",
+			usage: "dss dataset download <name> [--output PATH] [--limit N] [--project-key KEY]",
+			description:
+				"Download up to --limit rows (default 100k) as CSV; returns { path, rows, truncated, limit } so truncation is visible.",
 			examples: ["dss dataset download orders", "dss dataset download orders --output ./data/",],
 		},
 		create: {
@@ -6142,6 +6144,7 @@ function inferOutputShape(resource: string, action: string,): CommandOutputShape
 		return "object";
 	}
 	if (ARRAY_OUTPUT_ACTIONS.has(action,)) return "array";
+	if (resource === "dataset" && action === "download") return "object";
 	if (STRING_OUTPUT_ACTIONS.has(action,)) return "string";
 	return "object";
 }

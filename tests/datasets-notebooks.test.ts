@@ -124,7 +124,7 @@ describe("DatasetsResource.download", () => {
 					},
 				},);
 
-				const writtenPath = await client.datasets.download("sample", {
+				const { path: writtenPath, } = await client.datasets.download("sample", {
 					outputPath,
 					validateColumns: [{ name: "name", }, { name: "city", },],
 				},);
@@ -164,7 +164,7 @@ describe("DatasetsResource.download", () => {
 					},
 				},);
 
-				const writtenPath = await client.datasets.download("sample", {
+				const { path: writtenPath, } = await client.datasets.download("sample", {
 					outputPath,
 					validateColumns: [{ name: "name", }, { name: "city", },],
 				},);
@@ -195,7 +195,7 @@ describe("DatasetsResource.download", () => {
 
 			try {
 				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
-				const writtenPath = await client.datasets.download("sample dataset", {
+				const { path: writtenPath, } = await client.datasets.download("sample dataset", {
 					outputPath: tempDir,
 				},);
 				const fileBuffer = readFileSync(writtenPath,);
@@ -204,6 +204,29 @@ describe("DatasetsResource.download", () => {
 				expect(fileBuffer[0],).toBe(0x1f,);
 				expect(fileBuffer[1],).toBe(0x8b,);
 				expect(gunzipSync(fileBuffer,).toString("utf8",),).toBe("name,city\nAlice,Paris\n",);
+			} finally {
+				rmSync(tempDir, { recursive: true, force: true, },);
+			}
+		},);
+	});
+
+	it("reports truncated=true and the written row count when data exceeds the limit", async () => {
+		await withTestServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+			res.end("name\nA\nB\nC\nD\nE\n",);
+		}, async (url,) => {
+			const tempDir = mkdtempSync(join(tmpdir(), "dataiku-dataset-download-",),);
+			try {
+				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+				const result = await client.datasets.download("sample", {
+					outputPath: join(tempDir, "out.csv",),
+					limit: 2,
+				},);
+				expect(result.truncated,).toBe(true,);
+				expect(result.rows,).toBe(2,);
+				expect(result.limit,).toBe(2,);
+				expect(readFileSync(result.path, "utf-8",),).toBe("name\nA\nB\n",);
 			} finally {
 				rmSync(tempDir, { recursive: true, force: true, },);
 			}

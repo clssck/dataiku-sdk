@@ -204,30 +204,6 @@ export function validateStreamColumns(
 	return warnings;
 }
 
-function emitCsvLineWithLimit(
-	row: string[],
-	maxDataRows: number,
-	emittedRows: { value: number; },
-	onLine: (line: string,) => void,
-	onHeader?: (headerRow: string[],) => void,
-): boolean {
-	if (isBlankRow(row,)) return false;
-
-	const isHeader = emittedRows.value === 0;
-	if (isHeader && onHeader) onHeader(row,);
-	if (!isHeader && emittedRows.value - 1 >= maxDataRows) {
-		return true;
-	}
-
-	onLine(rowToCsv(row,),);
-	emittedRows.value += 1;
-
-	if (!isHeader && emittedRows.value - 1 >= maxDataRows) {
-		return true;
-	}
-	return false;
-}
-
 function buildPreviewTimeoutError(timeoutMs: number,): DataikuError {
 	return new DataikuError(
 		0,
@@ -310,12 +286,30 @@ async function collectPreviewRows(
 
 function tsvToCsvTransform(
 	maxDataRows: number,
+	stats: { rows: number; truncated: boolean; },
 	onHeader?: (headerRow: string[],) => void,
 ): Transform {
 	const state = createTsvStreamState();
-	const emittedRows = { value: 0, };
-	let done = false;
 	const maxRows = Math.max(1, maxDataRows,);
+	let headerSeen = false;
+	let done = false;
+
+	const handleRow = (row: string[], push: (line: string,) => void,): void => {
+		if (done || isBlankRow(row,)) return;
+		if (!headerSeen) {
+			headerSeen = true;
+			onHeader?.(row,);
+			push(`${rowToCsv(row,)}\n`,);
+			return;
+		}
+		if (stats.rows >= maxRows) {
+			stats.truncated = true;
+			done = true;
+			return;
+		}
+		push(`${rowToCsv(row,)}\n`,);
+		stats.rows += 1;
+	};
 
 	return new Transform({
 		transform(chunk: Buffer, _encoding, callback,) {
@@ -323,31 +317,18 @@ function tsvToCsvTransform(
 				callback();
 				return;
 			}
-
-			consumeTsvChunk(chunk.toString("utf-8",), state, (row,) => {
-				if (done) return;
-				done = emitCsvLineWithLimit(row, maxRows, emittedRows, (line,) => {
-					this.push(`${line}\n`,);
-				}, onHeader,);
-			},);
-
-			if (done) {
-				this.push(null,);
-			}
+			consumeTsvChunk(
+				chunk.toString("utf-8",),
+				state,
+				(row,) => handleRow(row, (line,) => this.push(line,),),
+			);
+			if (done) this.push(null,);
 			callback();
 		},
 		flush(callback,) {
-			if (done) {
-				callback();
-				return;
+			if (!done) {
+				flushTsvStream(state, (row,) => handleRow(row, (line,) => this.push(line,),),);
 			}
-
-			flushTsvStream(state, (row,) => {
-				if (done) return;
-				done = emitCsvLineWithLimit(row, maxRows, emittedRows, (line,) => {
-					this.push(`${line}\n`,);
-				}, onHeader,);
-			},);
 			callback();
 		},
 	},);
@@ -588,8 +569,10 @@ export class DatasetsResource extends BaseResource {
 	}
 
 	/**
-	 * Download dataset data as a gzipped CSV file.
-	 * Returns the absolute path of the written file.
+	 * Download dataset rows as a gzipped (or .csv) file, capped at `limit` rows
+	 * (default 100k). Returns the written path, the number of data rows written,
+	 * whether the dataset had more rows than the cap (truncated), and the limit
+	 * used — so callers can detect truncation instead of silently getting a sample.
 	 */
 	async download(
 		datasetName: string,
@@ -597,14 +580,15 @@ export class DatasetsResource extends BaseResource {
 			outputPath?: string;
 			projectKey?: string;
 			validateColumns?: { name: string; }[];
+			limit?: number;
 		},
-	): Promise<string> {
-		const downloadLimit = 100_000;
+	): Promise<{ path: string; rows: number; truncated: boolean; limit: number; }> {
+		const limit = Math.max(1, opts?.limit ?? 100_000,);
 		const dsEnc = encodeURIComponent(datasetName,);
 		const res = await this.client.stream(
 			`/public/api/projects/${
 				this.enc(opts?.projectKey,)
-			}/datasets/${dsEnc}/data/?format=tsv-excel-header&limit=${downloadLimit}`,
+			}/datasets/${dsEnc}/data/?format=tsv-excel-header&limit=${limit + 1}`,
 		);
 
 		const safeDatasetName = sanitizeFileName(datasetName, "dataset",);
@@ -622,8 +606,9 @@ export class DatasetsResource extends BaseResource {
 			: undefined;
 
 		const shouldGzip = filePath.endsWith(".gz",);
+		const stats = { rows: 0, truncated: false, };
 		const nodeStream = Readable.fromWeb(res.body as unknown as import("stream/web").ReadableStream,);
-		const csvTransform = tsvToCsvTransform(downloadLimit, onHeader,);
+		const csvTransform = tsvToCsvTransform(limit, stats, onHeader,);
 		const fileOut = createWriteStream(filePath,);
 
 		if (shouldGzip) {
@@ -633,7 +618,7 @@ export class DatasetsResource extends BaseResource {
 			await pipeline(nodeStream, csvTransform, fileOut,);
 		}
 
-		return filePath;
+		return { path: filePath, rows: stats.rows, truncated: stats.truncated, limit, };
 	}
 
 	/**
