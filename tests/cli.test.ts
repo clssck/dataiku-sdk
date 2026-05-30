@@ -568,6 +568,42 @@ describe("CLI execution behavior", () => {
 		},);
 	});
 
+	it("filters to error and traceback lines with --errors-only", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/jobs/job-1/log/",);
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end("starting build\nERROR: boom\nprocessing\nTraceback (most recent call last):\n",);
+		}, async (url,) => {
+			const { stdout, } = await dss(["job", "log", "job-1", "--errors-only",], {
+				env: cliEnv(url,),
+			},);
+			expect(JSON.parse(stdout,),).toBe("ERROR: boom\nTraceback (most recent call last):",);
+		},);
+	});
+
+	it("writes the log to --output and returns the path", async () => {
+		const tmpFile = join(tmpdir(), `dss-cli-job-log-${Date.now()}.txt`,);
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/jobs/job-1/log/",);
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end("line 1\nline 2\n",);
+		}, async (url,) => {
+			try {
+				const { stdout, } = await dss(["job", "log", "job-1", "--output", tmpFile,], {
+					env: cliEnv(url,),
+				},);
+				expect(JSON.parse(stdout,),).toBe(tmpFile,);
+				expect(readFileSync(tmpFile, "utf-8",),).toBe("line 1\nline 2\n",);
+			} finally {
+				rmSync(tmpFile, { force: true, },);
+			}
+		},);
+	});
+
 	it("supports --data-file JSON input", async () => {
 		let capturedBody: Record<string, unknown> | undefined;
 		const tmpFile = join(tmpdir(), `dss-cli-data-file-${Date.now()}.json`,);

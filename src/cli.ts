@@ -1754,6 +1754,7 @@ const BOOLEAN_FLAGS = new Set([
 	"allow-same-path",
 	"sync",
 	"validate-objects",
+	"errors-only",
 ],);
 
 const SHORT_FLAGS: Record<string, string> = {
@@ -3869,19 +3870,30 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			examples: ["dss job summary JOB_ID --max-log-lines 200",],
 		},
 		log: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss job log <id>",);
-				return c.jobs.log(a[0], {
+				const logFilter = f["errors-only"] === true
+					? "errors"
+					: jobLogFilterFromFlag(f["log-filter"],);
+				const log = await c.jobs.log(a[0], {
 					activity: f["activity"] as string | undefined,
 					logId: f["log-id"] as string | undefined,
+					logFilter,
 					maxLogLines: maxLogLinesFromFlags(f,),
 					projectKey: f["project-key"] as string | undefined,
 				},);
+				const outputFile = (f["output"] as string | undefined)
+					?? (f["output-file"] as string | undefined);
+				if (!outputFile) return log;
+				const outputPath = resolve(outputFile,);
+				await mkdir(dirname(outputPath,), { recursive: true, },);
+				await writeFile(outputPath, log.endsWith("\n",) ? log : `${log}\n`, "utf-8",);
+				return outputPath;
 			},
 			usage:
-				"dss job log <id> [--activity ACTIVITY_ID] [--log-id LOG_ID] [--max-lines N|--max-log-lines N] [--project-key KEY]",
+				"dss job log <id> [--activity ACTIVITY_ID] [--log-id LOG_ID] [--log-filter stdout|stderr|user|errors] [--errors-only] [--max-lines N|--max-log-lines N] [--output PATH] [--project-key KEY]",
 			description:
-				"Get public API job log output. --log-id is accepted for UI parity but DSS API-key auth cannot select browser-only cat-activity-log files.",
+				"Get public API job log output. Use --errors-only (or --log-filter errors) to surface just error/traceback lines, and --output PATH to write the log to a file (stdout returns the path). --log-id is accepted for UI parity but DSS API-key auth cannot select browser-only cat-activity-log files.",
 			examples: [
 				"dss job log JOB_ID",
 				"dss job log JOB_ID --activity main --max-log-lines 200",

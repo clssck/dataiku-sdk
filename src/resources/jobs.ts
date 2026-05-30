@@ -267,14 +267,20 @@ export class JobsResource extends BaseResource {
 	 */
 	async log(
 		jobId: string,
-		opts?: { activity?: string; logId?: string; maxLogLines?: number; projectKey?: string; },
+		opts?: {
+			activity?: string;
+			logId?: string;
+			logFilter?: JobLogFilter;
+			maxLogLines?: number;
+			projectKey?: string;
+		},
 	): Promise<string> {
 		const jobEnc = encodeURIComponent(jobId,);
 		const query = opts?.activity ? `?activity=${encodeURIComponent(opts.activity,)}` : "";
 		// DSS cat-activity-log URLs require a browser session; API-key callers must use the public log endpoint.
 		const path = `/public/api/projects/${this.enc(opts?.projectKey,)}/jobs/${jobEnc}/log/${query}`;
 		const log = await this.client.getText(path,);
-		return limitJobLog(log, opts?.maxLogLines,);
+		return limitJobLog(filterJobLog(log, opts?.logFilter,), opts?.maxLogLines,);
 	}
 
 	async logFromUrl(logUrl: string, opts?: { maxLogLines?: number; },): Promise<string> {
