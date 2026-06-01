@@ -274,7 +274,7 @@ describe("CLI missing credentials", () => {
 });
 
 describe("CLI .env loading", () => {
-	it("loads .env from CWD and uses those credentials", async () => {
+	it("does not auto-load .env from CWD", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-env-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		writeFileSync(
@@ -294,7 +294,7 @@ describe("CLI .env loading", () => {
 		} catch (e: unknown) {
 			const err = e as { stderr?: string; stdout?: string; message?: string; };
 			const output = `${err.stderr ?? ""}${err.stdout ?? ""}${err.message ?? ""}`;
-			expect(output,).not.toContain("DATAIKU_URL is required",);
+			expect(output,).toContain("DATAIKU_URL is required",);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}

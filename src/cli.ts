@@ -3214,10 +3214,7 @@ function requireArgs(args: string[], count: number, usage: string,): void {
 // ---------------------------------------------------------------------------
 
 function loadEnvFile(): void {
-	const dirs = [
-		resolve(dirname(fileURLToPath(import.meta.url,),), "..",),
-		process.cwd(),
-	];
+	const dirs = [resolve(dirname(fileURLToPath(import.meta.url,),), "..",),];
 	for (const dir of dirs) {
 		try {
 			const content = readFileSync(resolve(dir, ".env",), "utf-8",);
