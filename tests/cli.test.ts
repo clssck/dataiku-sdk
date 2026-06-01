@@ -1846,12 +1846,27 @@ describe("recipe input commands", () => {
 });
 
 describe("code run command", () => {
+	// Markers must match buildCodeRunScript in src/resources/scenarios.ts.
+	const OUT_START = "<<<DSS_CODE_RUN_OUTPUT_b7e3a1>>>";
+	const OUT_END = "<<<DSS_CODE_RUN_OUTPUT_END_b7e3a1>>>";
+
 	type CodeRunCapture = {
 		created: boolean;
 		deleted: boolean;
 		createBody?: Record<string, unknown>;
 		script?: string;
 	};
+
+	function processLog(outputLines: string[],): string {
+		const proc = (msg: string,) => `[2026/06/01-11:30:11.928] [Exec-2] [INFO] [process]  - ${msg}`;
+		return [
+			"[2026/06/01-11:30:11.894] [Exec-1] [INFO] [dip.scenario.custompython]  - start scenario",
+			proc(OUT_START,),
+			...outputLines.map(proc,),
+			proc(OUT_END,),
+			"[2026/06/01-11:30:12.000] [wrapper-stderr-3] [INFO] [dku.utils]  - done",
+		].join("\n",);
+	}
 
 	function codeRunServer(opts: { outcome: string; log: string; }, capture: CodeRunCapture,) {
 		return async (req: IncomingMessage, res: ServerResponse,): Promise<void> => {
@@ -1893,49 +1908,78 @@ describe("code run command", () => {
 		};
 	}
 
-	it("runs a script, returns the outcome and log, then deletes the throwaway scenario", async () => {
+	it("returns the script's clean output without DSS noise and deletes the scenario", async () => {
 		const capture: CodeRunCapture = { created: false, deleted: false, };
-		await withCliServer(
-			codeRunServer({ outcome: "SUCCESS", log: "scenario log\nMARKER_OUT\n", }, capture,),
-			async (url,) => {
-				const { stdout, } = await dssWithInput(
-					["code", "run", "--stdin",],
-					"print('hi')\n",
-					{ env: cliEnv(url,), },
-				);
-				const r = JSON.parse(stdout,) as {
-					outcome: string;
-					success: boolean;
-					runId: string;
-					log: string;
-				};
-				expect(r.outcome,).toBe("SUCCESS",);
-				expect(r.success,).toBe(true,);
-				expect(r.runId,).toBe("run-1",);
-				expect(r.log,).toContain("MARKER_OUT",);
-			},
-		);
+		const log = processLog(["line one", "MARKER_OUT",],);
+		await withCliServer(codeRunServer({ outcome: "SUCCESS", log, }, capture,), async (url,) => {
+			const { stdout, } = await dssWithInput(["code", "run", "--stdin",], "print('hi')\n", {
+				env: cliEnv(url,),
+			},);
+			const r = JSON.parse(stdout,) as {
+				outcome: string;
+				success: boolean;
+				runId: string;
+				output: string;
+				log?: string;
+			};
+			expect(r.outcome,).toBe("SUCCESS",);
+			expect(r.success,).toBe(true,);
+			expect(r.runId,).toBe("run-1",);
+			expect(r.output,).toBe("line one\nMARKER_OUT",);
+			expect(r.output,).not.toContain("[process]",);
+			expect(r.log,).toBeUndefined();
+		},);
 		expect(capture.created,).toBe(true,);
-		expect(capture.script,).toBe("print('hi')\n",);
+		expect(capture.script,).toContain("base64",);
 		expect(capture.deleted,).toBe(true,);
 	});
 
-	it("exits 4 and still cleans up when the script run fails", async () => {
+	it("includes the full DSS log with --full-log", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		await withCliServer(
+			codeRunServer({ outcome: "SUCCESS", log: processLog(["only line",],), }, capture,),
+			async (url,) => {
+				const { stdout, } = await dssWithInput(
+					["code", "run", "--stdin", "--full-log",],
+					"print(1)\n",
+					{ env: cliEnv(url,), },
+				);
+				const r = JSON.parse(stdout,) as { output: string; log?: string; };
+				expect(r.output,).toBe("only line",);
+				expect(r.log,).toContain("dip.scenario.custompython",);
+			},
+		);
+	});
+
+	it("falls back to the raw log when output markers are absent", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		await withCliServer(
+			codeRunServer({ outcome: "SUCCESS", log: "no markers here\n", }, capture,),
+			async (url,) => {
+				const { stdout, } = await dssWithInput(["code", "run", "--stdin",], "print(1)\n", {
+					env: cliEnv(url,),
+				},);
+				const r = JSON.parse(stdout,) as { output: string; log?: string; };
+				expect(r.output,).toBe("",);
+				expect(r.log,).toContain("no markers here",);
+			},
+		);
+	});
+
+	it("exits 4 with the captured traceback when the script run fails", async () => {
 		const capture: CodeRunCapture = { created: false, deleted: false, };
 		const scriptPath = join(tmpdir(), `dss-coderun-fail-${Date.now()}.py`,);
 		writeFileSync(scriptPath, "raise ValueError('boom')\n",);
+		const log = processLog(["Traceback (most recent call last):", "ValueError: boom",],);
 		try {
-			await withCliServer(
-				codeRunServer({ outcome: "FAILED", log: "traceback\n", }, capture,),
-				async (url,) => {
-					const failure = await dssFailure(["code", "run", "--file", scriptPath,], {
-						env: cliEnv(url,),
-					},);
-					expect(failure.code,).toBe(4,);
-					expect(failure.stderr,).toContain("long_running_failure",);
-					expect(failure.stderr,).toContain("FAILED",);
-				},
-			);
+			await withCliServer(codeRunServer({ outcome: "FAILED", log, }, capture,), async (url,) => {
+				const failure = await dssFailure(["code", "run", "--file", scriptPath,], {
+					env: cliEnv(url,),
+				},);
+				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toContain("long_running_failure",);
+				expect(failure.stderr,).toContain("ValueError: boom",);
+			},);
 		} finally {
 			rmSync(scriptPath, { force: true, },);
 		}
@@ -1945,13 +1989,11 @@ describe("code run command", () => {
 	it("maps --env to an explicit code-env selection", async () => {
 		const capture: CodeRunCapture = { created: false, deleted: false, };
 		await withCliServer(
-			codeRunServer({ outcome: "SUCCESS", log: "ok\n", }, capture,),
+			codeRunServer({ outcome: "SUCCESS", log: processLog(["x",],), }, capture,),
 			async (url,) => {
-				await dssWithInput(
-					["code", "run", "--stdin", "--env", "py39_pandas",],
-					"print(1)\n",
-					{ env: cliEnv(url,), },
-				);
+				await dssWithInput(["code", "run", "--stdin", "--env", "py39_pandas",], "print(1)\n", {
+					env: cliEnv(url,),
+				},);
 			},
 		);
 		const params = (capture.createBody?.params ?? {}) as {
@@ -1963,7 +2005,7 @@ describe("code run command", () => {
 	it("leaves the scenario in place with --keep", async () => {
 		const capture: CodeRunCapture = { created: false, deleted: false, };
 		await withCliServer(
-			codeRunServer({ outcome: "SUCCESS", log: "ok\n", }, capture,),
+			codeRunServer({ outcome: "SUCCESS", log: processLog(["x",],), }, capture,),
 			async (url,) => {
 				await dssWithInput(["code", "run", "--stdin", "--keep",], "print(1)\n", {
 					env: cliEnv(url,),

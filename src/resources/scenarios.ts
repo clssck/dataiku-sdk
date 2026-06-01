@@ -65,8 +65,73 @@ export interface ScenarioScriptRunResult {
 	success: boolean;
 	elapsedMs: number;
 	pollCount: number;
+	output?: string;
 	log: string;
 	envName?: string;
+}
+
+const CODE_RUN_OUTPUT_START = "<<<DSS_CODE_RUN_OUTPUT_b7e3a1>>>";
+const CODE_RUN_OUTPUT_END = "<<<DSS_CODE_RUN_OUTPUT_END_b7e3a1>>>";
+
+/**
+ * Wrap a user Python script so its stdout/stderr (and any traceback) are captured
+ * into a buffer and re-emitted between unique markers, isolated from DSS scenario
+ * wrapper noise. The script is base64-encoded to avoid quoting/escaping issues and
+ * exec'd as `__main__`. A failing script re-raises SystemExit(1) so the scenario
+ * outcome is FAILED while the captured traceback still lands between the markers.
+ */
+function buildCodeRunScript(script: string,): string {
+	const encoded = Buffer.from(script, "utf-8",).toString("base64",);
+	return [
+		"import base64 as _dku_b64, sys as _dku_sys, io as _dku_io, traceback as _dku_tb",
+		`_dku_src = _dku_b64.b64decode("${encoded}").decode("utf-8")`,
+		"_dku_buf = _dku_io.StringIO()",
+		"_dku_out, _dku_err = _dku_sys.stdout, _dku_sys.stderr",
+		"_dku_sys.stdout = _dku_sys.stderr = _dku_buf",
+		"_dku_failed = False",
+		"try:",
+		'\texec(compile(_dku_src, "<dss_code_run>", "exec"), {"__name__": "__main__"})',
+		"except Exception:",
+		"\t_dku_failed = True",
+		"\t_dku_tb.print_exc()",
+		"finally:",
+		"\t_dku_sys.stdout, _dku_sys.stderr = _dku_out, _dku_err",
+		`_dku_out.write("${CODE_RUN_OUTPUT_START}\\n")`,
+		"_dku_out.write(_dku_buf.getvalue())",
+		`_dku_out.write("\\n${CODE_RUN_OUTPUT_END}\\n")`,
+		"_dku_out.flush()",
+		"if _dku_failed:",
+		"\traise SystemExit(1)",
+		"",
+	].join("\n",);
+}
+
+/**
+ * Pull the script's own stdout/stderr back out of the full DSS run log by slicing
+ * the `[process]` lines between the markers emitted by {@link buildCodeRunScript}.
+ * Returns undefined if the markers are absent (e.g. the harness never ran), in which
+ * case callers should fall back to the full log.
+ */
+function extractCodeRunOutput(log: string,): string | undefined {
+	const messageRe = /^\[[^\]]*\] \[[^\]]*\] \[[^\]]*\] \[process\]  - (.*)$/;
+	const contents: string[] = [];
+	for (const line of log.split("\n",)) {
+		const match = messageRe.exec(line,);
+		if (match) contents.push(match[1] ?? "",);
+	}
+	let start = -1;
+	let end = -1;
+	for (let i = 0; i < contents.length; i++) {
+		if (contents[i] === CODE_RUN_OUTPUT_START) start = i;
+		else if (contents[i] === CODE_RUN_OUTPUT_END && start >= 0) {
+			end = i;
+			break;
+		}
+	}
+	if (start < 0 || end < 0) return undefined;
+	const body = contents.slice(start + 1, end,);
+	while (body.length > 0 && body[body.length - 1] === "") body.pop();
+	return body.join("\n",);
 }
 
 function isRecord(value: unknown,): value is Record<string, unknown> {
@@ -433,7 +498,10 @@ export class ScenariosResource extends BaseResource {
 				params: { envSelection, },
 			},);
 			created = true;
-			await this.client.putVoid(`${base}/payload`, { script, extension: "py", },);
+			await this.client.putVoid(
+				`${base}/payload`,
+				{ script: buildCodeRunScript(script,), extension: "py", },
+			);
 
 			const trigger = await this.client.post<Record<string, unknown>>(`${base}/run/`, {},);
 			const triggerObj = trigger.trigger as Record<string, unknown> | undefined;
@@ -483,6 +551,7 @@ export class ScenariosResource extends BaseResource {
 					// Log may be unavailable for an early failure or timeout; leave it empty.
 				}
 			}
+			const output = extractCodeRunOutput(log,);
 			return {
 				scenarioId,
 				runId,
@@ -490,6 +559,7 @@ export class ScenariosResource extends BaseResource {
 				success: outcome === "SUCCESS",
 				elapsedMs: Date.now() - startedAt,
 				pollCount,
+				output,
 				log,
 				...(opts?.envName ? { envName: opts.envName, } : {}),
 			};

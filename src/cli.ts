@@ -1349,7 +1349,7 @@ function resolveSqlInput(args: string[], flags: Record<string, string | boolean>
 }
 
 const CODE_RUN_USAGE =
-	"dss code run (--file PATH | --stdin) [--env ENV] [--timeout MS] [--keep] [--project-key KEY]";
+	"dss code run (--file PATH | --stdin) [--env ENV] [--timeout MS] [--keep] [--full-log] [--project-key KEY]";
 
 function resolveCodeInput(args: string[], flags: Record<string, string | boolean>,): string {
 	if (args.length > 0) {
@@ -1831,6 +1831,7 @@ const BOOLEAN_FLAGS = new Set([
 	"validate-objects",
 	"errors-only",
 	"keep",
+	"full-log",
 ],);
 
 const SHORT_FLAGS: Record<string, string> = {
@@ -5075,20 +5076,33 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 		run: {
 			handler: async (c, a, f,) => {
 				const script = resolveCodeInput(a, f,);
-				return c.scenarios.runScript(script, {
+				const run = await c.scenarios.runScript(script, {
 					envName: f["env"] as string | undefined,
 					projectKey: f["project-key"] as string | undefined,
 					timeoutMs: num(f["timeout"],),
 					keepScenario: f["keep"] === true,
 				},);
+				const result: Record<string, unknown> = {
+					outcome: run.outcome,
+					success: run.success,
+					runId: run.runId,
+					elapsedMs: run.elapsedMs,
+					pollCount: run.pollCount,
+					output: run.output ?? "",
+				};
+				if (f["full-log"] === true || run.output === undefined) {
+					result.log = run.log;
+				}
+				return result;
 			},
 			usage: CODE_RUN_USAGE,
 			description:
-				"Run one-off Python in a DSS code env via a throwaway custom-python scenario; returns outcome, success, and the captured run log. Exits 4 on a non-SUCCESS outcome.",
+				"Run one-off Python in a DSS code env via a throwaway custom-python scenario; returns the script's captured output (stdout+stderr) plus outcome/success. Pass --full-log for the raw DSS run log. Exits 4 on a non-SUCCESS outcome.",
 			examples: [
 				"dss code run --file inspect.py",
 				"dss code run --file inspect.py --env py39_pandas",
-				"cat snippet.py | dss code run --stdin --timeout 300000",
+				"cat snippet.py | dss code run --stdin",
+				"dss code run --file inspect.py --full-log",
 			],
 		},
 	},
