@@ -365,6 +365,31 @@ describe("RecipesResource", () => {
 		expect(payload,).not.toContain("FROM old_input oi",);
 	});
 
+	it("rejects unsafe SQL rewrite targets for unquoted table references", async () => {
+		await withRecipeServer((req, res,) => {
+			if (req.method === "GET") {
+				sendJson(res, {
+					recipe: {
+						name: "source_recipe",
+						type: "sql_query",
+						inputs: { main: { items: [{ ref: "old_input", },], }, },
+						outputs: { main: { items: [{ ref: "old_output", },], }, },
+					},
+					payload: "SELECT *\nFROM old_input oi\n",
+				},);
+				return;
+			}
+			res.statusCode = 500;
+			res.end("Unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(client.recipes.clone("source_recipe", {
+				name: "target_recipe",
+				inputRewrites: { old_input: "old_input; DROP TABLE secrets; --", },
+			},),).rejects.toThrow("Unsafe SQL rewrite target",);
+		},);
+	});
+
 	it("rejects one storage override for multiple copied output datasets", async () => {
 		await withRecipeServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);

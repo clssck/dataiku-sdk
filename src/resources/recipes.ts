@@ -189,6 +189,14 @@ function rewriteSqlTableReferences(
 	payload: string,
 	rewrites: Record<string, string>,
 ): string {
+	const bareIdentifierPattern = /^[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*$/;
+	const escapeQuotedIdentifier = (identifier: string, quote: string,): string => {
+		if (quote === "\"") return identifier.replace(/"/g, '""',);
+		if (quote === "`") return identifier.replace(/`/g, "``",);
+		return identifier;
+	};
+	const escapeBracketIdentifier = (identifier: string,): string => identifier.replace(/\]/g, "]]",);
+
 	let next = payload;
 	for (const [from, to,] of Object.entries(rewrites,)) {
 		if (!from) continue;
@@ -207,8 +215,17 @@ function rewriteSqlTableReferences(
 				quote: string | undefined,
 				bracket: string | undefined,
 			) => {
-				if (quote) return `${keyword}${space}${quote}${to}${quote}`;
-				if (bracket) return `${keyword}${space}[${to}]`;
+				if (quote) {
+					const escapedTo = escapeQuotedIdentifier(to, quote,);
+					return `${keyword}${space}${quote}${escapedTo}${quote}`;
+				}
+				if (bracket) {
+					const escapedTo = escapeBracketIdentifier(to,);
+					return `${keyword}${space}[${escapedTo}]`;
+				}
+				if (!bareIdentifierPattern.test(to,)) {
+					throw new Error(`Unsafe SQL rewrite target for ${from}: ${to}`,);
+				}
 				return `${keyword}${space}${to}`;
 			},
 		);
