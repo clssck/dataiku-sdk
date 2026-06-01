@@ -279,25 +279,27 @@ describe("CLI .env loading", () => {
 		mkdirSync(tmpDir, { recursive: true, },);
 		writeFileSync(
 			join(tmpDir, ".env",),
-			"DATAIKU_URL=http://dss-env-test-sentinel.invalid\nDATAIKU_API_KEY=fake-key\n",
+			"DATAIKU_URL=http://dss-cwd-sentinel.invalid\nDATAIKU_API_KEY=fake-key\n",
 		);
+		let output = "";
 		try {
-			await dss(["--help",], {
+			// A command that resolves credentials, so the credential path is actually exercised
+			// (top-level --help would exit before resolution and make this assertion vacuous).
+			const result = await dss(["dataset", "list",], {
 				cwd: tmpDir,
-				env: {
-					PATH: process.env.PATH,
-					HOME: process.env.HOME,
-					DATAIKU_URL: "",
-					DATAIKU_API_KEY: "",
-				},
+				env: { PATH: process.env.PATH, HOME: process.env.HOME, },
 			},);
+			output = `${result.stdout}${result.stderr}`;
 		} catch (e: unknown) {
 			const err = e as { stderr?: string; stdout?: string; message?: string; };
-			const output = `${err.stderr ?? ""}${err.stdout ?? ""}${err.message ?? ""}`;
-			expect(output,).toContain("DATAIKU_URL is required",);
+			output = `${err.stderr ?? ""}${err.stdout ?? ""}${err.message ?? ""}`;
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
+		// The CWD .env must never be auto-loaded: its sentinel URL must not leak into
+		// credential resolution. (When no SDK-root .env is present this also surfaces as
+		// "DATAIKU_URL is required" rather than a connection to the sentinel host.)
+		expect(output,).not.toContain("dss-cwd-sentinel.invalid",);
 	});
 });
 
