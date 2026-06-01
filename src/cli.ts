@@ -3792,6 +3792,7 @@ const CLEANUP_EXAMPLES = [
 ];
 
 const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
+	// Must mirror every cleanup.argv shape emitted by cleanupLedgerEntry().
 	"dataset delete",
 	"recipe delete",
 	"scenario delete",
@@ -3799,7 +3800,7 @@ const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
 	"wiki delete",
 	"dashboard delete",
 	"insight delete",
-	"saved-model delete-version",
+	"data-quality delete-rule",
 	"code-env delete",
 	"folder delete-file",
 ],);
@@ -4791,7 +4792,10 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 		try {
 			const parsed = parseArgs(entry.cleanup.argv,);
 			const [resource, action, ...args] = parsed.positional;
-			if (!resource || !action || !isAllowedCleanupAction(resource, action,) || !commands[resource]?.[action]) {
+			if (
+				!resource || !action || !isAllowedCleanupAction(resource, action,)
+				|| !commands[resource]?.[action]
+			) {
 				throw new UsageError(`Invalid cleanup argv: ${entry.cleanup.argv.join(" ",)}`,);
 			}
 			const result = await commands[resource][action].handler(client, args, parsed.flags,);
