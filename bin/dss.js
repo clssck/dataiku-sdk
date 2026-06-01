@@ -5,6 +5,7 @@ import { dirname, resolve, } from "node:path";
 import { fileURLToPath, pathToFileURL, } from "node:url";
 
 const args = process.argv.slice(2,);
+const optionArgs = args.includes("--",) ? args.slice(0, args.indexOf("--",),) : args;
 const here = dirname(fileURLToPath(import.meta.url,),);
 const distCliPath = resolve(here, "../dist/src/cli.js",);
 const sourceCliPath = resolve(here, "../src/cli.ts",);
@@ -12,10 +13,10 @@ const cliPath = existsSync(distCliPath,) ? distCliPath : sourceCliPath;
 const cliUrl = pathToFileURL(cliPath,).href;
 
 function flagValue(names,) {
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
+	for (let i = 0; i < optionArgs.length; i++) {
+		const arg = optionArgs[i];
 		for (const name of names) {
-			if (arg === name) return args[i + 1];
+			if (arg === name) return optionArgs[i + 1];
 			if (arg.startsWith(`${name}=`,)) return arg.slice(name.length + 1,);
 		}
 	}
@@ -23,7 +24,7 @@ function flagValue(names,) {
 }
 
 function hasFlag(names,) {
-	return names.some((name,) => args.includes(name,));
+	return names.some((name,) => optionArgs.includes(name,));
 }
 
 async function loadSavedTlsSettings() {
