@@ -1845,6 +1845,142 @@ describe("recipe input commands", () => {
 	});
 });
 
+describe("code run command", () => {
+	type CodeRunCapture = {
+		created: boolean;
+		deleted: boolean;
+		createBody?: Record<string, unknown>;
+		script?: string;
+	};
+
+	function codeRunServer(opts: { outcome: string; log: string; }, capture: CodeRunCapture,) {
+		return async (req: IncomingMessage, res: ServerResponse,): Promise<void> => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			const p = url.pathname;
+			if (req.method === "POST" && p === "/public/api/projects/TEST/scenarios/") {
+				capture.created = true;
+				capture.createBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { id: "scn", },);
+				return;
+			}
+			if (req.method === "PUT" && p.endsWith("/payload",)) {
+				capture.script = (JSON.parse(await readBody(req,),) as { script?: string; }).script;
+				sendJson(res, {},);
+				return;
+			}
+			if (req.method === "POST" && p.endsWith("/run/",)) {
+				sendJson(res, { trigger: { id: "manual", }, runId: "trig-1", },);
+				return;
+			}
+			if (req.method === "GET" && p.endsWith("/get-run-for-trigger",)) {
+				sendJson(res, { scenarioRun: { runId: "run-1", result: { outcome: opts.outcome, }, }, },);
+				return;
+			}
+			if (req.method === "GET" && p.endsWith("/log",)) {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/plain",);
+				res.end(opts.log,);
+				return;
+			}
+			if (req.method === "DELETE" && /\/scenarios\/[^/]+$/.test(p,)) {
+				capture.deleted = true;
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${req.method} ${p}`,);
+		};
+	}
+
+	it("runs a script, returns the outcome and log, then deletes the throwaway scenario", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		await withCliServer(
+			codeRunServer({ outcome: "SUCCESS", log: "scenario log\nMARKER_OUT\n", }, capture,),
+			async (url,) => {
+				const { stdout, } = await dssWithInput(
+					["code", "run", "--stdin",],
+					"print('hi')\n",
+					{ env: cliEnv(url,), },
+				);
+				const r = JSON.parse(stdout,) as {
+					outcome: string;
+					success: boolean;
+					runId: string;
+					log: string;
+				};
+				expect(r.outcome,).toBe("SUCCESS",);
+				expect(r.success,).toBe(true,);
+				expect(r.runId,).toBe("run-1",);
+				expect(r.log,).toContain("MARKER_OUT",);
+			},
+		);
+		expect(capture.created,).toBe(true,);
+		expect(capture.script,).toBe("print('hi')\n",);
+		expect(capture.deleted,).toBe(true,);
+	});
+
+	it("exits 4 and still cleans up when the script run fails", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		const scriptPath = join(tmpdir(), `dss-coderun-fail-${Date.now()}.py`,);
+		writeFileSync(scriptPath, "raise ValueError('boom')\n",);
+		try {
+			await withCliServer(
+				codeRunServer({ outcome: "FAILED", log: "traceback\n", }, capture,),
+				async (url,) => {
+					const failure = await dssFailure(["code", "run", "--file", scriptPath,], {
+						env: cliEnv(url,),
+					},);
+					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toContain("long_running_failure",);
+					expect(failure.stderr,).toContain("FAILED",);
+				},
+			);
+		} finally {
+			rmSync(scriptPath, { force: true, },);
+		}
+		expect(capture.deleted,).toBe(true,);
+	});
+
+	it("maps --env to an explicit code-env selection", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		await withCliServer(
+			codeRunServer({ outcome: "SUCCESS", log: "ok\n", }, capture,),
+			async (url,) => {
+				await dssWithInput(
+					["code", "run", "--stdin", "--env", "py39_pandas",],
+					"print(1)\n",
+					{ env: cliEnv(url,), },
+				);
+			},
+		);
+		const params = (capture.createBody?.params ?? {}) as {
+			envSelection?: { envMode?: string; envName?: string; };
+		};
+		expect(params.envSelection,).toEqual({ envMode: "EXPLICIT_ENV", envName: "py39_pandas", },);
+	});
+
+	it("leaves the scenario in place with --keep", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		await withCliServer(
+			codeRunServer({ outcome: "SUCCESS", log: "ok\n", }, capture,),
+			async (url,) => {
+				await dssWithInput(["code", "run", "--stdin", "--keep",], "print(1)\n", {
+					env: cliEnv(url,),
+				},);
+			},
+		);
+		expect(capture.created,).toBe(true,);
+		expect(capture.deleted,).toBe(false,);
+	});
+
+	it("requires a Python source", async () => {
+		const failure = await dssFailure(["code", "run",], { env: cliEnv("http://127.0.0.1:1",), },);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toContain("Python source is required",);
+	});
+});
+
 describe("CLI planned command coverage", () => {
 	it("fails recipe create without --output", async () => {
 		const failure = await dssFailure([

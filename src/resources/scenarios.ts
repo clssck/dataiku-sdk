@@ -58,6 +58,17 @@ export interface ScenarioUpdateResult extends ScenarioUpdatePreview {
 	mismatches: [];
 }
 
+export interface ScenarioScriptRunResult {
+	scenarioId: string;
+	runId: string;
+	outcome: string;
+	success: boolean;
+	elapsedMs: number;
+	pollCount: number;
+	log: string;
+	envName?: string;
+}
+
 function isRecord(value: unknown,): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value,);
 }
@@ -382,6 +393,114 @@ export class ScenariosResource extends BaseResource {
 				adaptiveEnabled: adaptivePolling,
 			},);
 			await new Promise((r,) => setTimeout(r, Math.min(nextDelayMs, timeout - elapsedMs,),));
+		}
+	}
+
+	/**
+	 * Run a one-off Python script in a throwaway custom-python scenario and return
+	 * its outcome plus the captured run log. The scenario is deleted afterward
+	 * unless `keepScenario` is set. This is the only DSS public-API path to execute
+	 * ad-hoc code in a code env without a persisted recipe or notebook.
+	 */
+	async runScript(
+		script: string,
+		opts?: {
+			envName?: string;
+			projectKey?: string;
+			timeoutMs?: number;
+			pollIntervalMs?: number;
+			keepScenario?: boolean;
+		},
+	): Promise<ScenarioScriptRunResult> {
+		const pk = this.resolveProjectKey(opts?.projectKey,);
+		const pkEnc = this.enc(opts?.projectKey,);
+		const scenarioId = `dss_cli_code_run_${Date.now()}`;
+		const base = `/public/api/projects/${pkEnc}/scenarios/${encodeURIComponent(scenarioId,)}`;
+		const envSelection = opts?.envName
+			? { envMode: "EXPLICIT_ENV", envName: opts.envName, }
+			: { envMode: "INHERIT", };
+		const startedAt = Date.now();
+		const baseIntervalMs = Math.max(1, opts?.pollIntervalMs ?? 2_000,);
+		const adaptivePolling = opts?.pollIntervalMs === undefined;
+		const timeout = Math.max(baseIntervalMs, opts?.timeoutMs ?? 120_000,);
+		let created = false;
+		try {
+			await this.client.post(`/public/api/projects/${pkEnc}/scenarios/`, {
+				id: scenarioId,
+				name: `dss code run (${scenarioId})`,
+				projectKey: pk,
+				type: "custom_python",
+				params: { envSelection, },
+			},);
+			created = true;
+			await this.client.putVoid(`${base}/payload`, { script, extension: "py", },);
+
+			const trigger = await this.client.post<Record<string, unknown>>(`${base}/run/`, {},);
+			const triggerObj = trigger.trigger as Record<string, unknown> | undefined;
+			const triggerId = (triggerObj?.id as string | undefined) ?? "manual";
+			const triggerRunId = String(trigger.runId ?? "",);
+			const trigQuery = `triggerId=${encodeURIComponent(triggerId,)}&triggerRunId=${
+				encodeURIComponent(triggerRunId,)
+			}`;
+
+			let runId = "";
+			let outcome = "UNKNOWN";
+			let pollCount = 0;
+			while (true) {
+				pollCount += 1;
+				const run = await this.client.get<Record<string, unknown>>(
+					`${base}/get-run-for-trigger?${trigQuery}`,
+				);
+				const scenarioRun = run.scenarioRun as Record<string, unknown> | undefined;
+				if (scenarioRun) {
+					runId = (scenarioRun.runId as string | undefined) ?? runId;
+					const result = scenarioRun.result as Record<string, unknown> | undefined;
+					const finished = result?.outcome as string | undefined;
+					if (finished) {
+						outcome = finished;
+						break;
+					}
+				}
+				if (Date.now() - startedAt >= timeout) {
+					outcome = "TIMEOUT";
+					break;
+				}
+				const nextDelayMs = computeNextPollDelayMs({
+					pollCount,
+					baseIntervalMs,
+					adaptiveEnabled: adaptivePolling,
+				},);
+				await new Promise((r,) =>
+					setTimeout(r, Math.min(nextDelayMs, Math.max(1, timeout - (Date.now() - startedAt),),),)
+				);
+			}
+
+			let log = "";
+			if (runId) {
+				try {
+					log = await this.client.getText(`${base}/${encodeURIComponent(runId,)}/log`,);
+				} catch {
+					// Log may be unavailable for an early failure or timeout; leave it empty.
+				}
+			}
+			return {
+				scenarioId,
+				runId,
+				outcome,
+				success: outcome === "SUCCESS",
+				elapsedMs: Date.now() - startedAt,
+				pollCount,
+				log,
+				...(opts?.envName ? { envName: opts.envName, } : {}),
+			};
+		} finally {
+			if (created && opts?.keepScenario !== true) {
+				try {
+					await this.client.del(base,);
+				} catch {
+					// Best-effort cleanup of the throwaway scenario.
+				}
+			}
 		}
 	}
 }

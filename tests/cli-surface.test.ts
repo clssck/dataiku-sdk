@@ -48,6 +48,7 @@ type CommandRegistryEntry = {
 type CommandRegistry = Record<string, Record<string, CommandRegistryEntry>>;
 
 const EXPECTED_COMMANDS: Record<string, string[]> = {
+	code: ["run",],
 	project: ["list", "get", "metadata", "flow", "map",],
 	"flow-zone": ["list", "find", "get", "create", "update", "delete", "move", "organize", "graph",],
 	dashboard: ["list", "get", "create", "update", "delete",],

@@ -1348,6 +1348,41 @@ function resolveSqlInput(args: string[], flags: Record<string, string | boolean>
 	return query;
 }
 
+const CODE_RUN_USAGE =
+	"dss code run (--file PATH | --stdin) [--env ENV] [--timeout MS] [--keep] [--project-key KEY]";
+
+function resolveCodeInput(args: string[], flags: Record<string, string | boolean>,): string {
+	if (args.length > 0) {
+		throw new UsageError(
+			`code run takes no positional arguments; pass the script via --file PATH or --stdin. Usage: ${CODE_RUN_USAGE}`,
+		);
+	}
+	const sources: Array<{ label: string; read: () => string; }> = [];
+	if (typeof flags["file"] === "string") {
+		sources.push({ label: "--file", read: () => readFileSync(flags["file"] as string, "utf-8",), },);
+	}
+	if (flags["stdin"] === true) {
+		sources.push({ label: "--stdin", read: readStdinText, },);
+	}
+	if (sources.length === 0) {
+		throw new UsageError(
+			`Python source is required: pass --file PATH or --stdin. Usage: ${CODE_RUN_USAGE}`,
+		);
+	}
+	if (sources.length > 1) {
+		throw new UsageError(
+			`Choose exactly one Python source: --file or --stdin. Usage: ${CODE_RUN_USAGE}`,
+		);
+	}
+	const script = stripUtf8Bom(sources[0]!.read(),);
+	if (script.trim().length === 0) {
+		throw new UsageError(
+			`Python source from ${sources[0]!.label} must not be empty. Usage: ${CODE_RUN_USAGE}`,
+		);
+	}
+	return script;
+}
+
 async function resolveFolderId(
 	client: DataikuClient,
 	nameOrId: string,
@@ -1795,6 +1830,7 @@ const BOOLEAN_FLAGS = new Set([
 	"sync",
 	"validate-objects",
 	"errors-only",
+	"keep",
 ],);
 
 const SHORT_FLAGS: Record<string, string> = {
@@ -1838,6 +1874,7 @@ const VALUE_FLAGS = new Set([
 	"database",
 	"dataset",
 	"file",
+	"env",
 	"install-core-packages",
 	"folder",
 	"input",
@@ -5031,6 +5068,27 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				"echo 'SELECT 1' | dss sql query --stdin --dataset MYPROJ.orders",
 				"dss sql query --sql-file query.sql --connection my_pg --output results.json --request-timeout 120000",
 				"dss sql query --sql-file query.sql --connection my_pg --output results.json --preview 10",
+			],
+		},
+	},
+	code: {
+		run: {
+			handler: async (c, a, f,) => {
+				const script = resolveCodeInput(a, f,);
+				return c.scenarios.runScript(script, {
+					envName: f["env"] as string | undefined,
+					projectKey: f["project-key"] as string | undefined,
+					timeoutMs: num(f["timeout"],),
+					keepScenario: f["keep"] === true,
+				},);
+			},
+			usage: CODE_RUN_USAGE,
+			description:
+				"Run one-off Python in a DSS code env via a throwaway custom-python scenario; returns outcome, success, and the captured run log. Exits 4 on a non-SUCCESS outcome.",
+			examples: [
+				"dss code run --file inspect.py",
+				"dss code run --file inspect.py --env py39_pandas",
+				"cat snippet.py | dss code run --stdin --timeout 300000",
 			],
 		},
 	},

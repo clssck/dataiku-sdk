@@ -72,6 +72,7 @@ export {
 	SCENARIO_CANONICAL_EDITABLE_FIELDS,
 	type ScenarioFieldChange,
 	type ScenarioFieldMismatch,
+	type ScenarioScriptRunResult,
 	ScenariosResource,
 	type ScenarioUpdateNormalization,
 	type ScenarioUpdatePreview,
