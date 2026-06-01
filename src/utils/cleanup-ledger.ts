@@ -21,6 +21,17 @@ export interface CleanupLedgerEntry {
 	cleanup: { argv: string[]; };
 }
 
+function isCleanupLedgerEntry(value: unknown,): value is CleanupLedgerEntry {
+	if (!value || typeof value !== "object") return false;
+	const candidate = value as Record<string, unknown>;
+	if (typeof candidate.ts !== "string") return false;
+	if (typeof candidate.action !== "string") return false;
+	if (typeof candidate.resource !== "string") return false;
+	if (!candidate.cleanup || typeof candidate.cleanup !== "object") return false;
+	const cleanup = candidate.cleanup as Record<string, unknown>;
+	return Array.isArray(cleanup.argv,) && cleanup.argv.every((arg,) => typeof arg === "string");
+}
+
 export async function appendCleanupLedgerEntry(
 	filePath: string,
 	entry: CleanupLedgerEntry,
@@ -36,5 +47,11 @@ export async function readCleanupLedger(filePath: string,): Promise<CleanupLedge
 		.split(/\r?\n/,)
 		.map((line,) => line.trim())
 		.filter((line,) => line.length > 0)
-		.map((line,) => JSON.parse(line,) as CleanupLedgerEntry);
+		.map((line, index,) => {
+			const parsed: unknown = JSON.parse(line,);
+			if (!isCleanupLedgerEntry(parsed,)) {
+				throw new Error(`Invalid cleanup ledger entry at line ${index + 1}`,);
+			}
+			return parsed;
+		},);
 }
