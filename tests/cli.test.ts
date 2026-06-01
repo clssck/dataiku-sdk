@@ -1704,6 +1704,147 @@ describe("CLI execution behavior", () => {
 	});
 });
 
+describe("recipe input commands", () => {
+	const baseRecipe = {
+		name: "r1",
+		type: "python",
+		inputs: { main: { items: [{ ref: "input_a", deps: [], },], }, },
+		outputs: { main: { items: [{ ref: "out_ds", },], }, },
+	};
+
+	type PutCapture = { puts: number; body?: Record<string, unknown>; };
+
+	function recipeInputServer(recipe: Record<string, unknown>, capture: PutCapture,) {
+		return async (req: IncomingMessage, res: ServerResponse,): Promise<void> => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/recipes/r1") {
+				sendJson(res, { recipe, },);
+				return;
+			}
+			if (req.method === "PUT" && url.pathname === "/public/api/projects/TEST/recipes/r1") {
+				capture.puts += 1;
+				capture.body = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { ok: true, },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected",);
+		};
+	}
+
+	function putItemRefs(body: Record<string, unknown> | undefined,): string[] {
+		const recipe = (body?.recipe ?? {}) as Record<string, unknown>;
+		const inputs = (recipe.inputs ?? {}) as Record<string, { items?: Array<{ ref?: string; }>; }>;
+		return (inputs.main?.items ?? []).map((item,) => item.ref ?? "");
+	}
+
+	it("add-input appends one item and PUTs the full list", async () => {
+		const capture: PutCapture = { puts: 0, };
+		await withCliServer(recipeInputServer(baseRecipe, capture,), async (url,) => {
+			const { stdout, } = await dss(["recipe", "add-input", "r1", "input_b",], {
+				env: cliEnv(url,),
+			},);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				action: "add-input",
+				inputs: ["input_a", "input_b",],
+			},);
+		},);
+		expect(capture.puts,).toBe(1,);
+		expect(putItemRefs(capture.body,),).toEqual(["input_a", "input_b",],);
+	});
+
+	it("add-input rejects a duplicate input without a PUT", async () => {
+		const capture: PutCapture = { puts: 0, };
+		await withCliServer(recipeInputServer(baseRecipe, capture,), async (url,) => {
+			const failure = await dssFailure(["recipe", "add-input", "r1", "input_a",], {
+				env: cliEnv(url,),
+			},);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toContain("is already a",);
+			expect(failure.stderr,).toContain("input of recipe",);
+		},);
+		expect(capture.puts,).toBe(0,);
+	});
+
+	it("add-input --if-not-exists skips an existing input without a PUT", async () => {
+		const capture: PutCapture = { puts: 0, };
+		await withCliServer(recipeInputServer(baseRecipe, capture,), async (url,) => {
+			const { stdout, } = await dss(
+				["recipe", "add-input", "r1", "input_a", "--if-not-exists",],
+				{ env: cliEnv(url,), },
+			);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				skipped: "r1",
+				reason: "exists",
+				dataset: "input_a",
+			},);
+		},);
+		expect(capture.puts,).toBe(0,);
+	});
+
+	it("add-input --dry-run previews the planned inputs without a PUT", async () => {
+		const capture: PutCapture = { puts: 0, };
+		await withCliServer(recipeInputServer(baseRecipe, capture,), async (url,) => {
+			const { stdout, } = await dss(
+				["recipe", "add-input", "r1", "input_b", "--dry-run",],
+				{ env: cliEnv(url,), },
+			);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				dryRun: true,
+				action: "add-input",
+				inputs: ["input_a", "input_b",],
+			},);
+		},);
+		expect(capture.puts,).toBe(0,);
+	});
+
+	it("remove-input drops one item and PUTs the remainder", async () => {
+		const recipe = {
+			name: "r1",
+			type: "python",
+			inputs: { main: { items: [{ ref: "input_a", }, { ref: "input_b", },], }, },
+		};
+		const capture: PutCapture = { puts: 0, };
+		await withCliServer(recipeInputServer(recipe, capture,), async (url,) => {
+			const { stdout, } = await dss(["recipe", "remove-input", "r1", "input_b",], {
+				env: cliEnv(url,),
+			},);
+			expect(JSON.parse(stdout,),).toMatchObject({ action: "remove-input", inputs: ["input_a",], },);
+		},);
+		expect(capture.puts,).toBe(1,);
+		expect(putItemRefs(capture.body,),).toEqual(["input_a",],);
+	});
+
+	it("remove-input rejects a missing input without a PUT", async () => {
+		const capture: PutCapture = { puts: 0, };
+		await withCliServer(recipeInputServer(baseRecipe, capture,), async (url,) => {
+			const failure = await dssFailure(["recipe", "remove-input", "r1", "input_x",], {
+				env: cliEnv(url,),
+			},);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toContain("is not a",);
+			expect(failure.stderr,).toContain("input of recipe",);
+		},);
+		expect(capture.puts,).toBe(0,);
+	});
+
+	it("remove-input --if-exists skips a missing input without a PUT", async () => {
+		const capture: PutCapture = { puts: 0, };
+		await withCliServer(recipeInputServer(baseRecipe, capture,), async (url,) => {
+			const { stdout, } = await dss(
+				["recipe", "remove-input", "r1", "input_x", "--if-exists",],
+				{ env: cliEnv(url,), },
+			);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				skipped: "r1",
+				reason: "missing",
+				dataset: "input_x",
+			},);
+		},);
+		expect(capture.puts,).toBe(0,);
+	});
+});
+
 describe("CLI planned command coverage", () => {
 	it("fails recipe create without --output", async () => {
 		const failure = await dssFailure([

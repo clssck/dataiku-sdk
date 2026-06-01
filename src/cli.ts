@@ -1525,6 +1525,21 @@ function skipResult(
 	return { skipped: id, reason, resource, ...extra, };
 }
 
+function recipeRoleInputItems(recipe: Record<string, unknown>, role: string,): unknown[] {
+	const inputs = recipe["inputs"];
+	if (!inputs || typeof inputs !== "object") return [];
+	const roleEntry = (inputs as Record<string, unknown>)[role];
+	if (!roleEntry || typeof roleEntry !== "object") return [];
+	const items = (roleEntry as Record<string, unknown>)["items"];
+	return Array.isArray(items,) ? items : [];
+}
+
+function recipeInputItemRef(item: unknown,): string | undefined {
+	if (!item || typeof item !== "object") return undefined;
+	const ref = (item as Record<string, unknown>)["ref"];
+	return typeof ref === "string" && ref.length > 0 ? ref : undefined;
+}
+
 function planResult(
 	resource: string,
 	action: string,
@@ -1866,6 +1881,7 @@ const VALUE_FLAGS = new Set([
 	"results-per-page",
 	"record-cleanup",
 	"rule-id",
+	"role",
 	"retries",
 	"poll-interval",
 	"python-interpreter",
@@ -3670,6 +3686,117 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				"dss recipe update compute_orders --data-file settings.json --dry-run",
 				'dss recipe update compute_orders --data \'{"recipe":{"params":{"envSelection":{"envMode":"EXPLICIT_ENV","envName":"python39"}}}}\'',
 				"cat settings.json | dss recipe update compute_orders --stdin",
+			],
+		},
+		"add-input": {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss recipe add-input <recipe> <dataset> [--role ROLE] [--if-not-exists] [--dry-run] [--project-key KEY]",
+				);
+				const role = (f["role"] as string | undefined) ?? "main";
+				const pk = f["project-key"] as string | undefined;
+				const { recipe, } = await c.recipes.get(a[0], { projectKey: pk, },);
+				const items = recipeRoleInputItems(recipe, role,);
+				const present = items.some((item,) => recipeInputItemRef(item,) === a[1]);
+				if (present) {
+					if (f["if-not-exists"] === true) {
+						return skipResult("recipe", a[0], "exists", { dataset: a[1], role, },);
+					}
+					throw new UsageError(
+						`Dataset "${a[1]}" is already a "${role}" input of recipe "${a[0]}".`,
+						"validation_failed",
+					);
+				}
+				const nextItems = [...items, { ref: a[1], deps: [], },];
+				const inputs = nextItems.map(recipeInputItemRef,).filter((ref,): ref is string =>
+					Boolean(ref,)
+				);
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "add-input",
+						resource: "recipe",
+						recipe: a[0],
+						dataset: a[1],
+						role,
+						inputs,
+					};
+				}
+				await c.recipes.update(
+					a[0],
+					{ recipe: { inputs: { [role]: { items: nextItems, }, }, }, },
+					pk,
+				);
+				return { updated: a[0], resource: "recipe", action: "add-input", role, dataset: a[1], inputs, };
+			},
+			usage:
+				"dss recipe add-input <recipe> <dataset> [--role ROLE] [--if-not-exists] [--dry-run] [--project-key KEY]",
+			description:
+				"Add a dataset as a recipe input by appending one item to the current inputs (no need to resend the whole list).",
+			examples: [
+				"dss recipe add-input compute_orders extra_lookup",
+				"dss recipe add-input compute_orders extra_lookup --if-not-exists --dry-run",
+			],
+		},
+		"remove-input": {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss recipe remove-input <recipe> <dataset> [--role ROLE] [--if-exists] [--dry-run] [--project-key KEY]",
+				);
+				const role = (f["role"] as string | undefined) ?? "main";
+				const pk = f["project-key"] as string | undefined;
+				const { recipe, } = await c.recipes.get(a[0], { projectKey: pk, },);
+				const items = recipeRoleInputItems(recipe, role,);
+				const present = items.some((item,) => recipeInputItemRef(item,) === a[1]);
+				if (!present) {
+					if (f["if-exists"] === true) {
+						return skipResult("recipe", a[0], "missing", { dataset: a[1], role, },);
+					}
+					throw new UsageError(
+						`Dataset "${a[1]}" is not a "${role}" input of recipe "${a[0]}".`,
+						"validation_failed",
+					);
+				}
+				const nextItems = items.filter((item,) => recipeInputItemRef(item,) !== a[1]);
+				const inputs = nextItems.map(recipeInputItemRef,).filter((ref,): ref is string =>
+					Boolean(ref,)
+				);
+				if (f["dry-run"] === true) {
+					return {
+						dryRun: true,
+						action: "remove-input",
+						resource: "recipe",
+						recipe: a[0],
+						dataset: a[1],
+						role,
+						inputs,
+					};
+				}
+				await c.recipes.update(
+					a[0],
+					{ recipe: { inputs: { [role]: { items: nextItems, }, }, }, },
+					pk,
+				);
+				return {
+					updated: a[0],
+					resource: "recipe",
+					action: "remove-input",
+					role,
+					dataset: a[1],
+					inputs,
+				};
+			},
+			usage:
+				"dss recipe remove-input <recipe> <dataset> [--role ROLE] [--if-exists] [--dry-run] [--project-key KEY]",
+			description:
+				"Remove a dataset from a recipe's inputs by dropping one item from the current inputs.",
+			examples: [
+				"dss recipe remove-input compute_orders stale_lookup",
+				"dss recipe remove-input compute_orders stale_lookup --if-exists --dry-run",
 			],
 		},
 		"get-payload": {
@@ -6135,7 +6262,7 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "data-quality" && action === "compute") return "write";
 	if (READ_ACTIONS.has(action,)) return "read";
 	if (
-		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout)/
+		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove)/
 			.test(action,)
 	) {
 		return "write";

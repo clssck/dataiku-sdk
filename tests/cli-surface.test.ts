@@ -92,6 +92,8 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"create",
 		"diff",
 		"update",
+		"add-input",
+		"remove-input",
 		"get-payload",
 		"cat",
 		"set-payload",
