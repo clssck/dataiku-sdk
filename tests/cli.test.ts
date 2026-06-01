@@ -944,6 +944,158 @@ describe("CLI execution behavior", () => {
 		}
 	});
 
+	function sqlPreviewServer(queryId: string, rows: number[][],) {
+		return (req: IncomingMessage, res: ServerResponse,): void => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+				sendJson(res, { queryId, hasResults: true, schema: [{ name: "id", type: "bigint", },], },);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === `/public/api/sql/queries/${queryId}/stream`) {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify(rows,),);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === `/public/api/sql/queries/${queryId}/finish-streaming`
+			) {
+				res.statusCode = 200;
+				res.end("",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		};
+	}
+
+	it("includes a default 5-row preview in the --output summary", async () => {
+		const outputPath = join(tmpdir(), `dss-cli-sql-preview-${Date.now()}.json`,);
+		const rows = [[1,], [2,], [3,], [4,], [5,], [6,], [7,],];
+		try {
+			await withCliServer(sqlPreviewServer("q-preview", rows,), async (url,) => {
+				const { stdout, } = await dss([
+					"sql",
+					"query",
+					"SELECT id FROM orders",
+					"--connection",
+					"CONN",
+					"--output",
+					outputPath,
+				], { env: cliEnv(url,), },);
+				const result = JSON.parse(stdout,) as { rowCount: number; preview: number[][]; };
+				expect(result.rowCount,).toBe(7,);
+				expect(result.preview,).toEqual([[1,], [2,], [3,], [4,], [5,],],);
+				// The file keeps every row; the preview is only the stdout summary.
+				expect((JSON.parse(readFileSync(outputPath, "utf-8",),) as { rows: number[][]; }).rows,)
+					.toEqual(rows,);
+			},);
+		} finally {
+			rmSync(outputPath, { force: true, },);
+		}
+	});
+
+	it("honors --preview N for the preview row count", async () => {
+		const outputPath = join(tmpdir(), `dss-cli-sql-preview-n-${Date.now()}.json`,);
+		const rows = [[1,], [2,], [3,], [4,],];
+		try {
+			await withCliServer(sqlPreviewServer("q-preview-n", rows,), async (url,) => {
+				const { stdout, } = await dss([
+					"sql",
+					"query",
+					"SELECT id FROM orders",
+					"--connection",
+					"CONN",
+					"--output",
+					outputPath,
+					"--preview",
+					"2",
+				], { env: cliEnv(url,), },);
+				const result = JSON.parse(stdout,) as { rowCount: number; preview: number[][]; };
+				expect(result.rowCount,).toBe(4,);
+				expect(result.preview,).toEqual([[1,], [2,],],);
+			},);
+		} finally {
+			rmSync(outputPath, { force: true, },);
+		}
+	});
+
+	it("treats --preview 0 as an explicit empty preview", async () => {
+		const outputPath = join(tmpdir(), `dss-cli-sql-preview-zero-${Date.now()}.json`,);
+		const rows = [[1,], [2,],];
+		try {
+			await withCliServer(sqlPreviewServer("q-preview-zero", rows,), async (url,) => {
+				const { stdout, } = await dss([
+					"sql",
+					"query",
+					"SELECT id FROM orders",
+					"--connection",
+					"CONN",
+					"--output",
+					outputPath,
+					"--preview",
+					"0",
+				], { env: cliEnv(url,), },);
+				const result = JSON.parse(stdout,) as { rowCount: number; preview: number[][]; };
+				expect(result.rowCount,).toBe(2,);
+				expect(result.preview,).toEqual([],);
+			},);
+		} finally {
+			rmSync(outputPath, { force: true, },);
+		}
+	});
+
+	it("rejects --preview without --output", async () => {
+		const failure = await dssFailure([
+			"sql",
+			"query",
+			"SELECT 1",
+			"--connection",
+			"CONN",
+			"--preview",
+			"5",
+		], { env: cliEnv("http://127.0.0.1:1",), },);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toContain("--preview requires --output",);
+	});
+
+	it("rejects a non-integer --preview value before querying", async () => {
+		const outputPath = join(tmpdir(), `dss-cli-sql-preview-bad-${Date.now()}.json`,);
+		const failure = await dssFailure([
+			"sql",
+			"query",
+			"SELECT 1",
+			"--connection",
+			"CONN",
+			"--output",
+			outputPath,
+			"--preview",
+			"abc",
+		], { env: cliEnv("http://127.0.0.1:1",), },);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toContain("non-negative integer",);
+		// Validation runs before the query, so no output file is created.
+		expect(readFileExists(outputPath,),).toBe(false,);
+	});
+
+	it("rejects a negative --preview value", async () => {
+		const outputPath = join(tmpdir(), `dss-cli-sql-preview-neg-${Date.now()}.json`,);
+		const failure = await dssFailure([
+			"sql",
+			"query",
+			"SELECT 1",
+			"--connection",
+			"CONN",
+			"--output",
+			outputPath,
+			"--preview",
+			"-1",
+		], { env: cliEnv("http://127.0.0.1:1",), },);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toContain("non-negative integer",);
+	});
+
 	it("supports SQL from stdin without losing double quotes", async () => {
 		let capturedBody: Record<string, unknown> | undefined;
 		await withCliServer(async (req, res,) => {

@@ -1127,7 +1127,32 @@ function json(
 type TlsSettings = Pick<DssCredentials, "tlsRejectUnauthorized" | "caCertPath">;
 
 const SQL_QUERY_USAGE =
-	"dss sql query [SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin] (--connection CONN | --dataset FULL_NAME) [--database DB] [--output PATH|--output-file PATH] [--request-timeout MS] [--project-key KEY]";
+	"dss sql query [SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin] (--connection CONN | --dataset FULL_NAME) [--database DB] [--output PATH|--output-file PATH] [--preview N] [--request-timeout MS] [--project-key KEY]";
+
+const DEFAULT_SQL_PREVIEW_ROWS = 5;
+
+/**
+ * Parse `--preview N` into a non-negative row count. Rejects non-integers,
+ * negatives, and empty values loudly so a bad flag never silently degrades to a
+ * default. `--preview 0` is valid and yields an empty preview (explicit opt-out).
+ */
+function parseSqlPreviewCount(value: string | boolean | undefined,): number {
+	if (typeof value !== "string") {
+		throw new UsageError(
+			`--preview requires an integer value. Usage: ${SQL_QUERY_USAGE}`,
+			"validation_failed",
+		);
+	}
+	const trimmed = value.trim();
+	const parsed = Number(trimmed,);
+	if (trimmed.length === 0 || !Number.isInteger(parsed,) || parsed < 0) {
+		throw new UsageError(
+			`--preview must be a non-negative integer (got "${value}"). Usage: ${SQL_QUERY_USAGE}`,
+			"validation_failed",
+		);
+	}
+	return parsed;
+}
 
 function readStdinText(): string {
 	return readFileSync(0, "utf-8",);
@@ -1833,6 +1858,7 @@ const VALUE_FLAGS = new Set([
 	"partition",
 	"parent",
 	"path",
+	"preview",
 	"project-key",
 	"recipe",
 	"request-timeout",
@@ -4836,6 +4862,18 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 						`Pass exactly one of --connection or --dataset. Usage: ${SQL_QUERY_USAGE}`,
 					);
 				}
+				const outputFile = (f["output"] as string | undefined)
+					?? (f["output-file"] as string | undefined);
+				const previewProvided = f["preview"] !== undefined;
+				if (previewProvided && !outputFile) {
+					throw new UsageError(
+						`--preview requires --output or --output-file. Usage: ${SQL_QUERY_USAGE}`,
+						"validation_failed",
+					);
+				}
+				const previewCount = previewProvided
+					? parseSqlPreviewCount(f["preview"],)
+					: DEFAULT_SQL_PREVIEW_ROWS;
 				const result = await c.sql.query({
 					query,
 					connection,
@@ -4843,8 +4881,6 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					database: f["database"] as string | undefined,
 					projectKey: f["project-key"] as string | undefined,
 				},);
-				const outputFile = (f["output"] as string | undefined)
-					?? (f["output-file"] as string | undefined);
 				if (!outputFile) return result;
 
 				const outputPath = resolve(outputFile,);
@@ -4855,6 +4891,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					schema: result.schema,
 					columns: result.columns ?? result.schema,
 					rowCount: result.rows.length,
+					preview: result.rows.slice(0, previewCount,),
 					outputPath,
 					written: outputPath,
 				};
@@ -4866,6 +4903,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				"dss sql query --sql-file query.sql --connection my_pg",
 				"echo 'SELECT 1' | dss sql query --stdin --dataset MYPROJ.orders",
 				"dss sql query --sql-file query.sql --connection my_pg --output results.json --request-timeout 120000",
+				"dss sql query --sql-file query.sql --connection my_pg --output results.json --preview 10",
 			],
 		},
 	},

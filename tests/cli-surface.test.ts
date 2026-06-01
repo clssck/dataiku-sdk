@@ -394,6 +394,10 @@ describe("CLI command surface", () => {
 			expect.objectContaining({ name: "output", kind: "value", },),
 		);
 		expect(registry.sql.query.producesLocalFile,).toBe(true,);
+		expect(registry.sql.query.flags,).toContainEqual(
+			expect.objectContaining({ name: "preview", kind: "value", valueType: "N", },),
+		);
+		expect(registry.sql.query.optionalFlags,).toContain("preview",);
 		expect(registry.connection.schemas.outputShape,).toBe("array",);
 		expect(registry.connection.tables.flags,).toContainEqual(
 			expect.objectContaining({ name: "schema", kind: "value", },),
