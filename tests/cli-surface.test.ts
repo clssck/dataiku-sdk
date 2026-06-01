@@ -424,6 +424,9 @@ describe("CLI command surface", () => {
 			expect.objectContaining({ name: "env", kind: "value", },),
 		);
 		expect(registry.code.run.optionalFlags,).toContain("full-log",);
+		expect(registry.code.run.flags,).toContainEqual(
+			expect.objectContaining({ name: "max-log-bytes", kind: "value", valueType: "N", },),
+		);
 		expect(registry.insight.create.requiredOneOf,).toEqual([
 			{ oneOf: [["data",], ["data-file",], ["stdin",], ["name", "type",],], },
 		],);

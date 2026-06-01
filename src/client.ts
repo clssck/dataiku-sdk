@@ -271,6 +271,48 @@ export class DataikuClient {
 		return res.text();
 	}
 
+	async getTextLimited(path: string, maxBytes: number,): Promise<{ text: string; truncated: boolean; }> {
+		const limit = Math.max(0, Math.floor(maxBytes,),);
+		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
+			method: "GET",
+			headers: this.getAnyHeaders(),
+		},);
+
+		if (!res.body) return { text: "", truncated: false, };
+
+		const reader = res.body.getReader();
+		const decoder = new TextDecoder();
+		let bytesRead = 0;
+		let text = "";
+		let truncated = false;
+
+		try {
+			while (true) {
+				const { done, value, } = await reader.read();
+				if (done) break;
+				const chunk = value;
+				const remaining = limit - bytesRead;
+				if (remaining <= 0) {
+					truncated = true;
+					break;
+				}
+				if (chunk.byteLength > remaining) {
+					text += decoder.decode(chunk.slice(0, remaining,), { stream: true, },);
+					bytesRead += remaining;
+					truncated = true;
+					break;
+				}
+				text += decoder.decode(chunk, { stream: true, },);
+				bytesRead += chunk.byteLength;
+			}
+		} finally {
+			if (truncated) await reader.cancel();
+		}
+
+		text += decoder.decode();
+		return { text, truncated, };
+	}
+
 	async post<T = unknown,>(path: string, body?: unknown,): Promise<T> {
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "POST",

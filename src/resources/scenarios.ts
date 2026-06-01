@@ -68,9 +68,12 @@ export interface ScenarioScriptRunResult {
 	pollCount: number;
 	output?: string;
 	log: string;
+	logTruncated: boolean;
+	maxLogBytes: number;
 	envName?: string;
 }
 
+const DEFAULT_CODE_RUN_MAX_LOG_BYTES = 1_048_576;
 const CODE_RUN_OUTPUT_START = "<<<DSS_CODE_RUN_OUTPUT_b7e3a1>>>";
 const CODE_RUN_OUTPUT_END = "<<<DSS_CODE_RUN_OUTPUT_END_b7e3a1>>>";
 
@@ -481,6 +484,7 @@ export class ScenariosResource extends BaseResource {
 			timeoutMs?: number;
 			pollIntervalMs?: number;
 			keepScenario?: boolean;
+			maxLogBytes?: number;
 		},
 	): Promise<ScenarioScriptRunResult> {
 		const pk = this.resolveProjectKey(opts?.projectKey,);
@@ -494,6 +498,7 @@ export class ScenariosResource extends BaseResource {
 		const baseIntervalMs = Math.max(1, opts?.pollIntervalMs ?? 2_000,);
 		const adaptivePolling = opts?.pollIntervalMs === undefined;
 		const timeout = Math.max(baseIntervalMs, opts?.timeoutMs ?? 120_000,);
+		const maxLogBytes = Math.max(0, Math.floor(opts?.maxLogBytes ?? DEFAULT_CODE_RUN_MAX_LOG_BYTES,),);
 		try {
 			await this.client.post(`/public/api/projects/${pkEnc}/scenarios/`, {
 				id: scenarioId,
@@ -555,8 +560,14 @@ export class ScenariosResource extends BaseResource {
 			}
 
 			let log = "";
+			let logTruncated = false;
 			if (runId && outcome !== "TIMEOUT") {
-				log = await this.client.getText(`${base}/${encodeURIComponent(runId,)}/log`,);
+				const limitedLog = await this.client.getTextLimited(
+					`${base}/${encodeURIComponent(runId,)}/log`,
+					maxLogBytes,
+				);
+				log = limitedLog.text;
+				logTruncated = limitedLog.truncated;
 			}
 			const output = extractCodeRunOutput(log,);
 			return {
@@ -568,6 +579,8 @@ export class ScenariosResource extends BaseResource {
 				pollCount,
 				output,
 				log,
+				logTruncated,
+				maxLogBytes,
 				...(opts?.envName ? { envName: opts.envName, } : {}),
 			};
 		} finally {

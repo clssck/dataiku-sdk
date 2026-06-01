@@ -1349,7 +1349,7 @@ function resolveSqlInput(args: string[], flags: Record<string, string | boolean>
 }
 
 const CODE_RUN_USAGE =
-	"dss code run (--file PATH | --stdin) [--env ENV] [--timeout MS] [--keep] [--full-log] [--project-key KEY]";
+	"dss code run (--file PATH | --stdin) [--env ENV] [--timeout MS] [--keep] [--full-log] [--max-log-bytes N] [--project-key KEY]";
 
 function resolveCodeInput(args: string[], flags: Record<string, string | boolean>,): string {
 	if (args.length > 0) {
@@ -1889,6 +1889,7 @@ const VALUE_FLAGS = new Set([
 	"max-edges",
 	"max-lines",
 	"max-log-lines",
+	"max-log-bytes",
 	"listed",
 	"max-nodes",
 	"max-rows",
@@ -5081,6 +5082,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					projectKey: f["project-key"] as string | undefined,
 					timeoutMs: num(f["timeout"],),
 					keepScenario: f["keep"] === true,
+					maxLogBytes: num(f["max-log-bytes"],),
 				},);
 				const result: Record<string, unknown> = {
 					outcome: run.outcome,
@@ -5089,6 +5091,8 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					elapsedMs: run.elapsedMs,
 					pollCount: run.pollCount,
 					output: run.output ?? "",
+					logTruncated: run.logTruncated,
+					maxLogBytes: run.maxLogBytes,
 				};
 				if (f["full-log"] === true || run.output === undefined) {
 					result.log = run.log;
@@ -5097,7 +5101,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			},
 			usage: CODE_RUN_USAGE,
 			description:
-				"Run one-off Python in a DSS code env via a throwaway custom-python scenario; returns the script's captured output (stdout+stderr) plus outcome/success. Pass --full-log for the raw DSS run log. Exits 4 on a non-SUCCESS outcome.",
+				"Run one-off Python in a DSS code env via a throwaway custom-python scenario; returns the script's captured output (stdout+stderr) plus outcome/success. Log retrieval is capped by --max-log-bytes (default 1048576); pass --full-log to include the capped raw DSS run log. Exits 4 on a non-SUCCESS outcome.",
 			examples: [
 				"dss code run --file inspect.py",
 				"dss code run --file inspect.py --env py39_pandas",
