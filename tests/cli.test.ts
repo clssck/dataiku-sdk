@@ -6477,6 +6477,98 @@ describe("CLI agent-readiness mutation contracts", () => {
 		expect(failure.code,).toBe(1,);
 		expect(failure.stderr,).toContain("Could not read cleanup ledger",);
 	});
+
+	it("rejects malformed cleanup ledger entries", async () => {
+		const tmpDir = join(tmpdir(), `dss-bad-cleanup-ledger-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		writeFileSync(ledgerPath, `${JSON.stringify({ cleanup: { argv: [1, 2, 3,], }, },)}\n`,);
+		try {
+			const failure = await dssFailure(["cleanup", "--file", ledgerPath,], {
+				env: { PATH: process.env.PATH, HOME: process.env.HOME, },
+			},);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toContain("Invalid cleanup ledger entry at line 1",);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("rejects cleanup apply for non-allowlisted commands", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-disallowed-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		writeFileSync(
+			ledgerPath,
+			`${
+				JSON.stringify({
+					ts: "2026-05-07T00:00:00.000Z",
+					action: "create",
+					resource: "scenario",
+					id: "x",
+					cleanup: { argv: ["folder", "upload", "f", "/r", "/tmp/local",], },
+				},)
+			}\n`,
+		);
+		try {
+			await withCliServer((_req, res,) => {
+				res.statusCode = 500;
+				res.end("unexpected",);
+			}, async (url,) => {
+				const failure = await dssFailure(["cleanup", "--file", ledgerPath, "--apply",], {
+					env: cliEnv(url,),
+				},);
+				expect(failure.code,).toBe(2,);
+				expect(failure.stdout,).toContain('"failures"',);
+				expect(failure.stdout,).toContain("Invalid cleanup argv: folder upload f /r /tmp/local",);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("applies allowlisted data-quality delete-rule cleanups", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-dq-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		writeFileSync(
+			ledgerPath,
+			`${
+				JSON.stringify({
+					ts: "2026-05-07T00:00:00.000Z",
+					action: "create-rule",
+					resource: "data-quality",
+					id: "rule-1",
+					cleanup: {
+						argv: [
+							"data-quality",
+							"delete-rule",
+							"ds1",
+							"rule-1",
+							"--if-exists",
+							"--project-key",
+							"TEST",
+						],
+					},
+				},)
+			}\n`,
+		);
+		try {
+			await withCliServer((_req, res,) => {
+				res.statusCode = 404;
+				res.end(`{"message":"not found"}`,);
+			}, async (url,) => {
+				const { stdout, } = await dss(["cleanup", "--file", ledgerPath, "--apply",], {
+					env: cliEnv(url,),
+				},);
+				expect(stdout,).not.toContain("Invalid cleanup argv",);
+				const result = JSON.parse(stdout,) as { failures?: unknown[]; };
+				expect(result.failures ?? [],).toEqual([],);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
 });
 
 describe("CLI batch command", () => {

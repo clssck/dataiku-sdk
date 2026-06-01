@@ -6255,6 +6255,24 @@ const FIXTURES_EXAMPLES = [
 	"dss fixtures --json --allow-types Filesystem,Inline",
 ];
 
+const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
+	// Must mirror every cleanup.argv shape emitted by cleanupLedgerEntry().
+	"dataset delete",
+	"recipe delete",
+	"scenario delete",
+	"flow-zone delete",
+	"wiki delete",
+	"dashboard delete",
+	"insight delete",
+	"data-quality delete-rule",
+	"code-env delete",
+	"folder delete-file",
+],);
+
+function isAllowedCleanupAction(resource: string, action: string,): boolean {
+	return ALLOWED_CLEANUP_ACTIONS.has(`${resource} ${action}`,);
+}
+
 function uniqueStrings(values: string[],): string[] {
 	return [...new Set(values,),];
 }
@@ -7475,7 +7493,10 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 		try {
 			const parsed = parseArgs(entry.cleanup.argv,);
 			const [resource, action, ...args] = parsed.positional;
-			if (!resource || !action || !commands[resource]?.[action]) {
+			if (
+				!resource || !action || !isAllowedCleanupAction(resource, action,)
+				|| !commands[resource]?.[action]
+			) {
 				throw new UsageError(`Invalid cleanup argv: ${entry.cleanup.argv.join(" ",)}`,);
 			}
 			const result = await commands[resource][action].handler(client, args, parsed.flags,);
