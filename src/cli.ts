@@ -5019,7 +5019,6 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 	sql: {
 		query: {
 			handler: async (c, a, f,) => {
-				const query = resolveSqlInput(a, f,);
 				const connection = f["connection"] as string | undefined;
 				const datasetFullName = f["dataset"] as string | undefined;
 				if ((connection ? 1 : 0) + (datasetFullName ? 1 : 0) !== 1) {
@@ -5039,6 +5038,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				const previewCount = previewProvided
 					? parseSqlPreviewCount(f["preview"],)
 					: DEFAULT_SQL_PREVIEW_ROWS;
+				const query = resolveSqlInput(a, f,);
 				const result = await c.sql.query({
 					query,
 					connection,
@@ -6566,6 +6566,7 @@ function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
 		return "future";
 	}
 	if (resource === "data-quality" && action === "compute") return "future";
+	if (resource === "code" && action === "run") return "future";
 	return "none";
 }
 

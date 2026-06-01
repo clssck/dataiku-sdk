@@ -1843,6 +1843,29 @@ describe("recipe input commands", () => {
 		},);
 		expect(capture.puts,).toBe(0,);
 	});
+
+	it("add-input preserves other roles and existing item fields", async () => {
+		const recipe = {
+			name: "r1",
+			type: "python",
+			inputs: {
+				main: { items: [{ ref: "input_a", deps: ["dep1",], extra: "keep", },], },
+				secondary: { items: [{ ref: "side", },], },
+			},
+		};
+		const capture: PutCapture = { puts: 0, };
+		await withCliServer(recipeInputServer(recipe, capture,), async (url,) => {
+			await dss(["recipe", "add-input", "r1", "input_b",], { env: cliEnv(url,), },);
+		},);
+		const putRecipe = capture.body?.recipe as {
+			inputs: Record<string, { items: Array<Record<string, unknown>>; }>;
+		};
+		expect(putRecipe.inputs.main.items,).toEqual([
+			{ ref: "input_a", deps: ["dep1",], extra: "keep", },
+			{ ref: "input_b", deps: [], },
+		],);
+		expect(putRecipe.inputs.secondary.items,).toEqual([{ ref: "side", },],);
+	});
 });
 
 describe("code run command", () => {
@@ -1868,7 +1891,10 @@ describe("code run command", () => {
 		].join("\n",);
 	}
 
-	function codeRunServer(opts: { outcome: string; log: string; }, capture: CodeRunCapture,) {
+	function codeRunServer(
+		opts: { outcome: string; log: string; neverFinish?: boolean; failRunStep?: boolean; },
+		capture: CodeRunCapture,
+	) {
 		return async (req: IncomingMessage, res: ServerResponse,): Promise<void> => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			const p = url.pathname;
@@ -1884,11 +1910,19 @@ describe("code run command", () => {
 				return;
 			}
 			if (req.method === "POST" && p.endsWith("/run/",)) {
+				if (opts.failRunStep) {
+					res.statusCode = 500;
+					res.end(`{"message":"run boom"}`,);
+					return;
+				}
 				sendJson(res, { trigger: { id: "manual", }, runId: "trig-1", },);
 				return;
 			}
 			if (req.method === "GET" && p.endsWith("/get-run-for-trigger",)) {
-				sendJson(res, { scenarioRun: { runId: "run-1", result: { outcome: opts.outcome, }, }, },);
+				const scenarioRun = opts.neverFinish
+					? { runId: "run-1", }
+					: { runId: "run-1", result: { outcome: opts.outcome, }, };
+				sendJson(res, { scenarioRun, },);
 				return;
 			}
 			if (req.method === "GET" && p.endsWith("/log",)) {
@@ -2020,6 +2054,84 @@ describe("code run command", () => {
 		const failure = await dssFailure(["code", "run",], { env: cliEnv("http://127.0.0.1:1",), },);
 		expect(failure.code,).toBe(1,);
 		expect(failure.stderr,).toContain("Python source is required",);
+	});
+
+	it("times out to exit 4 and still cleans up the scenario", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		const scriptPath = join(tmpdir(), `dss-coderun-timeout-${Date.now()}.py`,);
+		writeFileSync(scriptPath, "print(1)\n",);
+		try {
+			await withCliServer(
+				codeRunServer({ outcome: "SUCCESS", log: "", neverFinish: true, }, capture,),
+				async (url,) => {
+					const failure = await dssFailure(
+						["code", "run", "--file", scriptPath, "--timeout", "2000",],
+						{ env: cliEnv(url,), },
+					);
+					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toContain("TIMEOUT",);
+				},
+			);
+		} finally {
+			rmSync(scriptPath, { force: true, },);
+		}
+		expect(capture.deleted,).toBe(true,);
+	});
+
+	it("cleans up the scenario when the run step errors", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		const scriptPath = join(tmpdir(), `dss-coderun-midfail-${Date.now()}.py`,);
+		writeFileSync(scriptPath, "print(1)\n",);
+		try {
+			await withCliServer(
+				codeRunServer({ outcome: "SUCCESS", log: "", failRunStep: true, }, capture,),
+				async (url,) => {
+					const failure = await dssFailure(["code", "run", "--file", scriptPath,], {
+						env: cliEnv(url,),
+					},);
+					expect(failure.code,).not.toBe(0,);
+					expect(failure.code,).not.toBe(1,);
+				},
+			);
+		} finally {
+			rmSync(scriptPath, { force: true, },);
+		}
+		expect(capture.created,).toBe(true,);
+		expect(capture.deleted,).toBe(true,);
+	});
+
+	it("extracts clean output across CRLF logs and user-printed marker lines", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		const proc = (msg: string,) => `[t] [Exec] [INFO] [process]  - ${msg}`;
+		const log = [
+			"[t] [E] [INFO] [dip.scenario]  - start",
+			proc(OUT_START,),
+			proc("real output",),
+			proc(OUT_END,),
+			proc("after fake end",),
+			proc(OUT_END,),
+			"[t] [W] [INFO] [dku.utils]  - done",
+		].join("\r\n",);
+		await withCliServer(codeRunServer({ outcome: "SUCCESS", log, }, capture,), async (url,) => {
+			const { stdout, } = await dssWithInput(["code", "run", "--stdin",], "print(1)\n", {
+				env: cliEnv(url,),
+			},);
+			const r = JSON.parse(stdout,) as { output: string; };
+			expect(r.output,).toBe(`real output\n${OUT_END}\nafter fake end`,);
+		},);
+	});
+
+	it("rejects positional args and conflicting sources", async () => {
+		const f1 = await dssFailure(["code", "run", "extra.py",], {
+			env: cliEnv("http://127.0.0.1:1",),
+		},);
+		expect(f1.code,).toBe(1,);
+		expect(f1.stderr,).toContain("no positional arguments",);
+		const f2 = await dssFailure(["code", "run", "--file", "x.py", "--stdin",], {
+			env: cliEnv("http://127.0.0.1:1",),
+		},);
+		expect(f2.code,).toBe(1,);
+		expect(f2.stderr,).toContain("exactly one",);
 	});
 });
 

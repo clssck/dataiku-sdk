@@ -1,3 +1,4 @@
+import { randomUUID, } from "node:crypto";
 import { DataikuError, } from "../errors.js";
 import type {
 	ScenarioDetails,
@@ -88,20 +89,22 @@ function buildCodeRunScript(script: string,): string {
 		"_dku_buf = _dku_io.StringIO()",
 		"_dku_out, _dku_err = _dku_sys.stdout, _dku_sys.stderr",
 		"_dku_sys.stdout = _dku_sys.stderr = _dku_buf",
-		"_dku_failed = False",
+		"_dku_code = 0",
 		"try:",
 		'\texec(compile(_dku_src, "<dss_code_run>", "exec"), {"__name__": "__main__"})',
-		"except Exception:",
-		"\t_dku_failed = True",
+		"except SystemExit as _dku_e:",
+		"\t_dku_code = _dku_e.code if isinstance(_dku_e.code, int) else (0 if _dku_e.code is None else 1)",
+		"except BaseException:",
+		"\t_dku_code = 1",
 		"\t_dku_tb.print_exc()",
 		"finally:",
 		"\t_dku_sys.stdout, _dku_sys.stderr = _dku_out, _dku_err",
-		`_dku_out.write("${CODE_RUN_OUTPUT_START}\\n")`,
-		"_dku_out.write(_dku_buf.getvalue())",
-		`_dku_out.write("\\n${CODE_RUN_OUTPUT_END}\\n")`,
-		"_dku_out.flush()",
-		"if _dku_failed:",
-		"\traise SystemExit(1)",
+		`\t_dku_out.write("${CODE_RUN_OUTPUT_START}\\n")`,
+		"\t_dku_out.write(_dku_buf.getvalue())",
+		`\t_dku_out.write("\\n${CODE_RUN_OUTPUT_END}\\n")`,
+		"\t_dku_out.flush()",
+		"if _dku_code:",
+		"\traise SystemExit(_dku_code)",
 		"",
 	].join("\n",);
 }
@@ -115,22 +118,25 @@ function buildCodeRunScript(script: string,): string {
 function extractCodeRunOutput(log: string,): string | undefined {
 	const messageRe = /^\[[^\]]*\] \[[^\]]*\] \[[^\]]*\] \[process\]  - (.*)$/;
 	const contents: string[] = [];
-	for (const line of log.split("\n",)) {
+	for (const rawLine of log.split("\n",)) {
+		const line = rawLine.endsWith("\r",) ? rawLine.slice(0, -1,) : rawLine;
 		const match = messageRe.exec(line,);
 		if (match) contents.push(match[1] ?? "",);
 	}
-	let start = -1;
+	// First start + last end, so a script that prints a marker string stays body content.
+	const start = contents.indexOf(CODE_RUN_OUTPUT_START,);
+	if (start < 0) return undefined;
 	let end = -1;
-	for (let i = 0; i < contents.length; i++) {
-		if (contents[i] === CODE_RUN_OUTPUT_START) start = i;
-		else if (contents[i] === CODE_RUN_OUTPUT_END && start >= 0) {
+	for (let i = contents.length - 1; i > start; i--) {
+		if (contents[i] === CODE_RUN_OUTPUT_END) {
 			end = i;
 			break;
 		}
 	}
-	if (start < 0 || end < 0) return undefined;
+	if (end < 0) return undefined;
 	const body = contents.slice(start + 1, end,);
-	while (body.length > 0 && body[body.length - 1] === "") body.pop();
+	// Drop only the single trailing separator the harness writes before the end marker.
+	if (body.length > 0 && body[body.length - 1] === "") body.pop();
 	return body.join("\n",);
 }
 
@@ -479,7 +485,7 @@ export class ScenariosResource extends BaseResource {
 	): Promise<ScenarioScriptRunResult> {
 		const pk = this.resolveProjectKey(opts?.projectKey,);
 		const pkEnc = this.enc(opts?.projectKey,);
-		const scenarioId = `dss_cli_code_run_${Date.now()}`;
+		const scenarioId = `dss_cli_code_run_${Date.now()}_${randomUUID().replace(/-/g, "",)}`;
 		const base = `/public/api/projects/${pkEnc}/scenarios/${encodeURIComponent(scenarioId,)}`;
 		const envSelection = opts?.envName
 			? { envMode: "EXPLICIT_ENV", envName: opts.envName, }
@@ -488,7 +494,6 @@ export class ScenariosResource extends BaseResource {
 		const baseIntervalMs = Math.max(1, opts?.pollIntervalMs ?? 2_000,);
 		const adaptivePolling = opts?.pollIntervalMs === undefined;
 		const timeout = Math.max(baseIntervalMs, opts?.timeoutMs ?? 120_000,);
-		let created = false;
 		try {
 			await this.client.post(`/public/api/projects/${pkEnc}/scenarios/`, {
 				id: scenarioId,
@@ -497,7 +502,6 @@ export class ScenariosResource extends BaseResource {
 				type: "custom_python",
 				params: { envSelection, },
 			},);
-			created = true;
 			await this.client.putVoid(
 				`${base}/payload`,
 				{ script: buildCodeRunScript(script,), extension: "py", },
@@ -507,6 +511,13 @@ export class ScenariosResource extends BaseResource {
 			const triggerObj = trigger.trigger as Record<string, unknown> | undefined;
 			const triggerId = (triggerObj?.id as string | undefined) ?? "manual";
 			const triggerRunId = String(trigger.runId ?? "",);
+			if (!triggerRunId) {
+				throw new DataikuError(
+					500,
+					"Scenario run not started",
+					`Scenario "${scenarioId}" run trigger returned no run id; cannot track the run.`,
+				);
+			}
 			const trigQuery = `triggerId=${encodeURIComponent(triggerId,)}&triggerRunId=${
 				encodeURIComponent(triggerRunId,)
 			}`;
@@ -515,6 +526,10 @@ export class ScenariosResource extends BaseResource {
 			let outcome = "UNKNOWN";
 			let pollCount = 0;
 			while (true) {
+				if (Date.now() - startedAt >= timeout) {
+					outcome = "TIMEOUT";
+					break;
+				}
 				pollCount += 1;
 				const run = await this.client.get<Record<string, unknown>>(
 					`${base}/get-run-for-trigger?${trigQuery}`,
@@ -529,10 +544,6 @@ export class ScenariosResource extends BaseResource {
 						break;
 					}
 				}
-				if (Date.now() - startedAt >= timeout) {
-					outcome = "TIMEOUT";
-					break;
-				}
 				const nextDelayMs = computeNextPollDelayMs({
 					pollCount,
 					baseIntervalMs,
@@ -544,12 +555,8 @@ export class ScenariosResource extends BaseResource {
 			}
 
 			let log = "";
-			if (runId) {
-				try {
-					log = await this.client.getText(`${base}/${encodeURIComponent(runId,)}/log`,);
-				} catch {
-					// Log may be unavailable for an early failure or timeout; leave it empty.
-				}
+			if (runId && outcome !== "TIMEOUT") {
+				log = await this.client.getText(`${base}/${encodeURIComponent(runId,)}/log`,);
 			}
 			const output = extractCodeRunOutput(log,);
 			return {
@@ -564,7 +571,7 @@ export class ScenariosResource extends BaseResource {
 				...(opts?.envName ? { envName: opts.envName, } : {}),
 			};
 		} finally {
-			if (created && opts?.keepScenario !== true) {
+			if (opts?.keepScenario !== true) {
 				try {
 					await this.client.del(base,);
 				} catch {

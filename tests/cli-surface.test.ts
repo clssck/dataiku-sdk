@@ -415,6 +415,15 @@ describe("CLI command surface", () => {
 		},],);
 		expect(registry.sql.query.optionalFlags,).not.toContain("connection",);
 		expect(registry.sql.query.optionalFlags,).not.toContain("dataset",);
+		expect(registry.code.run.async,).toBe("future",);
+		expect(registry.code.run.exitCodes.longRunningFailure,).toBe(4,);
+		expect(registry.code.run.mutatesDss,).toBe(true,);
+		expect(registry.code.run.requiresProject,).toBe(true,);
+		expect(registry.code.run.requiredOneOf,).toEqual([{ oneOf: [["file",], ["stdin",],], },],);
+		expect(registry.code.run.flags,).toContainEqual(
+			expect.objectContaining({ name: "env", kind: "value", },),
+		);
+		expect(registry.code.run.optionalFlags,).toContain("full-log",);
 		expect(registry.insight.create.requiredOneOf,).toEqual([
 			{ oneOf: [["data",], ["data-file",], ["stdin",], ["name", "type",],], },
 		],);
