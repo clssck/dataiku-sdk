@@ -74,7 +74,7 @@ describe("BundlesResource", () => {
 
 		await withServer((req, res,) => {
 			requests.push(`${req.method ?? "GET"} ${req.url ?? ""}`,);
-			sendJson(res, bundles,);
+			sendJson(res, { bundles, },);
 		}, async (url,) => {
 			const resource = new BundlesResource(createClient(url,),);
 			await expect(resource.listExported(),).resolves.toEqual(bundles,);
@@ -100,7 +100,9 @@ describe("BundlesResource", () => {
 		},);
 
 		expect(observedMethod,).toBe("PUT",);
-		expect(observedPath,).toBe("/public/api/projects/TEST/bundles/exported/bundle%2Fslash",);
+		expect(observedPath,).toBe(
+			"/public/api/projects/TEST/bundles/exported/?bundleId=bundle%2Fslash",
+		);
 		expect(observedBody,).toEqual({},);
 	});
 
@@ -118,7 +120,7 @@ describe("BundlesResource", () => {
 		},);
 
 		expect(requests,).toEqual([
-			"DELETE /public/api/projects/TEST/bundles/exported/bundle%2Fdelete",
+			"DELETE /public/api/projects/TEST/bundles/exported/?bundleId=bundle%2Fdelete",
 			"DELETE /public/api/projects/TEST/bundles/imported/bundle%2Fdelete",
 		],);
 	});
@@ -177,6 +179,41 @@ describe("BundlesResource", () => {
 		expect(observedBody,).toContain('name="file"',);
 		expect(observedBody,).toContain('filename="project-bundle.zip"',);
 		expect(observedBody,).toContain("zip contents",);
+	});
+	it("imports server-side archives with archivePath as a query parameter", async () => {
+		let observedMethod = "";
+		let observedPath = "";
+		let observedBody: unknown;
+
+		await withServer(async (req, res,) => {
+			observedMethod = req.method ?? "";
+			observedPath = req.url ?? "";
+			observedBody = JSON.parse(await readBody(req,),);
+			sendJson(res, { imported: true, },);
+		}, async (url,) => {
+			const resource = new BundlesResource(createClient(url,),);
+			await expect(resource.importFromArchive("/data/bundles/v1.zip",),).resolves.toEqual({
+				imported: true,
+			},);
+		},);
+
+		expect(observedMethod,).toBe("POST",);
+		expect(observedPath,).toBe(
+			"/public/api/projects/TEST/bundles/imported/actions/importFromArchive?archivePath=%2Fdata%2Fbundles%2Fv1.zip",
+		);
+		expect(observedBody,).toEqual({},);
+	});
+
+	it("unwraps the bundles wrapper when listing imported bundles", async () => {
+		const bundles = [{ bundleId: "imp-1", },];
+
+		await withServer((req, res,) => {
+			expect(req.url,).toBe("/public/api/projects/TEST/bundles/imported",);
+			sendJson(res, { bundles, },);
+		}, async (url,) => {
+			const resource = new BundlesResource(createClient(url,),);
+			await expect(resource.listImported(),).resolves.toEqual(bundles,);
+		},);
 	});
 });
 

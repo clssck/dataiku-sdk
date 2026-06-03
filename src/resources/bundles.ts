@@ -3,15 +3,16 @@ import { BaseResource, } from "./base.js";
 export class BundlesResource extends BaseResource {
 	/** List bundles exported from a project on the Design node. */
 	async listExported(projectKey?: string,): Promise<Record<string, unknown>[]> {
-		return this.client.get<Record<string, unknown>[]>(
+		const res = await this.client.get<{ bundles?: Record<string, unknown>[]; }>(
 			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported`,
 		);
+		return res.bundles ?? [];
 	}
 
 	/** Create or overwrite an exported Design-node bundle. */
 	async exportBundle(bundleId: string, projectKey?: string,): Promise<void> {
 		await this.client.putVoid(
-			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported/${
+			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported/?bundleId=${
 				encodeURIComponent(bundleId,)
 			}`,
 			{},
@@ -21,7 +22,7 @@ export class BundlesResource extends BaseResource {
 	/** Delete an exported Design-node bundle. */
 	async deleteExported(bundleId: string, projectKey?: string,): Promise<void> {
 		await this.client.del(
-			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported/${
+			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported/?bundleId=${
 				encodeURIComponent(bundleId,)
 			}`,
 		);
@@ -46,9 +47,10 @@ export class BundlesResource extends BaseResource {
 
 	/** List bundles imported into a project on the Automation node. */
 	async listImported(projectKey?: string,): Promise<Record<string, unknown>[]> {
-		return this.client.get<Record<string, unknown>[]>(
+		const res = await this.client.get<{ bundles?: Record<string, unknown>[]; }>(
 			`/public/api/projects/${this.enc(projectKey,)}/bundles/imported`,
 		);
+		return res.bundles ?? [];
 	}
 
 	/** Import a server-side bundle archive into an Automation-node project. */
@@ -57,8 +59,10 @@ export class BundlesResource extends BaseResource {
 		projectKey?: string,
 	): Promise<Record<string, unknown>> {
 		return this.client.post<Record<string, unknown>>(
-			`/public/api/projects/${this.enc(projectKey,)}/bundles/imported/actions/importFromArchive`,
-			{ archivePath, },
+			`/public/api/projects/${
+				this.enc(projectKey,)
+			}/bundles/imported/actions/importFromArchive?archivePath=${encodeURIComponent(archivePath,)}`,
+			{},
 		);
 	}
 
