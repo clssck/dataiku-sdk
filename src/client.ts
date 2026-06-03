@@ -89,6 +89,39 @@ function shouldRetryMethod(method: string,): boolean {
 	return method.toUpperCase() === "GET";
 }
 
+function concatBytes(chunks: Uint8Array[], total: number,): Uint8Array {
+	const out = new Uint8Array(total,);
+	let offset = 0;
+	for (const chunk of chunks) {
+		out.set(chunk, offset,);
+		offset += chunk.byteLength;
+	}
+	return out;
+}
+
+/**
+ * Drop a trailing incomplete UTF-8 multibyte sequence so the bytes end on a
+ * character boundary. Guarantees the decoded string re-encodes to no more bytes
+ * than the input, so a byte cap is never exceeded by a replacement character.
+ */
+function trimToUtf8Boundary(bytes: Uint8Array,): Uint8Array {
+	let i = bytes.length - 1;
+	let continuation = 0;
+	while (i >= 0 && (bytes[i] & 0xC0) === 0x80) {
+		i--;
+		continuation++;
+	}
+	if (i < 0) return bytes;
+	const lead = bytes[i];
+	let expected: number;
+	if ((lead & 0x80) === 0x00) expected = 1;
+	else if ((lead & 0xE0) === 0xC0) expected = 2;
+	else if ((lead & 0xF0) === 0xE0) expected = 3;
+	else if ((lead & 0xF8) === 0xF0) expected = 4;
+	else return bytes;
+	return continuation + 1 < expected ? bytes.subarray(0, i,) : bytes;
+}
+
 function buildRetryMetadata(
 	method: string,
 	enabled: boolean,
@@ -271,7 +304,10 @@ export class DataikuClient {
 		return res.text();
 	}
 
-	async getTextLimited(path: string, maxBytes: number,): Promise<{ text: string; truncated: boolean; }> {
+	async getTextLimited(
+		path: string,
+		maxBytes: number,
+	): Promise<{ text: string; truncated: boolean; }> {
 		const limit = Math.max(0, Math.floor(maxBytes,),);
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "GET",
@@ -281,36 +317,39 @@ export class DataikuClient {
 		if (!res.body) return { text: "", truncated: false, };
 
 		const reader = res.body.getReader();
-		const decoder = new TextDecoder();
+		const chunks: Uint8Array[] = [];
 		let bytesRead = 0;
-		let text = "";
 		let truncated = false;
 
 		try {
-			while (true) {
+			while (bytesRead < limit) {
 				const { done, value, } = await reader.read();
 				if (done) break;
-				const chunk = value;
-				const remaining = limit - bytesRead;
-				if (remaining <= 0) {
+				const room = limit - bytesRead;
+				if (value.byteLength > room) {
+					chunks.push(value.slice(0, room,),);
+					bytesRead += room;
 					truncated = true;
 					break;
 				}
-				if (chunk.byteLength > remaining) {
-					text += decoder.decode(chunk.slice(0, remaining,), { stream: true, },);
-					bytesRead += remaining;
-					truncated = true;
-					break;
-				}
-				text += decoder.decode(chunk, { stream: true, },);
-				bytesRead += chunk.byteLength;
+				chunks.push(value,);
+				bytesRead += value.byteLength;
+			}
+			if (!truncated && bytesRead >= limit) {
+				// Buffer filled exactly on a chunk boundary; peek whether more data remains.
+				const { done, } = await reader.read();
+				if (!done) truncated = true;
 			}
 		} finally {
-			if (truncated) await reader.cancel();
+			await reader.cancel();
 		}
 
-		text += decoder.decode();
-		return { text, truncated, };
+		const collected = concatBytes(chunks, bytesRead,);
+		// On truncation, drop any trailing partial UTF-8 character so the decoded
+		// text never re-encodes beyond the byte cap (a stream-flush would otherwise
+		// emit a 3-byte replacement char for a split multibyte sequence).
+		const usable = truncated ? trimToUtf8Boundary(collected,) : collected;
+		return { text: new TextDecoder().decode(usable,), truncated, };
 	}
 
 	async post<T = unknown,>(path: string, body?: unknown,): Promise<T> {
