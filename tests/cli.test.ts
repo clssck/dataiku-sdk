@@ -1985,6 +1985,25 @@ describe("code run command", () => {
 		);
 	});
 
+	it("caps code-run log retrieval with --max-log-bytes", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		const log = processLog(["first", "second", "third",],);
+		await withCliServer(
+			codeRunServer({ outcome: "SUCCESS", log, }, capture,),
+			async (url,) => {
+				const { stdout, } = await dssWithInput(
+					["code", "run", "--stdin", "--full-log", "--max-log-bytes", "64",],
+					"print(1)\n",
+					{ env: cliEnv(url,), },
+				);
+				const r = JSON.parse(stdout,) as { log: string; logTruncated: boolean; maxLogBytes: number; };
+				expect(Buffer.byteLength(r.log, "utf-8",),).toBeLessThanOrEqual(64,);
+				expect(r.logTruncated,).toBe(true,);
+				expect(r.maxLogBytes,).toBe(64,);
+			},
+		);
+	});
+
 	it("falls back to the raw log when output markers are absent", async () => {
 		const capture: CodeRunCapture = { created: false, deleted: false, };
 		await withCliServer(
