@@ -24,6 +24,10 @@ export {
 } from "./errors.js";
 
 // Resources (for advanced use / extension)
+export { ApiDeployerResource, } from "./resources/api-deployer.js";
+export { ApiServicesResource, } from "./resources/api-services.js";
+export { ApplicationsResource, } from "./resources/applications.js";
+export { BundlesResource, ProjectDeployerResource, } from "./resources/bundles.js";
 export { CodeEnvsResource, } from "./resources/code-envs.js";
 export {
 	type ConnectionSchemaListOptions,
@@ -81,6 +85,7 @@ export {
 } from "./resources/scenarios.js";
 export { SqlResource, } from "./resources/sql.js";
 export { VariablesResource, } from "./resources/variables.js";
+export { WebappsResource, } from "./resources/webapps.js";
 export { WikiResource, } from "./resources/wiki.js";
 
 // Schemas (TypeBox schema objects for runtime validation)

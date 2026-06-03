@@ -7,6 +7,10 @@ import { type SafeParseResult, safeParseSchema, } from "./schemas.js";
 
 import { classifyDataikuError, DataikuError, type DataikuRetryMetadata, } from "./errors.js";
 
+import { ApiDeployerResource, } from "./resources/api-deployer.js";
+import { ApiServicesResource, } from "./resources/api-services.js";
+import { ApplicationsResource, } from "./resources/applications.js";
+import { BundlesResource, ProjectDeployerResource, } from "./resources/bundles.js";
 import { CodeEnvsResource, } from "./resources/code-envs.js";
 import { ConnectionsResource, } from "./resources/connections.js";
 import { DashboardsResource, } from "./resources/dashboards.js";
@@ -23,6 +27,7 @@ import { RecipesResource, } from "./resources/recipes.js";
 import { ScenariosResource, } from "./resources/scenarios.js";
 import { SqlResource, } from "./resources/sql.js";
 import { VariablesResource, } from "./resources/variables.js";
+import { WebappsResource, } from "./resources/webapps.js";
 import { WikiResource, } from "./resources/wiki.js";
 
 /* ------------------------------------------------------------------ */
@@ -200,6 +205,12 @@ export class DataikuClient {
 	private sqlResource?: SqlResource;
 	private notebooksResource?: NotebooksResource;
 	private wikiResource?: WikiResource;
+	private applicationsResource?: ApplicationsResource;
+	private webappsResource?: WebappsResource;
+	private apiServicesResource?: ApiServicesResource;
+	private apiDeployerResource?: ApiDeployerResource;
+	private bundlesResource?: BundlesResource;
+	private projectDeployerResource?: ProjectDeployerResource;
 
 	get projects(): ProjectsResource {
 		return (this.projectsResource ??= new ProjectsResource(this,));
@@ -251,6 +262,24 @@ export class DataikuClient {
 	}
 	get wiki(): WikiResource {
 		return (this.wikiResource ??= new WikiResource(this,));
+	}
+	get applications(): ApplicationsResource {
+		return (this.applicationsResource ??= new ApplicationsResource(this,));
+	}
+	get webapps(): WebappsResource {
+		return (this.webappsResource ??= new WebappsResource(this,));
+	}
+	get apiServices(): ApiServicesResource {
+		return (this.apiServicesResource ??= new ApiServicesResource(this,));
+	}
+	get apiDeployer(): ApiDeployerResource {
+		return (this.apiDeployerResource ??= new ApiDeployerResource(this,));
+	}
+	get bundles(): BundlesResource {
+		return (this.bundlesResource ??= new BundlesResource(this,));
+	}
+	get projectDeployer(): ProjectDeployerResource {
+		return (this.projectDeployerResource ??= new ProjectDeployerResource(this,));
 	}
 
 	constructor(config: DataikuClientConfig,) {
@@ -359,6 +388,15 @@ export class DataikuClient {
 			body: body !== undefined ? JSON.stringify(body,) : undefined,
 		},);
 		return this.parseJsonResponse<T>(res,);
+	}
+
+	async postText(path: string, body?: unknown,): Promise<string> {
+		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
+			method: "POST",
+			headers: this.getHeaders(),
+			body: body !== undefined ? JSON.stringify(body,) : undefined,
+		},);
+		return res.text();
 	}
 
 	async put<T = unknown,>(path: string, body: unknown,): Promise<T> {
