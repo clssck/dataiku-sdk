@@ -145,7 +145,7 @@ describe("ApiServicesResource", () => {
 		const requestBodies: unknown[] = [];
 		const packages = [{ packageId: "pkg/1", serviceId: "svc id", },];
 		const summary = { packageId: "pkg/1", status: "BUILT", };
-		const created = { packageId: "pkg/1", created: true, };
+		const createdMessage = "Created package pkg/1";
 		const published = { packageId: "pkg/1", published: true, };
 
 		await withServer(async (req, res,) => {
@@ -169,12 +169,15 @@ describe("ApiServicesResource", () => {
 				sendJson(res, published,);
 				return;
 			}
-			sendJson(res, created,);
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(createdMessage,);
 		}, async (url,) => {
 			const resource = new ApiServicesResource(createClient(url,),);
 			await expect(resource.listPackages("svc id",),).resolves.toEqual(packages,);
 			await expect(resource.getPackageSummary("svc id", "pkg/1",),).resolves.toEqual(summary,);
-			await expect(resource.createPackage("svc id", "pkg/1",),).resolves.toEqual(created,);
+			await expect(resource.createPackage("svc id", "pkg/1",),).resolves.toEqual({
+				message: createdMessage,
+			},);
 			await resource.deletePackage("svc id", "pkg/1",);
 			await expect(resource.publishPackage("svc id", "pkg/1",),).resolves.toEqual(published,);
 		},);

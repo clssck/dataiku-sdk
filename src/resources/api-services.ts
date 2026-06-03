@@ -72,11 +72,12 @@ export class ApiServicesResource extends BaseResource {
 		serviceId: string,
 		packageId: string,
 		projectKey?: string,
-	): Promise<ApiServiceActionResult> {
-		return this.client.post<ApiServiceActionResult>(
+	): Promise<{ message: string; }> {
+		const message = await this.client.postText(
 			this.packagePath(serviceId, packageId, projectKey,),
 			{},
 		);
+		return { message, };
 	}
 
 	/** Delete an API service package. */

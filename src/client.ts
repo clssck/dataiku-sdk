@@ -309,6 +309,15 @@ export class DataikuClient {
 		return this.parseJsonResponse<T>(res,);
 	}
 
+	async postText(path: string, body?: unknown,): Promise<string> {
+		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
+			method: "POST",
+			headers: this.getHeaders(),
+			body: body !== undefined ? JSON.stringify(body,) : undefined,
+		},);
+		return res.text();
+	}
+
 	async put<T = unknown,>(path: string, body: unknown,): Promise<T> {
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "PUT",
