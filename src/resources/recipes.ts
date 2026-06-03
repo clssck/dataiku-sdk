@@ -191,7 +191,7 @@ function rewriteSqlTableReferences(
 ): string {
 	const bareIdentifierPattern = /^[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*$/;
 	const escapeQuotedIdentifier = (identifier: string, quote: string,): string => {
-		if (quote === "\"") return identifier.replace(/"/g, '""',);
+		if (quote === '"') return identifier.replace(/"/g, '""',);
 		if (quote === "`") return identifier.replace(/`/g, "``",);
 		return identifier;
 	};
