@@ -498,7 +498,10 @@ export class ScenariosResource extends BaseResource {
 		const baseIntervalMs = Math.max(1, opts?.pollIntervalMs ?? 2_000,);
 		const adaptivePolling = opts?.pollIntervalMs === undefined;
 		const timeout = Math.max(baseIntervalMs, opts?.timeoutMs ?? 120_000,);
-		const maxLogBytes = Math.max(0, Math.floor(opts?.maxLogBytes ?? DEFAULT_CODE_RUN_MAX_LOG_BYTES,),);
+		const maxLogBytes = Math.max(
+			0,
+			Math.floor(opts?.maxLogBytes ?? DEFAULT_CODE_RUN_MAX_LOG_BYTES,),
+		);
 		try {
 			await this.client.post(`/public/api/projects/${pkEnc}/scenarios/`, {
 				id: scenarioId,
