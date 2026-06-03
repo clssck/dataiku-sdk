@@ -185,18 +185,21 @@ function isSqlRecipeType(recipeType: unknown,): boolean {
 	return typeof recipeType === "string" && recipeType.toLowerCase().includes("sql",);
 }
 
+function escapeQuotedIdentifier(identifier: string, quote: string,): string {
+	if (quote === '"') return identifier.replace(/"/g, '""',);
+	if (quote === "`") return identifier.replace(/`/g, "``",);
+	return identifier;
+}
+
+function escapeBracketIdentifier(identifier: string,): string {
+	return identifier.replace(/\]/g, "]]",);
+}
+
 function rewriteSqlTableReferences(
 	payload: string,
 	rewrites: Record<string, string>,
 ): string {
 	const bareIdentifierPattern = /^[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*$/;
-	const escapeQuotedIdentifier = (identifier: string, quote: string,): string => {
-		if (quote === '"') return identifier.replace(/"/g, '""',);
-		if (quote === "`") return identifier.replace(/`/g, "``",);
-		return identifier;
-	};
-	const escapeBracketIdentifier = (identifier: string,): string => identifier.replace(/\]/g, "]]",);
-
 	let next = payload;
 	for (const [from, to,] of Object.entries(rewrites,)) {
 		if (!from) continue;
