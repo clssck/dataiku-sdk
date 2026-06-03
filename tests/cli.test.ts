@@ -112,6 +112,20 @@ function cliEnv(url: string,): NodeJS.ProcessEnv {
 	};
 }
 
+function putItemRefs(body: Record<string, unknown> | undefined,): string[] {
+	const recipe = (body?.recipe ?? {}) as Record<string, unknown>;
+	const inputs = (recipe.inputs ?? {}) as Record<string, { items?: Array<{ ref?: string; }>; }>;
+	return (inputs.main?.items ?? []).map((item,) => item.ref ?? "");
+}
+
+function execProcessLogLine(msg: string,): string {
+	return `[2026/06/01-11:30:11.928] [Exec-2] [INFO] [process]  - ${msg}`;
+}
+
+function shortProcessLogLine(msg: string,): string {
+	return `[t] [Exec] [INFO] [process]  - ${msg}`;
+}
+
 async function withCliServer(
 	handler: (req: IncomingMessage, res: ServerResponse,) => Promise<void> | void,
 	run: (url: string,) => Promise<void>,
@@ -1732,12 +1746,6 @@ describe("recipe input commands", () => {
 		};
 	}
 
-	function putItemRefs(body: Record<string, unknown> | undefined,): string[] {
-		const recipe = (body?.recipe ?? {}) as Record<string, unknown>;
-		const inputs = (recipe.inputs ?? {}) as Record<string, { items?: Array<{ ref?: string; }>; }>;
-		return (inputs.main?.items ?? []).map((item,) => item.ref ?? "");
-	}
-
 	it("add-input appends one item and PUTs the full list", async () => {
 		const capture: PutCapture = { puts: 0, };
 		await withCliServer(recipeInputServer(baseRecipe, capture,), async (url,) => {
@@ -1881,12 +1889,11 @@ describe("code run command", () => {
 	};
 
 	function processLog(outputLines: string[],): string {
-		const proc = (msg: string,) => `[2026/06/01-11:30:11.928] [Exec-2] [INFO] [process]  - ${msg}`;
 		return [
 			"[2026/06/01-11:30:11.894] [Exec-1] [INFO] [dip.scenario.custompython]  - start scenario",
-			proc(OUT_START,),
-			...outputLines.map(proc,),
-			proc(OUT_END,),
+			execProcessLogLine(OUT_START,),
+			...outputLines.map(execProcessLogLine,),
+			execProcessLogLine(OUT_END,),
 			"[2026/06/01-11:30:12.000] [wrapper-stderr-3] [INFO] [dku.utils]  - done",
 		].join("\n",);
 	}
@@ -2121,14 +2128,13 @@ describe("code run command", () => {
 
 	it("extracts clean output across CRLF logs and user-printed marker lines", async () => {
 		const capture: CodeRunCapture = { created: false, deleted: false, };
-		const proc = (msg: string,) => `[t] [Exec] [INFO] [process]  - ${msg}`;
 		const log = [
 			"[t] [E] [INFO] [dip.scenario]  - start",
-			proc(OUT_START,),
-			proc("real output",),
-			proc(OUT_END,),
-			proc("after fake end",),
-			proc(OUT_END,),
+			shortProcessLogLine(OUT_START,),
+			shortProcessLogLine("real output",),
+			shortProcessLogLine(OUT_END,),
+			shortProcessLogLine("after fake end",),
+			shortProcessLogLine(OUT_END,),
 			"[t] [W] [INFO] [dku.utils]  - done",
 		].join("\r\n",);
 		await withCliServer(codeRunServer({ outcome: "SUCCESS", log, }, capture,), async (url,) => {
@@ -3042,7 +3048,6 @@ describe("CLI recipe get-payload and set-payload", () => {
 
 		try {
 			await withCliServer(async (req, res,) => {
-				const _url = new URL(req.url ?? "/", "http://localhost",);
 				if (req.method === "GET") {
 					sendJson(res, {
 						recipe: { type: "python", name: "my_recipe", },
@@ -5333,8 +5338,11 @@ describe("CLI command behavioral smoke coverage", () => {
 					),
 				)
 					.toEqual({ cleared: "notebook-1", resource: "jupyter-notebook", },);
-				expect((savedJupyterBody?.cells as Array<Record<string, unknown>>)[0]?.outputs as unknown[],)
-					.toEqual([],);
+				expect(savedJupyterBody,).toBeDefined();
+				const savedCells = (savedJupyterBody as Record<string, unknown>).cells as Array<
+					Record<string, unknown>
+				>;
+				expect(savedCells[0]?.outputs as unknown[],).toEqual([],);
 				expect(
 					JSON.parse(
 						(await dss(["notebook", "sessions-jupyter", "notebook-1",], { env: cliEnv(url,), },)).stdout,

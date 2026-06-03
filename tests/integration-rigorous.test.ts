@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, } from "bun:test";
+import { afterAll, expect, it, } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile, } from "node:fs/promises";
 import { tmpdir, } from "node:os";
 import { join, } from "node:path";
@@ -1306,7 +1306,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			},);
 
 			const terminalAbortStates = ["ABORTED", "KILLED", "CANCELED", "CANCELLED",];
-			const terminalStates = [
+			const terminalStates = new Set([
 				"DONE",
 				"FAILED",
 				"ABORTED",
@@ -1314,7 +1314,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				"CANCELED",
 				"CANCELLED",
 				"ERROR",
-			];
+			],);
 			const addJobAbortFixtureFinding = (observed: string,): void => {
 				addFinding({
 					id: "job-abort-needs-long-running-fixture",
@@ -1342,10 +1342,10 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 					return undefined;
 				}
 				await new Promise((resolve,) => setTimeout(resolve, 5_000,));
-				const details = await client.jobs.get(started.jobId,);
-				const state = ((details.baseStatus as { state?: string; } | undefined)?.state ?? "")
+				const jobDetails = await client.jobs.get(started.jobId,);
+				const state = ((jobDetails.baseStatus as { state?: string; } | undefined)?.state ?? "")
 					.toUpperCase();
-				if (terminalStates.includes(state,)) {
+				if (terminalStates.has(state,)) {
 					addJobAbortFixtureFinding(
 						`${label} abort fixture job ${started.jobId} reached terminal state ${state} before abort could be issued.`,
 					);

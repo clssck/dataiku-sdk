@@ -262,15 +262,22 @@ describe("RecipesResource", () => {
 			"POST /public/api/projects/TEST/recipes/",
 			"PUT /public/api/projects/TEST/recipes/target_recipe",
 		],);
-		expect(postBody?.recipePrototype,).toMatchObject({
+		expect(postBody,).toBeDefined();
+		const prototype = (postBody as Record<string, unknown>).recipePrototype as Record<
+			string,
+			unknown
+		>;
+		expect(prototype,).toMatchObject({
 			name: "target_recipe",
 			projectKey: "TEST",
 			outputs: { main: { items: [{ ref: "new_output", appendMode: false, },], }, },
 			params: { envSelection: { envMode: "EXPLICIT_ENV", envName: "py39", }, },
 		},);
-		expect((postBody?.recipePrototype as Record<string, unknown>).versionTag,).toBeUndefined();
-		expect((postBody?.recipePrototype as Record<string, unknown>).neverBuilt,).toBeUndefined();
-		expect((postBody?.creationSettings as { script?: string; }).script,).toContain("new_output",);
+		expect(prototype.versionTag,).toBeUndefined();
+		expect(prototype.neverBuilt,).toBeUndefined();
+		expect(
+			((postBody as Record<string, unknown>).creationSettings as { script?: string; }).script,
+		).toContain("new_output",);
 		expect(putBody?.payload as string,).toContain("new_output",);
 		expect(putBody?.payload as string,).toContain("# old_output should remain in comments",);
 		expect(putBody?.payload as string,).toContain("value = 'old_output'",);

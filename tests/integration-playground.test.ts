@@ -1,4 +1,4 @@
-import { describe, expect, it, } from "bun:test";
+import { expect, it, } from "bun:test";
 import { validateCredentials, } from "../src/auth.js";
 import {
 	createClient,
