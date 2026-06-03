@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash, } from "node:crypto";
-import { readFileSync, } from "node:fs";
+import { readFileSync, writeFileSync, } from "node:fs";
 import { mkdir, writeFile, } from "node:fs/promises";
 import { dirname, join, resolve, } from "node:path";
 import { fileURLToPath, } from "node:url";
@@ -2149,6 +2149,800 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				"dss project map --max-nodes 50 --max-edges 100",
 				"dss project map --include-raw",
 			],
+		},
+	},
+
+	app: {
+		list: {
+			handler: (c,) => c.applications.listApps(),
+			usage: "dss app list",
+			description: "List all Dataiku App templates.",
+			examples: ["dss app list",],
+		},
+		manifest: {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss app manifest <appId>",);
+				return c.applications.getAppManifest(a[0],);
+			},
+			usage: "dss app manifest <appId>",
+			description: "Get the manifest of a Dataiku App template.",
+			examples: ["dss app manifest my-app",],
+		},
+		instances: {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss app instances <appId>",);
+				return c.applications.listInstances(a[0],);
+			},
+			usage: "dss app instances <appId>",
+			description: "List instances created from a Dataiku App template.",
+			examples: ["dss app instances my-app",],
+		},
+		"create-instance": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss app create-instance <appId> (--data JSON|--data-file PATH|--stdin)",);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (instance creation payload).",
+				);
+				return c.applications.createInstance(a[0], body,);
+			},
+			usage: "dss app create-instance <appId> (--data JSON|--data-file PATH|--stdin)",
+			description: "Create an app instance from a Dataiku App template.",
+			examples: ['dss app create-instance my-app --data \'{"targetProjectKey":"NEWPROJ"}\'',],
+		},
+		"instance-manifest": {
+			handler: (c, _a, f,) =>
+				c.applications.getInstanceManifest(f["project-key"] as string | undefined,),
+			usage: "dss app instance-manifest [--project-key KEY]",
+			description: "Get the app manifest of an app-instance project.",
+			examples: ["dss app instance-manifest --project-key MYINSTANCE",],
+		},
+		"save-instance-manifest": {
+			handler: (c, _a, f,) => {
+				const manifest = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (manifest JSON).",
+				);
+				return c.applications.saveInstanceManifest(manifest, f["project-key"] as string | undefined,);
+			},
+			usage:
+				"dss app save-instance-manifest (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			description:
+				"Save the app manifest of an app-instance project (homepage sections, use-as-recipe settings).",
+			examples: ["dss app save-instance-manifest --data-file manifest.json --project-key MYINSTANCE",],
+		},
+		"delete-instance": {
+			handler: async (c, _a, f,) => {
+				await c.applications.deleteInstance(f["project-key"] as string | undefined,);
+				return { deleted: true, };
+			},
+			usage: "dss app delete-instance [--project-key KEY]",
+			description: "Delete an app-instance project (destructive: removes the instance project).",
+			examples: ["dss app delete-instance --project-key MYINSTANCE",],
+		},
+	},
+
+	"business-app": {
+		list: {
+			handler: (c,) => c.applications.listBusinessApps(),
+			usage: "dss business-app list",
+			description: "List all Business Apps.",
+			examples: ["dss business-app list",],
+		},
+		get: {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss business-app get <id>",);
+				return c.applications.getBusinessApp(a[0],);
+			},
+			usage: "dss business-app get <id>",
+			description: "Get Business App details.",
+			examples: ["dss business-app get my-bapp",],
+		},
+		settings: {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss business-app settings <id>",);
+				return c.applications.getBusinessAppSettings(a[0],);
+			},
+			usage: "dss business-app settings <id>",
+			description: "Get Business App settings.",
+			examples: ["dss business-app settings my-bapp",],
+		},
+		"save-settings": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss business-app save-settings <id> (--data JSON|--data-file PATH|--stdin)",
+				);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (settings JSON).",
+				);
+				return c.applications.saveBusinessAppSettings(a[0], body,);
+			},
+			usage: "dss business-app save-settings <id> (--data JSON|--data-file PATH|--stdin)",
+			description: "Save Business App settings (admin only; includes connection remapping).",
+			examples: ["dss business-app save-settings my-bapp --data-file settings.json",],
+		},
+		instances: {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss business-app instances <id>",);
+				return c.applications.listBusinessAppInstances(a[0],);
+			},
+			usage: "dss business-app instances <id>",
+			description: "List instances of a Business App.",
+			examples: ["dss business-app instances my-bapp",],
+		},
+		"create-instance": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss business-app create-instance <id> (--data JSON|--data-file PATH|--stdin)",
+				);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (instance payload).",
+				);
+				return c.applications.createBusinessAppInstance(a[0], body,);
+			},
+			usage: "dss business-app create-instance <id> (--data JSON|--data-file PATH|--stdin)",
+			description: "Create an instance of a Business App.",
+			examples: ["dss business-app create-instance my-bapp --data '{}'",],
+		},
+		"upgrade-instance": {
+			handler: (c, a,) => {
+				requireArgs(a, 2, "dss business-app upgrade-instance <id> <projectKey>",);
+				return c.applications.upgradeBusinessAppInstance(a[0], a[1],);
+			},
+			usage: "dss business-app upgrade-instance <id> <projectKey>",
+			description: "Upgrade a Business App instance to the latest version.",
+			examples: ["dss business-app upgrade-instance my-bapp INSTANCEPROJ",],
+		},
+		"install-from-archive": {
+			handler: async (c, a,) => {
+				requireArgs(a, 1, "dss business-app install-from-archive <filePath>",);
+				await c.applications.installBusinessAppFromArchive(a[0],);
+				return { installed: true, };
+			},
+			usage: "dss business-app install-from-archive <filePath>",
+			description: "Install or upgrade a Business App from a zip archive (admin only).",
+			examples: ["dss business-app install-from-archive ./my-bapp.zip",],
+		},
+	},
+
+	webapp: {
+		list: {
+			handler: (c, _a, f,) => c.webapps.list(f["project-key"] as string | undefined,),
+			usage: "dss webapp list [--project-key KEY]",
+			description: "List webapps in a project.",
+			examples: ["dss webapp list",],
+		},
+		"get-settings": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss webapp get-settings <webappId> [--project-key KEY]",);
+				return c.webapps.getSettings(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss webapp get-settings <webappId> [--project-key KEY]",
+			description: "Get a webapp's settings.",
+			examples: ["dss webapp get-settings WEBAPP_ID",],
+		},
+		create: {
+			handler: (c, _a, f,) => {
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (webapp definition).",
+				);
+				return c.webapps.create(body, f["project-key"] as string | undefined,);
+			},
+			usage: "dss webapp create (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			description: "Create a webapp from a JSON definition.",
+			examples: ["dss webapp create --data-file webapp.json",],
+		},
+		"update-settings": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss webapp update-settings <webappId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+				);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (webapp settings).",
+				);
+				return c.webapps.updateSettings(a[0], body, f["project-key"] as string | undefined,);
+			},
+			usage:
+				"dss webapp update-settings <webappId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			description: "Replace a webapp's settings.",
+			examples: ["dss webapp update-settings WEBAPP_ID --data-file webapp.json",],
+		},
+		"stop-backend": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss webapp stop-backend <webappId> [--project-key KEY]",);
+				await c.webapps.stopBackend(a[0], f["project-key"] as string | undefined,);
+				return { stopped: true, };
+			},
+			usage: "dss webapp stop-backend <webappId> [--project-key KEY]",
+			description: "Stop a webapp's backend.",
+			examples: ["dss webapp stop-backend WEBAPP_ID",],
+		},
+		"restart-backend": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss webapp restart-backend <webappId> [--project-key KEY]",);
+				await c.webapps.startOrRestartBackend(a[0], f["project-key"] as string | undefined,);
+				return { restarted: true, };
+			},
+			usage: "dss webapp restart-backend <webappId> [--project-key KEY]",
+			description: "Start or restart a webapp's backend.",
+			examples: ["dss webapp restart-backend WEBAPP_ID",],
+		},
+		"backend-state": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss webapp backend-state <webappId> [--project-key KEY]",);
+				return c.webapps.getBackendState(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss webapp backend-state <webappId> [--project-key KEY]",
+			description: "Get a webapp backend's runtime state.",
+			examples: ["dss webapp backend-state WEBAPP_ID",],
+		},
+	},
+
+	"api-service": {
+		list: {
+			handler: (c, _a, f,) => c.apiServices.list(f["project-key"] as string | undefined,),
+			usage: "dss api-service list [--project-key KEY]",
+			description: "List API services in a project.",
+			examples: ["dss api-service list",],
+		},
+		create: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss api-service create <serviceId> [--project-key KEY]",);
+				return c.apiServices.create(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss api-service create <serviceId> [--project-key KEY]",
+			description: "Create an empty API service.",
+			examples: ["dss api-service create my-service",],
+		},
+		"get-settings": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss api-service get-settings <serviceId> [--project-key KEY]",);
+				return c.apiServices.getSettings(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss api-service get-settings <serviceId> [--project-key KEY]",
+			description: "Get an API service's settings (endpoint definitions).",
+			examples: ["dss api-service get-settings my-service",],
+		},
+		"save-settings": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss api-service save-settings <serviceId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+				);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (service settings).",
+				);
+				return c.apiServices.saveSettings(a[0], body, f["project-key"] as string | undefined,);
+			},
+			usage:
+				"dss api-service save-settings <serviceId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			description: "Save an API service's settings.",
+			examples: ["dss api-service save-settings my-service --data-file service.json",],
+		},
+		"list-packages": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss api-service list-packages <serviceId> [--project-key KEY]",);
+				return c.apiServices.listPackages(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss api-service list-packages <serviceId> [--project-key KEY]",
+			description: "List deployable packages of an API service.",
+			examples: ["dss api-service list-packages my-service",],
+		},
+		"package-summary": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss api-service package-summary <serviceId> <packageId> [--project-key KEY]",
+				);
+				return c.apiServices.getPackageSummary(a[0], a[1], f["project-key"] as string | undefined,);
+			},
+			usage: "dss api-service package-summary <serviceId> <packageId> [--project-key KEY]",
+			description: "Get a package summary.",
+			examples: ["dss api-service package-summary my-service v1",],
+		},
+		"create-package": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss api-service create-package <serviceId> <packageId> [--project-key KEY]",
+				);
+				return c.apiServices.createPackage(a[0], a[1], f["project-key"] as string | undefined,);
+			},
+			usage: "dss api-service create-package <serviceId> <packageId> [--project-key KEY]",
+			description: "Build a deployable package from the current service state.",
+			examples: ["dss api-service create-package my-service v1",],
+		},
+		"delete-package": {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss api-service delete-package <serviceId> <packageId> [--project-key KEY]",
+				);
+				await c.apiServices.deletePackage(a[0], a[1], f["project-key"] as string | undefined,);
+				return { deleted: true, };
+			},
+			usage: "dss api-service delete-package <serviceId> <packageId> [--project-key KEY]",
+			description: "Delete an API service package.",
+			examples: ["dss api-service delete-package my-service v1",],
+		},
+		"download-package": {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss api-service download-package <serviceId> <packageId> --output PATH [--project-key KEY]",
+				);
+				const out = f["output"] as string | undefined;
+				if (!out) throw new UsageError("--output PATH is required.", "missing_required_flag",);
+				const res = await c.apiServices.downloadPackageArchive(
+					a[0],
+					a[1],
+					f["project-key"] as string | undefined,
+				);
+				const buf = Buffer.from(await res.arrayBuffer(),);
+				writeFileSync(out, buf,);
+				return { path: out, bytes: buf.length, };
+			},
+			usage:
+				"dss api-service download-package <serviceId> <packageId> --output PATH [--project-key KEY]",
+			description: "Download an API service package archive to a local file.",
+			examples: ["dss api-service download-package my-service v1 --output ./pkg.zip",],
+		},
+		"publish-package": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss api-service publish-package <serviceId> <packageId> [--project-key KEY]",
+				);
+				return c.apiServices.publishPackage(a[0], a[1], f["project-key"] as string | undefined,);
+			},
+			usage: "dss api-service publish-package <serviceId> <packageId> [--project-key KEY]",
+			description: "Publish a package to the API Deployer.",
+			examples: ["dss api-service publish-package my-service v1",],
+		},
+	},
+
+	"api-deployer": {
+		"list-infras": {
+			handler: (c,) => c.apiDeployer.listInfras(),
+			usage: "dss api-deployer list-infras",
+			description: "List API Deployer infrastructures.",
+			examples: ["dss api-deployer list-infras",],
+		},
+		"create-infra": {
+			handler: (c, _a, f,) => {
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (infra settings).",
+				);
+				return c.apiDeployer.createInfra(body,);
+			},
+			usage: "dss api-deployer create-infra (--data JSON|--data-file PATH|--stdin)",
+			description: "Create an API Deployer infrastructure.",
+			examples: ["dss api-deployer create-infra --data-file infra.json",],
+		},
+		"get-infra": {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss api-deployer get-infra <infraId>",);
+				return c.apiDeployer.getInfra(a[0],);
+			},
+			usage: "dss api-deployer get-infra <infraId>",
+			description: "Get an API Deployer infrastructure status.",
+			examples: ["dss api-deployer get-infra prod-infra",],
+		},
+		"delete-infra": {
+			handler: async (c, a,) => {
+				requireArgs(a, 1, "dss api-deployer delete-infra <infraId>",);
+				await c.apiDeployer.deleteInfra(a[0],);
+				return { deleted: true, };
+			},
+			usage: "dss api-deployer delete-infra <infraId>",
+			description: "Delete an API Deployer infrastructure.",
+			examples: ["dss api-deployer delete-infra prod-infra",],
+		},
+		"list-stages": {
+			handler: (c,) => c.apiDeployer.listStages(),
+			usage: "dss api-deployer list-stages",
+			description: "List API Deployer lifecycle stages.",
+			examples: ["dss api-deployer list-stages",],
+		},
+		"list-services": {
+			handler: (c,) => c.apiDeployer.listServices(),
+			usage: "dss api-deployer list-services",
+			description: "List published API Deployer services.",
+			examples: ["dss api-deployer list-services",],
+		},
+		"create-service": {
+			handler: (c, _a, f,) => {
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (service definition).",
+				);
+				return c.apiDeployer.createService(body,);
+			},
+			usage: "dss api-deployer create-service (--data JSON|--data-file PATH|--stdin)",
+			description: "Create a published API Deployer service.",
+			examples: ['dss api-deployer create-service --data \'{"id":"my-service"}\'',],
+		},
+		"get-service": {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss api-deployer get-service <serviceId>",);
+				return c.apiDeployer.getService(a[0],);
+			},
+			usage: "dss api-deployer get-service <serviceId>",
+			description: "Get a published service's status (versions + deployments).",
+			examples: ["dss api-deployer get-service my-service",],
+		},
+		"delete-service": {
+			handler: async (c, a,) => {
+				requireArgs(a, 1, "dss api-deployer delete-service <serviceId>",);
+				await c.apiDeployer.deleteService(a[0],);
+				return { deleted: true, };
+			},
+			usage: "dss api-deployer delete-service <serviceId>",
+			description: "Delete a published API Deployer service.",
+			examples: ["dss api-deployer delete-service my-service",],
+		},
+		"publish-version": {
+			handler: async (c, a,) => {
+				requireArgs(a, 2, "dss api-deployer publish-version <serviceId> <archive.zip>",);
+				await c.apiDeployer.publishServiceVersion(a[0], a[1],);
+				return { published: true, };
+			},
+			usage: "dss api-deployer publish-version <serviceId> <archive.zip>",
+			description: "Publish (upload) a service version package to the API Deployer.",
+			examples: ["dss api-deployer publish-version my-service ./pkg.zip",],
+		},
+		"delete-version": {
+			handler: async (c, a,) => {
+				requireArgs(a, 2, "dss api-deployer delete-version <serviceId> <version>",);
+				await c.apiDeployer.deleteServiceVersion(a[0], a[1],);
+				return { deleted: true, };
+			},
+			usage: "dss api-deployer delete-version <serviceId> <version>",
+			description: "Delete a published service version.",
+			examples: ["dss api-deployer delete-version my-service v1",],
+		},
+		"list-deployments": {
+			handler: (c,) => c.apiDeployer.listDeployments(),
+			usage: "dss api-deployer list-deployments",
+			description: "List API Deployer deployments.",
+			examples: ["dss api-deployer list-deployments",],
+		},
+		"create-deployment": {
+			handler: (c, _a, f,) => {
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (deployment settings).",
+				);
+				return c.apiDeployer.createDeployment(body,);
+			},
+			usage: "dss api-deployer create-deployment (--data JSON|--data-file PATH|--stdin)",
+			description: "Create an API Deployer deployment (maps a service version to an infra).",
+			examples: ["dss api-deployer create-deployment --data-file deployment.json",],
+		},
+		"get-deployment": {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss api-deployer get-deployment <deploymentId>",);
+				return c.apiDeployer.getDeployment(a[0],);
+			},
+			usage: "dss api-deployer get-deployment <deploymentId>",
+			description: "Get an API Deployer deployment.",
+			examples: ["dss api-deployer get-deployment my-deployment",],
+		},
+		"deployment-status": {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss api-deployer deployment-status <deploymentId>",);
+				return c.apiDeployer.getDeploymentStatus(a[0],);
+			},
+			usage: "dss api-deployer deployment-status <deploymentId>",
+			description: "Get an API Deployer deployment's full health/status.",
+			examples: ["dss api-deployer deployment-status my-deployment",],
+		},
+		"deployment-settings": {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss api-deployer deployment-settings <deploymentId>",);
+				return c.apiDeployer.getDeploymentSettings(a[0],);
+			},
+			usage: "dss api-deployer deployment-settings <deploymentId>",
+			description: "Get an API Deployer deployment's settings.",
+			examples: ["dss api-deployer deployment-settings my-deployment",],
+		},
+		"save-deployment-settings": {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss api-deployer save-deployment-settings <deploymentId> (--data JSON|--data-file PATH|--stdin)",
+				);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (deployment settings).",
+				);
+				await c.apiDeployer.saveDeploymentSettings(a[0], body,);
+				return { saved: true, };
+			},
+			usage:
+				"dss api-deployer save-deployment-settings <deploymentId> (--data JSON|--data-file PATH|--stdin)",
+			description: "Save an API Deployer deployment's settings.",
+			examples: ["dss api-deployer save-deployment-settings my-deployment --data-file settings.json",],
+		},
+		deploy: {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss api-deployer deploy <deploymentId>",);
+				return c.apiDeployer.startDeploymentUpdate(a[0],);
+			},
+			usage: "dss api-deployer deploy <deploymentId>",
+			description: "Apply a deployment's settings to its infrastructure (start update).",
+			examples: ["dss api-deployer deploy my-deployment",],
+		},
+		"delete-deployment": {
+			handler: async (c, a,) => {
+				requireArgs(a, 1, "dss api-deployer delete-deployment <deploymentId>",);
+				await c.apiDeployer.deleteDeployment(a[0],);
+				return { deleted: true, };
+			},
+			usage: "dss api-deployer delete-deployment <deploymentId>",
+			description: "Delete an API Deployer deployment.",
+			examples: ["dss api-deployer delete-deployment my-deployment",],
+		},
+	},
+
+	bundle: {
+		"list-exported": {
+			handler: (c, _a, f,) => c.bundles.listExported(f["project-key"] as string | undefined,),
+			usage: "dss bundle list-exported [--project-key KEY]",
+			description: "List bundles exported from a project on the Design node.",
+			examples: ["dss bundle list-exported",],
+		},
+		export: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss bundle export <bundleId> [--project-key KEY]",);
+				await c.bundles.exportBundle(a[0], f["project-key"] as string | undefined,);
+				return { exported: a[0], };
+			},
+			usage: "dss bundle export <bundleId> [--project-key KEY]",
+			description: "Create (or overwrite) an exported Design-node bundle.",
+			examples: ["dss bundle export v1",],
+		},
+		"delete-exported": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss bundle delete-exported <bundleId> [--project-key KEY]",);
+				await c.bundles.deleteExported(a[0], f["project-key"] as string | undefined,);
+				return { deleted: true, };
+			},
+			usage: "dss bundle delete-exported <bundleId> [--project-key KEY]",
+			description: "Delete an exported Design-node bundle.",
+			examples: ["dss bundle delete-exported v1",],
+		},
+		"download-exported": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss bundle download-exported <bundleId> --output PATH [--project-key KEY]",);
+				const out = f["output"] as string | undefined;
+				if (!out) throw new UsageError("--output PATH is required.", "missing_required_flag",);
+				const res = await c.bundles.downloadExportedArchive(
+					a[0],
+					f["project-key"] as string | undefined,
+				);
+				const buf = Buffer.from(await res.arrayBuffer(),);
+				writeFileSync(out, buf,);
+				return { path: out, bytes: buf.length, };
+			},
+			usage: "dss bundle download-exported <bundleId> --output PATH [--project-key KEY]",
+			description: "Download an exported Design-node bundle archive to a local file.",
+			examples: ["dss bundle download-exported v1 --output ./bundle.zip",],
+		},
+		publish: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss bundle publish <bundleId> [--project-key KEY]",);
+				return c.bundles.publish(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss bundle publish <bundleId> [--project-key KEY]",
+			description: "Publish a Design-node bundle to the Project Deployer.",
+			examples: ["dss bundle publish v1",],
+		},
+		"list-imported": {
+			handler: (c, _a, f,) => c.bundles.listImported(f["project-key"] as string | undefined,),
+			usage: "dss bundle list-imported [--project-key KEY]",
+			description: "List bundles imported into a project on the Automation node.",
+			examples: ["dss bundle list-imported",],
+		},
+		"import-from-archive": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss bundle import-from-archive <serverArchivePath> [--project-key KEY]",);
+				return c.bundles.importFromArchive(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss bundle import-from-archive <serverArchivePath> [--project-key KEY]",
+			description: "Import a server-side bundle archive into an Automation-node project.",
+			examples: ["dss bundle import-from-archive /data/bundles/v1.zip",],
+		},
+		"import-from-stream": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss bundle import-from-stream <filePath> [--project-key KEY]",);
+				await c.bundles.importFromStream(a[0], f["project-key"] as string | undefined,);
+				return { imported: true, };
+			},
+			usage: "dss bundle import-from-stream <filePath> [--project-key KEY]",
+			description: "Upload and import a local bundle archive into an Automation-node project.",
+			examples: ["dss bundle import-from-stream ./v1.zip",],
+		},
+		activate: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss bundle activate <bundleId> [--project-key KEY]",);
+				return c.bundles.activate(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss bundle activate <bundleId> [--project-key KEY]",
+			description: "Activate an imported Automation-node bundle.",
+			examples: ["dss bundle activate v1",],
+		},
+		preload: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss bundle preload <bundleId> [--project-key KEY]",);
+				return c.bundles.preload(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss bundle preload <bundleId> [--project-key KEY]",
+			description: "Preload an imported Automation-node bundle (stage data/models).",
+			examples: ["dss bundle preload v1",],
+		},
+		"delete-imported": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss bundle delete-imported <bundleId> [--project-key KEY]",);
+				await c.bundles.deleteImported(a[0], f["project-key"] as string | undefined,);
+				return { deleted: true, };
+			},
+			usage: "dss bundle delete-imported <bundleId> [--project-key KEY]",
+			description: "Delete an imported Automation-node bundle.",
+			examples: ["dss bundle delete-imported v1",],
+		},
+	},
+
+	"project-deployer": {
+		"list-projects": {
+			handler: (c,) => c.projectDeployer.listProjects(),
+			usage: "dss project-deployer list-projects",
+			description: "List published projects on the Project Deployer.",
+			examples: ["dss project-deployer list-projects",],
+		},
+		"create-project": {
+			handler: (c, _a, f,) => {
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (published project settings).",
+				);
+				return c.projectDeployer.createProject(body,);
+			},
+			usage: "dss project-deployer create-project (--data JSON|--data-file PATH|--stdin)",
+			description: "Create a published project on the Project Deployer.",
+			examples: ["dss project-deployer create-project --data-file project.json",],
+		},
+		"upload-bundle": {
+			handler: async (c, a,) => {
+				requireArgs(a, 1, "dss project-deployer upload-bundle <filePath>",);
+				await c.projectDeployer.uploadBundle(a[0],);
+				return { uploaded: true, };
+			},
+			usage: "dss project-deployer upload-bundle <filePath>",
+			description: "Upload a project bundle archive to the Project Deployer.",
+			examples: ["dss project-deployer upload-bundle ./v1.zip",],
+		},
+		"project-status": {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss project-deployer project-status <publishedProjectKey>",);
+				return c.projectDeployer.getProjectStatus(a[0],);
+			},
+			usage: "dss project-deployer project-status <publishedProjectKey>",
+			description: "Get a published project's status and available bundles.",
+			examples: ["dss project-deployer project-status MYPROJ",],
+		},
+		"list-deployments": {
+			handler: (c,) => c.projectDeployer.listDeployments(),
+			usage: "dss project-deployer list-deployments",
+			description: "List Project Deployer deployments.",
+			examples: ["dss project-deployer list-deployments",],
+		},
+		"create-deployment": {
+			handler: (c, _a, f,) => {
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (deployment settings).",
+				);
+				return c.projectDeployer.createDeployment(body,);
+			},
+			usage: "dss project-deployer create-deployment (--data JSON|--data-file PATH|--stdin)",
+			description: "Create a Project Deployer deployment (bundle to infra mapping).",
+			examples: ["dss project-deployer create-deployment --data-file deployment.json",],
+		},
+		"get-deployment": {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss project-deployer get-deployment <deploymentId>",);
+				return c.projectDeployer.getDeployment(a[0],);
+			},
+			usage: "dss project-deployer get-deployment <deploymentId>",
+			description: "Get a Project Deployer deployment.",
+			examples: ["dss project-deployer get-deployment my-deployment",],
+		},
+		"deployment-status": {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss project-deployer deployment-status <deploymentId>",);
+				return c.projectDeployer.getDeploymentStatus(a[0],);
+			},
+			usage: "dss project-deployer deployment-status <deploymentId>",
+			description: "Get a Project Deployer deployment's full health/status.",
+			examples: ["dss project-deployer deployment-status my-deployment",],
+		},
+		"save-deployment-settings": {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss project-deployer save-deployment-settings <deploymentId> (--data JSON|--data-file PATH|--stdin)",
+				);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (deployment settings).",
+				);
+				await c.projectDeployer.saveDeploymentSettings(a[0], body,);
+				return { saved: true, };
+			},
+			usage:
+				"dss project-deployer save-deployment-settings <deploymentId> (--data JSON|--data-file PATH|--stdin)",
+			description: "Save a Project Deployer deployment's settings (e.g. bundleId).",
+			examples: [
+				"dss project-deployer save-deployment-settings my-deployment --data-file settings.json",
+			],
+		},
+		deploy: {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss project-deployer deploy <deploymentId>",);
+				return c.projectDeployer.startUpdate(a[0],);
+			},
+			usage: "dss project-deployer deploy <deploymentId>",
+			description: "Apply a deployment to the Automation node (start update).",
+			examples: ["dss project-deployer deploy my-deployment",],
+		},
+		"delete-deployment": {
+			handler: async (c, a,) => {
+				requireArgs(a, 1, "dss project-deployer delete-deployment <deploymentId>",);
+				await c.projectDeployer.deleteDeployment(a[0],);
+				return { deleted: true, };
+			},
+			usage: "dss project-deployer delete-deployment <deploymentId>",
+			description: "Delete a Project Deployer deployment.",
+			examples: ["dss project-deployer delete-deployment my-deployment",],
+		},
+		"list-infras": {
+			handler: (c,) => c.projectDeployer.listInfras(),
+			usage: "dss project-deployer list-infras",
+			description: "List Project Deployer infrastructures.",
+			examples: ["dss project-deployer list-infras",],
+		},
+		"create-infra": {
+			handler: (c, _a, f,) => {
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (infra settings).",
+				);
+				return c.projectDeployer.createInfra(body,);
+			},
+			usage: "dss project-deployer create-infra (--data JSON|--data-file PATH|--stdin)",
+			description: "Create a Project Deployer infrastructure.",
+			examples: ["dss project-deployer create-infra --data-file infra.json",],
 		},
 	},
 
@@ -6387,7 +7181,7 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "data-quality" && action === "compute") return "write";
 	if (READ_ACTIONS.has(action,)) return "read";
 	if (
-		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove)/
+		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove|publish|activate|deploy|import|export|preload|upgrade|stop|restart)/
 			.test(action,)
 	) {
 		return "write";
