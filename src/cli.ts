@@ -1431,6 +1431,25 @@ function formatLineDiff(
 
 let outputFieldProjection: string[] | undefined;
 
+/**
+ * Non-fatal diagnostics queued during a command and flushed to stderr as one
+ * JSON envelope, so agents get a loud, machine-parseable signal (e.g. truncated
+ * exports) without polluting the stdout result contract.
+ */
+let pendingCliWarnings: Record<string, unknown>[] = [];
+
+function enqueueCliWarning(warning: Record<string, unknown>,): void {
+	pendingCliWarnings.push(warning,);
+}
+
+/** Emit queued warnings as a single `{ warnings: [...] }` object on stderr. Idempotent. */
+function flushCliWarnings(): void {
+	if (pendingCliWarnings.length === 0) return;
+	const warnings = pendingCliWarnings;
+	pendingCliWarnings = [];
+	process.stderr.write(`${JSON.stringify({ warnings, }, null, 2,)}\n`,);
+}
+
 function resolveFieldPath(source: Record<string, unknown>, field: string,): unknown {
 	let current: unknown = source;
 	for (const segment of field.split(".",)) {
@@ -1459,6 +1478,7 @@ function projectResultFields(result: unknown, fields: string[],): unknown {
 }
 
 function writeCommandResult(result: unknown,): void {
+	flushCliWarnings();
 	const projected = outputFieldProjection
 		? projectResultFields(result, outputFieldProjection,)
 		: result;
@@ -1848,6 +1868,7 @@ const FLAG_ALIASES: Record<string, string> = {
 	"extra-ca-certs": "ca-cert",
 	explain: "plan",
 	"zone-name": "zone",
+	rows: "max-rows",
 };
 
 const VALUE_FLAGS = new Set([
@@ -3195,9 +3216,9 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					timeoutMs: num(f["timeout"],),
 				},);
 			},
-			usage: "dss dataset preview <name> [--max-rows N] [--project-key KEY] [--timeout MS]",
-			description: "Preview dataset rows.",
-			examples: ["dss dataset preview orders", "dss dataset preview orders --max-rows 5",],
+			usage: "dss dataset preview <name> [--max-rows N|--rows N] [--project-key KEY] [--timeout MS]",
+			description: "Preview dataset rows (--rows is an alias for --max-rows).",
+			examples: ["dss dataset preview orders", "dss dataset preview orders --rows 5",],
 		},
 		metadata: {
 			handler: (c, a, f,) => {
@@ -3209,17 +3230,30 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			examples: ["dss dataset metadata orders",],
 		},
 		download: {
-			handler: (c, a, f,) => {
+			handler: async (c, a, f,) => {
 				requireArgs(a, 1, "dss dataset download <name>",);
-				return c.datasets.download(a[0], {
+				const result = await c.datasets.download(a[0], {
 					outputPath: f["output"] as string | undefined,
 					projectKey: f["project-key"] as string | undefined,
 					limit: num(f["limit"],),
 				},);
+				if (result.truncated) {
+					enqueueCliWarning({
+						code: "dataset_download_truncated",
+						message:
+							`Download of '${a[0]}' stopped at the ${result.limit}-row cap; the dataset has more rows. `
+							+ "Re-run with --limit N for more, or read inside a recipe (get_dataframe) for the full data.",
+						dataset: a[0],
+						rows: result.rows,
+						limit: result.limit,
+						path: result.path,
+					},);
+				}
+				return result;
 			},
 			usage: "dss dataset download <name> [--output PATH] [--limit N] [--project-key KEY]",
 			description:
-				"Download up to --limit rows (default 100k) as CSV; returns { path, rows, truncated, limit } so truncation is visible.",
+				"Download up to --limit rows (default 100k) as CSV; returns { path, rows, truncated, limit }. When truncated, a dataset_download_truncated warning is also written to stderr so the cap is never silent.",
 			examples: ["dss dataset download orders", "dss dataset download orders --output ./data/",],
 		},
 		create: {
@@ -5430,11 +5464,12 @@ function unknownActionError(
 	resource: string,
 	action: string | undefined,
 	validActions: string[],
+	hint?: string,
 ): UsageError {
 	return new UsageError(
 		`Unknown action: ${resource} ${action ?? ""}`.trim(),
 		"usage_error",
-		COMMANDS_RUN_HINT,
+		hint ?? COMMANDS_RUN_HINT,
 		{ resource, action, validActions, },
 	);
 }
@@ -7936,7 +7971,14 @@ async function main(): Promise<void> {
 		}
 		currentCommandContext.action = action;
 		const authMeta = AUTH_ACTIONS[action];
-		if (!authMeta) throw unknownActionError("auth", action, validActions,);
+		if (!authMeta) {
+			throw unknownActionError(
+				"auth",
+				action,
+				validActions,
+				"auth only supports 'login'. To check credentials/connectivity, run 'dss doctor'.",
+			);
+		}
 		const result = await authMeta.handler(flags,);
 		writeCommandResult(result,);
 		return;
