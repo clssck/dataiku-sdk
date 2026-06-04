@@ -1,3 +1,6 @@
+import { createWriteStream, openAsBlob, } from "node:fs";
+import { Writable, } from "node:stream";
+
 import {
 	ProjectDetailsSchema,
 	ProjectMetadataSchema,
@@ -166,6 +169,68 @@ export interface FlowMapResult {
 	raw?: unknown;
 }
 
+type DataikuClientHttpInternals = {
+	baseUrl: string;
+	apiKey: string;
+	fetchWithRetry(url: string, init: RequestInit,): Promise<Response>;
+};
+
+export type ProjectLifecycleSettings = Record<string, unknown>;
+
+export type ProjectDuplicationMode = "MINIMAL" | "SHARING" | "FULL" | "NONE" | (string & {});
+
+export interface ProjectDuplicateOptions {
+	duplicationMode?: ProjectDuplicationMode;
+	exportAnalysisModels?: boolean;
+	exportSavedModels?: boolean;
+	exportGitRepository?: boolean | null;
+	exportInsightsData?: boolean;
+	remapping?: Record<string, unknown>;
+	targetProjectFolderId?: string;
+}
+
+export interface ProjectExportOptions {
+	exportUploads?: boolean;
+	exportManagedFS?: boolean;
+	exportAnalysisModels?: boolean;
+	exportSavedModels?: boolean;
+	exportModelEvaluationStores?: boolean;
+	exportManagedFolders?: boolean;
+	exportAllInputDatasets?: boolean;
+	exportAllDatasets?: boolean;
+	exportAllInputManagedFolders?: boolean;
+	exportGitRepository?: boolean;
+	exportInsightsData?: boolean;
+	exportPromptStudioHistories?: boolean;
+	[key: string]: unknown;
+}
+
+export interface ProjectPermissionRule {
+	group?: string;
+	user?: string;
+	admin?: boolean;
+	readProjectContent?: boolean;
+	writeProjectContent?: boolean;
+	readDashboards?: boolean;
+	writeDashboards?: boolean;
+	runScenarios?: boolean;
+	manageDashboardAuthorizations?: boolean;
+	manageExposedElements?: boolean;
+	moderateDashboards?: boolean;
+	[key: string]: unknown;
+}
+
+export interface ProjectPermissions {
+	owner?: string;
+	permissions?: ProjectPermissionRule[];
+	[key: string]: unknown;
+}
+
+export interface ProjectImportUploadResult {
+	id: string;
+	[key: string]: unknown;
+}
+
 // ---------------------------------------------------------------------------
 // Resource
 // ---------------------------------------------------------------------------
@@ -175,6 +240,154 @@ const DEFAULT_MAX_EDGES = 600;
 const DEFAULT_METADATA_TIMEOUT_MS = 1_500;
 
 export class ProjectsResource extends BaseResource {
+	private httpInternals(): DataikuClientHttpInternals {
+		return this.client as unknown as DataikuClientHttpInternals;
+	}
+
+	private async postStream(path: string, body: unknown,): Promise<Response> {
+		const http = this.httpInternals();
+		return http.fetchWithRetry(`${http.baseUrl}${path}`, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${http.apiKey}`,
+				Accept: "*/*",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(body,),
+		},);
+	}
+
+	private async uploadJson<T,>(path: string, filePath: string, fileName: string,): Promise<T> {
+		const http = this.httpInternals();
+		const fileBlob = await openAsBlob(filePath,);
+		const formData = new FormData();
+		formData.append("file", fileBlob, fileName,);
+
+		const res = await http.fetchWithRetry(`${http.baseUrl}${path}`, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${http.apiKey}`, },
+			body: formData,
+		},);
+		return res.json() as Promise<T>;
+	}
+
+	/** Create a new project. */
+	async createProject(
+		projectKey: string,
+		name: string,
+		ownerLogin?: string,
+		settings?: ProjectLifecycleSettings | null,
+	): Promise<string> {
+		return this.client.postText("/public/api/projects/", {
+			projectKey,
+			name,
+			owner: ownerLogin ?? null,
+			settings: settings ?? null,
+			description: null,
+			permissions: [],
+			tags: [],
+		},);
+	}
+
+	/** Delete a project using the lifecycle endpoint. */
+	async deleteProject(projectKey: string, dropData = false,): Promise<void> {
+		const enc = encodeURIComponent(projectKey,);
+		await this.client.del(
+			`/public/api/projects/${enc}?clearManagedDatasets=${
+				String(dropData,)
+			}&clearOutputManagedFolders=false&clearJobAndScenarioLogs=true&wait=true`,
+		);
+	}
+
+	/** Duplicate a project. */
+	async duplicate(
+		projectKey: string,
+		targetProjectKey: string,
+		targetProjectName: string,
+		options?: ProjectDuplicateOptions,
+	): Promise<Record<string, unknown>> {
+		const body = {
+			targetProjectName,
+			targetProjectKey,
+			duplicationMode: options?.duplicationMode ?? "MINIMAL",
+			exportAnalysisModels: options?.exportAnalysisModels ?? true,
+			exportSavedModels: options?.exportSavedModels ?? true,
+			exportGitRepository: options?.exportGitRepository ?? null,
+			exportInsightsData: options?.exportInsightsData ?? true,
+			remapping: options?.remapping ?? {},
+			...(options?.targetProjectFolderId !== undefined
+				? { targetProjectFolderId: options.targetProjectFolderId, }
+				: {}),
+		};
+		return this.client.post<Record<string, unknown>>(
+			`/public/api/projects/${encodeURIComponent(projectKey,)}/duplicate/`,
+			body,
+		);
+	}
+
+	/** Export a project archive to a local file. */
+	async exportArchive(
+		projectKey: string,
+		filePath: string,
+		options?: ProjectExportOptions,
+	): Promise<void> {
+		const res = await this.postStream(
+			`/public/api/projects/${encodeURIComponent(projectKey,)}/export`,
+			options ?? {},
+		);
+		if (!res.body) throw new Error("projects.exportArchive response did not include a body",);
+
+		const file = createWriteStream(filePath,);
+		try {
+			await res.body.pipeTo(Writable.toWeb(file,) as WritableStream<Uint8Array>,);
+		} catch (error) {
+			file.destroy();
+			throw error;
+		}
+	}
+
+	/** Upload a project archive and return the temporary import id. */
+	async importProjectFromArchive(filePath: string,): Promise<ProjectImportUploadResult> {
+		return this.uploadJson<ProjectImportUploadResult>(
+			"/public/api/projects/import/upload",
+			filePath,
+			"tmp-import.zip",
+		);
+	}
+
+	/** Get project permissions. */
+	async getPermissions(projectKey?: string,): Promise<ProjectPermissions> {
+		return this.client.get<ProjectPermissions>(
+			`/public/api/projects/${this.enc(projectKey,)}/permissions`,
+		);
+	}
+
+	/** Set project permissions. */
+	async setPermissions(
+		projectKey: string | undefined,
+		permissions: ProjectPermissions,
+	): Promise<void> {
+		await this.client.putVoid(
+			`/public/api/projects/${this.enc(projectKey,)}/permissions`,
+			permissions,
+		);
+	}
+
+	/** Get project settings. */
+	async getSettings(projectKey?: string,): Promise<ProjectLifecycleSettings> {
+		return this.client.get<ProjectLifecycleSettings>(
+			`/public/api/projects/${this.enc(projectKey,)}/settings`,
+		);
+	}
+
+	/** Set project settings. */
+	async setSettings(projectKey: string | undefined, body: ProjectLifecycleSettings,): Promise<void> {
+		await this.client.putVoid(
+			`/public/api/projects/${this.enc(projectKey,)}/settings`,
+			body,
+		);
+	}
+
 	/** List all projects visible to the API key. */
 	async list(): Promise<ProjectSummary[]> {
 		const raw = await this.client.get<unknown>("/public/api/projects/",);

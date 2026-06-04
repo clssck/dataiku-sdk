@@ -34,6 +34,7 @@ export {
 	ConnectionsResource,
 	type ConnectionTableListOptions,
 } from "./resources/connections.js";
+export { ContinuousActivitiesResource, } from "./resources/continuous-activities.js";
 export { DashboardsResource, } from "./resources/dashboards.js";
 export { DataQualityResource, } from "./resources/data-quality.js";
 export {
@@ -43,6 +44,7 @@ export {
 	type DatasetSchemaColumnInput,
 	DatasetsResource,
 } from "./resources/datasets.js";
+export { DiscussionsResource, } from "./resources/discussions.js";
 export { type FlowZoneItemInput, FlowZonesResource, } from "./resources/flow-zones.js";
 export { FoldersResource, } from "./resources/folders.js";
 export { FuturesResource, } from "./resources/futures.js";
@@ -59,7 +61,10 @@ export {
 	JobsResource,
 	parseJobLogProgress,
 } from "./resources/jobs.js";
+export { MeaningsResource, } from "./resources/meanings.js";
+export { MetricsResource, } from "./resources/metrics.js";
 export { NotebooksResource, } from "./resources/notebooks.js";
+export { ProjectLibraryResource, } from "./resources/project-library.js";
 export { type FlowMapResult, ProjectsResource, } from "./resources/projects.js";
 export {
 	type RecipeCloneOptions,
@@ -84,9 +89,12 @@ export {
 	type ScenarioUpdateResult,
 } from "./resources/scenarios.js";
 export { SqlResource, } from "./resources/sql.js";
+export { StatisticsResource, } from "./resources/statistics.js";
+export { StreamingEndpointsResource, } from "./resources/streaming-endpoints.js";
 export { VariablesResource, } from "./resources/variables.js";
 export { WebappsResource, } from "./resources/webapps.js";
 export { WikiResource, } from "./resources/wiki.js";
+export { WorkspacesResource, } from "./resources/workspaces.js";
 
 // Schemas (TypeBox schema objects for runtime validation)
 export {
