@@ -49,7 +49,22 @@ type CommandRegistry = Record<string, Record<string, CommandRegistryEntry>>;
 
 const EXPECTED_COMMANDS: Record<string, string[]> = {
 	code: ["run",],
-	project: ["list", "get", "metadata", "flow", "map",],
+	project: [
+		"list",
+		"get",
+		"metadata",
+		"flow",
+		"map",
+		"create",
+		"delete",
+		"duplicate",
+		"export",
+		"import",
+		"permissions-get",
+		"permissions-set",
+		"settings-get",
+		"settings-set",
+	],
 	"flow-zone": ["list", "find", "get", "create", "update", "delete", "move", "organize", "graph",],
 	dashboard: ["list", "get", "create", "update", "delete",],
 	"data-quality": [
@@ -175,6 +190,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"instance-manifest",
 		"save-instance-manifest",
 		"delete-instance",
+		"business-app-instance-permissions",
 	],
 	"business-app": [
 		"list",
@@ -256,6 +272,33 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"list-infras",
 		"create-infra",
 	],
+	"project-library": [
+		"list",
+		"get",
+		"get-bytes",
+		"create-file",
+		"create-folder",
+		"put",
+		"delete",
+		"rename",
+		"move",
+	],
+	"streaming-endpoint": ["list", "get", "create", "update-settings", "delete",],
+	"continuous-activity": ["list", "status", "start", "stop",],
+	statistics: [
+		"list-worksheets",
+		"get-worksheet",
+		"create-worksheet",
+		"update-worksheet",
+		"delete-worksheet",
+		"run-worksheet",
+		"run-card",
+		"run-computation",
+	],
+	discussion: ["list", "get", "create", "reply",],
+	workspace: ["list", "get", "create", "update-settings", "delete", "list-objects", "add-object",],
+	metrics: ["dataset-get", "dataset-compute", "dataset-history", "folder-get",],
+	meaning: ["list", "get", "create", "update",],
 };
 
 async function dss(args: string[],): Promise<{ stdout: string; stderr: string; }> {
