@@ -96,6 +96,9 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"delete",
 		"update",
 		"clone",
+		"rename",
+		"list-partitions",
+		"clear",
 	],
 	recipe: [
 		"list",

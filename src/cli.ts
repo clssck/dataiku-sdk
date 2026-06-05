@@ -4610,6 +4610,36 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			description: "List all datasets in a project.",
 			examples: ["dss dataset list", "dss dataset list --project-key MYPROJ",],
 		},
+		rename: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 2, "dss dataset rename <oldName> <newName> [--project-key KEY]",);
+				await c.datasets.rename(a[0], a[1], f["project-key"] as string | undefined,);
+				return { renamed: a[0], to: a[1], };
+			},
+			usage: "dss dataset rename <oldName> <newName> [--project-key KEY]",
+			description: "Rename a dataset (updates downstream flow references).",
+			examples: ["dss dataset rename old_ds new_ds",],
+		},
+		"list-partitions": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss dataset list-partitions <name> [--project-key KEY]",);
+				return c.datasets.listPartitions(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss dataset list-partitions <name> [--project-key KEY]",
+			description: "List the partitions of a partitioned dataset.",
+			examples: ["dss dataset list-partitions events",],
+		},
+		clear: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss dataset clear <name> [--partitions SPEC] [--project-key KEY]",);
+				const partitions = f["partitions"] as string | undefined;
+				await c.datasets.clear(a[0], partitions, f["project-key"] as string | undefined,);
+				return { cleared: a[0], partitions: partitions ?? "ALL", };
+			},
+			usage: "dss dataset clear <name> [--partitions SPEC] [--project-key KEY]",
+			description: "Clear a dataset's data (all, or a partition spec); keeps the dataset.",
+			examples: ["dss dataset clear staging", "dss dataset clear events --partitions 2024-01",],
+		},
 		get: {
 			handler: (c, a, f,) => {
 				requireArgs(a, 1, "dss dataset get <name>",);

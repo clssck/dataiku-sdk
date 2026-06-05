@@ -778,4 +778,29 @@ export class DatasetsResource extends BaseResource {
 		const dsEnc = encodeURIComponent(datasetName,);
 		await this.client.del(`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}`,);
 	}
+
+	/** List all partitions of a partitioned dataset. */
+	async listPartitions(datasetName: string, projectKey?: string,): Promise<string[]> {
+		const dsEnc = encodeURIComponent(datasetName,);
+		return this.client.get<string[]>(
+			`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}/partitions`,
+		);
+	}
+
+	/** Clear a dataset's data. Omit `partitions` to clear the whole dataset. */
+	async clear(datasetName: string, partitions?: string, projectKey?: string,): Promise<void> {
+		const dsEnc = encodeURIComponent(datasetName,);
+		const query = partitions ? `?partitions=${encodeURIComponent(partitions,)}` : "";
+		await this.client.del(
+			`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}/data${query}`,
+		);
+	}
+
+	/** Rename a dataset, updating downstream flow references. */
+	async rename(oldName: string, newName: string, projectKey?: string,): Promise<void> {
+		await this.client.postText(
+			`/public/api/projects/${this.enc(projectKey,)}/actions/renameDataset`,
+			{ oldName, newName, },
+		);
+	}
 }
