@@ -13,22 +13,30 @@ import { ApplicationsResource, } from "./resources/applications.js";
 import { BundlesResource, ProjectDeployerResource, } from "./resources/bundles.js";
 import { CodeEnvsResource, } from "./resources/code-envs.js";
 import { ConnectionsResource, } from "./resources/connections.js";
+import { ContinuousActivitiesResource, } from "./resources/continuous-activities.js";
 import { DashboardsResource, } from "./resources/dashboards.js";
 import { DataQualityResource, } from "./resources/data-quality.js";
 import { DatasetsResource, } from "./resources/datasets.js";
+import { DiscussionsResource, } from "./resources/discussions.js";
 import { FlowZonesResource, } from "./resources/flow-zones.js";
 import { FoldersResource, } from "./resources/folders.js";
 import { FuturesResource, } from "./resources/futures.js";
 import { InsightsResource, } from "./resources/insights.js";
 import { JobsResource, } from "./resources/jobs.js";
+import { MeaningsResource, } from "./resources/meanings.js";
+import { MetricsResource, } from "./resources/metrics.js";
 import { NotebooksResource, } from "./resources/notebooks.js";
+import { ProjectLibraryResource, } from "./resources/project-library.js";
 import { ProjectsResource, } from "./resources/projects.js";
 import { RecipesResource, } from "./resources/recipes.js";
 import { ScenariosResource, } from "./resources/scenarios.js";
 import { SqlResource, } from "./resources/sql.js";
+import { StatisticsResource, } from "./resources/statistics.js";
+import { StreamingEndpointsResource, } from "./resources/streaming-endpoints.js";
 import { VariablesResource, } from "./resources/variables.js";
 import { WebappsResource, } from "./resources/webapps.js";
 import { WikiResource, } from "./resources/wiki.js";
+import { WorkspacesResource, } from "./resources/workspaces.js";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -211,6 +219,14 @@ export class DataikuClient {
 	private apiDeployerResource?: ApiDeployerResource;
 	private bundlesResource?: BundlesResource;
 	private projectDeployerResource?: ProjectDeployerResource;
+	private projectLibraryResource?: ProjectLibraryResource;
+	private streamingEndpointsResource?: StreamingEndpointsResource;
+	private continuousActivitiesResource?: ContinuousActivitiesResource;
+	private statisticsResource?: StatisticsResource;
+	private discussionsResource?: DiscussionsResource;
+	private workspacesResource?: WorkspacesResource;
+	private metricsResource?: MetricsResource;
+	private meaningsResource?: MeaningsResource;
 
 	get projects(): ProjectsResource {
 		return (this.projectsResource ??= new ProjectsResource(this,));
@@ -280,6 +296,30 @@ export class DataikuClient {
 	}
 	get projectDeployer(): ProjectDeployerResource {
 		return (this.projectDeployerResource ??= new ProjectDeployerResource(this,));
+	}
+	get projectLibrary(): ProjectLibraryResource {
+		return (this.projectLibraryResource ??= new ProjectLibraryResource(this,));
+	}
+	get streamingEndpoints(): StreamingEndpointsResource {
+		return (this.streamingEndpointsResource ??= new StreamingEndpointsResource(this,));
+	}
+	get continuousActivities(): ContinuousActivitiesResource {
+		return (this.continuousActivitiesResource ??= new ContinuousActivitiesResource(this,));
+	}
+	get statistics(): StatisticsResource {
+		return (this.statisticsResource ??= new StatisticsResource(this,));
+	}
+	get discussions(): DiscussionsResource {
+		return (this.discussionsResource ??= new DiscussionsResource(this,));
+	}
+	get workspaces(): WorkspacesResource {
+		return (this.workspacesResource ??= new WorkspacesResource(this,));
+	}
+	get metrics(): MetricsResource {
+		return (this.metricsResource ??= new MetricsResource(this,));
+	}
+	get meanings(): MeaningsResource {
+		return (this.meaningsResource ??= new MeaningsResource(this,));
 	}
 
 	constructor(config: DataikuClientConfig,) {

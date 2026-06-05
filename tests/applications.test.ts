@@ -215,4 +215,36 @@ describe("ApplicationsResource", () => {
 		expect(observedBody,).toContain('filename="business-app.zip"',);
 		expect(observedBody,).toContain("zip contents",);
 	});
+
+	it("gets Business App instance user permissions", async () => {
+		let observedMethod = "";
+		let observedPath = "";
+		const permissions = {
+			login: "alice@example.com",
+			admin: true,
+			readProjectContent: true,
+			writeProjectContent: false,
+			extra: "kept",
+		};
+
+		await withServer((req, res,) => {
+			observedMethod = req.method ?? "";
+			observedPath = req.url ?? "";
+			sendJson(res, permissions,);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(createClient(url,),);
+			await expect(
+				resource.getBusinessAppInstanceUserPermissions(
+					"business/app",
+					"BA INSTANCE",
+					"alice@example.com",
+				),
+			).resolves.toEqual(permissions,);
+		},);
+
+		expect(observedMethod,).toBe("GET",);
+		expect(observedPath,).toBe(
+			"/public/api/business-apps/business%2Fapp/instances/BA%20INSTANCE/permissions/alice%40example.com",
+		);
+	});
 });

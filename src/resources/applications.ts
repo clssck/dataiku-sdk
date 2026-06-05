@@ -18,6 +18,13 @@ export interface BusinessAppListItem extends Record<string, unknown> {
 	name?: string;
 }
 
+export interface BusinessAppInstanceUserPermissions extends Record<string, unknown> {
+	login?: string;
+	admin?: boolean;
+	readProjectContent?: boolean;
+	writeProjectContent?: boolean;
+}
+
 export class ApplicationsResource extends BaseResource {
 	/** List all Dataiku Apps. */
 	async listApps(): Promise<AppListItem[]> {
@@ -121,6 +128,19 @@ export class ApplicationsResource extends BaseResource {
 				encodeURIComponent(projectKey,)
 			}/upgrade`,
 			{},
+		);
+	}
+
+	/** Get a user's effective permissions on a Business App instance. */
+	async getBusinessAppInstanceUserPermissions(
+		id: string,
+		projectKey: string,
+		user: string,
+	): Promise<BusinessAppInstanceUserPermissions> {
+		return this.client.get<BusinessAppInstanceUserPermissions>(
+			`/public/api/business-apps/${encodeURIComponent(id,)}/instances/${
+				encodeURIComponent(projectKey,)
+			}/permissions/${encodeURIComponent(user,)}`,
 		);
 	}
 

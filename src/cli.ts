@@ -2151,6 +2151,107 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 				"dss project map --include-raw",
 			],
 		},
+		create: {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss project create <projectKey> <name> [--owner LOGIN] [--data JSON|--data-file PATH|--stdin]",
+				);
+				return c.projects.createProject(a[0], a[1], f["owner"] as string | undefined, jsonInput(f,),);
+			},
+			usage:
+				"dss project create <projectKey> <name> [--owner LOGIN] [--data JSON|--data-file PATH|--stdin]",
+			description: "Create a new project (optionally with owner login and settings).",
+			examples: ["dss project create MY_PROJ MyProject",],
+		},
+		delete: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss project delete <projectKey> [--drop-data]",);
+				await c.projects.deleteProject(a[0], f["drop-data"] === true,);
+				return { deleted: a[0], };
+			},
+			usage: "dss project delete <projectKey> [--drop-data]",
+			description: "Delete a project (destructive). --drop-data also clears managed datasets.",
+			examples: ["dss project delete MY_PROJ",],
+		},
+		duplicate: {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					3,
+					"dss project duplicate <sourceKey> <targetKey> <targetName> [--data JSON|--data-file PATH|--stdin]",
+				);
+				return c.projects.duplicate(a[0], a[1], a[2], jsonInput(f,),);
+			},
+			usage:
+				"dss project duplicate <sourceKey> <targetKey> <targetName> [--data JSON|--data-file PATH|--stdin]",
+			description: "Duplicate a project into a new project key.",
+			examples: ["dss project duplicate SRC NEW NewProject",],
+		},
+		export: {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss project export <projectKey> --output PATH [--data JSON|--data-file PATH|--stdin]",
+				);
+				const out = f["output"] as string | undefined;
+				if (!out) throw new UsageError("--output PATH is required.", "missing_required_flag",);
+				await c.projects.exportArchive(a[0], out, jsonInput(f,),);
+				return { path: out, };
+			},
+			usage: "dss project export <projectKey> --output PATH [--data JSON|--data-file PATH|--stdin]",
+			description: "Export a project to a local archive (.zip).",
+			examples: ["dss project export MY_PROJ --output ./my_proj.zip",],
+		},
+		import: {
+			handler: async (c, a,) => {
+				requireArgs(a, 1, "dss project import <filePath>",);
+				return c.projects.importProjectFromArchive(a[0],);
+			},
+			usage: "dss project import <filePath>",
+			description: "Upload a project archive to prepare an import (returns a temporary import id).",
+			examples: ["dss project import ./my_proj.zip",],
+		},
+		"permissions-get": {
+			handler: (c, _a, f,) => c.projects.getPermissions(f["project-key"] as string | undefined,),
+			usage: "dss project permissions-get [--project-key KEY]",
+			description: "Get a project's permissions.",
+			examples: ["dss project permissions-get --project-key MY_PROJ",],
+		},
+		"permissions-set": {
+			handler: async (c, _a, f,) => {
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (permissions object).",
+				);
+				await c.projects.setPermissions(f["project-key"] as string | undefined, body,);
+				return { updated: true, };
+			},
+			usage: "dss project permissions-set (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			description: "Replace a project's permissions.",
+			examples: ["dss project permissions-set --data-file perms.json --project-key MY_PROJ",],
+		},
+		"settings-get": {
+			handler: (c, _a, f,) => c.projects.getSettings(f["project-key"] as string | undefined,),
+			usage: "dss project settings-get [--project-key KEY]",
+			description: "Get a project's settings.",
+			examples: ["dss project settings-get --project-key MY_PROJ",],
+		},
+		"settings-set": {
+			handler: async (c, _a, f,) => {
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (settings object).",
+				);
+				await c.projects.setSettings(f["project-key"] as string | undefined, body,);
+				return { updated: true, };
+			},
+			usage: "dss project settings-set (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			description: "Replace a project's settings.",
+			examples: ["dss project settings-set --data-file settings.json --project-key MY_PROJ",],
+		},
 	},
 
 	app: {
@@ -2220,6 +2321,20 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			usage: "dss app delete-instance [--project-key KEY]",
 			description: "Delete an app-instance project (destructive: removes the instance project).",
 			examples: ["dss app delete-instance --project-key MYINSTANCE",],
+		},
+		"business-app-instance-permissions": {
+			handler: (c, a,) => {
+				requireArgs(
+					a,
+					3,
+					"dss app business-app-instance-permissions <businessAppId> <instanceProjectKey> <userLogin>",
+				);
+				return c.applications.getBusinessAppInstanceUserPermissions(a[0], a[1], a[2],);
+			},
+			usage:
+				"dss app business-app-instance-permissions <businessAppId> <instanceProjectKey> <userLogin>",
+			description: "Get a user's effective permissions on a Business App instance.",
+			examples: ["dss app business-app-instance-permissions my-bapp INSTANCEPROJ alice",],
 		},
 	},
 
@@ -2944,6 +3059,565 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			usage: "dss project-deployer create-infra (--data JSON|--data-file PATH|--stdin)",
 			description: "Create a Project Deployer infrastructure.",
 			examples: ["dss project-deployer create-infra --data-file infra.json",],
+		},
+	},
+
+	"project-library": {
+		list: {
+			handler: (c, _a, f,) => c.projectLibrary.listContents(f["project-key"] as string | undefined,),
+			usage: "dss project-library list [--project-key KEY]",
+			description: "List the project code library (lib/) contents.",
+			examples: ["dss project-library list",],
+		},
+		get: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss project-library get <path> [--project-key KEY]",);
+				return c.projectLibrary.getFile(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss project-library get <path> [--project-key KEY]",
+			description: "Print the text content of a project library file.",
+			examples: ["dss project-library get python/mylib/utils.py",],
+		},
+		"get-bytes": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss project-library get-bytes <path> --output PATH [--project-key KEY]",);
+				const out = f["output"] as string | undefined;
+				if (!out) throw new UsageError("--output PATH is required.", "missing_required_flag",);
+				const bytes = await c.projectLibrary.getFileBytes(
+					a[0],
+					f["project-key"] as string | undefined,
+				);
+				writeFileSync(out, bytes,);
+				return { path: out, bytes: bytes.length, };
+			},
+			usage: "dss project-library get-bytes <path> --output PATH [--project-key KEY]",
+			description: "Download a project library file's raw bytes to a local file.",
+			examples: ["dss project-library get-bytes static/logo.png --output ./logo.png",],
+		},
+		"create-file": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss project-library create-file <path> [--project-key KEY]",);
+				await c.projectLibrary.addFile(a[0], f["project-key"] as string | undefined,);
+				return { created: a[0], };
+			},
+			usage: "dss project-library create-file <path> [--project-key KEY]",
+			description: "Create an empty file in the project library.",
+			examples: ["dss project-library create-file python/mylib/new.py",],
+		},
+		"create-folder": {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss project-library create-folder <path> [--project-key KEY]",);
+				await c.projectLibrary.addFolder(a[0], f["project-key"] as string | undefined,);
+				return { created: a[0], };
+			},
+			usage: "dss project-library create-folder <path> [--project-key KEY]",
+			description: "Create a folder in the project library.",
+			examples: ["dss project-library create-folder python/mylib",],
+		},
+		put: {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss project-library put <path> (--content TEXT|--file PATH|--stdin) [--project-key KEY]",
+				);
+				const content = typeof f["content"] === "string"
+					? f["content"] as string
+					: typeof f["file"] === "string"
+					? readFileSync(f["file"] as string, "utf-8",)
+					: await readStdinText();
+				await c.projectLibrary.addOrUpdateFile(a[0], content, f["project-key"] as string | undefined,);
+				return { updated: a[0], };
+			},
+			usage: "dss project-library put <path> (--content TEXT|--file PATH|--stdin) [--project-key KEY]",
+			description: "Create or overwrite a project library file with raw text content.",
+			examples: ["dss project-library put python/mylib/utils.py --file ./utils.py",],
+		},
+		delete: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss project-library delete <path> [--project-key KEY]",);
+				await c.projectLibrary.deleteFile(a[0], f["project-key"] as string | undefined,);
+				return { deleted: a[0], };
+			},
+			usage: "dss project-library delete <path> [--project-key KEY]",
+			description: "Delete a project library file or folder.",
+			examples: ["dss project-library delete python/mylib/old.py",],
+		},
+		rename: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 2, "dss project-library rename <path> <new-name> [--project-key KEY]",);
+				await c.projectLibrary.rename(a[0], a[1], f["project-key"] as string | undefined,);
+				return { renamed: a[0], to: a[1], };
+			},
+			usage: "dss project-library rename <path> <new-name> [--project-key KEY]",
+			description: "Rename a project library file or folder within its parent.",
+			examples: ["dss project-library rename python/mylib/old.py new.py",],
+		},
+		move: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 2, "dss project-library move <path> <destination-folder> [--project-key KEY]",);
+				await c.projectLibrary.move(a[0], a[1], f["project-key"] as string | undefined,);
+				return { moved: a[0], to: a[1], };
+			},
+			usage: "dss project-library move <path> <destination-folder> [--project-key KEY]",
+			description: "Move a project library file or folder into another folder.",
+			examples: ["dss project-library move python/old.py python/mylib",],
+		},
+	},
+
+	"streaming-endpoint": {
+		list: {
+			handler: (c, _a, f,) => c.streamingEndpoints.list(f["project-key"] as string | undefined,),
+			usage: "dss streaming-endpoint list [--project-key KEY]",
+			description: "List streaming endpoints in a project.",
+			examples: ["dss streaming-endpoint list",],
+		},
+		get: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss streaming-endpoint get <id> [--project-key KEY]",);
+				return c.streamingEndpoints.getSettings(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss streaming-endpoint get <id> [--project-key KEY]",
+			description: "Get a streaming endpoint's settings.",
+			examples: ["dss streaming-endpoint get my-stream",],
+		},
+		create: {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss streaming-endpoint create <id> <type> [--data JSON|--data-file PATH|--stdin] [--project-key KEY]",
+				);
+				const body = jsonInput(f,) ?? {};
+				return c.streamingEndpoints.create(a[0], a[1], body, f["project-key"] as string | undefined,);
+			},
+			usage:
+				"dss streaming-endpoint create <id> <type> [--data JSON|--data-file PATH|--stdin] [--project-key KEY]",
+			description: "Create a streaming endpoint of the given type.",
+			examples: ["dss streaming-endpoint create my-stream kafka",],
+		},
+		"update-settings": {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss streaming-endpoint update-settings <id> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+				);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (endpoint settings).",
+				);
+				await c.streamingEndpoints.updateSettings(a[0], body, f["project-key"] as string | undefined,);
+				return { updated: a[0], };
+			},
+			usage:
+				"dss streaming-endpoint update-settings <id> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			description: "Replace a streaming endpoint's settings.",
+			examples: ["dss streaming-endpoint update-settings my-stream --data-file settings.json",],
+		},
+		delete: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss streaming-endpoint delete <id> [--project-key KEY]",);
+				await c.streamingEndpoints.delete(a[0], f["project-key"] as string | undefined,);
+				return { deleted: a[0], };
+			},
+			usage: "dss streaming-endpoint delete <id> [--project-key KEY]",
+			description: "Delete a streaming endpoint.",
+			examples: ["dss streaming-endpoint delete my-stream",],
+		},
+	},
+
+	"continuous-activity": {
+		list: {
+			handler: (c, _a, f,) => c.continuousActivities.list(f["project-key"] as string | undefined,),
+			usage: "dss continuous-activity list [--project-key KEY]",
+			description: "List continuous activities in a project.",
+			examples: ["dss continuous-activity list",],
+		},
+		status: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss continuous-activity status <recipeId> [--project-key KEY]",);
+				return c.continuousActivities.getStatus(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss continuous-activity status <recipeId> [--project-key KEY]",
+			description: "Get a continuous recipe's desired and effective state.",
+			examples: ["dss continuous-activity status compute_stream",],
+		},
+		start: {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss continuous-activity start <recipeId> [--data JSON|--data-file PATH|--stdin] [--project-key KEY]",
+				);
+				return c.continuousActivities.start(
+					a[0],
+					jsonInput(f,),
+					f["project-key"] as string | undefined,
+				);
+			},
+			usage:
+				"dss continuous-activity start <recipeId> [--data JSON|--data-file PATH|--stdin] [--project-key KEY]",
+			description: "Start a continuous recipe (optional loop restart params via JSON).",
+			examples: ["dss continuous-activity start compute_stream",],
+		},
+		stop: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss continuous-activity stop <recipeId> [--project-key KEY]",);
+				await c.continuousActivities.stop(a[0], f["project-key"] as string | undefined,);
+				return { stopped: a[0], };
+			},
+			usage: "dss continuous-activity stop <recipeId> [--project-key KEY]",
+			description: "Stop a continuous recipe.",
+			examples: ["dss continuous-activity stop compute_stream",],
+		},
+	},
+
+	statistics: {
+		"list-worksheets": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss statistics list-worksheets <dataset> [--project-key KEY]",);
+				return c.statistics.listWorksheets(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss statistics list-worksheets <dataset> [--project-key KEY]",
+			description: "List EDA statistics worksheets for a dataset.",
+			examples: ["dss statistics list-worksheets customers",],
+		},
+		"get-worksheet": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 2, "dss statistics get-worksheet <dataset> <worksheetId> [--project-key KEY]",);
+				return c.statistics.getWorksheet(a[0], a[1], f["project-key"] as string | undefined,);
+			},
+			usage: "dss statistics get-worksheet <dataset> <worksheetId> [--project-key KEY]",
+			description: "Get one statistics worksheet definition.",
+			examples: ["dss statistics get-worksheet customers ws_1",],
+		},
+		"create-worksheet": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss statistics create-worksheet <dataset> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+				);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (worksheet definition).",
+				);
+				return c.statistics.createWorksheet(a[0], body, f["project-key"] as string | undefined,);
+			},
+			usage:
+				"dss statistics create-worksheet <dataset> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			description: "Create a statistics worksheet from a JSON definition.",
+			examples: ["dss statistics create-worksheet customers --data-file ws.json",],
+		},
+		"update-worksheet": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss statistics update-worksheet <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+				);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (worksheet definition).",
+				);
+				return c.statistics.updateWorksheet(a[0], a[1], body, f["project-key"] as string | undefined,);
+			},
+			usage:
+				"dss statistics update-worksheet <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			description: "Replace a statistics worksheet definition.",
+			examples: ["dss statistics update-worksheet customers ws_1 --data-file ws.json",],
+		},
+		"delete-worksheet": {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss statistics delete-worksheet <dataset> <worksheetId> [--project-key KEY]",
+				);
+				await c.statistics.deleteWorksheet(a[0], a[1], f["project-key"] as string | undefined,);
+				return { deleted: a[1], };
+			},
+			usage: "dss statistics delete-worksheet <dataset> <worksheetId> [--project-key KEY]",
+			description: "Delete a statistics worksheet.",
+			examples: ["dss statistics delete-worksheet customers ws_1",],
+		},
+		"run-worksheet": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 2, "dss statistics run-worksheet <dataset> <worksheetId> [--project-key KEY]",);
+				return c.statistics.runWorksheet(a[0], a[1], f["project-key"] as string | undefined,);
+			},
+			usage: "dss statistics run-worksheet <dataset> <worksheetId> [--project-key KEY]",
+			description: "Run a statistics worksheet and return the DSS future response.",
+			examples: ["dss statistics run-worksheet customers ws_1",],
+		},
+		"run-card": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss statistics run-card <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+				);
+				const card = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (card settings).",
+				);
+				return c.statistics.runCard(a[0], a[1], card, f["project-key"] as string | undefined,);
+			},
+			usage:
+				"dss statistics run-card <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			description: "Run a single card in a worksheet context.",
+			examples: ["dss statistics run-card customers ws_1 --data-file card.json",],
+		},
+		"run-computation": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss statistics run-computation <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+				);
+				const computation = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (computation settings).",
+				);
+				return c.statistics.runComputation(
+					a[0],
+					a[1],
+					computation,
+					f["project-key"] as string | undefined,
+				);
+			},
+			usage:
+				"dss statistics run-computation <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			description: "Run a single computation in a worksheet context.",
+			examples: ["dss statistics run-computation customers ws_1 --data-file comp.json",],
+		},
+	},
+
+	discussion: {
+		list: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 2, "dss discussion list <objectType> <objectId> [--project-key KEY]",);
+				return c.discussions.list(a[0], a[1], f["project-key"] as string | undefined,);
+			},
+			usage: "dss discussion list <objectType> <objectId> [--project-key KEY]",
+			description: "List discussions attached to a project object.",
+			examples: ["dss discussion list DATASET customers",],
+		},
+		get: {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					3,
+					"dss discussion get <objectType> <objectId> <discussionId> [--project-key KEY]",
+				);
+				return c.discussions.get(a[0], a[1], a[2], f["project-key"] as string | undefined,);
+			},
+			usage: "dss discussion get <objectType> <objectId> <discussionId> [--project-key KEY]",
+			description: "Get one discussion with its replies.",
+			examples: ["dss discussion get DATASET customers d123",],
+		},
+		create: {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					2,
+					"dss discussion create <objectType> <objectId> --topic TEXT --reply TEXT [--project-key KEY]",
+				);
+				const topic = f["topic"] as string | undefined;
+				const reply = f["reply"] as string | undefined;
+				if (!topic || !reply) {
+					throw new UsageError("--topic and --reply are required.", "missing_required_flag",);
+				}
+				return c.discussions.create(a[0], a[1], topic, reply, f["project-key"] as string | undefined,);
+			},
+			usage:
+				"dss discussion create <objectType> <objectId> --topic TEXT --reply TEXT [--project-key KEY]",
+			description: "Create a discussion with its first reply.",
+			examples: ["dss discussion create DATASET customers --topic Schema --reply Please-review",],
+		},
+		reply: {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					3,
+					"dss discussion reply <objectType> <objectId> <discussionId> --text TEXT [--project-key KEY]",
+				);
+				const text = f["text"] as string | undefined;
+				if (!text) throw new UsageError("--text is required.", "missing_required_flag",);
+				return c.discussions.reply(a[0], a[1], a[2], text, f["project-key"] as string | undefined,);
+			},
+			usage:
+				"dss discussion reply <objectType> <objectId> <discussionId> --text TEXT [--project-key KEY]",
+			description: "Add a reply to an existing discussion.",
+			examples: ["dss discussion reply DATASET customers d123 --text Done",],
+		},
+	},
+
+	meaning: {
+		list: {
+			handler: (c,) => c.meanings.list(),
+			usage: "dss meaning list",
+			description: "List user-defined meanings (column semantic types) on the instance.",
+			examples: ["dss meaning list",],
+		},
+		get: {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss meaning get <meaningId>",);
+				return c.meanings.get(a[0],);
+			},
+			usage: "dss meaning get <meaningId>",
+			description: "Get a user-defined meaning definition.",
+			examples: ["dss meaning get customer_type",],
+		},
+		create: {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					3,
+					"dss meaning create <id> <label> <type> [--data JSON|--data-file PATH|--stdin]",
+				);
+				return c.meanings.create(a[0], a[1], a[2], jsonInput(f,) ?? {},);
+			},
+			usage: "dss meaning create <id> <label> <type> [--data JSON|--data-file PATH|--stdin]",
+			description: "Create a user-defined meaning (type e.g. VALUES_LIST, VALUES_MAPPING, PATTERN).",
+			examples: ["dss meaning create vip VIP VALUES_LIST",],
+		},
+		update: {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss meaning update <meaningId> (--data JSON|--data-file PATH|--stdin)",);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (meaning definition).",
+				);
+				return c.meanings.update(a[0], body,);
+			},
+			usage: "dss meaning update <meaningId> (--data JSON|--data-file PATH|--stdin)",
+			description: "Replace a user-defined meaning definition.",
+			examples: ["dss meaning update vip --data-file meaning.json",],
+		},
+	},
+
+	workspace: {
+		list: {
+			handler: (c,) => c.workspaces.list(),
+			usage: "dss workspace list",
+			description: "List collaboration workspaces on the instance.",
+			examples: ["dss workspace list",],
+		},
+		get: {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss workspace get <workspaceKey>",);
+				return c.workspaces.get(a[0],);
+			},
+			usage: "dss workspace get <workspaceKey>",
+			description: "Get a workspace's settings.",
+			examples: ["dss workspace get MY_WS",],
+		},
+		create: {
+			handler: (c, _a, f,) => {
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (workspace definition).",
+				);
+				return c.workspaces.create(body as Parameters<typeof c.workspaces.create>[0],);
+			},
+			usage: "dss workspace create (--data JSON|--data-file PATH|--stdin)",
+			description: "Create a collaboration workspace.",
+			examples: ["dss workspace create --data-file ws.json",],
+		},
+		"update-settings": {
+			handler: async (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss workspace update-settings <workspaceKey> (--data JSON|--data-file PATH|--stdin)",
+				);
+				const body = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (workspace settings).",
+				);
+				await c.workspaces.updateSettings(a[0], body,);
+				return { updated: a[0], };
+			},
+			usage: "dss workspace update-settings <workspaceKey> (--data JSON|--data-file PATH|--stdin)",
+			description: "Replace a workspace's settings (admin).",
+			examples: ["dss workspace update-settings MY_WS --data-file ws.json",],
+		},
+		delete: {
+			handler: async (c, a,) => {
+				requireArgs(a, 1, "dss workspace delete <workspaceKey>",);
+				await c.workspaces.delete(a[0],);
+				return { deleted: a[0], };
+			},
+			usage: "dss workspace delete <workspaceKey>",
+			description: "Delete a workspace (admin).",
+			examples: ["dss workspace delete MY_WS",],
+		},
+		"list-objects": {
+			handler: (c, a,) => {
+				requireArgs(a, 1, "dss workspace list-objects <workspaceKey>",);
+				return c.workspaces.listObjects(a[0],);
+			},
+			usage: "dss workspace list-objects <workspaceKey>",
+			description: "List objects shared in a workspace.",
+			examples: ["dss workspace list-objects MY_WS",],
+		},
+		"add-object": {
+			handler: (c, a, f,) => {
+				requireArgs(
+					a,
+					1,
+					"dss workspace add-object <workspaceKey> (--data JSON|--data-file PATH|--stdin)",
+				);
+				const object = requiredJsonInput(
+					f,
+					"--data, --data-file, or --stdin is required (object definition).",
+				);
+				return c.workspaces.addObject(a[0], object,);
+			},
+			usage: "dss workspace add-object <workspaceKey> (--data JSON|--data-file PATH|--stdin)",
+			description: "Add an object (link or DSS object) to a workspace.",
+			examples: ["dss workspace add-object MY_WS --data-file object.json",],
+		},
+	},
+
+	metrics: {
+		"dataset-get": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss metrics dataset-get <dataset> [--project-key KEY]",);
+				return c.metrics.getDatasetMetrics(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss metrics dataset-get <dataset> [--project-key KEY]",
+			description: "Get the last computed metric values for a dataset.",
+			examples: ["dss metrics dataset-get customers",],
+		},
+		"dataset-compute": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss metrics dataset-compute <dataset> [--project-key KEY]",);
+				return c.metrics.computeDatasetMetrics(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss metrics dataset-compute <dataset> [--project-key KEY]",
+			description: "Compute the DSS-configured metrics for a dataset.",
+			examples: ["dss metrics dataset-compute customers",],
+		},
+		"dataset-history": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 2, "dss metrics dataset-history <dataset> <metricId> [--project-key KEY]",);
+				return c.metrics.getDatasetMetricHistory(a[0], a[1], f["project-key"] as string | undefined,);
+			},
+			usage: "dss metrics dataset-history <dataset> <metricId> [--project-key KEY]",
+			description: "Get the history of one dataset metric.",
+			examples: ["dss metrics dataset-history customers records:COUNT_RECORDS",],
+		},
+		"folder-get": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss metrics folder-get <folderId> [--project-key KEY]",);
+				return c.metrics.getFolderMetrics(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss metrics folder-get <folderId> [--project-key KEY]",
+			description: "Get the last computed metric values for a managed folder.",
+			examples: ["dss metrics folder-get aBcDeFgH",],
 		},
 	},
 
@@ -3935,6 +4609,36 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			usage: "dss dataset list [--project-key KEY]",
 			description: "List all datasets in a project.",
 			examples: ["dss dataset list", "dss dataset list --project-key MYPROJ",],
+		},
+		rename: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 2, "dss dataset rename <oldName> <newName> [--project-key KEY]",);
+				await c.datasets.rename(a[0], a[1], f["project-key"] as string | undefined,);
+				return { renamed: a[0], to: a[1], };
+			},
+			usage: "dss dataset rename <oldName> <newName> [--project-key KEY]",
+			description: "Rename a dataset (updates downstream flow references).",
+			examples: ["dss dataset rename old_ds new_ds",],
+		},
+		"list-partitions": {
+			handler: (c, a, f,) => {
+				requireArgs(a, 1, "dss dataset list-partitions <name> [--project-key KEY]",);
+				return c.datasets.listPartitions(a[0], f["project-key"] as string | undefined,);
+			},
+			usage: "dss dataset list-partitions <name> [--project-key KEY]",
+			description: "List the partitions of a partitioned dataset.",
+			examples: ["dss dataset list-partitions events",],
+		},
+		clear: {
+			handler: async (c, a, f,) => {
+				requireArgs(a, 1, "dss dataset clear <name> [--partitions SPEC] [--project-key KEY]",);
+				const partitions = f["partitions"] as string | undefined;
+				await c.datasets.clear(a[0], partitions, f["project-key"] as string | undefined,);
+				return { cleared: a[0], partitions: partitions ?? "ALL", };
+			},
+			usage: "dss dataset clear <name> [--partitions SPEC] [--project-key KEY]",
+			description: "Clear a dataset's data (all, or a partition spec); keeps the dataset.",
+			examples: ["dss dataset clear staging", "dss dataset clear events --partitions 2024-01",],
 		},
 		get: {
 			handler: (c, a, f,) => {
@@ -7185,7 +7889,7 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "data-quality" && action === "compute") return "write";
 	if (READ_ACTIONS.has(action,)) return "read";
 	if (
-		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove|publish|activate|deploy|import|export|preload|upgrade|stop|restart)/
+		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove|publish|activate|deploy|import|export|preload|upgrade|stop|restart|duplicate|put|rename|reply|compute)/
 			.test(action,)
 	) {
 		return "write";
