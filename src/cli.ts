@@ -102,6 +102,9 @@ function gitRevision(packageRoot: string | undefined,): string | undefined {
 const PACKAGE_ROOT = findPackageRoot();
 const CLI_VERSION = packageVersion(PACKAGE_ROOT,);
 const CLI_GIT_REVISION = gitRevision(PACKAGE_ROOT,);
+const AGENT_CONTRACT_VERSION = 1;
+const JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema";
+const AGENT_CONTRACT_SCHEMA_ID = "https://clssck.github.io/dataiku-sdk/schemas/agent-contract-v1.json";
 function cliVersionResult(): { version: string; gitRevision: string | null; } {
 	return { version: CLI_VERSION, gitRevision: CLI_GIT_REVISION ?? null, };
 }
@@ -1442,12 +1445,12 @@ function enqueueCliWarning(warning: Record<string, unknown>,): void {
 	pendingCliWarnings.push(warning,);
 }
 
-/** Emit queued warnings as a single `{ warnings: [...] }` object on stderr. Idempotent. */
+/** Emit queued warnings as one JSONL warning event on stderr. Idempotent. */
 function flushCliWarnings(): void {
 	if (pendingCliWarnings.length === 0) return;
 	const warnings = pendingCliWarnings;
 	pendingCliWarnings = [];
-	process.stderr.write(`${JSON.stringify({ warnings, }, null, 2,)}\n`,);
+	process.stderr.write(`${JSON.stringify({ type: "warning", warnings, },)}\n`,);
 }
 
 function resolveFieldPath(source: Record<string, unknown>, field: string,): unknown {
@@ -7667,15 +7670,40 @@ interface CommandFlagChoice {
 	oneOf: string[][];
 }
 
+type CommandFlagMetadata = {
+	name: string;
+	kind: "boolean" | "value";
+	valueType?: string;
+	enumValues?: string[];
+};
+
+interface CommandStructuredExample {
+	shell: string;
+	argv?: string[];
+	payload?: unknown;
+}
+
+interface CommandUnsafeOutput {
+	condition: string;
+	kind: "raw-stdout" | "local-file";
+	detail: string;
+	safeAlternative?: string;
+}
+
+interface CommandAgentSchemas {
+	argv: Record<string, unknown>;
+	input?: Record<string, unknown>;
+	output: Record<string, unknown>;
+}
+
 interface CommandRegistryEntry {
 	resource: string;
 	action: string;
 	usage: string;
 	description?: string;
 	examples?: string[];
-	flags: Array<
-		{ name: string; kind: "boolean" | "value"; valueType?: string; enumValues?: string[]; }
-	>;
+	structuredExamples: CommandStructuredExample[];
+	flags: CommandFlagMetadata[];
 	positionals: string[];
 	sideEffect: CommandSideEffect;
 	requiresAuth: boolean;
@@ -7692,10 +7720,13 @@ interface CommandRegistryEntry {
 	requiredOneOf?: CommandFlagChoice[];
 	optionalFlags: string[];
 	payloadSchema?: CommandPayloadSchema;
+	schemas: CommandAgentSchemas;
+	unsafeOutputs?: CommandUnsafeOutput[];
 	examplePayload?: unknown;
 	cleanupCommand?: string;
 	exitCodes: CommandExitCodes;
 	cleanupHint?: string;
+	agentContractVersion: number;
 }
 
 const READ_ACTIONS = new Set([
@@ -7769,6 +7800,9 @@ const AUTHENTICATED_AGENT_FLAGS = [
 const COMMANDS_USAGE = "dss commands run [--json]";
 const COMMANDS_DESCRIPTION = "Print the machine-readable command registry for agent planning.";
 const COMMANDS_EXAMPLES = ["dss commands run", "dss commands run --json",];
+const AGENT_CONTRACT_USAGE = "dss agent contract";
+const AGENT_CONTRACT_DESCRIPTION = "Print the versioned JSON contract agents should use to drive dss.";
+const AGENT_CONTRACT_EXAMPLES = ["dss agent contract",];
 const VERSION_USAGE = "dss version";
 const VERSION_DESCRIPTION = "Print the CLI version and git revision as JSON.";
 const VERSION_EXAMPLES = ["dss version", "dss --version",];
@@ -7820,6 +7854,141 @@ function flagKind(name: string,): "boolean" | "value" {
 
 function registryKey(resource: string, action: string,): string {
 	return `${resource}.${action}`;
+}
+
+function splitShellLike(input: string,): string[] | undefined {
+	const tokens: string[] = [];
+	let current = "";
+	let quote: "'" | '"' | undefined;
+	for (let index = 0; index < input.length; index++) {
+		const char = input[index]!;
+		if (quote) {
+			if (char === quote) {
+				quote = undefined;
+			} else if (char === "\\" && quote === '"' && index + 1 < input.length) {
+				current += input[++index]!;
+			} else {
+				current += char;
+			}
+			continue;
+		}
+		if (char === "'" || char === '"') {
+			quote = char;
+			continue;
+		}
+		if (/\s/.test(char,)) {
+			if (current.length > 0) {
+				tokens.push(current,);
+				current = "";
+			}
+			continue;
+		}
+		if (char === "|" || char === "<" || char === ">" || char === ";" || char === "&") {
+			return undefined;
+		}
+		current += char;
+	}
+	if (quote) return undefined;
+	if (current.length > 0) tokens.push(current,);
+	return tokens;
+}
+
+function exampleArgv(example: string,): string[] | undefined {
+	const tokens = splitShellLike(example,);
+	if (!tokens || tokens[0] !== "dss") return undefined;
+	return tokens.slice(1,);
+}
+
+function structuredExamples(
+	examples: string[] | undefined,
+	examplePayload: unknown,
+): CommandStructuredExample[] {
+	return (examples ?? []).map((shell,) => {
+		const argv = exampleArgv(shell,);
+		return {
+			shell,
+			...(argv ? { argv, } : {}),
+			...(examplePayload !== undefined && shell.includes("--data") ? { payload: examplePayload, } : {}),
+		};
+	},);
+}
+
+
+function outputJsonSchema(shape: CommandOutputShape,): Record<string, unknown> {
+	if (shape === "array") return { type: "array", items: true, };
+	if (shape === "string") return { type: "string", };
+	return { type: "object", additionalProperties: true, };
+}
+
+function payloadJsonSchema(payloadSchema: CommandPayloadSchema | undefined,): Record<string, unknown> | undefined {
+	if (!payloadSchema) return undefined;
+	return payloadSchema.jsonShape === "array"
+		? { type: "array", items: true, }
+		: { type: "object", additionalProperties: true, };
+}
+
+function argvJsonSchema(
+	resource: string,
+	action: string,
+	_flags: CommandFlagMetadata[],
+	_positionals: string[],
+	_requiredFlags: string[],
+	_requiredOneOf: CommandFlagChoice[],
+): Record<string, unknown> {
+	return {
+		type: "object",
+		additionalProperties: true,
+		required: ["argv",],
+		properties: {
+			argv: { type: "array", items: { type: "string", }, minItems: 1, },
+			resource: { const: resource, },
+			action: { const: action, },
+		},
+	};
+}
+
+function unsafeOutputs(
+	resource: string,
+	action: string,
+	flags: CommandFlagMetadata[],
+	producesLocalFile: boolean,
+): CommandUnsafeOutput[] | undefined {
+	const outputs: CommandUnsafeOutput[] = [];
+	if (flags.some((flag,) => flag.name === "raw",)) {
+		outputs.push({
+			condition: "--raw without --output",
+			kind: "raw-stdout",
+			detail: `${resource} ${action} can intentionally write raw payload bytes/text instead of JSON.`,
+			safeAlternative: flags.some((flag,) => flag.name === "output",)
+				? "Pass --output PATH so stdout remains a JSON string containing the path."
+				: "Omit --raw when a JSON stdout value is required.",
+		},);
+	}
+	if (producesLocalFile) {
+		outputs.push({
+			condition: "--output or --output-file",
+			kind: "local-file",
+			detail: "Command writes bytes to a local path and returns JSON metadata on stdout.",
+		},);
+	}
+	return outputs.length > 0 ? outputs : undefined;
+}
+
+function buildCommandSchemas(
+	resource: string,
+	action: string,
+	flags: CommandFlagMetadata[],
+	positionals: string[],
+	requiredFlags: string[],
+	requiredOneOf: CommandFlagChoice[],
+	payloadSchema: CommandPayloadSchema | undefined,
+	outputShape: CommandOutputShape,
+): CommandAgentSchemas {
+	return {
+		argv: argvJsonSchema(resource, action, flags, positionals, requiredFlags, requiredOneOf,),
+		...(payloadSchema ? { input: payloadJsonSchema(payloadSchema,), } : {}),
+		output: outputJsonSchema(outputShape,),
+	};
 }
 
 const EXPLICIT_REGISTRY_OVERRIDES: Record<string, CommandRegistryOverride> = {
@@ -7880,7 +8049,7 @@ function extractPositionals(usage: string,): string[] {
 function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "auth") return "auth";
 	if (
-		resource === "doctor" || resource === "commands" || resource === "fixtures"
+		resource === "agent" || resource === "doctor" || resource === "commands" || resource === "fixtures"
 		|| resource === "version"
 	) {
 		return "read";
@@ -7898,7 +8067,8 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 }
 
 function inferRequiresAuth(resource: string,): boolean {
-	return resource !== "auth"
+	return resource !== "agent"
+		&& resource !== "auth"
 		&& resource !== "commands"
 		&& resource !== "install-skill"
 		&& resource !== "version";
@@ -7906,7 +8076,7 @@ function inferRequiresAuth(resource: string,): boolean {
 
 function inferRequiresProject(resource: string, action: string, usage: string,): boolean {
 	if (
-		resource === "auth" || resource === "doctor" || resource === "commands"
+		resource === "agent" || resource === "auth" || resource === "doctor" || resource === "commands"
 		|| resource === "install-skill" || resource === "version"
 	) {
 		return false;
@@ -7942,7 +8112,7 @@ const STRING_OUTPUT_ACTIONS = new Set([
 
 function inferOutputShape(resource: string, action: string,): CommandOutputShape {
 	if (
-		resource === "auth" || resource === "commands" || resource === "install-skill"
+		resource === "agent" || resource === "auth" || resource === "commands" || resource === "install-skill"
 		|| resource === "version"
 	) {
 		return "object";
@@ -8190,45 +8360,65 @@ function buildRegistryEntry(
 	const cleanupCommand = meta.cleanupCommand
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.cleanupCommand
 		?? cleanupCommandFromDeleteUsage(resource, action,);
+	const flagMetadata: CommandFlagMetadata[] = flags.map((name,) => {
+		const kind = flagKind(name,);
+		if (kind === "boolean") return { name, kind, };
+		const hint = valueHints.get(name,) ?? GLOBAL_FLAG_VALUE_HINTS[name];
+		if (!hint) return { name, kind, };
+		return {
+			name,
+			kind,
+			valueType: hint.valueType,
+			...(hint.enumValues ? { enumValues: hint.enumValues, } : {}),
+		};
+	},);
+	const positionals = extractPositionals(meta.usage,);
+	const outputShape = inferOutputShape(resource, action,);
+	const producesLocalFile = meta.usage.includes("--output PATH",)
+		|| meta.usage.includes("--output-file PATH",);
+	const uniqueRequiredFlags = uniqueStrings(requiredFlags,);
+	const uniqueOptionalFlags = uniqueStrings(optionalFlags,);
+	const unsafe = unsafeOutputs(resource, action, flagMetadata, producesLocalFile,);
 	return {
 		resource,
 		action,
 		usage: meta.usage,
 		description: meta.description,
 		examples: meta.examples,
-		flags: flags.map((name,) => {
-			const kind = flagKind(name,);
-			if (kind === "boolean") return { name, kind, };
-			const hint = valueHints.get(name,) ?? GLOBAL_FLAG_VALUE_HINTS[name];
-			if (!hint) return { name, kind, };
-			return {
-				name,
-				kind,
-				valueType: hint.valueType,
-				...(hint.enumValues ? { enumValues: hint.enumValues, } : {}),
-			};
-		},),
-		positionals: extractPositionals(meta.usage,),
+		structuredExamples: structuredExamples(meta.examples, examplePayload,),
+		flags: flagMetadata,
+		positionals,
 		sideEffect,
 		requiresAuth,
 		requiresProject,
-		outputShape: inferOutputShape(resource, action,),
+		outputShape,
 		inputContract,
 		destructive,
-		producesLocalFile: meta.usage.includes("--output PATH",)
-			|| meta.usage.includes("--output-file PATH",),
+		producesLocalFile,
 		mutatesDss,
 		async: asyncKind,
 		idempotency: inferIdempotency(sideEffect, action, meta.usage,),
 		dryRun: meta.usage.includes("--dry-run",),
-		requiredFlags: uniqueStrings(requiredFlags,),
-		optionalFlags: uniqueStrings(optionalFlags,),
+		requiredFlags: uniqueRequiredFlags,
+		optionalFlags: uniqueOptionalFlags,
 		...(requiredOneOf.length > 0 ? { requiredOneOf, } : {}),
 		...(payloadSchema ? { payloadSchema, } : {}),
+		schemas: buildCommandSchemas(
+			resource,
+			action,
+			flagMetadata,
+			positionals,
+			uniqueRequiredFlags,
+			requiredOneOf,
+			payloadSchema,
+			outputShape,
+		),
+		...(unsafe ? { unsafeOutputs: unsafe, } : {}),
 		...(examplePayload !== undefined ? { examplePayload, } : {}),
 		...(cleanupCommand ? { cleanupCommand, } : {}),
 		exitCodes: inferExitCodes(asyncKind,),
 		...(cleanupHint ? { cleanupHint, } : {}),
+		agentContractVersion: AGENT_CONTRACT_VERSION,
 	};
 }
 
@@ -8246,6 +8436,14 @@ function buildCommandRegistry(): Record<string, Record<string, CommandRegistryEn
 			usage: COMMANDS_USAGE,
 			description: COMMANDS_DESCRIPTION,
 			examples: COMMANDS_EXAMPLES,
+		},),
+	};
+	registry.agent = {
+		contract: buildRegistryEntry("agent", "contract", {
+			handler: async () => undefined,
+			usage: AGENT_CONTRACT_USAGE,
+			description: AGENT_CONTRACT_DESCRIPTION,
+			examples: AGENT_CONTRACT_EXAMPLES,
 		},),
 	};
 	registry.version = {
@@ -8301,6 +8499,200 @@ function buildCommandRegistry(): Record<string, Record<string, CommandRegistryEn
 		},);
 	}
 	return registry;
+}
+
+function commandFlagJsonSchema(): Record<string, unknown> {
+	return {
+		type: "object",
+		required: ["name", "kind",],
+		additionalProperties: false,
+		properties: {
+			name: { type: "string", },
+			kind: { enum: ["boolean", "value",], },
+			valueType: { type: "string", },
+			enumValues: { type: "array", items: { type: "string", }, },
+		},
+	};
+}
+
+function commandRegistryEntryJsonSchema(): Record<string, unknown> {
+	return {
+		type: "object",
+		required: [
+			"resource",
+			"action",
+			"usage",
+			"flags",
+			"positionals",
+			"sideEffect",
+			"requiresAuth",
+			"requiresProject",
+			"outputShape",
+			"inputContract",
+			"schemas",
+			"exitCodes",
+			"agentContractVersion",
+		],
+		additionalProperties: true,
+		properties: {
+			resource: { type: "string", },
+			action: { type: "string", },
+			usage: { type: "string", },
+			description: { type: "string", },
+			examples: { type: "array", items: { type: "string", }, },
+			structuredExamples: { type: "array", items: { type: "object", additionalProperties: true, }, },
+			flags: { type: "array", items: commandFlagJsonSchema(), },
+			positionals: { type: "array", items: { type: "string", }, },
+			sideEffect: { enum: ["read", "write", "auth",], },
+			requiresAuth: { type: "boolean", },
+			requiresProject: { type: "boolean", },
+			outputShape: { enum: ["object", "array", "string", "void",], },
+			inputContract: { type: "object", additionalProperties: { type: "boolean", }, },
+			destructive: { enum: ["none", "reversible", "destructive",], },
+			producesLocalFile: { type: "boolean", },
+			mutatesDss: { type: "boolean", },
+			async: { enum: ["none", "job", "future",], },
+			idempotency: { enum: ["safe", "convergent", "if-not-exists", "if-exists", "none",], },
+			dryRun: { type: "boolean", },
+			requiredFlags: { type: "array", items: { type: "string", }, },
+			optionalFlags: { type: "array", items: { type: "string", }, },
+			schemas: { type: "object", additionalProperties: true, },
+			unsafeOutputs: { type: "array", items: { type: "object", additionalProperties: true, }, },
+			exitCodes: { type: "object", additionalProperties: { type: "number", }, },
+			agentContractVersion: { const: AGENT_CONTRACT_VERSION, },
+		},
+	};
+}
+
+function commandRegistryJsonSchema(): Record<string, unknown> {
+	return {
+		$schema: JSON_SCHEMA_DRAFT,
+		type: "object",
+		additionalProperties: {
+			type: "object",
+			additionalProperties: commandRegistryEntryJsonSchema(),
+		},
+	};
+}
+
+function errorEnvelopeJsonSchema(): Record<string, unknown> {
+	return {
+		type: "object",
+		required: ["type", "ok", "error", "code", "category", "exitCode",],
+		additionalProperties: true,
+		properties: {
+			type: { const: "error", },
+			ok: { const: false, },
+			error: { type: "string", },
+			code: { type: "string", },
+			category: { enum: ["usage", "dss", "internal",], },
+			exitCode: { type: "number", },
+			resource: { type: "string", },
+			action: { type: "string", },
+			projectKey: { type: "string", },
+		},
+	};
+}
+
+function warningEventJsonSchema(): Record<string, unknown> {
+	return {
+		type: "object",
+		required: ["type", "warnings",],
+		additionalProperties: false,
+		properties: {
+			type: { const: "warning", },
+			warnings: { type: "array", items: { type: "object", additionalProperties: true, }, },
+		},
+	};
+}
+
+function traceEventJsonSchema(): Record<string, unknown> {
+	return {
+		type: "object",
+		required: ["type", "phase", "method", "url", "attempt", "maxAttempts",],
+		additionalProperties: false,
+		properties: {
+			type: { const: "trace", },
+			phase: { enum: ["request", "response", "error",], },
+			method: { type: "string", },
+			url: { type: "string", },
+			attempt: { type: "number", },
+			maxAttempts: { type: "number", },
+			status: { type: "number", },
+			elapsedMs: { type: "number", },
+			detail: { type: "string", },
+		},
+	};
+}
+
+function agentContractJsonSchema(): Record<string, unknown> {
+	return {
+		$schema: JSON_SCHEMA_DRAFT,
+		$id: AGENT_CONTRACT_SCHEMA_ID,
+		type: "object",
+		required: ["protocol", "agentContractVersion", "cli", "commands", "schemas", "stdio",],
+		additionalProperties: true,
+		properties: {
+			protocol: { const: "dataiku-sdk-agent", },
+			agentContractVersion: { const: AGENT_CONTRACT_VERSION, },
+			cli: { type: "object", additionalProperties: true, },
+			commands: { type: "object", additionalProperties: true, },
+			schemas: { type: "object", additionalProperties: true, },
+			stdio: { type: "object", additionalProperties: true, },
+		},
+	};
+}
+
+
+function commandActionSummary(
+	registry: Record<string, Record<string, CommandRegistryEntry>>,
+): Record<string, string[]> {
+	const summary: Record<string, string[]> = {};
+	for (const [resource, actions,] of Object.entries(registry,)) {
+		summary[resource] = Object.keys(actions,).sort();
+	}
+	return summary;
+}
+
+function buildAgentContract(): Record<string, unknown> {
+	const registry = buildCommandRegistry();
+	return {
+		protocol: "dataiku-sdk-agent",
+		agentContractVersion: AGENT_CONTRACT_VERSION,
+		cli: cliVersionResult(),
+		commands: {
+			discoveryCommand: "dss commands run",
+			actions: commandActionSummary(registry,),
+		},
+		schemas: {
+			agentContract: agentContractJsonSchema(),
+			commandRegistry: commandRegistryJsonSchema(),
+			commandRegistryEntry: commandRegistryEntryJsonSchema(),
+			errorEnvelope: errorEnvelopeJsonSchema(),
+			warningEvent: warningEventJsonSchema(),
+			traceEvent: traceEventJsonSchema(),
+		},
+		stdio: {
+			stdout: {
+				success: "single-json-value",
+				rawEscapeHatches: ["recipe get-payload --raw without --output", "recipe cat --raw without --output",],
+			},
+			stderr: {
+				format: "jsonl",
+				events: ["warning", "trace", "error",],
+				error: "single-final-error-event-on-nonzero-exit",
+			},
+		},
+		planning: {
+			discoveryCommand: "dss commands run",
+			contractCommand: AGENT_CONTRACT_USAGE,
+			mutatingCommandsAdvertisePlan: true,
+		},
+		compatibility: {
+			fieldsAreAdditiveWithinMajor: true,
+			failFastWhenUnsupported: "Check agentContractVersion before planning commands.",
+		},
+	};
 }
 
 function exitCodesOnFailure(entry: CommandRegistryEntry,): Record<string, number> {
@@ -9265,6 +9657,7 @@ function resolveCredentials(flags: Record<string, string | boolean>,): {
 }
 
 interface ErrorReportEnvelope {
+	type: "error";
 	ok: false;
 	error: string;
 	code: StableErrorCode;
@@ -9364,6 +9757,7 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 	const exitCode = errorExitCode(err,);
 	if (err instanceof UsageError) {
 		return {
+			type: "error",
 			ok: false,
 			error: err.message,
 			code: err.code,
@@ -9376,6 +9770,7 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 	}
 	if (err instanceof CommandResultFailure) {
 		return {
+			type: "error",
 			ok: false,
 			error: err.message,
 			code: "long_running_failure",
@@ -9387,6 +9782,7 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 	}
 	if (err instanceof DataikuError) {
 		return {
+			type: "error",
 			ok: false,
 			error: err.message,
 			code: dataikuErrorCode(err.category,),
@@ -9407,6 +9803,7 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 	}
 	const message = err instanceof Error ? err.message : String(err,);
 	return {
+		type: "error",
 		ok: false,
 		error: message,
 		code: "internal_error",
@@ -9417,7 +9814,7 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 }
 
 function writeErrorReport(err: unknown,): void {
-	process.stderr.write(`${JSON.stringify(buildErrorReport(err,), null, 2,)}\n`,);
+	process.stderr.write(`${JSON.stringify(buildErrorReport(err,),)}\n`,);
 }
 
 // ---------------------------------------------------------------------------
@@ -9555,6 +9952,15 @@ async function main(): Promise<void> {
 				: installSkill(targets, { global: isGlobal, cwd, },),
 			...(flags["dry-run"] === true ? { dryRun: true, } : {}),
 		},);
+		return;
+	}
+
+	if (resource === "agent") {
+		const action = positional[1];
+		if (!action) throw missingActionError("agent", ["contract",], AGENT_CONTRACT_USAGE,);
+		currentCommandContext.action = action;
+		if (action !== "contract") throw unknownActionError("agent", action, ["contract",],);
+		writeCommandResult(buildAgentContract(),);
 		return;
 	}
 

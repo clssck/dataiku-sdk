@@ -35,8 +35,8 @@ If the installed \`dss\` binary is unavailable but the repository checkout is th
 ## Contract
 
 - Success writes exactly one JSON result to stdout.
-- Failure writes exactly one JSON error envelope to stderr with \`ok:false\`, \`error\`, \`code\`, and \`exitCode\`.
-- \`--verbose\` may add HTTP trace lines to stderr.
+- Failure writes exactly one JSONL error event to stderr with \`type:"error"\`, \`ok:false\`, \`error\`, \`code\`, and \`exitCode\`.
+- Non-fatal warnings and \`--verbose\` HTTP traces are JSONL stderr events (\`type:"warning"\` / \`type:"trace"\`), never prose.
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: 0 success, 1 usage/configuration error, 2 DSS or internal error, 3 transient/retryable DSS error, 4 completed command with failed long-running DSS work.
 - \`--raw\` is the only stdout escape hatch: recipe payload commands emit raw bytes to stdout unless \`--output PATH\` is also set; with \`--output\`, stdout is the JSON string equal to \`PATH\` and the file receives exact raw bytes.
@@ -45,10 +45,11 @@ If the installed \`dss\` binary is unavailable but the repository checkout is th
 ## Discover commands
 
 \`\`\`bash
+dss agent contract
 dss commands run
 \`\`\`
 
-The registry is the canonical schema for resources, actions, flags, positional arguments, side effects, auth requirements, output shape, idempotency, dry-run support, payload schemas, cleanup hints, and exit codes. Use it before choosing command syntax.
+Use \`dss agent contract\` once to check \`agentContractVersion\`, stderr event schemas, non-JSON escape hatches, and compatibility rules. The command registry from \`dss commands run\` is the canonical schema for resources, actions, flags, positional arguments, side effects, auth requirements, output shape, idempotency, dry-run support, structured examples, payload schemas, unsafe outputs, cleanup hints, and exit codes. Use it before choosing command syntax.
 Credential lookup order is flags first, then \`DATAIKU_*\` environment variables, then saved credentials.
 Set \`DATAIKU_DISABLE_ENV=1\` when a test must ignore both \`.env\` files and \`DATAIKU_*\` environment variables.
 When \`.env\` loading is enabled, the CLI reads \`.env\` from the command's current working directory first and then the CLI build/root directory; the invocation directory wins on conflicting keys. Put test-specific \`.env\` files in the directory where you invoke \`dss\`.
@@ -115,10 +116,11 @@ Mutations print a small JSON ack to stdout and exit 0 on success (e.g. \`{"updat
 
 ## Error envelope
 
-Parse stderr as JSON when exit code is non-zero:
+Parse each stderr line as JSON; on non-zero exit the final line is an error event:
 
 \`\`\`json
 {
+  "type": "error",
   "ok": false,
   "error": "Missing API key.",
   "code": "usage_error",
