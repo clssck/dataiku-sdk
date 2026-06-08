@@ -52,6 +52,18 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 /*  Config                                                             */
 /* ------------------------------------------------------------------ */
 
+export interface DataikuClientTraceEvent {
+	type: "trace";
+	phase: "request" | "response" | "error";
+	method: string;
+	url: string;
+	attempt: number;
+	maxAttempts: number;
+	status?: number;
+	elapsedMs?: number;
+	detail?: string;
+}
+
 export interface DataikuClientConfig {
 	/** DSS base URL (e.g. https://dss.example.com) */
 	url: string;
@@ -63,8 +75,9 @@ export interface DataikuClientConfig {
 	requestTimeoutMs?: number;
 	/** Max retry attempts for idempotent requests (default 4, capped at 10) */
 	retryMaxAttempts?: number;
-	/** Emit HTTP request/response logs to stderr for CLI debugging. */
+	/** Emit HTTP request/response trace events. Defaults to JSONL on stderr when verbose is true. */
 	verbose?: boolean;
+	onTrace?: (event: DataikuClientTraceEvent,) => void;
 	/** Override TLS certificate verification for HTTPS requests. */
 	tlsRejectUnauthorized?: boolean;
 	/** Extra PEM CA bundle to trust in addition to Bun's default trust store. */
@@ -81,6 +94,10 @@ export interface DataikuClientConfig {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
+
+function defaultTrace(event: DataikuClientTraceEvent,): void {
+	process.stderr.write(`${JSON.stringify(event,)}\n`,);
+}
 
 function defaultValidationWarning(_method: string, _errors: string[],): void {
 }
@@ -193,6 +210,7 @@ export class DataikuClient {
 	private readonly retryMaxAttempts: number;
 	private readonly verbose: boolean;
 	private readonly tlsOptions: FetchTlsOptions | undefined;
+	private readonly onTrace: (event: DataikuClientTraceEvent,) => void;
 	private readonly onValidationWarning: (method: string, errors: string[],) => void;
 
 	/* Resource namespaces — lazily initialized to break circular imports */
@@ -337,6 +355,7 @@ export class DataikuClient {
 		this.retryMaxAttempts = Math.min(Math.max(1, rawMax,), MAX_RETRY_ATTEMPTS_CAP,);
 		this.verbose = config.verbose === true;
 		this.tlsOptions = buildFetchTlsOptions(config,);
+		this.onTrace = config.onTrace ?? defaultTrace;
 		this.onValidationWarning = config.onValidationWarning ?? defaultValidationWarning;
 	}
 
@@ -504,8 +523,8 @@ export class DataikuClient {
 		};
 	}
 
-	private logVerbose(message: string,): void {
-		if (this.verbose) process.stderr.write(`[dss] ${message}\n`,);
+	private logTrace(event: Omit<DataikuClientTraceEvent, "type">,): void {
+		if (this.verbose) this.onTrace({ type: "trace", ...event, },);
 	}
 
 	/* ---- public: schema-validated parsing ---- */
@@ -594,7 +613,7 @@ export class DataikuClient {
 				controller.abort();
 			}, this.requestTimeoutMs,);
 
-			this.logVerbose(`${method} ${url}`,);
+			this.logTrace({ phase: "request", method, url, attempt, maxAttempts, },);
 
 			try {
 				const requestInit: RequestInit & { tls?: FetchTlsOptions; } = {
@@ -604,7 +623,15 @@ export class DataikuClient {
 				};
 				if (this.tlsOptions) requestInit.tls = this.tlsOptions;
 				const res = await fetch(url, requestInit,);
-				this.logVerbose(`${method} ${url} → ${res.status} (${Date.now() - startedAt}ms)`,);
+				this.logTrace({
+					phase: "response",
+					method,
+					url,
+					attempt,
+					maxAttempts,
+					status: res.status,
+					elapsedMs: Date.now() - startedAt,
+				},);
 				if (!res.ok) {
 					const text = await res.text();
 					const canRetry = retryEnabled && attempt < maxAttempts && isTransientError(res.status, text,);
@@ -637,7 +664,15 @@ export class DataikuClient {
 					: error instanceof Error
 					? error.message
 					: "Unknown transport error";
-				this.logVerbose(`${method} ${url} → ERROR (${Date.now() - startedAt}ms) ${detail}`,);
+				this.logTrace({
+					phase: "error",
+					method,
+					url,
+					attempt,
+					maxAttempts,
+					elapsedMs: Date.now() - startedAt,
+					detail,
+				},);
 				const statusText = timedOut ? "Request Timeout" : "Network Error";
 				throw new DataikuError(
 					0,

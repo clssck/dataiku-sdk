@@ -8,21 +8,22 @@ Examples below assume the installed `dss` binary. From this checkout, use `./bin
 ## CLI contract
 
 - Success: stdout contains one JSON result.
-- Failure: stderr contains one JSON error envelope with `ok:false`, `error`, `code`, and `exitCode`.
-- `--verbose` may add HTTP trace lines to stderr.
+- Failure: stderr contains one JSONL error event with `type:"error"`, `ok:false`, `error`, `code`, and `exitCode`.
+- Non-fatal diagnostics and `--verbose` traces are JSONL stderr events (`type:"warning"` / `type:"trace"`); no prose trace lines are part of the contract.
 - `--fields a,b,c` projects those fields from an object or array-of-objects result; dotted paths (`a.b.c`) drill into nested objects, and missing fields become `null`; string and scalar results pass through unchanged.
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: `0` success, `1` usage/configuration error, `2` DSS/internal error, `3` transient DSS error, `4` completed command with failed long-running DSS work.
 - The exit code is the success signal: chain mutations with `&&` and never infer success from piped output that discards the exit code (e.g. `dss ... 2>&1 | helper; echo done` reports success even when the command failed).
 - `--raw` is only for recipe payload commands. Without `--output`, stdout is raw bytes; with `--output PATH`, stdout is the JSON string equal to `PATH` and the file contains the exact raw bytes.
 
-Discover the complete machine-readable command surface:
+Discover the agent protocol and complete machine-readable command surface:
 
 ```bash
+dss agent contract
 dss commands run
 ```
 
-Agents should parse `commands run` before choosing syntax; inspect `flags`, `requiresAuth`, `requiresProject`, `sideEffect`, and `outputShape` instead of guessing.
+Agents should parse `agent contract` once for protocol/schema compatibility, then parse `commands run` before choosing syntax; inspect `flags`, `structuredExamples`, `schemas`, `requiresAuth`, `requiresProject`, `sideEffect`, `unsafeOutputs`, and `outputShape` instead of guessing.
 
 ## Agent skill installation
 

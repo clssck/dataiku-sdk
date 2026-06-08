@@ -15,6 +15,7 @@ type CommandRegistryEntry = {
 	usage: string;
 	description?: string;
 	examples?: string[];
+	structuredExamples: Array<{ shell: string; argv?: string[]; payload?: unknown; }>;
 	flags: Array<
 		{ name: string; kind: "boolean" | "value"; valueType?: string; enumValues?: string[]; }
 	>;
@@ -38,11 +39,14 @@ type CommandRegistryEntry = {
 		jsonShape?: "object" | "array";
 	};
 	examplePayload?: unknown;
+	unsafeOutputs?: Array<{ condition: string; kind: string; detail: string; safeAlternative?: string; }>;
+	schemas: { argv: Record<string, unknown>; input?: Record<string, unknown>; output: Record<string, unknown>; };
 	cleanupCommand?: string;
 	exitCodes: { ok: 0; usage: 1; error: 2; transient: 3; longRunningFailure?: 4; };
 	cleanupHint?: string;
 	requiresAuth: boolean;
 	requiresProject: boolean;
+	agentContractVersion: number;
 };
 
 type CommandRegistry = Record<string, Record<string, CommandRegistryEntry>>;
@@ -180,6 +184,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 	auth: ["login",],
 	doctor: ["run",],
 	commands: ["run",],
+	agent: ["contract",],
 	version: ["run",],
 	"install-skill": ["run",],
 	cleanup: ["run",],
@@ -367,6 +372,22 @@ describe("CLI command surface", () => {
 				expect(typeof meta?.dryRun, `${resource} ${action} dryRun`,).toBe("boolean",);
 				expect(Array.isArray(meta?.requiredFlags,), `${resource} ${action} requiredFlags`,).toBe(true,);
 				expect(Array.isArray(meta?.optionalFlags,), `${resource} ${action} optionalFlags`,).toBe(true,);
+				expect(meta?.agentContractVersion, `${resource} ${action} agentContractVersion`,).toBe(1,);
+				expect(Array.isArray(meta?.structuredExamples,), `${resource} ${action} structuredExamples`,).toBe(
+					true,
+				);
+				expect(
+					meta?.schemas && typeof meta.schemas === "object",
+					`${resource} ${action} schemas`,
+				).toBe(true,);
+				expect(
+					meta?.schemas.argv && typeof meta.schemas.argv === "object",
+					`${resource} ${action} argv schema`,
+				).toBe(true,);
+				expect(
+					meta?.schemas.output && typeof meta.schemas.output === "object",
+					`${resource} ${action} output schema`,
+				).toBe(true,);
 				for (const flag of meta?.requiredFlags ?? []) {
 					expect(
 						meta?.flags.some((registered,) => registered.name === flag),
@@ -494,6 +515,9 @@ describe("CLI command surface", () => {
 		expect(registry.doctor.run.requiresAuth,).toBe(true,);
 		expect(registry.commands.run.sideEffect,).toBe("read",);
 		expect(registry.commands.run.requiresAuth,).toBe(false,);
+		expect(registry.agent.contract.sideEffect,).toBe("read",);
+		expect(registry.agent.contract.requiresAuth,).toBe(false,);
+		expect(registry.agent.contract.structuredExamples[0]?.argv,).toEqual(["agent", "contract",],);
 		expect(registry["install-skill"].run.sideEffect,).toBe("write",);
 		expect(registry["install-skill"].run.requiresAuth,).toBe(false,);
 		expect(registry["install-skill"].run.flags,).toContainEqual(
@@ -509,6 +533,9 @@ describe("CLI command surface", () => {
 		);
 		expect(registry.recipe["get-payload"].flags,).toContainEqual(
 			expect.objectContaining({ name: "raw", kind: "boolean", },),
+		);
+		expect(registry.recipe["get-payload"].unsafeOutputs,).toContainEqual(
+			expect.objectContaining({ kind: "raw-stdout", condition: "--raw without --output", },),
 		);
 		expect(registry.recipe.cat.outputShape,).toBe("string",);
 		expect(registry.dataset.clone.cleanupCommand,).toBe("dss dataset delete <name> --if-exists",);
