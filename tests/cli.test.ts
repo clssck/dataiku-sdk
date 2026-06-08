@@ -235,21 +235,21 @@ describe("CLI agent-only command surface", () => {
 			action: "contract",
 			requiresAuth: false,
 			agentContractVersion: 1,
-		});
+		},);
 		expect(registry.recipe["get-payload"],).toHaveProperty("unsafeOutputs",);
 	});
 
 	it("agent contract prints the versioned agent protocol", async () => {
 		const { stdout, stderr, } = await dss(["agent", "contract",],);
-		expect(stderr,).toBe("");
+		expect(stderr,).toBe("",);
 		const contract = JSON.parse(stdout,) as Record<string, unknown>;
 		expect(contract,).toMatchObject({
 			protocol: "dataiku-sdk-agent",
 			agentContractVersion: 1,
-		});
-		expect(contract,).toHaveProperty("commands.actions.agent");
-		expect(contract,).toHaveProperty("schemas.agentContract");
-		expect(contract,).toHaveProperty("schemas.traceEvent");
+		},);
+		expect(contract,).toHaveProperty("commands.actions.agent",);
+		expect(contract,).toHaveProperty("schemas.agentContract",);
+		expect(contract,).toHaveProperty("schemas.traceEvent",);
 	});
 	it("--report-json is rejected as an unknown flag", async () => {
 		const failure = await dssFailure(["commands", "run", "--report-json",],);
@@ -1732,9 +1732,13 @@ describe("CLI execution behavior", () => {
 			sendJson(res, [],);
 		}, async (url,) => {
 			const { stderr, } = await dss(["project", "list", "--verbose",], { env: cliEnv(url,), },);
-			const events = stderr.trim().split("\n",).map((line,) => JSON.parse(line,) as Record<string, unknown>);
-			expect(events,).toContainEqual(expect.objectContaining({ type: "trace", phase: "request" }),);
-			expect(events,).toContainEqual(expect.objectContaining({ type: "trace", phase: "response", status: 200 }),);
+			const events = stderr.trim().split("\n",).map((line,) =>
+				JSON.parse(line,) as Record<string, unknown>
+			);
+			expect(events,).toContainEqual(expect.objectContaining({ type: "trace", phase: "request", },),);
+			expect(events,).toContainEqual(
+				expect.objectContaining({ type: "trace", phase: "response", status: 200, },),
+			);
 		},);
 	});
 });
@@ -4576,8 +4580,8 @@ describe("CLI install-skill command", () => {
 			const content = readFileSync(skillPath, "utf-8",);
 			expect(content,).toContain("name: dataiku-dss",);
 			expect(content,).toContain("dss agent contract",);
-			expect(content,).toContain("type:\"error\"");
-			expect(content,).toContain("type:\"trace\"");
+			expect(content,).toContain('type:"error"',);
+			expect(content,).toContain('type:"trace"',);
 			expect(content,).toContain("dss commands run",);
 			expect(content,).toContain("dss auth login --url",);
 			expect(content,).toContain("~/.config/dataiku/credentials.json",);

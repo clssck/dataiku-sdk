@@ -1,5 +1,9 @@
 // Client
-export { DataikuClient, type DataikuClientConfig, type DataikuClientTraceEvent, } from "./client.js";
+export {
+	DataikuClient,
+	type DataikuClientConfig,
+	type DataikuClientTraceEvent,
+} from "./client.js";
 
 // Auth & Config
 export {
