@@ -423,7 +423,7 @@ describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () 
 		],);
 		expect(result.code, "timeout should be transient failure",).toBe(3,);
 		const payload = parseJsonOutput<Record<string, unknown>>(result.stderr || result.stdout,);
-		expect(payload.category,).toBe("transient",);
+		expect(payload.code,).toBe("transient",);
 		expect(payload.retryable,).toBe(true,);
 		expect(String(payload.error ?? "",),).toContain("Retry attempts:",);
 	}, 30_000,);

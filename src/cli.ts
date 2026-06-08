@@ -104,7 +104,8 @@ const CLI_VERSION = packageVersion(PACKAGE_ROOT,);
 const CLI_GIT_REVISION = gitRevision(PACKAGE_ROOT,);
 const AGENT_CONTRACT_VERSION = 1;
 const JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema";
-const AGENT_CONTRACT_SCHEMA_ID = "https://clssck.github.io/dataiku-sdk/schemas/agent-contract-v1.json";
+const AGENT_CONTRACT_SCHEMA_ID =
+	"https://clssck.github.io/dataiku-sdk/schemas/agent-contract-v1.json";
 function cliVersionResult(): { version: string; gitRevision: string | null; } {
 	return { version: CLI_VERSION, gitRevision: CLI_GIT_REVISION ?? null, };
 }
@@ -1855,6 +1856,7 @@ const BOOLEAN_FLAGS = new Set([
 	"errors-only",
 	"keep",
 	"full-log",
+	"drop-data",
 ],);
 
 const SHORT_FLAGS: Record<string, string> = {
@@ -1876,6 +1878,12 @@ const FLAG_ALIASES: Record<string, string> = {
 
 const VALUE_FLAGS = new Set([
 	"fields",
+	"owner",
+	"topic",
+	"reply",
+	"text",
+	"partitions",
+	"since",
 	"activity",
 	"agent",
 	"api-key",
@@ -7732,6 +7740,8 @@ interface CommandRegistryEntry {
 const READ_ACTIONS = new Set([
 	"cat",
 	"contents",
+	"deployment-settings",
+	"deployment-status",
 	"diff",
 	"download",
 	"download-code",
@@ -7767,6 +7777,7 @@ const READ_ACTIONS = new Set([
 	"status",
 	"rules",
 	"settings",
+	"settings-get",
 	"status-by-partition",
 	"usages",
 ],);
@@ -7801,7 +7812,8 @@ const COMMANDS_USAGE = "dss commands run [--json]";
 const COMMANDS_DESCRIPTION = "Print the machine-readable command registry for agent planning.";
 const COMMANDS_EXAMPLES = ["dss commands run", "dss commands run --json",];
 const AGENT_CONTRACT_USAGE = "dss agent contract";
-const AGENT_CONTRACT_DESCRIPTION = "Print the versioned JSON contract agents should use to drive dss.";
+const AGENT_CONTRACT_DESCRIPTION =
+	"Print the versioned JSON contract agents should use to drive dss.";
 const AGENT_CONTRACT_EXAMPLES = ["dss agent contract",];
 const VERSION_USAGE = "dss version";
 const VERSION_DESCRIPTION = "Print the CLI version and git revision as JSON.";
@@ -7908,11 +7920,12 @@ function structuredExamples(
 		return {
 			shell,
 			...(argv ? { argv, } : {}),
-			...(examplePayload !== undefined && shell.includes("--data") ? { payload: examplePayload, } : {}),
+			...(examplePayload !== undefined && shell.includes("--data",)
+				? { payload: examplePayload, }
+				: {}),
 		};
 	},);
 }
-
 
 function outputJsonSchema(shape: CommandOutputShape,): Record<string, unknown> {
 	if (shape === "array") return { type: "array", items: true, };
@@ -7920,7 +7933,9 @@ function outputJsonSchema(shape: CommandOutputShape,): Record<string, unknown> {
 	return { type: "object", additionalProperties: true, };
 }
 
-function payloadJsonSchema(payloadSchema: CommandPayloadSchema | undefined,): Record<string, unknown> | undefined {
+function payloadJsonSchema(
+	payloadSchema: CommandPayloadSchema | undefined,
+): Record<string, unknown> | undefined {
 	if (!payloadSchema) return undefined;
 	return payloadSchema.jsonShape === "array"
 		? { type: "array", items: true, }
@@ -7954,12 +7969,12 @@ function unsafeOutputs(
 	producesLocalFile: boolean,
 ): CommandUnsafeOutput[] | undefined {
 	const outputs: CommandUnsafeOutput[] = [];
-	if (flags.some((flag,) => flag.name === "raw",)) {
+	if (flags.some((flag,) => flag.name === "raw")) {
 		outputs.push({
 			condition: "--raw without --output",
 			kind: "raw-stdout",
 			detail: `${resource} ${action} can intentionally write raw payload bytes/text instead of JSON.`,
-			safeAlternative: flags.some((flag,) => flag.name === "output",)
+			safeAlternative: flags.some((flag,) => flag.name === "output")
 				? "Pass --output PATH so stdout remains a JSON string containing the path."
 				: "Omit --raw when a JSON stdout value is required.",
 		},);
@@ -8049,7 +8064,8 @@ function extractPositionals(usage: string,): string[] {
 function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "auth") return "auth";
 	if (
-		resource === "agent" || resource === "doctor" || resource === "commands" || resource === "fixtures"
+		resource === "agent" || resource === "doctor" || resource === "commands"
+		|| resource === "fixtures"
 		|| resource === "version"
 	) {
 		return "read";
@@ -8058,8 +8074,10 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "data-quality" && action === "compute") return "write";
 	if (READ_ACTIONS.has(action,)) return "read";
 	if (
-		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove|publish|activate|deploy|import|export|preload|upgrade|stop|restart|duplicate|put|rename|reply|compute)/
+		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove|publish|activate|deploy|import|export|preload|upgrade|start|stop|restart|duplicate|put|rename|reply|compute|organize)/
 			.test(action,)
+		// Compound actions whose mutating verb is a suffix (e.g. permissions-set, dataset-compute).
+		|| /-(set|compute)$/.test(action,)
 	) {
 		return "write";
 	}
@@ -8094,6 +8112,7 @@ const ARRAY_OUTPUT_ACTIONS = new Set([
 	"list",
 	"list-jupyter",
 	"list-sql",
+	"project-timeline",
 	"rules",
 	"schemas",
 	"sessions-jupyter",
@@ -8112,13 +8131,16 @@ const STRING_OUTPUT_ACTIONS = new Set([
 
 function inferOutputShape(resource: string, action: string,): CommandOutputShape {
 	if (
-		resource === "agent" || resource === "auth" || resource === "commands" || resource === "install-skill"
+		resource === "agent" || resource === "auth" || resource === "commands"
+		|| resource === "install-skill"
 		|| resource === "version"
 	) {
 		return "object";
 	}
+	if (/^list(-|$)/.test(action,)) return "array";
 	if (ARRAY_OUTPUT_ACTIONS.has(action,)) return "array";
 	if (resource === "dataset" && action === "download") return "object";
+	if (resource === "project-library" && action === "get") return "string";
 	if (STRING_OUTPUT_ACTIONS.has(action,)) return "string";
 	return "object";
 }
@@ -8643,7 +8665,6 @@ function agentContractJsonSchema(): Record<string, unknown> {
 	};
 }
 
-
 function commandActionSummary(
 	registry: Record<string, Record<string, CommandRegistryEntry>>,
 ): Record<string, string[]> {
@@ -8675,7 +8696,10 @@ function buildAgentContract(): Record<string, unknown> {
 		stdio: {
 			stdout: {
 				success: "single-json-value",
-				rawEscapeHatches: ["recipe get-payload --raw without --output", "recipe cat --raw without --output",],
+				rawEscapeHatches: [
+					"recipe get-payload --raw without --output",
+					"recipe cat --raw without --output",
+				],
 			},
 			stderr: {
 				format: "jsonl",
@@ -9321,6 +9345,33 @@ function commandPlanShape(
 				endpoint: projectEndpoint(`/sql-notebooks/${encodeURIComponent(id,)}/history`,),
 				identifiers: { id, cellId: flags["cell-id"] as string | undefined, },
 				payload: { retain: num(flags["retain"],), },
+			};
+		case "project.permissions-set":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint("/permissions",),
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "continuous-activity.start":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/continuous-activities/${encodeURIComponent(id,)}/start`,),
+				identifiers: { recipeId: id, },
+				payload: jsonInput(flags,) ?? {},
+			};
+		case "metrics.dataset-compute":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/datasets/${encodeURIComponent(id,)}/actions/computeMetrics?partition=`,
+				),
+				identifiers: { dataset: id, },
+			};
+		case "flow-zone.organize":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/flow/zones",),
+				payload: jsonInput(flags,),
 			};
 		default:
 			return {

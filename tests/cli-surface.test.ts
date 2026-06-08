@@ -39,8 +39,14 @@ type CommandRegistryEntry = {
 		jsonShape?: "object" | "array";
 	};
 	examplePayload?: unknown;
-	unsafeOutputs?: Array<{ condition: string; kind: string; detail: string; safeAlternative?: string; }>;
-	schemas: { argv: Record<string, unknown>; input?: Record<string, unknown>; output: Record<string, unknown>; };
+	unsafeOutputs?: Array<
+		{ condition: string; kind: string; detail: string; safeAlternative?: string; }
+	>;
+	schemas: {
+		argv: Record<string, unknown>;
+		input?: Record<string, unknown>;
+		output: Record<string, unknown>;
+	};
 	cleanupCommand?: string;
 	exitCodes: { ok: 0; usage: 1; error: 2; transient: 3; longRunningFailure?: 4; };
 	cleanupHint?: string;
@@ -373,9 +379,10 @@ describe("CLI command surface", () => {
 				expect(Array.isArray(meta?.requiredFlags,), `${resource} ${action} requiredFlags`,).toBe(true,);
 				expect(Array.isArray(meta?.optionalFlags,), `${resource} ${action} optionalFlags`,).toBe(true,);
 				expect(meta?.agentContractVersion, `${resource} ${action} agentContractVersion`,).toBe(1,);
-				expect(Array.isArray(meta?.structuredExamples,), `${resource} ${action} structuredExamples`,).toBe(
-					true,
-				);
+				expect(Array.isArray(meta?.structuredExamples,), `${resource} ${action} structuredExamples`,)
+					.toBe(
+						true,
+					);
 				expect(
 					meta?.schemas && typeof meta.schemas === "object",
 					`${resource} ${action} schemas`,
@@ -624,5 +631,80 @@ describe("CLI command surface", () => {
 				expect(flagNames, `${resource} ${action} flags`,).not.toContain("report-json",);
 			}
 		}
+	});
+
+	it("advertises every long flag referenced in each command usage", async () => {
+		const { stdout, } = await dss(["commands", "run",],);
+		const registry = JSON.parse(stdout,) as CommandRegistry;
+		// Parser aliases are accepted but normalized to a canonical name in the registry.
+		const aliasFlags = new Set([
+			"project",
+			"dryrun",
+			"skip-tls-verify",
+			"extra-ca-certs",
+			"explain",
+			"zone-name",
+			"rows",
+		],);
+		for (const [resource, actions,] of Object.entries(registry,)) {
+			for (const [action, meta,] of Object.entries(actions,)) {
+				const advertised = new Set(meta.flags.map((flag,) => flag.name),);
+				for (const match of meta.usage.matchAll(/--([a-z0-9-]+)/g,)) {
+					const flag = match[1]!;
+					if (aliasFlags.has(flag,)) continue;
+					expect(
+						advertised.has(flag,),
+						`${resource} ${action} usage flag --${flag} must be advertised`,
+					).toBe(true,);
+				}
+			}
+		}
+	});
+
+	it("classifies compound-name mutations and getters by side effect", async () => {
+		const { stdout, } = await dss(["commands", "run",],);
+		const registry = JSON.parse(stdout,) as CommandRegistry;
+		const writes = [
+			["project", "permissions-set",],
+			["continuous-activity", "start",],
+			["metrics", "dataset-compute",],
+			["flow-zone", "organize",],
+		] as const;
+		for (const [resource, action,] of writes) {
+			expect(registry[resource]?.[action]?.sideEffect, `${resource} ${action} sideEffect`,).toBe(
+				"write",
+			);
+			expect(registry[resource]?.[action]?.mutatesDss, `${resource} ${action} mutatesDss`,).toBe(
+				true,
+			);
+		}
+		const reads = [
+			["project", "settings-get",],
+			["api-deployer", "deployment-status",],
+			["api-deployer", "deployment-settings",],
+			["project-deployer", "deployment-status",],
+		] as const;
+		for (const [resource, action,] of reads) {
+			expect(registry[resource]?.[action]?.sideEffect, `${resource} ${action} sideEffect`,).toBe(
+				"read",
+			);
+			expect(registry[resource]?.[action]?.mutatesDss, `${resource} ${action} mutatesDss`,).toBe(
+				false,
+			);
+		}
+	});
+
+	it("reports array output shape for list-style and timeline reads", async () => {
+		const { stdout, } = await dss(["commands", "run",],);
+		const registry = JSON.parse(stdout,) as CommandRegistry;
+		for (const [resource, actions,] of Object.entries(registry,)) {
+			for (const [action, meta,] of Object.entries(actions,)) {
+				if (/^list(-|$)/.test(action,)) {
+					expect(meta.outputShape, `${resource} ${action} outputShape`,).toBe("array",);
+				}
+			}
+		}
+		expect(registry["data-quality"]?.["project-timeline"]?.outputShape,).toBe("array",);
+		expect(registry["project-library"]?.get?.outputShape,).toBe("string",);
 	});
 });
