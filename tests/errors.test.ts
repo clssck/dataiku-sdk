@@ -137,6 +137,20 @@ describe("classifyDataikuError", () => {
 			const result = classifyDataikuError(404, "not found",);
 			expect(result.retryHint.toLowerCase(),).not.toContain("gateway",);
 		});
+
+		it("uses Business Apps API hint for root endpoint 404", () => {
+			const result = classifyDataikuError(404, "Not Found: /dip/publicapi/business-apps/",);
+			expect(result.category,).toBe("not_found",);
+			expect(result.retryable,).toBe(false,);
+			expect(result.retryHint,).toContain("Business Apps API is not available",);
+			expect(result.retryHint,).toContain("classic app commands",);
+		});
+
+		it("keeps object-specific Business App 404s on the generic not-found hint", () => {
+			const result = classifyDataikuError(404, "Not Found: /public/api/business-apps/missing/settings",);
+			expect(result.category,).toBe("not_found",);
+			expect(result.retryHint,).not.toContain("Business Apps API is not available",);
+		});
 	});
 
 	describe("auth errors", () => {

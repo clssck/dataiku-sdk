@@ -1724,6 +1724,29 @@ describe("CLI execution behavior", () => {
 		},);
 	});
 
+	it("explains unavailable Business Apps API root 404s", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/business-apps/",);
+			res.statusCode = 404;
+			res.statusMessage = "Not Found";
+			res.end("Not Found: /dip/publicapi/business-apps/",);
+		}, async (url,) => {
+			const failure = await dssFailure(["business-app", "list",], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(2,);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report.code,).toBe("not_found",);
+			expect(report.resource,).toBe("business-app",);
+			expect(report.action,).toBe("list",);
+			const hint = String(report.hint,);
+			expect(hint,).toContain("Business Apps API is not available",);
+			expect(hint,).toContain("classic app commands",);
+			expect(hint,).not.toContain("projectKey and object identifiers",);
+			expect(String(report.error,),).toContain("Business Apps API is not available",);
+		},);
+	});
+
 	it("emits HTTP request JSONL traces with --verbose", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);

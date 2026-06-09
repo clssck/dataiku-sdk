@@ -51,6 +51,8 @@ export interface DataikuRetryMetadata {
 
 const TLS_CERTIFICATE_HINT =
 	"TLS certificate verification failed. Trust the DSS/corporate CA with --ca-cert PATH or NODE_EXTRA_CA_CERTS; use --insecure only for temporary troubleshooting.";
+const BUSINESS_APPS_API_UNAVAILABLE_HINT =
+	"Business Apps API is not available on this DSS instance. Use classic app commands or check DSS version/feature availability.";
 
 function isCertificateTrustFailure(lowerBody: string,): boolean {
 	return lowerBody.includes("unable to verify the first certificate",)
@@ -63,6 +65,24 @@ function isCertificateTrustFailure(lowerBody: string,): boolean {
 		|| lowerBody.includes("unable_to_verify_leaf_signature",)
 		|| lowerBody.includes("err_tls_cert_altname_invalid",)
 		|| (lowerBody.includes("certificate",) && lowerBody.includes("verify",));
+}
+
+function hasDelimitedPath(body: string, path: string,): boolean {
+	let index = body.indexOf(path,);
+	while (index !== -1) {
+		const after = body[index + path.length];
+		if (after === undefined || after === "\n" || after === "\r" || after === " " || after === "\t"
+			|| after === '"' || after === "'" || after === "`" || after === "}" || after === ")"
+			|| after === "]") return true;
+		index = body.indexOf(path, index + path.length,);
+	}
+	return false;
+}
+
+function isBusinessAppsApiRootNotFound(lowerBody: string,): boolean {
+	return hasDelimitedPath(lowerBody, "/public/api/business-apps/",)
+		|| hasDelimitedPath(lowerBody, "/dip/publicapi/business-apps/",)
+		|| hasDelimitedPath(lowerBody, "/publicapi/business-apps/",);
 }
 
 export function classifyDataikuError(status: number, body: string,): DataikuErrorTaxonomy {
@@ -163,6 +183,14 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 	}
 
 	if (status === 404) {
+		if (isBusinessAppsApiRootNotFound(lowerBody,)) {
+			return {
+				category: "not_found",
+				retryable: false,
+				retryHint: BUSINESS_APPS_API_UNAVAILABLE_HINT,
+			};
+		}
+
 		const isHtmlGatewayResponse = lowerBody.includes("<!doctype html>",);
 		return {
 			category: "not_found",
