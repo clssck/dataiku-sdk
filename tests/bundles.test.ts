@@ -101,7 +101,7 @@ describe("BundlesResource", () => {
 
 		expect(observedMethod,).toBe("PUT",);
 		expect(observedPath,).toBe(
-			"/public/api/projects/TEST/bundles/exported/?bundleId=bundle%2Fslash",
+			"/public/api/projects/TEST/bundles/exported/bundle%2Fslash",
 		);
 		expect(observedBody,).toEqual({},);
 	});
@@ -120,7 +120,7 @@ describe("BundlesResource", () => {
 		},);
 
 		expect(requests,).toEqual([
-			"DELETE /public/api/projects/TEST/bundles/exported/?bundleId=bundle%2Fdelete",
+			"DELETE /public/api/projects/TEST/bundles/exported/bundle%2Fdelete",
 			"DELETE /public/api/projects/TEST/bundles/imported/bundle%2Fdelete",
 		],);
 	});

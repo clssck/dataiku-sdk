@@ -12,7 +12,7 @@ export class BundlesResource extends BaseResource {
 	/** Create or overwrite an exported Design-node bundle. */
 	async exportBundle(bundleId: string, projectKey?: string,): Promise<void> {
 		await this.client.putVoid(
-			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported/?bundleId=${
+			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported/${
 				encodeURIComponent(bundleId,)
 			}`,
 			{},
@@ -22,7 +22,7 @@ export class BundlesResource extends BaseResource {
 	/** Delete an exported Design-node bundle. */
 	async deleteExported(bundleId: string, projectKey?: string,): Promise<void> {
 		await this.client.del(
-			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported/?bundleId=${
+			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported/${
 				encodeURIComponent(bundleId,)
 			}`,
 		);
