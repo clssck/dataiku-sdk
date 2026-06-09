@@ -147,7 +147,10 @@ describe("classifyDataikuError", () => {
 		});
 
 		it("keeps object-specific Business App 404s on the generic not-found hint", () => {
-			const result = classifyDataikuError(404, "Not Found: /public/api/business-apps/missing/settings",);
+			const result = classifyDataikuError(
+				404,
+				"Not Found: /public/api/business-apps/missing/settings",
+			);
 			expect(result.category,).toBe("not_found",);
 			expect(result.retryHint,).not.toContain("Business Apps API is not available",);
 		});

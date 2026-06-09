@@ -71,9 +71,11 @@ function hasDelimitedPath(body: string, path: string,): boolean {
 	let index = body.indexOf(path,);
 	while (index !== -1) {
 		const after = body[index + path.length];
-		if (after === undefined || after === "\n" || after === "\r" || after === " " || after === "\t"
+		if (
+			after === undefined || after === "\n" || after === "\r" || after === " " || after === "\t"
 			|| after === '"' || after === "'" || after === "`" || after === "}" || after === ")"
-			|| after === "]") return true;
+			|| after === "]"
+		) return true;
 		index = body.indexOf(path, index + path.length,);
 	}
 	return false;
