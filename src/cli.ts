@@ -13,7 +13,12 @@ import {
 	loadCredentials,
 	saveCredentials,
 } from "./config.js";
-import { DataikuError, dataikuErrorCode, type StableErrorCode, } from "./errors.js";
+import {
+	ClientValidationError,
+	DataikuError,
+	dataikuErrorCode,
+	type StableErrorCode,
+} from "./errors.js";
 import { buildDatasetCloneSettings, } from "./resources/datasets.js";
 import type { FlowZoneItemInput, } from "./resources/flow-zones.js";
 import {
@@ -2307,7 +2312,7 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 			handler: (c, _a, f,) =>
 				c.applications.getInstanceManifest(f["project-key"] as string | undefined,),
 			usage: "dss app instance-manifest [--project-key KEY]",
-			description: "Get the app manifest of an app-instance project.",
+			description: "Get the app manifest of a Dataiku App template or app-instance project.",
 			examples: ["dss app instance-manifest --project-key MYINSTANCE",],
 		},
 		"save-instance-manifest": {
@@ -2316,13 +2321,21 @@ const commands: Record<string, Record<string, CommandMeta>> = {
 					f,
 					"--data, --data-file, or --stdin is required (manifest JSON).",
 				);
-				return c.applications.saveInstanceManifest(manifest, f["project-key"] as string | undefined,);
+				return c.applications.saveInstanceManifest(
+					manifest,
+					f["project-key"] as string | undefined,
+				);
 			},
 			usage:
 				"dss app save-instance-manifest (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
-			description:
-				"Save the app manifest of an app-instance project (homepage sections, use-as-recipe settings).",
-			examples: ["dss app save-instance-manifest --data-file manifest.json --project-key MYINSTANCE",],
+			description: [
+				"Save the app manifest of a Dataiku App template project",
+				"(homepage sections, use-as-recipe settings).",
+				"Classic app-instance project manifests are read-only through this endpoint.",
+			].join(" ",),
+			examples: [
+				"dss app save-instance-manifest --data-file manifest.json --project-key MYAPP_TEMPLATE",
+			],
 		},
 		"delete-instance": {
 			handler: async (c, _a, f,) => {
@@ -9798,7 +9811,7 @@ function requestIdFromBody(body: string,): string | undefined {
 
 function errorExitCode(err: unknown,): number {
 	if (err instanceof CommandResultFailure) return err.exitCode;
-	if (err instanceof UsageError) return 1;
+	if (err instanceof UsageError || err instanceof ClientValidationError) return 1;
 	if (err instanceof DataikuError) return err.category === "transient" ? 3 : 2;
 	return 2;
 }
@@ -9806,7 +9819,7 @@ function errorExitCode(err: unknown,): number {
 function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 	const context = rawCommandContext();
 	const exitCode = errorExitCode(err,);
-	if (err instanceof UsageError) {
+	if (err instanceof UsageError || err instanceof ClientValidationError) {
 		return {
 			type: "error",
 			ok: false,

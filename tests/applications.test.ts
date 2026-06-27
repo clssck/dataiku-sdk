@@ -115,29 +115,59 @@ describe("ApplicationsResource", () => {
 		expect(observedBody,).toEqual(body,);
 	});
 
-	it("saves the instance manifest", async () => {
+	it("saves the app manifest after confirming the project is not an app instance", async () => {
 		const manifest = {
 			homepageSections: [{ type: "STATIC", title: "Overview", },],
 			useAsRecipeSettings: { enabled: true, },
 		};
+		const requests: string[] = [];
 		let observedBody: unknown;
-		let observedMethod = "";
-		let observedPath = "";
 
 		await withServer(async (req, res,) => {
-			observedMethod = req.method ?? "";
-			observedPath = req.url ?? "";
-			observedBody = JSON.parse(await readBody(req,),);
-			res.statusCode = 204;
-			res.end();
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/app-manifest") {
+				sendJson(res, { projectAppType: "APP_TEMPLATE", homepageSections: [], },);
+				return;
+			}
+			if (req.method === "PUT" && req.url === "/public/api/projects/TEST/app-manifest") {
+				observedBody = JSON.parse(await readBody(req,),);
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
 		}, async (url,) => {
 			const resource = new ApplicationsResource(createClient(url,),);
 			await expect(resource.saveInstanceManifest(manifest,),).resolves.toBeUndefined();
 		},);
 
-		expect(observedMethod,).toBe("PUT",);
-		expect(observedPath,).toBe("/public/api/projects/TEST/app-manifest",);
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/app-manifest",
+			"PUT /public/api/projects/TEST/app-manifest",
+		],);
 		expect(observedBody,).toEqual(manifest,);
+	});
+
+	it("rejects classic app instance manifest saves before PUT", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/app-manifest") {
+				sendJson(res, { projectAppType: "APP_INSTANCE", homepageSections: [], },);
+				return;
+			}
+			res.statusCode = 500;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(createClient(url,),);
+			await expect(resource.saveInstanceManifest({ homepageSections: [], },),).rejects.toThrow(
+				/classic Dataiku App instance manifests cannot be saved/i,
+			);
+		},);
+
+		expect(requests,).toEqual(["GET /public/api/projects/TEST/app-manifest",],);
 	});
 
 	it("deletes an app instance project", async () => {

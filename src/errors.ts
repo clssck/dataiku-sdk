@@ -49,6 +49,25 @@ export interface DataikuRetryMetadata {
 	timedOut: boolean;
 }
 
+export class ClientValidationError extends Error {
+	readonly code: StableErrorCode;
+	readonly hint?: string;
+	readonly details?: Record<string, unknown>;
+
+	constructor(
+		message: string,
+		code: StableErrorCode = "validation_failed",
+		hint?: string,
+		details?: Record<string, unknown>,
+	) {
+		super(message,);
+		this.name = "ClientValidationError";
+		this.code = code;
+		this.hint = hint;
+		this.details = details;
+	}
+}
+
 const TLS_CERTIFICATE_HINT =
 	"TLS certificate verification failed. Trust the DSS/corporate CA with --ca-cert PATH or NODE_EXTRA_CA_CERTS; use --insecure only for temporary troubleshooting.";
 const BUSINESS_APPS_API_UNAVAILABLE_HINT =

@@ -1,3 +1,4 @@
+import { ClientValidationError, } from "../errors.js";
 import { BaseResource, } from "./base.js";
 
 export interface AppListItem extends Record<string, unknown> {
@@ -53,18 +54,41 @@ export class ApplicationsResource extends BaseResource {
 		);
 	}
 
-	/** Get the manifest for an app instance project. */
+	/** Get the manifest for a Dataiku App template or app instance project. */
 	async getInstanceManifest(projectKey?: string,): Promise<Record<string, unknown>> {
 		return this.client.get<Record<string, unknown>>(
 			`/public/api/projects/${this.enc(projectKey,)}/app-manifest`,
 		);
 	}
 
-	/** Save the manifest for an app instance project. */
+	/** Save the manifest for a Dataiku App template project. */
 	async saveInstanceManifest(
 		manifest: Record<string, unknown>,
 		projectKey?: string,
 	): Promise<void> {
+		const currentManifest = await this.getInstanceManifest(projectKey,);
+		if (currentManifest.projectAppType === "APP_INSTANCE") {
+			const message = [
+				"classic Dataiku App instance manifests cannot be saved through",
+				"/public/api/projects/{projectKey}/app-manifest;",
+				"only Dataiku App template project manifests can be updated.",
+			].join(" ",);
+			const hint = [
+				"Use the Dataiku App template project with save-instance-manifest;",
+				"existing classic app instance project manifests are read-only",
+				"through this endpoint.",
+			].join(" ",);
+			throw new ClientValidationError(
+				message,
+				"validation_failed",
+				hint,
+				{
+					projectAppType: "APP_INSTANCE",
+					projectKey: this.resolveProjectKey(projectKey,),
+				},
+			);
+		}
+
 		await this.client.putVoid(
 			`/public/api/projects/${this.enc(projectKey,)}/app-manifest`,
 			manifest,

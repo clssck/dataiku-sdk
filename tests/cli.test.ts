@@ -1747,6 +1747,41 @@ describe("CLI execution behavior", () => {
 		},);
 	});
 
+	it("rejects classic app instance manifest saves before PUT", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method ?? ""} ${url.pathname}`,);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/app-manifest") {
+				sendJson(res, { projectAppType: "APP_INSTANCE", homepageSections: [], },);
+				return;
+			}
+			res.statusCode = 500;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"app",
+				"save-instance-manifest",
+				"--data",
+				JSON.stringify({ homepageSections: [{ type: "STATIC", title: "Downloads", },], },),
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(1,);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "validation_failed",
+				category: "usage",
+				resource: "app",
+				action: "save-instance-manifest",
+				projectKey: "TEST",
+				exitCode: 1,
+			},);
+			expect(report.category,).not.toBe("internal",);
+			expect(String(report.error,),).toContain("classic Dataiku App instance manifests",);
+		},);
+
+		expect(requests,).toEqual(["GET /public/api/projects/TEST/app-manifest",],);
+	});
+
 	it("emits HTTP request JSONL traces with --verbose", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
