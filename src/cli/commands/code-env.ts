@@ -1,6 +1,6 @@
 import { readFileSync, } from "node:fs";
 import { json, jsonInput, parseBooleanOption, } from "../coerce.js";
-import { readIfExists, skipResult, } from "../output.js";
+import { isNotFoundError, readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -234,20 +234,26 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 2, "dss code-env delete <lang> <name>",);
 			const wait = codeEnvWait(f,);
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (f["dry-run"] === true) {
 				const current = await readIfExists(() => c.codeEnvs.get(a[0], a[1],));
 				if (!current) return skipResult("code-env", a[1], "missing", { envLang: a[0], },);
-				if (f["dry-run"] === true) {
-					return {
-						dryRun: true,
-						action: "delete",
-						resource: "code-env",
-						envLang: a[0],
-						envName: a[1],
-						wait,
-						current,
-					};
-				}
+				return {
+					dryRun: true,
+					action: "delete",
+					resource: "code-env",
+					envLang: a[0],
+					envName: a[1],
+					wait,
+					current,
+				};
+			}
+			if (f["if-exists"] === true) {
+				return await c.codeEnvs.delete(a[0], a[1], { wait, },).catch((error: unknown,) => {
+					if (isNotFoundError(error,)) {
+						return skipResult("code-env", a[1], "missing", { envLang: a[0], },);
+					}
+					throw error;
+				},);
 			}
 			return c.codeEnvs.delete(a[0], a[1], { wait, },);
 		},

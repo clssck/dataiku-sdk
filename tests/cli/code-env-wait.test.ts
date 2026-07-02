@@ -168,6 +168,43 @@ describe("CLI code-env management commands", () => {
 		expect(requestUrl?.searchParams.get("wait",),).toBe("false",);
 	});
 
+	it("code-env delete treats DSS JSON-escaped missing env 500 as not_found", async () => {
+		const missingEnvBody = String
+			.raw`{"errorType":"com.dataiku.dip.exceptions.CodedIOException","message":"PYTHON env my_env doesn\u0027t exist"}`;
+		const requests: string[] = [];
+
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method ?? ""} ${url.pathname}`,);
+			expect(req.method,).toBe("DELETE",);
+			expect(url.pathname,).toBe("/public/api/admin/code-envs/PYTHON/my_env",);
+			res.statusCode = 500;
+			res.end(missingEnvBody,);
+		}, async (url,) => {
+			const skipped = JSON.parse(
+				(await dss(["code-env", "delete", "PYTHON", "my_env", "--if-exists",], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as Record<string, unknown>;
+			expect(skipped,).toMatchObject({
+				skipped: "my_env",
+				reason: "missing",
+			},);
+
+			const failure = await dssFailure(["code-env", "delete", "PYTHON", "my_env",], {
+				env: cliEnv(url,),
+			},);
+			expect(failure.code,).toBe(2,);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report.code,).toBe("not_found",);
+		},);
+
+		expect(requests,).toEqual([
+			"DELETE /public/api/admin/code-envs/PYTHON/my_env",
+			"DELETE /public/api/admin/code-envs/PYTHON/my_env",
+		],);
+	});
+
 	it("code-env delete dry-run reads current state without deleting", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
