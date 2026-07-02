@@ -510,4 +510,30 @@ describe("CLI regression fixes", () => {
 		);
 		expect(registry.dataset?.create?.cleanupHint ?? "",).toContain("--if-exists",);
 	});
+
+	it("meaning delete --if-exists skips Unknown meaning 400 without deleting", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method ?? ""} ${url.pathname}`,);
+			if (req.method === "GET" && url.pathname.includes("/meanings/",)) {
+				sendJson(res, { message: "Unknown meaning: nope", }, 400,);
+				return;
+			}
+			if (req.method === "DELETE") {
+				res.statusCode = 500;
+				res.end(`unexpected DELETE ${url.pathname}`,);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method ?? ""} ${url.pathname}`,);
+		}, async (url,) => {
+			const result = JSON.parse(
+				(await dss(["meaning", "delete", "nope", "--if-exists",], { env: cliEnv(url,), },)).stdout,
+			) as Record<string, unknown>;
+			expect(result,).toMatchObject({ skipped: "nope", reason: "missing", },);
+		},);
+		expect(requests,).toEqual(["GET /public/api/meanings/nope",],);
+		expect(requests.some((request,) => request.startsWith("DELETE "),),).toBe(false,);
+	});
 });

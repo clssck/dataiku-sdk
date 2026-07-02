@@ -1,5 +1,5 @@
 import { jsonInput, requiredJsonInput, } from "../coerce.js";
-import { planResult, readIfExists, skipResult, } from "../output.js";
+import { isNotFoundError, planResult, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
 
@@ -106,7 +106,15 @@ export const meaningCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss meaning delete <meaningId>",);
 			if (f["dry-run"] === true || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.meanings.get(a[0],));
+				const current = await c.meanings.get(a[0],).catch((error,) => {
+					if (
+						isNotFoundError(error,)
+						|| (error instanceof Error && /unknown meaning/i.test(error.message,))
+					) {
+						return undefined;
+					}
+					throw error;
+				});
 				if (!current) return skipResult("meaning", a[0], "missing",);
 				if (f["dry-run"] === true) {
 					return planResult("meaning", "delete", {
