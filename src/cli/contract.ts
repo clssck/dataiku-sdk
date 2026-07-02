@@ -155,6 +155,7 @@ export type CommandFlagMetadata = {
 	kind: "boolean" | "value";
 	valueType?: string;
 	enumValues?: string[];
+	aliases?: string[];
 };
 
 export interface CommandStructuredExample {
@@ -859,15 +860,22 @@ function buildRegistryEntry(
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.cleanupCommand
 		?? cleanupCommandFromDeleteUsage(resource, action,);
 	const flagMetadata: CommandFlagMetadata[] = flags.map((name,) => {
+		const aliases = Object.entries(FLAG_ALIASES,)
+			.filter(([raw, canonical,],) =>
+				canonical === name && new RegExp(`--${raw}(?![a-z0-9-])`,).test(meta.usage,)
+			)
+			.map(([raw,],) => raw);
+		const aliasPart = aliases.length > 0 ? { aliases, } : {};
 		const kind = flagKind(name,);
-		if (kind === "boolean") return { name, kind, };
+		if (kind === "boolean") return { name, kind, ...aliasPart, };
 		const hint = valueHints.get(name,) ?? GLOBAL_FLAG_VALUE_HINTS[name];
-		if (!hint) return { name, kind, };
+		if (!hint) return { name, kind, ...aliasPart, };
 		return {
 			name,
 			kind,
 			valueType: hint.valueType,
 			...(hint.enumValues ? { enumValues: hint.enumValues, } : {}),
+			...aliasPart,
 		};
 	},);
 	const positionals = extractPositionals(meta.usage,);
@@ -1009,6 +1017,7 @@ function commandFlagJsonSchema(): Record<string, unknown> {
 			kind: { enum: ["boolean", "value",], },
 			valueType: { type: "string", },
 			enumValues: { type: "array", items: { type: "string", }, },
+			aliases: { type: "array", items: { type: "string", }, },
 		},
 	};
 }

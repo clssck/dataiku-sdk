@@ -484,15 +484,26 @@ describe("CLI regression fixes", () => {
 			string,
 			Record<string, {
 				cleanupHint?: string;
-				flags: Array<{ name: string; kind: string; }>;
+				flags: Array<{ name: string; kind: string; aliases?: string[]; }>;
 				usage: string;
 			}>
 		>;
 
 		expect(registry.dataset?.preview?.usage,).toContain("[--rows N]",);
 		expect(registry.dataset?.preview?.flags,).toContainEqual(
-			expect.objectContaining({ name: "max-rows", kind: "value", },),
+			expect.objectContaining({
+				name: "max-rows",
+				kind: "value",
+				aliases: expect.arrayContaining(["rows",],),
+			},),
 		);
+		const datasetGetProjectKey = registry.dataset?.get?.flags.find((flag,) =>
+			flag.name === "project-key"
+		);
+		expect(datasetGetProjectKey,).toEqual(
+			expect.objectContaining({ name: "project-key", kind: "value", },),
+		);
+		expect(datasetGetProjectKey,).not.toHaveProperty("aliases",);
 		expect(registry.job?.wait?.usage,).toContain("[--project-key KEY]",);
 		expect(registry["project-library"]?.["create-file"]?.cleanupHint ?? "",).not.toContain(
 			"--if-exists",
