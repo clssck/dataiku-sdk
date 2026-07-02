@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-import { mkdir, writeFile, } from "node:fs/promises";
-import { dirname, join, resolve, } from "node:path";
 import { num, unknownJsonInput, } from "./cli/coerce.js";
 import { commands, } from "./cli/commands/index.js";
 import {
@@ -353,18 +351,17 @@ class BatchDryRunValidationComplete extends Error {
 	}
 }
 
-const batchDryRunClientTarget = function batchDryRunClientTarget(): void {};
-let batchDryRunClient: DataikuClient;
+const batchDryRunClientTarget = function batchDryRunClientTarget(): void { };
 const batchDryRunClientHandler: ProxyHandler<typeof batchDryRunClientTarget> = {
-	get: (_target, property,) => {
+	get: (_target, property, receiver,) => {
 		if (property === "then") return undefined;
-		return batchDryRunClient;
+		return receiver;
 	},
 	apply: () => {
 		throw new BatchDryRunValidationComplete();
 	},
 };
-batchDryRunClient = new Proxy(
+const batchDryRunClient = new Proxy(
 	batchDryRunClientTarget,
 	batchDryRunClientHandler,
 ) as unknown as DataikuClient;
@@ -697,8 +694,8 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 		const batchProjectKey = typeof flags["project-key"] === "string"
 			? flags["project-key"]
 			: dataikuEnvironmentEnabled()
-			? process.env.DATAIKU_PROJECT_KEY
-			: undefined;
+				? process.env.DATAIKU_PROJECT_KEY
+				: undefined;
 		const planned = await Promise.all(steps.map(async (argv, index,) => {
 			const context = batchStepCommandContext(argv,);
 			Object.assign(currentCommandContext, { ...context, projectKey: batchProjectKey, },);
@@ -733,8 +730,8 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 	let projectKey = typeof flags["project-key"] === "string"
 		? flags["project-key"]
 		: dataikuEnvironmentEnabled()
-		? process.env.DATAIKU_PROJECT_KEY
-		: undefined;
+			? process.env.DATAIKU_PROJECT_KEY
+			: undefined;
 	let client: DataikuClient | undefined;
 	const needsClient = steps.some((argv,) => batchStepNeedsClient(argv,));
 	if (needsClient) {
@@ -1053,8 +1050,8 @@ async function main(): Promise<void> {
 		projectKey: typeof flags["project-key"] === "string"
 			? flags["project-key"]
 			: dataikuEnvironmentEnabled()
-			? process.env.DATAIKU_PROJECT_KEY
-			: undefined,
+				? process.env.DATAIKU_PROJECT_KEY
+				: undefined,
 	},);
 
 	const metaCommand = await runMetaCommand(resource, positional[1], flags,);

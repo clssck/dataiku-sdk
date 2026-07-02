@@ -68,7 +68,7 @@ function stripServerFilesystemPaths(text: string,): string {
 	return text
 		.replace(/\b[A-Za-z]:\\[^\s"'`<>),\]}]+/g, "[server path]",)
 		.replace(
-			/(^|[\s("'`\[{])\/(?=[^\s"'`<>),\]}]*\/)(?!(?:public|dip|api|backend|auth|login|projects?|datasets?|recipes?|scenarios?|folders?)(?:\/|$))[^\s"'`<>),\]}]+/g,
+			/(^|[\s("'`[{])\/(?=[^\s"'`<>),\]}]*\/)(?!(?:public|dip|api|backend|auth|login|projects?|datasets?|recipes?|scenarios?|folders?)(?:\/|$))[^\s"'`<>),\]}]+/g,
 			"$1[server path]",
 		);
 }
