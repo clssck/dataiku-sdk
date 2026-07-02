@@ -13,6 +13,13 @@ All B1–B27 + G1 fixed, with regression tests; full suite **586 pass / 65 skip 
 
 Systemic issues: **S1** (dry-run unsafe) resolved by B1/B15 (dry-run now honored + advertised, or the flag is rejected where unsupported by B9); **S2** (permanent failures misclassified transient) resolved by B3/B17; **S4** (global flag leak) resolved by B9. **S3** (the `404 Not Found: Dataiku instance not found` *headline*) is DSS's own response body passed through — the structured `code:"not_found"` and exit 2 are already correct, so the server text was intentionally NOT rewritten client-side (doing so would mask DSS's actual message). The per-finding descriptions below are the ORIGINAL observations (pre-fix).
 
+### Residual reconciliation (raw findings beyond the 28)
+
+Re-auditing the 16 raw findings files surfaced items that were not part of the consolidated B1–B27/G1 list. Final status (suite now **655 pass / 65 skip / 0 fail**):
+- **Fixed:** `project-library get <folder>` "Cannot read directory as file" 500 misclassified transient → now `validation` exit 2 (`fix(errors)`, completes S2/B3, which had missed this message). `app instance-manifest`/`save-instance-manifest`/`delete-instance` silently ignored extra positionals → now `usage_error` exit 1 via `requireNoArgs` (`fix(cli)`). `recipe clone --output <new>` without `--copy-output-settings` returned a raw DSS 400 → now a clear usage error pointing at `--copy-output-settings` (`fix(recipe)`). All three have regression tests.
+- **Triaged as not-a-defect:** fresh Python recipe has no payload so `recipe get-payload` errors (expected — a new recipe has no code until `set-payload`); empty no-step `scenario run-and-wait` times out (degenerate scenario; DSS never signals completion); `dataset download` returning `{path,rows,...}`+file is self-consistent (`producesLocalFile:true`) — the README `--raw` contract is recipe-payload-only.
+- **Known minor (not fixed):** commands requiring `--project-key` report `internal_error` (exit 2) instead of a usage error when the project is unresolved — a pervasive, low-value taxonomy nit not specific to one command.
+
 
 ## Method & coverage
 - Full machine surface enumerated via `dss commands run`: **278 commands across 42 resources**.
