@@ -114,7 +114,7 @@ export const meaningCommands: Record<string, CommandMeta> = {
 						return undefined;
 					}
 					throw error;
-				});
+				},);
 				if (!current) return skipResult("meaning", a[0], "missing",);
 				if (f["dry-run"] === true) {
 					return planResult("meaning", "delete", {
