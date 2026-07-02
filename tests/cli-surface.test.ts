@@ -143,7 +143,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"watch",
 		"abort",
 	],
-	scenario: ["list", "get", "run", "run-and-wait", "status", "delete", "create", "update",],
+	scenario: ["list", "get", "get-script", "set-script", "run", "run-and-wait", "status", "delete", "create", "update",],
 	folder: [
 		"list",
 		"create",
@@ -199,6 +199,10 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 	app: [
 		"list",
 		"manifest",
+		"manifest-get",
+		"manifest-update",
+		"manifest-export-resource",
+		"homepage",
 		"instances",
 		"create-instance",
 		"instance-manifest",
@@ -587,6 +591,26 @@ describe("CLI command surface", () => {
 		expect(registry.code.run.async,).toBe("future",);
 		expect(registry.code.run.exitCodes.longRunningFailure,).toBe(4,);
 		expect(registry.code.run.mutatesDss,).toBe(true,);
+		expect(registry.app.manifest.sideEffect,).toBe("read",);
+		expect(registry.app.manifest.requiresProject,).toBe(false,);
+		expect(registry.app["manifest-update"].sideEffect,).toBe("write",);
+		expect(registry.app["manifest-update"].idempotency,).toBe("convergent",);
+		expect(registry.app["manifest-export-resource"].sideEffect,).toBe("write",);
+		expect(registry.app["manifest-export-resource"].flags,).toContainEqual(
+			expect.objectContaining({ name: "managed-folder", kind: "value", },),
+		);
+		expect(registry.app.homepage.sideEffect,).toBe("write",);
+		expect(registry.app.homepage.idempotency,).toBe("convergent",);
+		for (const flag of ["variable", "label", "button-text", "scenario", "folder", "managed-folder", "prompt",]) {
+			expect(registry.app.homepage.flags,).toContainEqual(
+				expect.objectContaining({ name: flag, kind: "value", },),
+			);
+		}
+		expect(registry.scenario["get-script"].flags,).toContainEqual(
+			expect.objectContaining({ name: "raw", kind: "boolean", },),
+		);
+		expect(registry.scenario["get-script"].outputShape,).toBe("string",);
+		expect(registry.scenario["set-script"].sideEffect,).toBe("write",);
 		expect(registry.code.run.requiresProject,).toBe(true,);
 		expect(registry.code.run.requiredOneOf,).toEqual([{ oneOf: [["file",], ["stdin",],], },],);
 		expect(registry.code.run.flags,).toContainEqual(

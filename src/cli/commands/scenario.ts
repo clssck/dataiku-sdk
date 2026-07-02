@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync, } from "node:fs";
 import { scenarioUpdatePreview, } from "../../resources/scenarios.js";
 import { jsonInput, num, } from "../coerce.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
@@ -20,6 +21,40 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 		description:
 			"Get raw scenario definition. For step-based scenario edits, patch params.steps; rawParams.params is DSS echo data.",
 		examples: ["dss scenario get my_scenario",],
+	},
+	"get-script": {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 1, "dss scenario get-script <id>",);
+			const script = await c.scenarios.getScript(a[0], {
+				projectKey: f["project-key"] as string | undefined,
+			},);
+			if (typeof f["output"] === "string") {
+				writeFileSync(f["output"], script, "utf-8",);
+				return f["output"];
+			}
+			return script;
+		},
+		usage: "dss scenario get-script <id> [--output PATH] [--raw] [--project-key KEY]",
+		description: "Print a custom Python scenario script from the DSS payload endpoint.",
+		examples: [
+			"dss scenario get-script my_scenario",
+			"dss scenario get-script my_scenario --raw -o scenario.py",
+		],
+	},
+	"set-script": {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 1, "dss scenario set-script <id> --file scenario.py",);
+			const file = f["file"] as string | undefined;
+			if (!file) throw new UsageError("--file scenario.py is required.", "missing_required_flag",);
+			const script = readFileSync(file, "utf-8",);
+			await c.scenarios.setScript(a[0], script, {
+				projectKey: f["project-key"] as string | undefined,
+			},);
+			return { updated: a[0], resource: "scenario", field: "script", file, };
+		},
+		usage: "dss scenario set-script <id> --file scenario.py [--project-key KEY]",
+		description: "Save a custom Python scenario script through the DSS payload endpoint.",
+		examples: ["dss scenario set-script my_scenario --file scenario.py",],
 	},
 	run: {
 		handler: async (c, a, f,) => {
