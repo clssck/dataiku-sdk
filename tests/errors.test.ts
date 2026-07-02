@@ -56,6 +56,16 @@ describe("classifyDataikuError", () => {
 			expect(result.retryable,).toBe(false,);
 		});
 
+		it("classifies DSS JSON-escaped missing code-env contraction as not_found", () => {
+			const result = classifyDataikuError(
+				500,
+				String
+					.raw`{"errorType":"com.dataiku.dip.exceptions.CodedIOException","message":"PYTHON env my_env doesn\u0027t exist"}`,
+			);
+			expect(result.category,).toBe("not_found",);
+			expect(result.retryable,).toBe(false,);
+		});
+
 		it("classifies server package and directory filesystem misses as not_found", () => {
 			for (
 				const body of [

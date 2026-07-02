@@ -213,6 +213,17 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 		};
 	}
 
+	const apostropheNormalizedBody = lowerBody.replace(/\\u0027|\u2019/g, "'",);
+	const isServerObjectMissingContraction = status >= 500
+		&& apostropheNormalizedBody.includes("doesn't exist",);
+	if (isServerObjectMissingContraction) {
+		return {
+			category: "not_found",
+			retryable: false,
+			retryHint: "Requested object was not found. Verify the identifier before retrying.",
+		};
+	}
+
 	const hasServerMissingObjectToken = lowerBody.includes("package",)
 		|| lowerBody.includes("directory",);
 	const hasServerMissingObjectLanguage = lowerBody.includes("does not exist",)
