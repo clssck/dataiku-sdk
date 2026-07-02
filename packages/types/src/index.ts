@@ -383,6 +383,7 @@ export const ScenarioWaitResultSchema = Type.Object({
 	elapsedMs: Type.Number(),
 	pollCount: Type.Number(),
 	timedOut: Type.Optional(Type.Boolean(),),
+	triggerRunId: Type.Optional(Type.String(),),
 },);
 export type ScenarioWaitResult = Static<typeof ScenarioWaitResultSchema>;
 

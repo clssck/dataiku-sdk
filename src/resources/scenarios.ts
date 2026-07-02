@@ -424,50 +424,76 @@ export class ScenariosResource extends BaseResource {
 			projectKey?: string;
 		},
 	): Promise<ScenarioWaitResult> {
-		const { runId, } = await this.run(scenarioId, opts?.projectKey,);
+		const pkEnc = this.enc(opts?.projectKey,);
+		const base = `/public/api/projects/${pkEnc}/scenarios/${encodeURIComponent(scenarioId,)}`;
 		const baseIntervalMs = Math.max(1, opts?.pollIntervalMs ?? 2_000,);
 		const adaptivePolling = opts?.pollIntervalMs === undefined;
 		const timeout = Math.max(baseIntervalMs, opts?.timeoutMs ?? 120_000,);
 		const startedAt = Date.now();
+
+		// POST /run/ returns a TRIGGER run id, which differs from the actual scenario
+		// run id; resolve the real run via get-run-for-trigger so a completed scenario
+		// is not misreported as a timeout (the trigger id never matches lastRun).
+		const trigger = await this.client.post<Record<string, unknown>>(`${base}/run/`, {},);
+		const triggerObj = trigger.trigger as Record<string, unknown> | undefined;
+		const triggerId = (triggerObj?.id as string | undefined) ?? "manual";
+		const triggerRunId = String(trigger.runId ?? trigger.id ?? "",);
+		if (!triggerRunId) {
+			throw new DataikuError(
+				500,
+				"Scenario run not started",
+				`Scenario "${scenarioId}" run trigger returned no run id; cannot track the run.`,
+			);
+		}
+		const trigQuery = `triggerId=${encodeURIComponent(triggerId,)}&triggerRunId=${
+			encodeURIComponent(triggerRunId,)
+		}`;
+
+		let runId = "";
+		let outcome = "UNKNOWN";
 		let pollCount = 0;
-
+		let timedOut = false;
 		while (true) {
+			if (Date.now() - startedAt >= timeout) {
+				outcome = "TIMEOUT";
+				timedOut = true;
+				break;
+			}
 			pollCount += 1;
-			const st = await this.status(scenarioId, opts?.projectKey,);
-			const elapsedMs = Date.now() - startedAt;
-
-			// Scenario finished when it's no longer running and lastRun matches our runId
-			if (!st.running && st.lastRun?.runId === runId) {
-				const outcome = st.lastRun?.outcome ?? "UNKNOWN";
-				return {
-					scenarioId,
-					runId,
-					outcome,
-					success: outcome === "SUCCESS",
-					elapsedMs,
-					pollCount,
-				};
+			const run = await this.client.get<Record<string, unknown>>(
+				`${base}/get-run-for-trigger?${trigQuery}`,
+			);
+			const scenarioRun = run.scenarioRun as Record<string, unknown> | undefined;
+			if (scenarioRun) {
+				runId = (scenarioRun.runId as string | undefined) ?? runId;
+				const result = scenarioRun.result as Record<string, unknown> | undefined;
+				const finished = result?.outcome as string | undefined;
+				if (finished) {
+					outcome = finished;
+					break;
+				}
 			}
-
-			if (elapsedMs >= timeout) {
-				return {
-					scenarioId,
-					runId,
-					outcome: "TIMEOUT",
-					success: false,
-					elapsedMs,
-					pollCount,
-					timedOut: true,
-				};
-			}
-
 			const nextDelayMs = computeNextPollDelayMs({
 				pollCount,
 				baseIntervalMs,
 				adaptiveEnabled: adaptivePolling,
 			},);
-			await new Promise((r,) => setTimeout(r, Math.min(nextDelayMs, timeout - elapsedMs,),));
+			const { promise, resolve, } = Promise.withResolvers<void>();
+			setTimeout(resolve, Math.min(nextDelayMs, Math.max(1, timeout - (Date.now() - startedAt),),),);
+			await promise;
 		}
+
+		const resolvedRunId = runId || triggerRunId;
+		return {
+			scenarioId,
+			runId: resolvedRunId,
+			outcome,
+			success: outcome === "SUCCESS",
+			elapsedMs: Date.now() - startedAt,
+			pollCount,
+			...(triggerRunId !== resolvedRunId ? { triggerRunId, } : {}),
+			...(timedOut ? { timedOut: true, } : {}),
+		};
 	}
 
 	/**

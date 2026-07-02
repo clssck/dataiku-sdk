@@ -225,6 +225,7 @@ describe("CLI command behavioral smoke coverage", () => {
 		let recipeUpdateBody: Record<string, unknown> | undefined;
 		let scenarioCreateBody: Record<string, unknown> | undefined;
 		let scenarioUpdateBody: Record<string, unknown> | undefined;
+		const scenarioRunRequests: string[] = [];
 		let scenarioDefinition: Record<string, unknown> = {
 			id: "scenario-1",
 			name: "Scenario 1",
@@ -301,13 +302,25 @@ describe("CLI command behavioral smoke coverage", () => {
 				if (
 					req.method === "POST" && url.pathname === "/public/api/projects/TEST/scenarios/scenario-1/run/"
 				) {
-					sendJson(res, { id: "run-1", },);
+					scenarioRunRequests.push(`${req.method} ${url.pathname}`,);
+					sendJson(res, { trigger: { id: "manual", }, runId: "run-1", },);
+					return;
+				}
+				if (
+					req.method === "GET"
+					&& url.pathname === "/public/api/projects/TEST/scenarios/scenario-1/get-run-for-trigger"
+				) {
+					scenarioRunRequests.push(`${req.method} ${url.pathname}${url.search}`,);
+					sendJson(res, {
+						scenarioRun: { runId: "run-1", result: { outcome: "SUCCESS", }, },
+					},);
 					return;
 				}
 				if (
 					req.method === "GET"
 					&& url.pathname === "/public/api/projects/TEST/scenarios/scenario-1/light/"
 				) {
+					scenarioRunRequests.push(`${req.method} ${url.pathname}`,);
 					sendJson(res, {
 						id: "scenario-1",
 						running: false,
@@ -466,6 +479,12 @@ describe("CLI command behavioral smoke coverage", () => {
 					runId: "run-1",
 					success: true,
 				},);
+				expect(scenarioRunRequests,).toEqual([
+					"POST /public/api/projects/TEST/scenarios/scenario-1/run/",
+					"GET /public/api/projects/TEST/scenarios/scenario-1/light/",
+					"POST /public/api/projects/TEST/scenarios/scenario-1/run/",
+					"GET /public/api/projects/TEST/scenarios/scenario-1/get-run-for-trigger?triggerId=manual&triggerRunId=run-1",
+				],);
 				expect(
 					JSON.parse(
 						(await dss(["scenario", "delete", "scenario-1",], { env: cliEnv(url,), },)).stdout,
