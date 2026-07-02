@@ -4,7 +4,7 @@ Version validated: **0.10.1** (`ea60911`). Live DSS instance (Designer node, app
 
 ## Remediation status (2026-07-01) — ALL 28 numbered findings FIXED
 
-All B1–B27 + G1 fixed, with regression tests; full suite **586 pass / 65 skip / 0 fail**, `tsc` clean, and key repros re-verified live against the instance. Landed as focused commits on top of a behavior-preserving refactor:
+All B1–B27 + G1 fixed, with regression tests; full suite **594 pass / 65 skip / 0 fail** (659 tests), `tsc` clean, and key repros re-verified live against the instance. Landed as focused commits on top of a behavior-preserving refactor:
 - `refactor(cli): split cli.ts monolith into per-resource modules` — `src/cli.ts` 10,153 → ~1,150 lines across `src/cli/**` (contract surfaces kept byte-identical).
 - `refactor(tests): split cli.test.ts into per-topic suites` — 178 CLI cases preserved across `tests/cli/**`.
 - `fix: correct dry-run safety, error taxonomy, and CLI/SDK contract gaps` — B1–B20, B22–B24, G1 (+ regression tests).
@@ -15,11 +15,15 @@ Systemic issues — all resolved: **S1** (dry-run unsafe) by B1/B15 (dry-run hon
 
 ### Residual reconciliation (raw findings beyond the 28)
 
-Re-auditing the 16 raw findings files surfaced items that were not part of the consolidated B1–B27/G1 list. Final status (suite now **655 pass / 65 skip / 0 fail**):
+Re-auditing the 16 raw findings files surfaced items that were not part of the consolidated B1–B27/G1 list. Final status (suite now **594 pass / 65 skip / 0 fail**, 659 tests):
 - **Fixed:** `project-library get <folder>` "Cannot read directory as file" 500 misclassified transient → now `validation` exit 2 (`fix(errors)`, completes S2/B3, which had missed this message). `app instance-manifest`/`save-instance-manifest`/`delete-instance` silently ignored extra positionals → now `usage_error` exit 1 via `requireNoArgs` (`fix(cli)`). `recipe clone --output <new>` without `--copy-output-settings` returned a raw DSS 400 → now a clear usage error pointing at `--copy-output-settings` (`fix(recipe)`). All three have regression tests.
 - **Triaged as not-a-defect:** fresh Python recipe has no payload so `recipe get-payload` errors (expected — a new recipe has no code until `set-payload`); empty no-step `scenario run-and-wait` times out (degenerate scenario; DSS never signals completion); `dataset download` returning `{path,rows,...}`+file is self-consistent (`producesLocalFile:true`) — the README `--raw` contract is recipe-payload-only.
 - **Also fixed:** commands requiring `--project-key` reported `internal_error` (exit 2) when the project was unresolved → now a usage error (`missing_required_flag`, exit 1) with a hint (`fix(cli): classify unresolved project key as a usage error`, with test).
 - **S3 (now fixed):** the generic `404 … Dataiku instance not found` headline is rewritten with command context; `code:"not_found"`/exit 2 unchanged and the raw DSS body preserved under `details.body` (with regression test).
+- **Follow-up live round (real `code-env` create→delete lifecycle):**
+  - `fix(errors)`: a DSS 500 for a missing object carries the JSON-escaped contraction `doesn\u0027t exist`, which fell through to transient (exit 3, wasteful retries). Now normalized (escaped/curly apostrophes) and classified `not_found` (exit 2) — fixes the real, non-dry-run `code-env delete <missing>` path and completes B17 beyond its dry-run fix. Regression test in `errors.test.ts`.
+  - `fix(code-env)`: `delete --if-exists` used a `get()` existence check that 500s while an env is mid-build, so it wrongly skipped a real (building) env as missing — a leak. Now deletes directly and treats a `not_found` failure as the idempotent skip; `--dry-run` keeps the preview `get`. Regression test in `code-env-wait.test.ts`.
+  - **Verified live (previously listed "couldn't verify"):** a real `code-env create`→`delete` cycle was exercised end-to-end; `connection list` → only `filesystem_managed` (so `sql query` is genuinely unavailable, not assumed); `project-deployer list-infras` → `[]` (no deployer infra) — env limits now confirmed by test, not assumption.
 
 
 ## Method & coverage
@@ -107,10 +111,10 @@ The CLI is broadly solid: reads, `--fields` projection, the JSONL error contract
 
 ## Environment limitations (clean failures, NOT CLI bugs)
 - API/Project Deployer + API-node infra not configured → deployer/bundle-publish/business-app-create degrade to clean `[]`/404 (except the B3 misclassifications).
-- No SQL connection → `sql query` positive paths unverifiable.
-- App-scoped key lacks permissions for `connection list` (`[]`), `folder create` (403), business-app (license denied).
+- No SQL connection (`connection list` → only `filesystem_managed`, verified live) → `sql query` positive paths genuinely unavailable (clean 400 validation on a filesystem connection).
+- App-scoped key lacks permissions for `folder create` (403) and business-app operations (license denied). (`connection list` itself works and returns the one `filesystem_managed` connection — see above.)
 - Tutorial Filesystem datasets are not materialized on storage → `preview`/`download`/`list-partitions` fail cleanly with `validation_failed`.
 
 ## Intentionally not exercised (stated scope)
-- Real `code-env create`/`update-packages` builds (multi-minute conda builds on a shared instance) — validated via dry-run + source; the dry-run itself surfaced B17.
-- Real infra mutators with no dry-run and no safe sandbox on a Designer node (`api-deployer`/`project-deployer` create/deploy, `bundle publish`, `business-app create-instance`).
+- Real `code-env update-packages` package rebuilds (multi-minute conda builds on a shared instance) — validated via dry-run + source. A real `code-env create`→`delete` cycle *was* run this round and surfaced the two follow-up fixes above.
+- Real infra *mutators* with no dry-run and no safe sandbox on a Designer node (`api-deployer`/`project-deployer` create/deploy, `bundle publish`, `business-app create-instance`); their read side is verified — `project-deployer list-infras` → `[]` confirms no deployer infra is configured.
