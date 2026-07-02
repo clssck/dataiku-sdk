@@ -202,6 +202,17 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 		};
 	}
 
+	const isReadDirectoryAsFile = status >= 500
+		&& lowerBody.includes("cannot read directory as file",);
+	if (isReadDirectoryAsFile) {
+		return {
+			category: "validation",
+			retryable: false,
+			retryHint:
+				"The path refers to a directory, not a file. List its contents instead of reading it as a file; do not retry unchanged.",
+		};
+	}
+
 	const hasServerMissingObjectToken = lowerBody.includes("package",)
 		|| lowerBody.includes("directory",);
 	const hasServerMissingObjectLanguage = lowerBody.includes("does not exist",)

@@ -91,6 +91,16 @@ describe("classifyDataikuError", () => {
 			expect(result.category,).toBe("validation",);
 			expect(result.retryable,).toBe(false,);
 		});
+
+		it("classifies project library directory-as-file 500 as validation", () => {
+			const result = classifyDataikuError(
+				500,
+				"Cannot read directory as file: /projects/MYPROJECT/lib/python",
+			);
+			expect(result.category,).toBe("validation",);
+			expect(result.retryable,).toBe(false,);
+			expect(dataikuErrorCode(result.category,),).toBe("validation_failed",);
+		});
 	});
 
 	describe("Athena SQL engine errors", () => {
