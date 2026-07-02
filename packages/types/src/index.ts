@@ -248,6 +248,7 @@ export const RecipeCreateResultSchema = Type.Object({
 	outputFolder: Type.Optional(Type.String(),),
 	temporaryOutputDataset: Type.Optional(Type.String(),),
 	temporaryOutputDatasetDeleted: Type.Optional(Type.Boolean(),),
+	syncOutputSchemaPropagated: Type.Optional(Type.Array(Type.String(),),),
 },);
 export type RecipeCreateResult = Static<typeof RecipeCreateResultSchema>;
 

@@ -743,6 +743,37 @@ export class RecipesResource extends BaseResource {
 			await createRecipe();
 		}
 
+		// For sync recipes (a 1:1 copy) DSS does not propagate schema on build, so a
+		// schemaless dataset output silently builds to an empty dataset. Copy the
+		// single input's schema onto any schemaless dataset output so the build
+		// materializes rows (mirrors the DSS UI, which sets the sync output schema).
+		let syncOutputSchemaPropagated: string[] | undefined;
+		if (type.toLowerCase() === "sync" && !outputFolder) {
+			const inputRefs = recipeInputItems({ inputs, },).map((item,) => item.ref);
+			const outputDatasetRefs = recipeOutputItems({ outputs, },)
+				.filter((item,) => item.type !== "MANAGED_FOLDER")
+				.map((item,) => item.ref);
+			if (inputRefs.length === 1 && outputDatasetRefs.length > 0) {
+				const inputSchema = await this.client.datasets
+					.schema(inputRefs[0], pk,)
+					.catch((): undefined => undefined);
+				const inputColumns = inputSchema?.columns;
+				if (inputColumns && inputColumns.length > 0) {
+					const propagated: string[] = [];
+					for (const ref of outputDatasetRefs) {
+						const current = await this.client.datasets
+							.schema(ref, pk,)
+							.catch((): undefined => undefined);
+						if (current && current.columns.length === 0) {
+							await this.client.datasets.updateSchema(ref, inputColumns, pk,);
+							propagated.push(ref,);
+						}
+					}
+					if (propagated.length > 0) syncOutputSchemaPropagated = propagated;
+				}
+			}
+		}
+
 		// For join recipes: configure join conditions after creation
 		let joinConfigured = false;
 		const joinCols = typeof opts.joinOn === "string" ? [opts.joinOn,] : asStringArray(opts.joinOn,);
@@ -829,6 +860,7 @@ export class RecipesResource extends BaseResource {
 			createdDatasets,
 			joinConfigured,
 			outputProvisioningFallbackUsed: usedOutputProvisioningFallback,
+			...(syncOutputSchemaPropagated ? { syncOutputSchemaPropagated, } : {}),
 			...(outputFolder ? { outputFolder, } : {}),
 			...(temporaryOutputDataset ? { temporaryOutputDataset, } : {}),
 			...(temporaryOutputDatasetDeleted !== undefined ? { temporaryOutputDatasetDeleted, } : {}),
@@ -959,10 +991,10 @@ export class RecipesResource extends BaseResource {
 	}
 
 	/**
-    * Download a recipe code payload to a local file.
+		* Download a recipe code payload to a local file.
 
-    * Returns the path to the written file.
-    */
+		* Returns the path to the written file.
+		*/
 	async downloadCode(
 		recipeName: string,
 		opts?: { outputPath?: string; projectKey?: string; },

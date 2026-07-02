@@ -614,6 +614,175 @@ describe("RecipesResource", () => {
 		},);
 	});
 
+	it("propagates the single input schema to a schemaless sync dataset output", async () => {
+		const requests: string[] = [];
+		const inputColumns = [
+			{ name: "id", type: "int", },
+			{ name: "category", type: "string", },
+		];
+		let schemaUpdateBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				sendJson(res, { name: "sync_output_ds", },);
+				return;
+			}
+
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/datasets/input_ds/schema"
+			) {
+				sendJson(res, { columns: inputColumns, },);
+				return;
+			}
+
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/datasets/output_ds/schema"
+			) {
+				sendJson(res, { columns: [], },);
+				return;
+			}
+
+			if (
+				req.method === "PUT"
+				&& url.pathname === "/public/api/projects/TEST/datasets/output_ds/schema"
+			) {
+				schemaUpdateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { ok: true, },);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.create({
+				type: "sync",
+				inputDatasets: ["input_ds",],
+				outputDataset: "output_ds",
+			},);
+
+			expect(result,).toEqual({
+				recipeName: "sync_output_ds",
+				type: "sync",
+				createdDatasets: [],
+				joinConfigured: false,
+				outputProvisioningFallbackUsed: false,
+				syncOutputSchemaPropagated: ["output_ds",],
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			"POST /public/api/projects/TEST/recipes/",
+			"GET /public/api/projects/TEST/datasets/input_ds/schema",
+			"GET /public/api/projects/TEST/datasets/output_ds/schema",
+			"PUT /public/api/projects/TEST/datasets/output_ds/schema",
+		],);
+		expect(schemaUpdateBody,).toEqual({ columns: inputColumns, },);
+	});
+
+	it("does not propagate sync output schema when the output already has columns", async () => {
+		const requests: string[] = [];
+		const inputColumns = [
+			{ name: "id", type: "int", },
+			{ name: "category", type: "string", },
+		];
+
+		await withRecipeServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				sendJson(res, { name: "sync_output_ds", },);
+				return;
+			}
+
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/datasets/input_ds/schema"
+			) {
+				sendJson(res, { columns: inputColumns, },);
+				return;
+			}
+
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/datasets/output_ds/schema"
+			) {
+				sendJson(res, {
+					columns: [{ name: "existing", type: "string", },],
+				},);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.create({
+				type: "sync",
+				inputDatasets: ["input_ds",],
+				outputDataset: "output_ds",
+			},);
+
+			expect(result.syncOutputSchemaPropagated,).toBeUndefined();
+			expect(result,).toEqual({
+				recipeName: "sync_output_ds",
+				type: "sync",
+				createdDatasets: [],
+				joinConfigured: false,
+				outputProvisioningFallbackUsed: false,
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			"POST /public/api/projects/TEST/recipes/",
+			"GET /public/api/projects/TEST/datasets/input_ds/schema",
+			"GET /public/api/projects/TEST/datasets/output_ds/schema",
+		],);
+	});
+
+	it("does not propagate schema for non-sync recipe types", async () => {
+		const requests: string[] = [];
+
+		await withRecipeServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				sendJson(res, { name: "python_output_ds", },);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.create({
+				type: "python",
+				inputDatasets: ["input_ds",],
+				outputDataset: "output_ds",
+			},);
+
+			expect(result.syncOutputSchemaPropagated,).toBeUndefined();
+			expect(result,).toEqual({
+				recipeName: "python_output_ds",
+				type: "python",
+				createdDatasets: [],
+				joinConfigured: false,
+				outputProvisioningFallbackUsed: false,
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			"POST /public/api/projects/TEST/recipes/",
+		],);
+	});
+
 	it("creates managed-folder output recipes through a temporary dataset and patches the output", async () => {
 		const requests: string[] = [];
 		let tempDatasetBody: Record<string, unknown> | undefined;
