@@ -988,10 +988,17 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 		};
 	}
 	if (err instanceof DataikuError) {
+		const errorMessage = err.category === "not_found"
+				&& err.message.includes("Dataiku instance not found",)
+				&& context.resource
+			? `Not found: ${context.resource}${context.action ? ` ${context.action}` : ""}`
+				+ `${context.projectKey ? ` in project ${context.projectKey}` : ""}`
+				+ ` — verify the object identifier and project key (DSS: ${err.message.split("\n",)[0]}).`
+			: err.message;
 		return {
 			type: "error",
 			ok: false,
-			error: err.message,
+			error: errorMessage,
 			code: dataikuErrorCode(err.category,),
 			category: "dss",
 			exitCode,

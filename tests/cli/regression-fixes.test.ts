@@ -634,4 +634,32 @@ describe("CLI regression fixes", () => {
 		expect(hint,).toContain("--project-key",);
 		expect(hint,).toContain("DATAIKU_PROJECT_KEY",);
 	});
+	it("rewrites generic DSS 404 dataset failures with command context while preserving the raw body", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname.includes("/datasets/NOPE",)) {
+				sendJson(res, { message: "Dataiku instance not found", }, 404,);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method ?? ""} ${url.pathname}`,);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"dataset",
+				"get",
+				"NOPE",
+				"--project-key",
+				"TEST",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(2,);
+			const report = JSON.parse(failure.stderr,) as {
+				code?: string;
+				error?: string;
+				details?: { body?: string; };
+			};
+			expect(report.code,).toBe("not_found",);
+			expect(report.error,).toContain("Not found: dataset get in project TEST",);
+			expect(report.details?.body,).toContain("Dataiku instance not found",);
+		},);
+	});
 });
