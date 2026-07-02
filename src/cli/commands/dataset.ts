@@ -152,11 +152,23 @@ export const datasetCommands: Record<string, CommandMeta> = {
 					path: result.path,
 				},);
 			}
+			if (!f["output"]) {
+				enqueueCliWarning({
+					code: "dataset_download_default_location",
+					message:
+						`No --output was given, so '${
+							a[0]
+						}' was written to '${result.path}' in the current directory. `
+						+ "Pass --output PATH to control the destination and avoid writing into your working tree.",
+					dataset: a[0],
+					path: result.path,
+				},);
+			}
 			return result;
 		},
 		usage: "dss dataset download <name> [--output PATH] [--limit N] [--project-key KEY]",
 		description:
-			"Download up to --limit rows (default 100k) as CSV; returns { path, rows, truncated, limit }. When truncated, a dataset_download_truncated warning is also written to stderr so the cap is never silent.",
+			"Download up to --limit rows (default 100k) as CSV; returns { path, rows, truncated, limit }. When truncated, a dataset_download_truncated warning is written to stderr; when --output is omitted, a dataset_download_default_location warning names the file's path in the working directory so the write is never silent.",
 		examples: ["dss dataset download orders", "dss dataset download orders --output ./data/",],
 	},
 	create: {

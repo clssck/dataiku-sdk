@@ -3,6 +3,7 @@ import {
 	cliEnv,
 	dss,
 	join,
+	mkdirSync,
 	readBody,
 	readFileSync,
 	rmSync,
@@ -11,6 +12,21 @@ import {
 	withCliServer,
 	writeFileSync,
 } from "./_harness.js";
+
+type CliWarningEvent = {
+	type: "warning";
+	warnings: Array<Record<string, unknown>>;
+};
+
+function parseCliWarningEvents(stderr: string,): CliWarningEvent[] {
+	return stderr
+		.split(/\r?\n/u,)
+		.filter((line,) => line.length > 0)
+		.map((line,) => JSON.parse(line,) as { type?: unknown; warnings?: unknown; })
+		.filter((event,): event is CliWarningEvent =>
+			event.type === "warning" && Array.isArray(event.warnings,)
+		);
+}
 
 describe("CLI command behavioral smoke coverage", () => {
 	it("smokes project, flow-zone, and dataset command gaps", async () => {
@@ -126,6 +142,81 @@ describe("CLI command behavioral smoke coverage", () => {
 			rmSync(datasetOut, { force: true, },);
 		}
 	}, 30_000,);
+
+	it("warns when dataset download writes to the current directory by default", async () => {
+		const downloadDir = join(tmpdir(), `dss-cli-dataset-default-output-${Date.now()}`,);
+		mkdirSync(downloadDir, { recursive: true, },);
+		const expectedPath = join(downloadDir, "orders.csv.gz",);
+		try {
+			await withCliServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				expect(req.method,).toBe("GET",);
+				expect(url.pathname,).toBe("/public/api/projects/TEST/datasets/orders/data/",);
+				expect(url.searchParams.get("format",),).toBe("tsv-excel-header",);
+				expect(url.searchParams.get("limit",),).toBe("100001",);
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/plain",);
+				res.end("order_id\nA1\n",);
+			}, async (url,) => {
+				const { stdout, stderr, } = await dss(["dataset", "download", "orders",], {
+					cwd: downloadDir,
+					env: cliEnv(url,),
+				},);
+				expect(JSON.parse(stdout,),).toMatchObject({
+					path: expectedPath,
+					rows: 1,
+					truncated: false,
+				},);
+				const warningEvents = parseCliWarningEvents(stderr,);
+				expect(warningEvents,).toHaveLength(1,);
+				expect(warningEvents[0].warnings,).toContainEqual(expect.objectContaining({
+					code: "dataset_download_default_location",
+					path: expectedPath,
+				},),);
+			},);
+		} finally {
+			rmSync(downloadDir, { force: true, recursive: true, },);
+		}
+	});
+
+	it("does not warn about the default dataset download location when output is provided", async () => {
+		const downloadDir = join(tmpdir(), `dss-cli-dataset-explicit-output-${Date.now()}`,);
+		mkdirSync(downloadDir, { recursive: true, },);
+		const outputPath = join(downloadDir, "orders.csv",);
+		try {
+			await withCliServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				expect(req.method,).toBe("GET",);
+				expect(url.pathname,).toBe("/public/api/projects/TEST/datasets/orders/data/",);
+				expect(url.searchParams.get("format",),).toBe("tsv-excel-header",);
+				expect(url.searchParams.get("limit",),).toBe("100001",);
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/plain",);
+				res.end("order_id\nA1\n",);
+			}, async (url,) => {
+				const { stdout, stderr, } = await dss([
+					"dataset",
+					"download",
+					"orders",
+					"--output",
+					outputPath,
+				], {
+					env: cliEnv(url,),
+				},);
+				expect(JSON.parse(stdout,),).toMatchObject({
+					path: outputPath,
+					rows: 1,
+					truncated: false,
+				},);
+				const warningCodes = parseCliWarningEvents(stderr,)
+					.flatMap((event,) => event.warnings)
+					.map((warning,) => warning.code);
+				expect(warningCodes,).not.toContain("dataset_download_default_location",);
+			},);
+		} finally {
+			rmSync(downloadDir, { force: true, recursive: true, },);
+		}
+	});
 
 	it("smokes dataset, recipe, job, scenario, and connection command gaps", async () => {
 		const recipeOut = join(tmpdir(), `dss-cli-recipe-download-${Date.now()}.json`,);
