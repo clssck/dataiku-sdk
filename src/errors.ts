@@ -14,6 +14,7 @@ export type StableErrorCode =
 	| "not_found"
 	| "permission_denied"
 	| "validation_failed"
+	| "homepage_tile_schema_unavailable"
 	| "transient"
 	| "long_running_failure"
 	| "internal_error";

@@ -1,6 +1,6 @@
-import { requiredJsonInput, } from "../coerce.js";
+import { requiredJsonInput, requiredStringFlag, } from "../coerce.js";
 import type { CommandMeta, } from "../types.js";
-import { requireArgs, requireNoArgs, } from "../usage.js";
+import { requireArgs, requireNoArgs, UsageError, } from "../usage.js";
 
 export const appCommands: Record<string, CommandMeta> = {
 	list: {
@@ -10,13 +10,188 @@ export const appCommands: Record<string, CommandMeta> = {
 		examples: ["dss app list",],
 	},
 	manifest: {
-		handler: (c, a,) => {
-			requireArgs(a, 1, "dss app manifest <appId>",);
-			return c.applications.getAppManifest(a[0],);
+		handler: (c, a, f,) => {
+			requireArgs(
+				a,
+				1,
+				"dss app manifest <appId>",
+			);
+			const projectKey = f["project-key"] as string | undefined;
+			switch (a[0]) {
+				case "get":
+					requireNoArgs(a.slice(1,), "dss app manifest get [--project-key KEY]",);
+					return c.applications.getInstanceManifest(projectKey,);
+				case "update": {
+					requireNoArgs(
+						a.slice(1,),
+						"dss app manifest update (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+					);
+					const patch = requiredJsonInput(
+						f,
+						"--data, --data-file, or --stdin is required (manifest patch JSON).",
+					);
+					return c.applications.updateInstanceManifest(patch, projectKey,);
+				}
+				case "export-resource": {
+					requireNoArgs(
+						a.slice(1,),
+						"dss app manifest export-resource --managed-folder FOLDER [--project-key KEY]",
+					);
+					const folder = requiredStringFlag(
+						f,
+						"managed-folder",
+						"dss app manifest export-resource --managed-folder FOLDER [--project-key KEY]",
+					);
+					return c.applications.exportManagedFolderResource(folder, projectKey,);
+				}
+				default:
+					requireNoArgs(a.slice(1,), "dss app manifest <appId>",);
+					if (
+						f["data"] !== undefined || f["data-file"] !== undefined || f["stdin"] === true
+						|| f["managed-folder"] !== undefined
+					) {
+						throw new UsageError(
+							"app manifest <appId> does not accept manifest mutation flags. Use `dss app manifest update` or `dss app manifest export-resource`.",
+							"usage_error",
+						);
+					}
+					return c.applications.getAppManifest(a[0],);
+			}
 		},
 		usage: "dss app manifest <appId>",
-		description: "Get the manifest of a Dataiku App template.",
+		description: "Get the manifest of a Dataiku App template. Nested manifest subcommands remain supported for compatibility; registry-safe aliases are manifest-get, manifest-update, and manifest-export-resource.",
 		examples: ["dss app manifest my-app",],
+		optionalFlags: ["managed-folder", "data", "data-file", "stdin",],
+	},
+	"manifest-get": {
+		handler: (c, a, f,) => {
+			requireNoArgs(a, "dss app manifest-get [--project-key KEY]",);
+			return c.applications.getInstanceManifest(f["project-key"] as string | undefined,);
+		},
+		usage: "dss app manifest-get [--project-key KEY]",
+		description: "Registry-safe alias for `dss app manifest get`.",
+		examples: ["dss app manifest-get --project-key MYAPP_TEMPLATE",],
+	},
+	"manifest-update": {
+		handler: (c, a, f,) => {
+			requireNoArgs(
+				a,
+				"dss app manifest-update (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			);
+			const patch = requiredJsonInput(
+				f,
+				"--data, --data-file, or --stdin is required (manifest patch JSON).",
+			);
+			return c.applications.updateInstanceManifest(patch, f["project-key"] as string | undefined,);
+		},
+		usage: "dss app manifest-update (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+		description: "Registry-safe alias for `dss app manifest update`.",
+		examples: ["dss app manifest-update --data-file manifest.patch.json --project-key MYAPP_TEMPLATE",],
+	},
+	"manifest-export-resource": {
+		handler: (c, a, f,) => {
+			requireNoArgs(
+				a,
+				"dss app manifest-export-resource --managed-folder FOLDER [--project-key KEY]",
+			);
+			const folder = requiredStringFlag(
+				f,
+				"managed-folder",
+				"dss app manifest-export-resource --managed-folder FOLDER [--project-key KEY]",
+			);
+			return c.applications.exportManagedFolderResource(folder, f["project-key"] as string | undefined,);
+		},
+		usage: "dss app manifest-export-resource --managed-folder FOLDER [--project-key KEY]",
+		description: "Registry-safe alias for `dss app manifest export-resource`.",
+		examples: ["dss app manifest-export-resource --managed-folder output --project-key MYAPP_TEMPLATE",],
+	},
+	homepage: {
+		handler: (c, a, f,) => {
+			requireArgs(a, 1, "dss app homepage <add-project-variable-tile|add-scenario-tile|add-managed-folder-tile>",);
+			const projectKey = f["project-key"] as string | undefined;
+			switch (a[0]) {
+				case "add-project-variable-tile":
+					requireNoArgs(
+						a.slice(1,),
+						"dss app homepage add-project-variable-tile --variable NAME --label LABEL --button-text TEXT [--project-key KEY]",
+					);
+					return c.applications.addProjectVariableHomepageTile(
+						requiredStringFlag(
+							f,
+							"variable",
+							"dss app homepage add-project-variable-tile --variable NAME --label LABEL --button-text TEXT [--project-key KEY]",
+						),
+						requiredStringFlag(
+							f,
+							"label",
+							"dss app homepage add-project-variable-tile --variable NAME --label LABEL --button-text TEXT [--project-key KEY]",
+						),
+						requiredStringFlag(
+							f,
+							"button-text",
+							"dss app homepage add-project-variable-tile --variable NAME --label LABEL --button-text TEXT [--project-key KEY]",
+						),
+						projectKey,
+					);
+				case "add-scenario-tile":
+					requireNoArgs(
+						a.slice(1,),
+						"dss app homepage add-scenario-tile --scenario ID --button-text TEXT [--project-key KEY]",
+					);
+					return c.applications.addScenarioHomepageTile(
+						requiredStringFlag(
+							f,
+							"scenario",
+							"dss app homepage add-scenario-tile --scenario ID --button-text TEXT [--project-key KEY]",
+						),
+						requiredStringFlag(
+							f,
+							"button-text",
+							"dss app homepage add-scenario-tile --scenario ID --button-text TEXT [--project-key KEY]",
+						),
+						projectKey,
+					);
+				case "add-managed-folder-tile":
+					requireNoArgs(
+						a.slice(1,),
+						"dss app homepage add-managed-folder-tile --folder FOLDER --prompt TEXT [--project-key KEY]",
+					);
+					const folder = typeof f["folder"] === "string" && f["folder"].trim().length > 0
+						? f["folder"].trim()
+						: typeof f["managed-folder"] === "string" && f["managed-folder"].trim().length > 0
+						? f["managed-folder"].trim()
+						: undefined;
+					if (!folder) {
+						throw new UsageError(
+							"--folder is required. Usage: dss app homepage add-managed-folder-tile --folder FOLDER --prompt TEXT [--project-key KEY]",
+							"missing_required_flag",
+						);
+					}
+					return c.applications.addManagedFolderHomepageTile(
+						folder,
+						requiredStringFlag(
+							f,
+							"prompt",
+							"dss app homepage add-managed-folder-tile --folder FOLDER --prompt TEXT [--project-key KEY]",
+						),
+						projectKey,
+					);
+				default:
+					throw new UsageError(
+						`Unknown app homepage helper: ${a[0]}. Use add-project-variable-tile, add-scenario-tile, or add-managed-folder-tile.`,
+						"invalid_enum",
+					);
+			}
+		},
+		usage:
+			"dss app homepage add-project-variable-tile|add-scenario-tile|add-managed-folder-tile [--variable NAME] [--label LABEL] [--button-text TEXT] [--scenario ID] [--folder FOLDER] [--managed-folder FOLDER] [--prompt TEXT] [--project-key KEY]",
+		description:
+			"Add source-backed app homepage tiles or fail clearly when a raw homepageSections tile schema is unavailable.",
+		examples: [
+			'dss app homepage add-project-variable-tile --variable gosilico_workbook_id --label "Workbook ID" --button-text "Workbook ID" --project-key GOSILICO',
+			'dss app homepage add-scenario-tile --scenario GENERATE_GOSILICO_INPUT --button-text "Generate" --project-key GOSILICO',
+			'dss app homepage add-managed-folder-tile --folder output --prompt "Download generated workbook" --project-key GOSILICO',
+		],
 	},
 	instances: {
 		handler: (c, a,) => {

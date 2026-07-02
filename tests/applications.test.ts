@@ -291,4 +291,218 @@ describe("ApplicationsResource", () => {
 			"/public/api/business-apps/business%2Fapp/instances/BA%20INSTANCE/permissions/alice%40example.com",
 		);
 	});
+
+	it("deep-merges app manifest patches and skips idempotent PUTs", async () => {
+		const requests: string[] = [];
+		const bodies: unknown[] = [];
+		const current = {
+			projectAppType: "APP_TEMPLATE",
+			homepageSections: [],
+			settings: { keep: true, nested: { old: 1, }, },
+		};
+
+		await withServer(async (req, res,) => {
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/app-manifest") {
+				sendJson(res, current,);
+				return;
+			}
+			if (req.method === "PUT" && req.url === "/public/api/projects/TEST/app-manifest") {
+				bodies.push(JSON.parse(await readBody(req,),),);
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(createClient(url,),);
+			const changed = await resource.updateInstanceManifest({ settings: { nested: { added: 2, }, }, },);
+			expect(changed.changed,).toBe(true,);
+			expect(changed.manifest,).toEqual({
+				projectAppType: "APP_TEMPLATE",
+				homepageSections: [],
+				settings: { keep: true, nested: { old: 1, added: 2, }, },
+			},);
+			const unchanged = await resource.updateInstanceManifest({},);
+			expect(unchanged.changed,).toBe(false,);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/app-manifest",
+			"PUT /public/api/projects/TEST/app-manifest",
+			"GET /public/api/projects/TEST/app-manifest",
+		],);
+		expect(bodies,).toEqual([{
+			projectAppType: "APP_TEMPLATE",
+			homepageSections: [],
+			settings: { keep: true, nested: { old: 1, added: 2, }, },
+		},],);
+	});
+
+	it("rejects manifest updates on app-instance projects before PUT", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/app-manifest") {
+				sendJson(res, { projectAppType: "APP_INSTANCE", homepageSections: [], },);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(createClient(url,),);
+			await expect(resource.updateInstanceManifest({ homepageSections: [], },),)
+				.rejects.toMatchObject({ code: "validation_failed", });
+		},);
+
+		expect(requests,).toEqual(["GET /public/api/projects/TEST/app-manifest",],);
+	});
+
+	it("exports a managed folder resource by exact name and validates with folders.get", async () => {
+		const requests: string[] = [];
+		let observedBody: unknown;
+
+		await withServer(async (req, res,) => {
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/app-manifest") {
+				sendJson(res, { projectAppType: "APP_TEMPLATE", projectExportManifest: {}, },);
+				return;
+			}
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "folder-id", name: "output", type: "Filesystem", },],);
+				return;
+			}
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/managedfolders/folder-id") {
+				sendJson(res, { id: "folder-id", name: "output", type: "Filesystem", },);
+				return;
+			}
+			if (req.method === "PUT" && req.url === "/public/api/projects/TEST/app-manifest") {
+				observedBody = JSON.parse(await readBody(req,),);
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(createClient(url,),);
+			const result = await resource.exportManagedFolderResource("output",);
+			expect(result.changed,).toBe(true,);
+			expect(result.folderId,).toBe("folder-id",);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/app-manifest",
+			"GET /public/api/projects/TEST/managedfolders/",
+			"GET /public/api/projects/TEST/managedfolders/folder-id",
+			"PUT /public/api/projects/TEST/app-manifest",
+		],);
+		expect(observedBody,).toMatchObject({
+			projectExportManifest: {
+				exportManagedFolders: true,
+				includedManagedFolders: [{ id: "folder-id", },],
+			},
+		},);
+	});
+
+	it("keeps managed folder export idempotent when folder is already included", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/app-manifest") {
+				sendJson(res, {
+					projectAppType: "APP_TEMPLATE",
+					projectExportManifest: {
+						exportManagedFolders: true,
+						includedManagedFolders: [{ id: "folder-id", },],
+					},
+				},);
+				return;
+			}
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "folder-id", name: "output", },],);
+				return;
+			}
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/managedfolders/folder-id") {
+				sendJson(res, { id: "folder-id", name: "output", },);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(createClient(url,),);
+			const result = await resource.exportManagedFolderResource("folder-id",);
+			expect(result.changed,).toBe(false,);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/app-manifest",
+			"GET /public/api/projects/TEST/managedfolders/",
+			"GET /public/api/projects/TEST/managedfolders/folder-id",
+		],);
+	});
+
+	it("adds a source-backed scenario homepage tile to the first tiles section", async () => {
+		let observedBody: unknown;
+
+		await withServer(async (req, res,) => {
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/app-manifest") {
+				sendJson(res, {
+					projectAppType: "APP_TEMPLATE",
+					homepageSections: [{ title: "Actions", tiles: [{ type: "STATIC", prompt: "Intro", },], },],
+				},);
+				return;
+			}
+			if (req.method === "PUT" && req.url === "/public/api/projects/TEST/app-manifest") {
+				observedBody = JSON.parse(await readBody(req,),);
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(createClient(url,),);
+			const result = await resource.addScenarioHomepageTile("GENERATE", "Generate",);
+			expect(result.changed,).toBe(true,);
+		},);
+
+		expect(observedBody,).toMatchObject({
+			homepageSections: [{
+				title: "Actions",
+				tiles: [
+					{ type: "STATIC", prompt: "Intro", },
+					{ type: "SCENARIO_RUN", scenarioId: "GENERATE", prompt: "Generate", },
+				],
+			},],
+		},);
+	});
+
+	it("keeps unsupported homepage helpers explicit and non-mutating", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/app-manifest") {
+				sendJson(res, { projectAppType: "APP_TEMPLATE", homepageSections: [], },);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(createClient(url,),);
+			await expect(resource.addProjectVariableHomepageTile("workbook", "Workbook", "Workbook",),)
+				.rejects.toMatchObject({ code: "homepage_tile_schema_unavailable", });
+			await expect(resource.addManagedFolderHomepageTile("output", "Download",),)
+				.rejects.toMatchObject({ code: "homepage_tile_schema_unavailable", });
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/app-manifest",
+			"GET /public/api/projects/TEST/app-manifest",
+		],);
+	});
 });

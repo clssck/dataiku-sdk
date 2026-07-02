@@ -1,5 +1,5 @@
 import { randomUUID, } from "node:crypto";
-import { DataikuError, } from "../errors.js";
+import { ClientValidationError, DataikuError, } from "../errors.js";
 import type {
 	ScenarioDetails,
 	ScenarioStatus,
@@ -71,6 +71,10 @@ export interface ScenarioScriptRunResult {
 	logTruncated: boolean;
 	maxLogBytes: number;
 	envName?: string;
+}
+
+export interface ScenarioScriptPayload extends Record<string, unknown> {
+	script?: string;
 }
 
 const DEFAULT_CODE_RUN_MAX_LOG_BYTES = 1_048_576;
@@ -369,6 +373,47 @@ export class ScenariosResource extends BaseResource {
 			`/public/api/projects/${this.enc(projectKey,)}/scenarios/${scEnc}/light/`,
 		);
 		return this.client.safeParse(ScenarioStatusSchema, raw, "scenarios.status",);
+	}
+
+	/** Get the custom Python scenario script from the DSS payload endpoint. */
+	async getScript(scenarioId: string, opts?: { projectKey?: string; },): Promise<string> {
+		const scEnc = encodeURIComponent(scenarioId,);
+		const raw = await this.client.get<unknown>(
+			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/payload`,
+		);
+		if (!isRecord(raw,)) {
+			throw new ClientValidationError(
+				`Scenario "${scenarioId}" payload was not an object.`,
+				"validation_failed",
+				"Use this command only with custom Python scenarios that expose their code through the DSS scenario payload endpoint.",
+				{ scenarioId, payloadType: typeof raw, },
+			);
+		}
+		// DSS' Python client reads this endpoint with .get("script", ""), so
+		// an absent script key means an empty custom script rather than invalid data.
+		if (raw.script === undefined) return "";
+		if (typeof raw.script !== "string") {
+			throw new ClientValidationError(
+				`Scenario "${scenarioId}" payload script field was not a string.`,
+				"validation_failed",
+				"The DSS scenario payload endpoint must return script text as a string when script is present.",
+				{ scenarioId, scriptType: typeof raw.script, },
+			);
+		}
+		return raw.script;
+	}
+
+	/** Save the custom Python scenario script through the DSS payload endpoint. */
+	async setScript(
+		scenarioId: string,
+		script: string,
+		opts?: { projectKey?: string; },
+	): Promise<void> {
+		const scEnc = encodeURIComponent(scenarioId,);
+		await this.client.putVoid(
+			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/payload`,
+			{ script, },
+		);
 	}
 
 	/** Merge-update a scenario's definition, then refetch and verify requested fields persisted. */

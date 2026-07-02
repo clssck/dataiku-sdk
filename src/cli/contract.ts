@@ -210,6 +210,13 @@ export interface CommandRegistryEntry {
 	agentContractVersion: number;
 }
 
+type ExplicitCommandRegistryOverride = CommandRegistryOverride & {
+	sideEffect?: CommandSideEffect;
+	destructive?: CommandDestructiveLevel;
+	outputShape?: CommandOutputShape;
+	idempotency?: CommandIdempotency;
+};
+
 const READ_ACTIONS = new Set([
 	"cat",
 	"contents",
@@ -479,7 +486,22 @@ export function buildCommandSchemas(
 	};
 }
 
-const EXPLICIT_REGISTRY_OVERRIDES: Record<string, CommandRegistryOverride> = {
+const EXPLICIT_REGISTRY_OVERRIDES: Record<string, ExplicitCommandRegistryOverride> = {
+	"app.manifest-update": {
+		sideEffect: "write",
+		idempotency: "convergent",
+	},
+	"app.manifest-export-resource": {
+		sideEffect: "write",
+		idempotency: "convergent",
+	},
+	"app.homepage": {
+		sideEffect: "write",
+		idempotency: "convergent",
+	},
+	"scenario.get-script": {
+		outputShape: "string",
+	},
 	"dashboard.create": {
 		examplePayload: { pages: [], },
 	},
@@ -820,10 +842,11 @@ function buildRegistryEntry(
 	action: string,
 	meta: CommandMeta,
 ): CommandRegistryEntry {
+	const override = EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)];
 	const requiresAuth = inferRequiresAuth(resource,);
 	const requiresProject = inferRequiresProject(resource, action, meta.usage,);
-	const sideEffect = inferSideEffect(resource, action,);
-	const destructive = inferDestructiveLevel(sideEffect, action,);
+	const sideEffect = override?.sideEffect ?? inferSideEffect(resource, action,);
+	const destructive = override?.destructive ?? inferDestructiveLevel(sideEffect, action,);
 	const asyncKind = inferAsyncKind(resource, action,);
 	const mutatesDss = sideEffect === "write" && resource !== "auth" && resource !== "install-skill";
 	const supportsPlan = mutatesDss || sideEffect === "write";
@@ -831,6 +854,7 @@ function buildRegistryEntry(
 	const usageFlags = extractUsageFlags(meta.usage,);
 	const flags = uniqueStrings([
 		...usageFlags,
+		...(meta.optionalFlags ?? override?.optionalFlags ?? []),
 		...(supportsPlan ? ["plan",] : []),
 		...(supportsCleanup ? ["record-cleanup",] : []),
 		...GLOBAL_AGENT_FLAGS,
@@ -839,25 +863,25 @@ function buildRegistryEntry(
 	],);
 	const derivedRequired = deriveRequiredUsage(meta.usage,);
 	const requiredFlags = meta.requiredFlags
-		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.requiredFlags
+		?? override?.requiredFlags
 		?? derivedRequired.requiredFlags;
 	const requiredOneOf = meta.requiredOneOf
-		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.requiredOneOf
+		?? override?.requiredOneOf
 		?? derivedRequired.requiredOneOf;
 	const oneOfFlags = new Set(requiredOneOf.flatMap((choice,) => choice.oneOf.flat()),);
 	const optionalFlags = meta.optionalFlags
-		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.optionalFlags
+		?? override?.optionalFlags
 		?? flags.filter((flag,) => !requiredFlags.includes(flag,) && !oneOfFlags.has(flag,));
 	const valueHints = extractFlagValueHints(meta.usage,);
 	const inputContract = inferInputContract(meta.usage,);
 	const cleanupHint = inferCleanupHint(resource, action,);
 	const payloadSchema = meta.payloadSchema
-		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.payloadSchema
+		?? override?.payloadSchema
 		?? inferPayloadSchema(inputContract,);
 	const examplePayload = meta.examplePayload
-		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.examplePayload;
+		?? override?.examplePayload;
 	const cleanupCommand = meta.cleanupCommand
-		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.cleanupCommand
+		?? override?.cleanupCommand
 		?? cleanupCommandFromDeleteUsage(resource, action,);
 	const flagMetadata: CommandFlagMetadata[] = flags.map((name,) => {
 		const aliases = Object.entries(FLAG_ALIASES,)
@@ -879,7 +903,7 @@ function buildRegistryEntry(
 		};
 	},);
 	const positionals = extractPositionals(meta.usage,);
-	const outputShape = inferOutputShape(resource, action,);
+	const outputShape = override?.outputShape ?? inferOutputShape(resource, action,);
 	const producesLocalFile = meta.usage.includes("--output PATH",)
 		|| meta.usage.includes("--output-file PATH",);
 	const uniqueRequiredFlags = uniqueStrings(requiredFlags,);
@@ -903,7 +927,7 @@ function buildRegistryEntry(
 		producesLocalFile,
 		mutatesDss,
 		async: asyncKind,
-		idempotency: inferIdempotency(sideEffect, action, meta.usage,),
+		idempotency: override?.idempotency ?? inferIdempotency(sideEffect, action, meta.usage,),
 		dryRun: meta.usage.includes("--dry-run",),
 		requiredFlags: uniqueRequiredFlags,
 		optionalFlags: uniqueOptionalFlags,
@@ -1318,6 +1342,82 @@ export function commandPlanShape(
 	};
 	const id = args[0];
 	switch (`${resource}.${action}`) {
+		case "app.manifest-update":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint("/app-manifest",),
+				identifiers: { projectKey, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "app.manifest-export-resource": {
+			const folder = requiredPlanFlag(flags, "managed-folder", entry.usage,);
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint("/app-manifest",),
+				identifiers: { projectKey, managedFolder: folder, },
+				payload: {
+					operation: "export-managed-folder-resource",
+					managedFolder: folder,
+					projectExportManifest: {
+						exportManagedFolders: true,
+						includedManagedFolders: [{ id: "<resolved folder id>", },],
+					},
+					resolution: "folder id/name resolved at execution with folders.list() and folders.get()",
+				},
+			};
+		}
+		case "app.homepage": {
+			const subcommand = args[0];
+			if (subcommand === "add-scenario-tile") {
+				const scenarioId = requiredPlanFlag(flags, "scenario", entry.usage,);
+				const buttonText = requiredPlanFlag(flags, "button-text", entry.usage,);
+				return {
+					method: "PUT",
+					endpoint: projectEndpoint("/app-manifest",),
+					identifiers: { projectKey, subcommand, scenarioId, },
+					payload: {
+						operation: "add-scenario-homepage-tile",
+						tile: { type: "SCENARIO_RUN", scenarioId, prompt: buttonText, },
+						merge: "append to the first homepageSections item with tiles, or create a minimal { tiles: [...] } section",
+					},
+				};
+			}
+			if (subcommand === "add-project-variable-tile") {
+				return {
+					identifiers: { projectKey, subcommand, variable: requiredPlanFlag(flags, "variable", entry.usage,), },
+					payload: {
+						validationOnly: true,
+						error: "homepage_tile_schema_unavailable",
+						operation: "add-project-variable-homepage-tile",
+						label: requiredPlanFlag(flags, "label", entry.usage,),
+						buttonText: requiredPlanFlag(flags, "button-text", entry.usage,),
+						message: "No source-verified raw homepage tile schema is available for project variables.",
+					},
+				};
+			}
+			if (subcommand === "add-managed-folder-tile") {
+				const folder = typeof flags["folder"] === "string" && flags["folder"].trim().length > 0
+					? flags["folder"].trim()
+					: typeof flags["managed-folder"] === "string" && flags["managed-folder"].trim().length > 0
+					? flags["managed-folder"].trim()
+					: undefined;
+				if (!folder) throw new UsageError(`--folder is required. Usage: ${entry.usage}`,);
+				return {
+					identifiers: { projectKey, subcommand, folder, },
+					payload: {
+						validationOnly: true,
+						error: "homepage_tile_schema_unavailable",
+						operation: "add-managed-folder-homepage-tile",
+						prompt: requiredPlanFlag(flags, "prompt", entry.usage,),
+						closestSupportedAlternative: "dss app manifest export-resource --managed-folder <folder>",
+					},
+				};
+			}
+			throw new UsageError(
+				`Unknown app homepage helper: ${subcommand}. Use add-project-variable-tile, add-scenario-tile, or add-managed-folder-tile.`,
+				"invalid_enum",
+			);
+		}
 		case "wiki.create": {
 			const name = requiredPlanFlag(flags, "name", entry.usage,);
 			return {
