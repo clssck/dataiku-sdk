@@ -344,6 +344,25 @@ describe("CLI regression fixes", () => {
 		expect(requestCount,).toBe(0,);
 	});
 
+	it("app instance-manifest rejects unexpected positional arguments before DSS access", async () => {
+		const failure = await dssFailure([
+			"app",
+			"instance-manifest",
+			"EXTRA1",
+			"EXTRA2",
+		], { env: cliEnv("http://127.0.0.1:9/",), },);
+		expect(failure.code,).toBe(1,);
+		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			code: "usage_error",
+			category: "usage",
+			exitCode: 1,
+			resource: "app",
+			action: "instance-manifest",
+		},);
+		expect(report.error,).toContain("Unexpected argument(s)",);
+	});
+
 	it("flow-zone graph without an id fetches the full project graph", async () => {
 		let requestPath = "";
 		await withCliServer((req, res,) => {
@@ -534,6 +553,6 @@ describe("CLI regression fixes", () => {
 			expect(result,).toMatchObject({ skipped: "nope", reason: "missing", },);
 		},);
 		expect(requests,).toEqual(["GET /public/api/meanings/nope",],);
-		expect(requests.some((request,) => request.startsWith("DELETE "),),).toBe(false,);
+		expect(requests.some((request,) => request.startsWith("DELETE ",)),).toBe(false,);
 	});
 });

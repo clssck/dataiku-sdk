@@ -1,6 +1,6 @@
 import { requiredJsonInput, } from "../coerce.js";
 import type { CommandMeta, } from "../types.js";
-import { requireArgs, } from "../usage.js";
+import { requireArgs, requireNoArgs, } from "../usage.js";
 
 export const appCommands: Record<string, CommandMeta> = {
 	list: {
@@ -41,14 +41,20 @@ export const appCommands: Record<string, CommandMeta> = {
 		examples: ['dss app create-instance my-app --data \'{"targetProjectKey":"NEWPROJ"}\'',],
 	},
 	"instance-manifest": {
-		handler: (c, _a, f,) =>
-			c.applications.getInstanceManifest(f["project-key"] as string | undefined,),
+		handler: (c, a, f,) => {
+			requireNoArgs(a, "dss app instance-manifest [--project-key KEY]",);
+			return c.applications.getInstanceManifest(f["project-key"] as string | undefined,);
+		},
 		usage: "dss app instance-manifest [--project-key KEY]",
 		description: "Get the app manifest of an app-instance project.",
 		examples: ["dss app instance-manifest --project-key MYINSTANCE",],
 	},
 	"save-instance-manifest": {
-		handler: (c, _a, f,) => {
+		handler: (c, a, f,) => {
+			requireNoArgs(
+				a,
+				"dss app save-instance-manifest (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+			);
 			const manifest = requiredJsonInput(
 				f,
 				"--data, --data-file, or --stdin is required (manifest JSON).",
@@ -62,7 +68,8 @@ export const appCommands: Record<string, CommandMeta> = {
 		examples: ["dss app save-instance-manifest --data-file manifest.json --project-key MYINSTANCE",],
 	},
 	"delete-instance": {
-		handler: async (c, _a, f,) => {
+		handler: async (c, a, f,) => {
+			requireNoArgs(a, "dss app delete-instance [--project-key KEY]",);
 			await c.applications.deleteInstance(f["project-key"] as string | undefined,);
 			return { deleted: true, };
 		},

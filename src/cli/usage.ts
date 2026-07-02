@@ -126,3 +126,12 @@ export function requireArgs(args: string[], count: number, usage: string,): void
 		);
 	}
 }
+
+export function requireNoArgs(args: string[], usage: string,): void {
+	if (args.length > 0) {
+		throw new UsageError(
+			`Unexpected argument(s): ${args.join(" ",)}.\nUsage: ${usage}`,
+			"usage_error",
+		);
+	}
+}
