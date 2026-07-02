@@ -351,7 +351,19 @@ export const recipeCommands: Record<string, CommandMeta> = {
 					...(zoneId ? { zoneId, zoneMove: [{ objectId: name, objectType: "RECIPE", },], } : {}),
 				};
 			}
-			const cloned = await c.recipes.clone(sourceName, opts,);
+			const cloned = await c.recipes.clone(sourceName, opts,).catch((error: unknown,) => {
+				if (
+					!opts.copyOutputSettings
+					&& error instanceof Error
+					&& /need to create output dataset/i.test(error.message,)
+				) {
+					throw new UsageError(
+						`Clone output dataset does not exist. Pass --copy-output-settings to clone the source output settings, or create the output dataset first. Usage: ${usage}`,
+						"missing_required_flag",
+					);
+				}
+				throw error;
+			},);
 			const moved = await moveCreatedItemsToZone(
 				c,
 				f,

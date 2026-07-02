@@ -555,4 +555,54 @@ describe("CLI regression fixes", () => {
 		expect(requests,).toEqual(["GET /public/api/meanings/nope",],);
 		expect(requests.some((request,) => request.startsWith("DELETE ",)),).toBe(false,);
 	});
+	it("recipe clone maps missing output dataset creation to copy-output-settings usage guidance", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/recipes/source_recipe"
+			) {
+				expect(url.searchParams.get("includePayload",),).toBe("true",);
+				sendJson(res, {
+					recipe: {
+						name: "source_recipe",
+						type: "python",
+						outputs: { main: { items: [{ ref: "old_output", },], }, },
+					},
+					payload: "",
+				},);
+				return;
+			}
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				sendJson(res, {
+					message: "Need to create output dataset or folder, but creationInfo params are suppressing it",
+				}, 400,);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method ?? ""} ${url.pathname}`,);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"recipe",
+				"clone",
+				"source_recipe",
+				"--name",
+				"target_recipe",
+				"--output",
+				"newout",
+				"--project-key",
+				"TEST",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(1,);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "missing_required_flag",
+				category: "usage",
+				exitCode: 1,
+				resource: "recipe",
+				action: "clone",
+			},);
+			expect(report.error,).toContain("--copy-output-settings",);
+		},);
+	});
 });
