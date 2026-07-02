@@ -312,7 +312,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 	discussion: ["list", "get", "create", "reply",],
 	workspace: ["list", "get", "create", "update-settings", "delete", "list-objects", "add-object",],
 	metrics: ["dataset-get", "dataset-compute", "dataset-history", "folder-get",],
-	meaning: ["list", "get", "create", "update",],
+	meaning: ["list", "get", "create", "update", "delete",],
 };
 
 async function dss(args: string[],): Promise<{ stdout: string; stderr: string; }> {

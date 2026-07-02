@@ -7,7 +7,11 @@ import { tmpdir, } from "node:os";
 import { join, resolve, } from "node:path";
 import { gunzipSync, } from "node:zlib";
 import { DataikuError, } from "../src/errors.js";
-import { DataikuClient, type JupyterNotebookContent, } from "../src/index.js";
+import {
+	DataikuClient,
+	type JupyterNotebookContent,
+	type SqlNotebookContent,
+} from "../src/index.js";
 import { buildDatasetCloneSettings, } from "../src/resources/datasets.js";
 
 async function withTestServer(
@@ -313,14 +317,76 @@ describe("buildDatasetCloneSettings", () => {
 	});
 });
 
+describe("NotebooksResource.create", () => {
+	it("posts new Jupyter notebooks to the encoded notebook path", async () => {
+		const requests: string[] = [];
+		let observedBody: JupyterNotebookContent | undefined;
+		const notebookName = "analysis notebook";
+		const notebookPath = "/public/api/projects/TEST/jupyter-notebooks/"
+			+ encodeURIComponent(notebookName,);
+		const notebook: JupyterNotebookContent = {
+			metadata: { kernelspec: { name: "python3", }, },
+			nbformat: 4,
+			nbformat_minor: 5,
+			cells: [
+				{
+					cell_type: "code",
+					source: ["print('created')\n",],
+					metadata: {},
+					outputs: [],
+					execution_count: null,
+				},
+			],
+		};
+
+		await withTestServer(async (req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			observedBody = JSON.parse(await readRequestBody(req,),) as JupyterNotebookContent;
+			res.statusCode = 204;
+			res.end();
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await expect(client.notebooks.createJupyter(notebookName, notebook,),).resolves.toBeUndefined();
+		},);
+
+		expect(requests,).toEqual([`POST ${notebookPath}`,],);
+		expect(observedBody,).toEqual(notebook,);
+	});
+
+	it("posts new SQL notebooks to the project SQL notebook collection", async () => {
+		const requests: string[] = [];
+		let observedBody: Record<string, unknown> | undefined;
+		const notebook: SqlNotebookContent = {
+			connection: "postgres",
+			cells: [{ id: "cell-1", type: "QUERY", code: "select 1", },],
+		};
+
+		await withTestServer(async (req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			observedBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
+			res.statusCode = 204;
+			res.end();
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await expect(client.notebooks.createSql("sql/slash", notebook,),).resolves.toBeUndefined();
+		},);
+
+		expect(requests,).toEqual(["POST /public/api/projects/TEST/sql-notebooks/",],);
+		expect(observedBody,).toEqual({
+			...notebook,
+			id: "sql/slash",
+			projectKey: "TEST",
+		},);
+	});
+});
+
 describe("NotebooksResource.clearJupyterOutputs", () => {
 	it("fetches the notebook, strips outputs, and saves the updated content", async () => {
 		const requests: string[] = [];
 		let savedNotebook: JupyterNotebookContent | undefined;
 		const notebookName = "analysis notebook";
-		const notebookPath = `/public/api/projects/TEST/jupyter-notebooks/${
-			encodeURIComponent(notebookName,)
-		}`;
+		const notebookPath = "/public/api/projects/TEST/jupyter-notebooks/"
+			+ encodeURIComponent(notebookName,);
 		const notebook: JupyterNotebookContent = {
 			metadata: { kernelspec: { name: "python3", }, },
 			nbformat: 4,

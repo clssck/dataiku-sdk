@@ -317,11 +317,11 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 	},
 	graph: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss flow-zone graph <id>",);
-			return c.flowZones.graph(flowZoneId(a[0],), f["project-key"] as string | undefined,);
+			const id = a[0] === undefined ? undefined : flowZoneId(a[0],);
+			return c.flowZones.graph(id, f["project-key"] as string | undefined,);
 		},
-		usage: "dss flow-zone graph <id> [--project-key KEY]",
-		description: "Get the graph for a single flow zone.",
-		examples: ["dss flow-zone graph ZONE_ID",],
+		usage: "dss flow-zone graph [<id>] [--project-key KEY]",
+		description: "Get the full flow graph or the graph for a single flow zone.",
+		examples: ["dss flow-zone graph", "dss flow-zone graph ZONE_ID",],
 	},
 };

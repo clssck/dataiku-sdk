@@ -160,7 +160,9 @@ export class DataQualityResource extends BaseResource {
 
 	async status(datasetName: string, projectKey?: string,): Promise<DataQualityStatus> {
 		const pk = this.resolveProjectKey(projectKey,);
-		const raw = await this.client.get<unknown>(`${datasetPath(pk, datasetName,)}/status`,);
+		const raw = await this.client.get<unknown>(
+			`${datasetPath(pk, datasetName,)}/status-by-partition`,
+		);
 		return this.client.safeParse(DataQualityStatusSchema, raw, "dataQuality.status",);
 	}
 

@@ -12,7 +12,7 @@ import {
 } from "../coerce.js";
 import { encodedProjectEndpoint, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
-import { requireArgs, } from "../usage.js";
+import { requireArgs, UsageError, } from "../usage.js";
 
 // ---------------------------------------------------------------------------
 // Utility helpers
@@ -264,6 +264,20 @@ export const jobCommands: Record<string, CommandMeta> = {
 	"log-url": {
 		handler: (c, a, f,) => {
 			requireArgs(a, 1, "dss job log-url <url>",);
+			let parsed: URL;
+			try {
+				parsed = new URL(a[0], "http://dss.local",);
+			} catch {
+				throw new UsageError("Log URL must be a valid URL.",);
+			}
+			const projectKey = parsed.searchParams.get("projectKey",);
+			const jobId = parsed.searchParams.get("jobId",);
+			const activity = parsed.searchParams.get("activityId",);
+			if (!projectKey || !jobId || !activity) {
+				throw new UsageError(
+					"Log URL must include projectKey, jobId, and activityId query parameters.",
+				);
+			}
 			return c.jobs.logFromUrl(a[0], { maxLogLines: maxLogLinesFromFlags(f,), },);
 		},
 		usage: "dss job log-url <url> [--max-lines N|--max-log-lines N]",
@@ -360,7 +374,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 			},);
 		},
 		usage:
-			"dss job wait <id> [--include-logs] [--log-filter stdout|stderr|user|errors] [--summary] [--max-log-lines N] [--timeout MS] [--poll-interval MS]",
+			"dss job wait <id> [--include-logs] [--log-filter stdout|stderr|user|errors] [--summary] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--project-key KEY]",
 		description: "Wait for an existing job to complete.",
 		examples: [
 			"dss job wait JOB_ID",

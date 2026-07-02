@@ -5,7 +5,8 @@ export function sanitizeFileName(name: string, fallback: string,): string {
 	const sanitized = name
 		.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_",)
 		.replace(/[. ]+$/g, "",)
-		.trim();
+		.trim()
+		.replace(/^\.+/, "",);
 	if (!sanitized) return fallback;
 	const dotIndex = sanitized.indexOf(".",);
 	const baseName = dotIndex === -1 ? sanitized : sanitized.slice(0, dotIndex,);

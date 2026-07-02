@@ -96,8 +96,11 @@ export class FlowZonesResource extends BaseResource {
 		return this.moveItems(zoneId, [item,], projectKey,);
 	}
 
-	/** Get the graph for a single flow zone. */
-	async graph(zoneId: string, projectKey?: string,): Promise<unknown> {
+	/** Get the full flow graph, or the graph for a single non-default flow zone. */
+	async graph(zoneId?: string, projectKey?: string,): Promise<unknown> {
+		if (zoneId === undefined || zoneId === "default") {
+			return this.client.get<unknown>(`/public/api/projects/${this.enc(projectKey,)}/flow/graph/`,);
+		}
 		return this.client.get<unknown>(
 			`/public/api/projects/${this.enc(projectKey,)}/flow/zones/${encodeURIComponent(zoneId,)}/graph`,
 		);

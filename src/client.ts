@@ -340,23 +340,28 @@ export class DataikuClient {
 		return (this.meaningsResource ??= new MeaningsResource(this,));
 	}
 
-	constructor(config: DataikuClientConfig,) {
-		const url = config.url?.trim();
-		if (!url) throw new Error("DataikuClientConfig.url is required and must not be empty",);
-		const apiKey = config.apiKey?.trim();
-		if (!apiKey) throw new Error("DataikuClientConfig.apiKey is required and must not be empty",);
+	constructor(config?: DataikuClientConfig,) {
+		const envUrl = process.env["DATAIKU_URL"]?.trim();
+		const envApiKey = process.env["DATAIKU_API_KEY"]?.trim();
+		const url = config?.url?.trim() || envUrl;
+		const apiKey = config?.apiKey?.trim() || envApiKey;
+		if (!url || !apiKey) {
+			throw new Error(
+				"Dataiku URL and API key are required: pass {url, apiKey} or set DATAIKU_URL/DATAIKU_API_KEY",
+			);
+		}
 
 		this.baseUrl = url.replace(/\/+$/, "",);
 		this.apiKey = apiKey;
-		this.defaultProjectKey = config.projectKey?.trim() || undefined;
-		this.requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+		this.defaultProjectKey = config?.projectKey?.trim() || undefined;
+		this.requestTimeoutMs = config?.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 
-		const rawMax = config.retryMaxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
+		const rawMax = config?.retryMaxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
 		this.retryMaxAttempts = Math.min(Math.max(1, rawMax,), MAX_RETRY_ATTEMPTS_CAP,);
-		this.verbose = config.verbose === true;
-		this.tlsOptions = buildFetchTlsOptions(config,);
-		this.onTrace = config.onTrace ?? defaultTrace;
-		this.onValidationWarning = config.onValidationWarning ?? defaultValidationWarning;
+		this.verbose = config?.verbose === true;
+		this.tlsOptions = config ? buildFetchTlsOptions(config,) : undefined;
+		this.onTrace = config?.onTrace ?? defaultTrace;
+		this.onValidationWarning = config?.onValidationWarning ?? defaultValidationWarning;
 	}
 
 	getRequestTimeoutMs(): number {

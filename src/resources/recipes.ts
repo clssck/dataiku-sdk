@@ -236,6 +236,26 @@ function rewriteSqlTableReferences(
 	return next;
 }
 
+function rewritePayloadText(
+	payload: string,
+	rewrites: Record<string, string>,
+): string {
+	const entries = Object
+		.entries(rewrites,)
+		.filter(([from,],) => from.length > 0)
+		.sort(([left,], [right,],) => right.length - left.length);
+	if (entries.length === 0) return payload;
+	const replacements = new Map(entries,);
+	const alternatives = entries
+		.map(([from,],) => escapedRegExp(from,))
+		.join("|",);
+	const pattern = new RegExp(
+		String.raw`(?<![A-Za-z0-9_$])(${alternatives})(?![A-Za-z0-9_$])`,
+		"g",
+	);
+	return payload.replace(pattern, (match: string,) => replacements.get(match,) ?? match,);
+}
+
 function rewritePayload(
 	payload: string | undefined,
 	rewrites: Record<string, string>,
@@ -260,9 +280,7 @@ function rewritePayload(
 	if (isSqlRecipeType(recipeType,)) {
 		next = rewriteSqlTableReferences(next, rewrites,);
 	}
-	for (const [from, to,] of Object.entries(payloadTextRewrites,)) {
-		if (from.length > 0) next = next.split(from,).join(to,);
-	}
+	next = rewritePayloadText(next, payloadTextRewrites,);
 	return next;
 }
 

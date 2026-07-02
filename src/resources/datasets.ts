@@ -28,6 +28,9 @@ export interface DatasetBuildValidationResult {
 	path: string | null;
 	formatType: string | null;
 	warnings: string[];
+	validationScope: "configuration";
+	materializationChecked: false;
+	note: string;
 }
 
 export interface DatasetSchemaColumnInput {
@@ -732,6 +735,10 @@ export class DatasetsResource extends BaseResource {
 			path,
 			formatType,
 			warnings,
+			validationScope: "configuration",
+			materializationChecked: false,
+			note:
+				"Validates build configuration only; it does not verify storage file existence or materialized data.",
 		};
 	}
 

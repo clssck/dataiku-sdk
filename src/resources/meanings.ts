@@ -77,6 +77,11 @@ export class MeaningsResource extends BaseResource {
 		return this.client.put<MeaningDefinition>(this.meaningPath(meaningId,), body,);
 	}
 
+	/** Delete a user-defined meaning definition. */
+	async delete(meaningId: string,): Promise<void> {
+		await this.client.del(this.meaningPath(meaningId,),);
+	}
+
 	private meaningPath(meaningId: string,): string {
 		return `/public/api/meanings/${encodeURIComponent(meaningId,)}`;
 	}

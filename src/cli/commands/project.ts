@@ -1,3 +1,4 @@
+import { deepMerge, } from "../../utils/deep-merge.js";
 import { jsonInput, num, requiredJsonInput, } from "../coerce.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -44,17 +45,17 @@ export const projectCommands: Record<string, CommandMeta> = {
 	},
 	create: {
 		handler: (c, a, f,) => {
-			requireArgs(
-				a,
-				2,
-				"dss project create <projectKey> <name> [--owner LOGIN] [--data JSON|--data-file PATH|--stdin]",
-			);
-			return c.projects.createProject(a[0], a[1], f["owner"] as string | undefined, jsonInput(f,),);
+			const usage =
+				"dss project create <projectKey> <name> --owner LOGIN [--data JSON|--data-file PATH|--stdin]";
+			requireArgs(a, 2, usage,);
+			const owner = f["owner"] as string | undefined;
+			if (!owner) throw new UsageError(`--owner is required. Usage: ${usage}`,);
+			return c.projects.createProject(a[0], a[1], owner, jsonInput(f,),);
 		},
 		usage:
-			"dss project create <projectKey> <name> [--owner LOGIN] [--data JSON|--data-file PATH|--stdin]",
-		description: "Create a new project (optionally with owner login and settings).",
-		examples: ["dss project create MY_PROJ MyProject",],
+			"dss project create <projectKey> <name> --owner LOGIN [--data JSON|--data-file PATH|--stdin]",
+		description: "Create a new project with owner login and optional settings.",
+		examples: ["dss project create MY_PROJ MyProject --owner alice",],
 	},
 	delete: {
 		handler: async (c, a, f,) => {
@@ -136,11 +137,14 @@ export const projectCommands: Record<string, CommandMeta> = {
 				f,
 				"--data, --data-file, or --stdin is required (settings object).",
 			);
-			await c.projects.setSettings(f["project-key"] as string | undefined, body,);
+			const projectKey = f["project-key"] as string | undefined;
+			const current = await c.projects.getSettings(projectKey,);
+			const next = deepMerge(current as unknown as Record<string, unknown>, body,);
+			await c.projects.setSettings(projectKey, next,);
 			return { updated: true, };
 		},
 		usage: "dss project settings-set (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
-		description: "Replace a project's settings.",
+		description: "Update a project's settings via JSON merge.",
 		examples: ["dss project settings-set --data-file settings.json --project-key MY_PROJ",],
 	},
 };

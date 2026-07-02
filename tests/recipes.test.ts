@@ -323,6 +323,47 @@ describe("RecipesResource", () => {
 		expect(putBody?.payload as string,).toContain("dataiku.Dataset('new_output')",);
 	});
 
+	it("rewrites cloned recipe dataset payload tokens once without touching identifier prefixes", async () => {
+		let putBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			if (req.method === "GET") {
+				sendJson(res, {
+					recipe: {
+						name: "source_recipe",
+						type: "python",
+						inputs: { main: { items: [{ ref: "mutb_in", },], }, },
+						outputs: { main: { items: [{ ref: "mutb_out", },], }, },
+					},
+					payload: 'import dataiku\nsource = dataiku.Dataset("mutb_in")\nkept = "mutb_input"\n',
+				},);
+				return;
+			}
+			if (req.method === "POST") {
+				sendJson(res, { recipeName: "target_recipe", },);
+				return;
+			}
+			if (req.method === "PUT") {
+				putBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { ok: true, },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await client.recipes.clone("source_recipe", {
+				name: "target_recipe",
+				payloadTextRewrites: { mutb_in: "mutb_in2", mutb_in2: "mutb_in3", },
+			},);
+		},);
+
+		const payload = putBody?.payload as string;
+		expect(payload,).toContain('dataiku.Dataset("mutb_in2")',);
+		expect(payload,).toContain('kept = "mutb_input"',);
+		expect(payload,).not.toContain('dataiku.Dataset("mutb_in3")',);
+	});
+
 	it("rewrites SQL FROM and JOIN table references without global text replacement", async () => {
 		let putBody: Record<string, unknown> | undefined;
 

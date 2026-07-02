@@ -1054,7 +1054,8 @@ describe("CLI command behavioral smoke coverage", () => {
 			}
 			if (
 				req.method === "GET"
-				&& url.pathname === "/public/api/projects/TEST/datasets/orders/data-quality/status"
+				&& url.pathname === "/public/api/projects/TEST/datasets/orders/data-quality/status-by-partition"
+				&& !url.searchParams.has("includeAllPartitions",)
 			) {
 				sendJson(res, { outcome: "SUCCESS", enabled: true, },);
 				return;
@@ -1326,7 +1327,7 @@ describe("CLI command behavioral smoke coverage", () => {
 					(await dss(["future", "abort", "job-1", "--dry-run",], { env: cliEnv(url,), },)).stdout,
 				),
 			)
-				.toMatchObject({ dryRun: true, action: "abort", resource: "future", id: "job-1", },);
+				.toMatchObject({ plannedAndDryRun: true, action: "abort", resource: "future", id: "job-1", },);
 			expect(
 				JSON.parse((await dss(["future", "abort", "job-1",], { env: cliEnv(url,), },)).stdout,),
 			)

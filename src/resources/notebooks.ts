@@ -34,6 +34,19 @@ export class NotebooksResource extends BaseResource {
 		return this.client.safeParse(JupyterNotebookContentSchema, raw, "notebooks.getJupyter",);
 	}
 
+	/** Create a Jupyter notebook. */
+	async createJupyter(
+		name: string,
+		content: JupyterNotebookContent,
+		projectKey?: string,
+	): Promise<void> {
+		const nameEnc = encodeURIComponent(name,);
+		await this.client.post<void>(
+			`/public/api/projects/${this.enc(projectKey,)}/jupyter-notebooks/${nameEnc}`,
+			content,
+		);
+	}
+
 	/** Save (overwrite) a Jupyter notebook's content. */
 	async saveJupyter(
 		name: string,
@@ -47,13 +60,7 @@ export class NotebooksResource extends BaseResource {
 		);
 	}
 
-	/**
-	 * Delete a Jupyter notebook.
-	 *
-	 * The SDK intentionally does not expose notebook creation as a first-class
-	 * resource method yet; integration tests create disposable notebooks through
-	 * the documented project-level create endpoint.
-	 */
+	/** Delete a Jupyter notebook. */
 	async deleteJupyter(name: string, projectKey?: string,): Promise<void> {
 		const nameEnc = encodeURIComponent(name,);
 		await this.client.del(
@@ -119,6 +126,14 @@ export class NotebooksResource extends BaseResource {
 			`/public/api/projects/${this.enc(projectKey,)}/sql-notebooks/${idEnc}`,
 		);
 		return this.client.safeParse(SqlNotebookContentSchema, raw, "notebooks.getSql",);
+	}
+
+	/** Create a SQL notebook. */
+	async createSql(id: string, content: SqlNotebookContent, projectKey?: string,): Promise<void> {
+		await this.client.post<void>(
+			`/public/api/projects/${this.enc(projectKey,)}/sql-notebooks/`,
+			{ ...content, id, projectKey: this.resolveProjectKey(projectKey,), },
+		);
 	}
 
 	/** Save (overwrite) a SQL notebook's content. */

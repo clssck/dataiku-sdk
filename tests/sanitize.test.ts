@@ -26,6 +26,14 @@ describe("sanitizeFileName", () => {
 		expect(sanitizeFileName("file...", fallback,),).toBe("file",);
 	});
 
+	it("strips leading dots after replacing path separators", () => {
+		expect(sanitizeFileName("../folder/x", fallback,),).toBe("_folder_x",);
+	});
+
+	it("returns fallback when a name only contains dots", () => {
+		expect(sanitizeFileName("...", fallback,),).toBe(fallback,);
+	});
+
 	it("strips trailing spaces", () => {
 		expect(sanitizeFileName("file   ", fallback,),).toBe("file",);
 	});

@@ -694,7 +694,7 @@ export const JupyterCellSchema = Type.Object({
 	source: Type.Array(Type.String(),),
 	metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
 	outputs: Type.Optional(Type.Array(Type.Unknown(),),),
-	execution_count: Type.Optional(Type.Union([Type.Number(), Type.Null(),],),),
+	execution_count: Type.Optional(Type.Union([Type.Null(), Type.Number(),],),),
 }, { additionalProperties: true, },);
 export type JupyterCell = Static<typeof JupyterCellSchema>;
 

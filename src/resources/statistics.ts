@@ -1,3 +1,4 @@
+import { UsageError, } from "../cli/usage.js";
 import { BaseResource, } from "./base.js";
 
 export type StatisticsCardSettings = Record<string, unknown>;
@@ -46,6 +47,19 @@ function isRecord(value: unknown,): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value,);
 }
 
+function validateWorksheetCreateRequest(body: StatisticsWorksheetCreateRequest,): void {
+	const bodyRecord = isRecord(body,) ? body : undefined;
+	const dataSpec = bodyRecord?.dataSpec;
+	if (!isRecord(dataSpec,) || !isRecord(dataSpec.datasetSelection,)) {
+		throw new UsageError(
+			"statistics.createWorksheet requires body.dataSpec.datasetSelection.",
+			"validation_failed",
+			"Include dataSpec.datasetSelection in the worksheet definition.",
+			{ requiredField: "dataSpec.datasetSelection", },
+		);
+	}
+}
+
 export class StatisticsResource extends BaseResource {
 	/** List statistics worksheets associated with a dataset. */
 	async listWorksheets(datasetName: string, projectKey?: string,): Promise<StatisticsWorksheet[]> {
@@ -71,6 +85,7 @@ export class StatisticsResource extends BaseResource {
 		body: StatisticsWorksheetCreateRequest,
 		projectKey?: string,
 	): Promise<StatisticsWorksheet> {
+		validateWorksheetCreateRequest(body,);
 		return this.client.post<StatisticsWorksheet>(
 			this.worksheetsPath(datasetName, projectKey,),
 			body,

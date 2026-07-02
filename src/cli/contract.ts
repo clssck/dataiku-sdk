@@ -564,7 +564,7 @@ function inferRequiresAuth(resource: string,): boolean {
 		&& resource !== "version";
 }
 
-export function inferRequiresProject(resource: string, action: string, usage: string,): boolean {
+export function inferRequiresProject(resource: string, _action: string, usage: string,): boolean {
 	if (
 		resource === "agent" || resource === "auth" || resource === "doctor" || resource === "commands"
 		|| resource === "install-skill" || resource === "version"
@@ -572,7 +572,6 @@ export function inferRequiresProject(resource: string, action: string, usage: st
 		return false;
 	}
 	if (PROJECT_SCOPED_RESOURCES.has(resource,)) return true;
-	if (resource === "project" && action !== "list") return true;
 	return usage.includes("--project-key",);
 }
 
@@ -803,11 +802,16 @@ function inferIdempotency(
 
 export function inferCleanupHint(resource: string, action: string,): string | undefined {
 	if (!(action.startsWith("create",) || action === "clone")) return undefined;
-	if (resource === "code-env") return "Delete with `dss code-env delete <lang> <name> --if-exists`.";
-	if (resource === "data-quality") {
-		return "Delete with `dss data-quality delete-rule <dataset> <rule-id> --if-exists`.";
+	const deleteAction = action === "create-rule" ? "delete-rule" : "delete";
+	const deleteUsage = commands[resource]?.[deleteAction]?.usage;
+	const ifExists = deleteUsage?.includes("--if-exists",) ? " --if-exists" : "";
+	if (resource === "code-env") {
+		return `Delete with \`dss code-env delete <lang> <name>${ifExists}\`.`;
 	}
-	return `Delete with \`dss ${resource} delete <id> --if-exists\` when the created object is disposable.`;
+	if (resource === "data-quality") {
+		return `Delete with \`dss data-quality delete-rule <dataset> <rule-id>${ifExists}\`.`;
+	}
+	return `Delete with \`dss ${resource} delete <id>${ifExists}\` when the created object is disposable.`;
 }
 
 function buildRegistryEntry(
@@ -1817,6 +1821,85 @@ export function commandPlanShape(
 				endpoint: projectEndpoint(`/sql-notebooks/${encodeURIComponent(id,)}/history`,),
 				identifiers: { id, cellId: flags["cell-id"] as string | undefined, },
 				payload: { retain: num(flags["retain"],), },
+			};
+		case "project.create": {
+			const settings = jsonInput(flags,) ?? null;
+			return {
+				method: "POST",
+				endpoint: "/public/api/projects/",
+				identifiers: { projectKey: args[0], name: args[1], },
+				payload: {
+					projectKey: args[0],
+					name: args[1],
+					owner: (flags["owner"] as string | undefined) ?? null,
+					settings,
+					description: null,
+					permissions: [],
+					tags: [],
+				},
+			};
+		}
+		case "project.delete":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/projects/${encodeURIComponent(id,)}${
+					querySuffix({
+						clearManagedDatasets: flags["drop-data"] === true,
+						clearOutputManagedFolders: false,
+						clearJobAndScenarioLogs: true,
+						wait: true,
+					},)
+				}`,
+				identifiers: { projectKey: id, },
+			};
+		case "project.duplicate": {
+			const options = jsonInput(flags,);
+			return {
+				method: "POST",
+				endpoint: `/public/api/projects/${encodeURIComponent(args[0],)}/duplicate/`,
+				identifiers: { sourceKey: args[0], targetKey: args[1], targetName: args[2], },
+				payload: {
+					targetProjectName: args[2],
+					targetProjectKey: args[1],
+					duplicationMode: (options?.duplicationMode as string | undefined) ?? "MINIMAL",
+					exportAnalysisModels: (options?.exportAnalysisModels as boolean | undefined) ?? true,
+					exportSavedModels: (options?.exportSavedModels as boolean | undefined) ?? true,
+					exportGitRepository: options?.exportGitRepository ?? null,
+					exportInsightsData: (options?.exportInsightsData as boolean | undefined) ?? true,
+					remapping: options?.remapping ?? {},
+					...(options?.targetProjectFolderId !== undefined
+						? { targetProjectFolderId: options.targetProjectFolderId, }
+						: {}),
+				},
+			};
+		}
+		case "project.export": {
+			const output = requiredPlanFlag(flags, "output", entry.usage,);
+			return {
+				method: "POST",
+				endpoint: `/public/api/projects/${encodeURIComponent(id,)}/export`,
+				identifiers: { projectKey: id, output, },
+				payload: jsonInput(flags,) ?? {},
+				localWrites: [{ path: output, source: "remote project archive", after: "POST", },],
+			};
+		}
+		case "project.import":
+			return {
+				method: "POST",
+				endpoint: "/public/api/projects/import/upload",
+				identifiers: { filePath: id, },
+				payload: {
+					contentType: "multipart/form-data",
+					fileField: "file",
+					filePath: id,
+					fileName: "tmp-import.zip",
+				},
+			};
+		case "project.settings-set":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint("/settings",),
+				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
 		case "project.permissions-set":
 			return {

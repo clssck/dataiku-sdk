@@ -275,13 +275,13 @@ export class ProjectsResource extends BaseResource {
 	async createProject(
 		projectKey: string,
 		name: string,
-		ownerLogin?: string,
+		ownerLogin: string,
 		settings?: ProjectLifecycleSettings | null,
-	): Promise<string> {
-		return this.client.postText("/public/api/projects/", {
+	): Promise<Record<string, unknown>> {
+		return this.client.post<Record<string, unknown>>("/public/api/projects/", {
 			projectKey,
 			name,
-			owner: ownerLogin ?? null,
+			owner: ownerLogin,
 			settings: settings ?? null,
 			description: null,
 			permissions: [],

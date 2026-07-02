@@ -47,9 +47,11 @@ export const apiServiceCommands: Record<string, CommandMeta> = {
 		examples: ["dss api-service save-settings my-service --data-file service.json",],
 	},
 	"list-packages": {
-		handler: (c, a, f,) => {
+		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss api-service list-packages <serviceId> [--project-key KEY]",);
-			return c.apiServices.listPackages(a[0], f["project-key"] as string | undefined,);
+			const projectKey = f["project-key"] as string | undefined;
+			await c.apiServices.getSettings(a[0], projectKey,);
+			return c.apiServices.listPackages(a[0], projectKey,);
 		},
 		usage: "dss api-service list-packages <serviceId> [--project-key KEY]",
 		description: "List deployable packages of an API service.",

@@ -1,5 +1,5 @@
 import { describe, expect, it, } from "bun:test";
-import { classifyDataikuError, DataikuError, } from "../src/errors.js";
+import { classifyDataikuError, DataikuError, dataikuErrorCode, } from "../src/errors.js";
 
 describe("classifyDataikuError", () => {
 	describe("network/transport (status=0)", () => {
@@ -56,6 +56,21 @@ describe("classifyDataikuError", () => {
 			expect(result.retryable,).toBe(false,);
 		});
 
+		it("classifies server package and directory filesystem misses as not_found", () => {
+			for (
+				const body of [
+					"Package code-env.zip does not exist",
+					"Directory /opt/dataiku/dss/tmp/missing does not exist",
+					"Not a file: /opt/dataiku/dss/tmp/desc.json",
+				]
+			) {
+				const result = classifyDataikuError(500, body,);
+				expect(result.category,).toBe("not_found",);
+				expect(dataikuErrorCode(result.category,),).toBe("not_found",);
+				expect(result.retryable,).toBe(false,);
+			}
+		});
+
 		it("does NOT classify generic 500 as not_found", () => {
 			const result = classifyDataikuError(500, "Something else entirely",);
 			expect(result.category,).not.toBe("not_found",);
@@ -109,6 +124,16 @@ describe("classifyDataikuError", () => {
 		it("classifies access-denied server errors as forbidden", () => {
 			const result = classifyDataikuError(500, "User is not allowed to access this dataset",);
 			expect(result.category,).toBe("forbidden",);
+			expect(result.retryable,).toBe(false,);
+		});
+
+		it("classifies license-denied server errors as forbidden and non-retryable", () => {
+			const result = classifyDataikuError(
+				500,
+				"Current license does not allow this operation",
+			);
+			expect(result.category,).toBe("forbidden",);
+			expect(dataikuErrorCode(result.category,),).toBe("permission_denied",);
 			expect(result.retryable,).toBe(false,);
 		});
 
@@ -260,6 +285,20 @@ describe("DataikuError", () => {
 		expect(err.message,).toContain("Dataset not configured",);
 		// should use the extracted message, not the raw JSON
 		expect(err.message,).not.toContain("{",);
+	});
+
+	it("summarizes HTML error pages without leaking raw markup or server paths", () => {
+		const err = new DataikuError(
+			500,
+			"Internal Server Error",
+			"<!doctype html><html><body><h1>Failure in /opt/dataiku/dss/run/backend.log</h1>"
+				+ "<pre>/opt/dataiku/dss/run/install.ini</pre></body></html>",
+		);
+		expect(err.message,).toContain("HTML error page from DSS",);
+		expect(err.message,).toContain("[server path]",);
+		expect(err.message.toLowerCase(),).not.toContain("<html",);
+		expect(err.message.toLowerCase(),).not.toContain("<body",);
+		expect(err.message,).not.toContain("/opt/dataiku",);
 	});
 
 	it("truncates long body with ellipsis", () => {

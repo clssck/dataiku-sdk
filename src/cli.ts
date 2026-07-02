@@ -37,6 +37,7 @@ import {
 	buildCommandRegistry,
 	buildMutationPlan,
 	CLEANUP_USAGE,
+	type CommandRegistryEntry,
 	COMMANDS_USAGE,
 	inferRequiresProject,
 	isAllowedCleanupAction,
@@ -44,14 +45,7 @@ import {
 } from "./cli/contract.js";
 import { runDoctor, runFixtures, } from "./cli/doctor.js";
 import { dataikuEnvironmentEnabled, loadEnvFile, } from "./cli/env.js";
-import {
-	BOOLEAN_FLAGS,
-	FLAG_ALIASES,
-	KNOWN_LONG_FLAGS,
-	parseArgs,
-	SHORT_FLAGS,
-	VALUE_FLAGS,
-} from "./cli/flags.js";
+import { FLAG_ALIASES, parseArgs, SHORT_FLAGS, VALUE_FLAGS, } from "./cli/flags.js";
 import { cleanupLedgerEntry, } from "./cli/helpers/cleanup.js";
 import { datasetSourceSummary, } from "./cli/helpers/dataset.js";
 import {
@@ -619,6 +613,482 @@ function parseBatchSteps(payload: unknown,): string[][] {
 	},);
 }
 
+type CommandRegistry = Record<string, Record<string, CommandRegistryEntry>>;
+
+const ALWAYS_ALLOWED_COMMAND_FLAGS: Record<string, true> = {
+	json: true,
+	verbose: true,
+	fields: true,
+	url: true,
+	"api-key": true,
+	"request-timeout": true,
+	timeout: true,
+	retries: true,
+	insecure: true,
+	"ca-cert": true,
+	"project-key": true,
+	plan: true,
+	"dry-run": true,
+};
+
+const META_COMMAND_RESOURCES: Record<string, true> = {
+	doctor: true,
+	auth: true,
+	"install-skill": true,
+	agent: true,
+	commands: true,
+	version: true,
+	cleanup: true,
+	fixtures: true,
+	batch: true,
+};
+
+let commandRegistryCache: CommandRegistry | undefined;
+
+function cachedCommandRegistry(): CommandRegistry {
+	if (commandRegistryCache === undefined) {
+		commandRegistryCache = buildCommandRegistry();
+	}
+	return commandRegistryCache;
+}
+
+function supportedCommandFlags(entry: CommandRegistryEntry,): Record<string, true> {
+	const supported: Record<string, true> = { ...ALWAYS_ALLOWED_COMMAND_FLAGS, };
+	for (const flag of entry.flags) supported[flag.name] = true;
+	for (const flag of entry.requiredFlags) supported[flag] = true;
+	for (const flag of entry.optionalFlags) supported[flag] = true;
+	for (const choice of entry.requiredOneOf ?? []) {
+		for (const alternative of choice.oneOf) {
+			for (const flag of alternative) supported[flag] = true;
+		}
+	}
+	return supported;
+}
+
+function validateSupportedCommandFlags(
+	resource: string,
+	action: string,
+	flags: Record<string, string | boolean>,
+): void {
+	const entry = cachedCommandRegistry()[resource]?.[action];
+	if (!entry) return;
+	const supported = supportedCommandFlags(entry,);
+	for (const flagName of Object.keys(flags,)) {
+		if (supported[flagName] !== true) {
+			throw new UsageError(`Unknown flag --${flagName} for ${resource} ${action}`, "unknown_flag",);
+		}
+	}
+}
+
+function stripOptionalUsageGroupsForValidation(usage: string,): string {
+	let stripped = "";
+	let optionalDepth = 0;
+	for (const char of usage) {
+		if (char === "[") {
+			optionalDepth++;
+			if (optionalDepth === 1) stripped += " ";
+			continue;
+		}
+		if (char === "]" && optionalDepth > 0) {
+			optionalDepth--;
+			if (optionalDepth === 0) stripped += " ";
+			continue;
+		}
+		if (optionalDepth === 0) stripped += char;
+	}
+	return stripped;
+}
+
+function requiredPositionalCount(usage: string,): number {
+	const requiredUsage = stripOptionalUsageGroupsForValidation(usage,);
+	const positionalTokens = [...requiredUsage.matchAll(/<[^>]+>/g,),];
+	return positionalTokens.length;
+}
+
+function flagIsProvided(flags: Record<string, string | boolean>, name: string,): boolean {
+	const value = flags[name];
+	if (value === undefined || value === false) return false;
+	return typeof value !== "string" || value.length > 0;
+}
+
+function validateRequiredCommandInputs(
+	resource: string,
+	action: string,
+	args: string[],
+	flags: Record<string, string | boolean>,
+	entry: CommandRegistryEntry,
+): void {
+	const argCount = requiredPositionalCount(entry.usage,);
+	if (args.length < argCount) requireArgs(args, argCount, entry.usage,);
+	for (const flagName of entry.requiredFlags) {
+		if (!flagIsProvided(flags, flagName,)) {
+			throw new UsageError(
+				`--${flagName} is required. Usage: ${entry.usage}`,
+				"missing_required_flag",
+			);
+		}
+	}
+	for (const choice of entry.requiredOneOf ?? []) {
+		const satisfied = choice.oneOf.some((alternative,) =>
+			alternative.every((flagName,) => flagIsProvided(flags, flagName,))
+		);
+		if (!satisfied) {
+			const alternatives = choice.oneOf.map((alternative,) =>
+				alternative.map((flagName,) => `--${flagName}`).join(" and ",)
+			).join(" or ",);
+			throw new UsageError(
+				`One of ${alternatives} is required for ${resource} ${action}. Usage: ${entry.usage}`,
+				"missing_required_flag",
+			);
+		}
+	}
+}
+
+function validateRegistryCommandInputs(
+	resource: string,
+	action: string,
+	args: string[],
+	flags: Record<string, string | boolean>,
+): void {
+	const entry = cachedCommandRegistry()[resource]?.[action];
+	if (!entry) return;
+	validateSupportedCommandFlags(resource, action, flags,);
+	validateRequiredCommandInputs(resource, action, args, flags, entry,);
+}
+
+class BatchDryRunValidationComplete extends Error {
+	constructor() {
+		super("Batch dry-run validation reached client execution.",);
+		this.name = "BatchDryRunValidationComplete";
+	}
+}
+
+const batchDryRunClientTarget = function batchDryRunClientTarget(): void {};
+let batchDryRunClient: DataikuClient;
+const batchDryRunClientHandler: ProxyHandler<typeof batchDryRunClientTarget> = {
+	get: (_target, property,) => {
+		if (property === "then") return undefined;
+		return batchDryRunClient;
+	},
+	apply: () => {
+		throw new BatchDryRunValidationComplete();
+	},
+};
+batchDryRunClient = new Proxy(
+	batchDryRunClientTarget,
+	batchDryRunClientHandler,
+) as unknown as DataikuClient;
+
+async function validateDryRunHandlerPreconditions(
+	handler: (
+		client: DataikuClient,
+		args: string[],
+		flags: Record<string, string | boolean>,
+	) => Promise<unknown>,
+	args: string[],
+	flags: Record<string, string | boolean>,
+): Promise<void> {
+	const readsFromStdin = flags["stdin"] === true || flags["sql"] === "-";
+	if (readsFromStdin) return;
+	try {
+		await handler(batchDryRunClient, args, flags,);
+	} catch (error) {
+		if (error instanceof BatchDryRunValidationComplete) return;
+		throw error;
+	}
+}
+
+function validateMetaCommandInputs(
+	resource: string,
+	action: string | undefined,
+	flags: Record<string, string | boolean>,
+): string | undefined {
+	if (resource === "doctor") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("doctor", action, ["run",],);
+		}
+		return "run";
+	}
+	if (resource === "auth") {
+		const validActions = Object.keys(AUTH_ACTIONS,);
+		if (!action) {
+			throw missingActionError("auth", validActions, "dss auth login --url URL --api-key KEY",);
+		}
+		if (!AUTH_ACTIONS[action]) {
+			throw unknownActionError(
+				"auth",
+				action,
+				validActions,
+				"auth only supports 'login'. To check credentials/connectivity, run 'dss doctor'.",
+			);
+		}
+		return action;
+	}
+	if (resource === "install-skill") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("install-skill", action, ["run",],);
+		}
+		const agentFilter = typeof flags["agent"] === "string" ? flags["agent"] : undefined;
+		if (agentFilter && !AGENTS[agentFilter]) {
+			throw new UsageError(
+				`Unknown agent: ${agentFilter}.`,
+				"usage_error",
+				COMMANDS_RUN_HINT,
+				{ agent: agentFilter, validAgents: Object.keys(AGENTS,), },
+			);
+		}
+		return "run";
+	}
+	if (resource === "agent") {
+		if (!action) throw missingActionError("agent", ["contract",], AGENT_CONTRACT_USAGE,);
+		if (action !== "contract") throw unknownActionError("agent", action, ["contract",],);
+		return action;
+	}
+	if (resource === "commands") {
+		if (!action) throw missingActionError("commands", ["run",], COMMANDS_USAGE,);
+		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
+		return action;
+	}
+	if (resource === "version") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("version", action, ["run",],);
+		}
+		return "run";
+	}
+	if (resource === "cleanup") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("cleanup", action, ["run",],);
+		}
+		const entry = cachedCommandRegistry().cleanup?.run;
+		if (entry) validateRequiredCommandInputs("cleanup", "run", [], flags, entry,);
+		return "run";
+	}
+	if (resource === "fixtures") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("fixtures", action, ["run",],);
+		}
+		return "run";
+	}
+	if (resource === "batch") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("batch", action, ["run",],);
+		}
+		const entry = cachedCommandRegistry().batch?.run;
+		if (entry) validateRequiredCommandInputs("batch", "run", [], flags, entry,);
+		return "run";
+	}
+	return undefined;
+}
+
+async function validateBatchStep(
+	argv: string[],
+): Promise<
+	{
+		positional: string[];
+		flags: Record<string, string | boolean>;
+		resource?: string;
+		action?: string;
+	}
+> {
+	const { positional, flags, } = parseArgs(argv,);
+	const resource = positional[0];
+	const action = positional[1];
+	if (!resource) throw noCommandError();
+	const metaAction = validateMetaCommandInputs(resource, action, flags,);
+	if (metaAction) return { positional, flags, resource, action: metaAction, };
+	const resourceActions = commands[resource];
+	if (!resourceActions) throw unknownResourceError(resource,);
+	if (!action) {
+		throw missingActionError(resource, Object.keys(resourceActions,), `dss ${resource} <action>`,);
+	}
+	const meta = resourceActions[action];
+	if (!meta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
+	validateRegistryCommandInputs(resource, action, positional.slice(2,), flags,);
+	await validateDryRunHandlerPreconditions(meta.handler, positional.slice(2,), flags,);
+	return { positional, flags, resource, action, };
+}
+
+function batchStepNeedsClient(argv: string[],): boolean {
+	try {
+		const { positional, } = parseArgs(argv,);
+		const resource = positional[0];
+		if (!resource) return false;
+		const isMetaCommand = META_COMMAND_RESOURCES[resource] === true;
+		return !isMetaCommand;
+	} catch {
+		return true;
+	}
+}
+
+function batchStepCommandContext(argv: string[],): { resource?: string; action?: string; } {
+	const positionals: string[] = [];
+	for (let index = 0; index < argv.length; index++) {
+		const arg = argv[index];
+		if (arg === "--") {
+			positionals.push(...argv.slice(index + 1,),);
+			break;
+		}
+		if (arg.startsWith("--",)) {
+			const name = arg.slice(2,).split("=",)[0] ?? "";
+			const canonical = FLAG_ALIASES[name] ?? name;
+			if (!arg.includes("=",) && VALUE_FLAGS.has(canonical,)) index++;
+			continue;
+		}
+		if (arg.length === 2 && arg[0] === "-" && arg[1] !== "-") {
+			const long = SHORT_FLAGS[arg[1]!];
+			if (long && VALUE_FLAGS.has(long,)) index++;
+			continue;
+		}
+		positionals.push(arg,);
+	}
+	return { resource: positionals[0], action: positionals[1], };
+}
+
+function runInstallSkill(flags: Record<string, string | boolean>,): Record<string, unknown> {
+	const agentFilter = typeof flags["agent"] === "string" ? flags["agent"] : undefined;
+	const isGlobal = flags["global"] === true;
+	const targetDir = typeof flags["target"] === "string" ? flags["target"] : undefined;
+
+	const targets = (() => {
+		if (!agentFilter) return detectAgents();
+		const def = AGENTS[agentFilter];
+		if (!def) {
+			throw new UsageError(
+				`Unknown agent: ${agentFilter}.`,
+				"usage_error",
+				COMMANDS_RUN_HINT,
+				{ agent: agentFilter, validAgents: Object.keys(AGENTS,), },
+			);
+		}
+		return [{ id: agentFilter, def, via: "flag" as const, },];
+	})();
+
+	if (flags["list-agents"] === true) {
+		return {
+			agents: targets.map((target,) => ({
+				id: target.id,
+				name: target.def.name,
+				via: target.via,
+			})),
+		};
+	}
+
+	if (targets.length === 0) {
+		throw new UsageError(
+			"No coding agents detected.",
+			"usage_error",
+			"Use --agent NAME to choose one of the supported agents.",
+			{ validAgents: Object.keys(AGENTS,), },
+		);
+	}
+
+	const scope = isGlobal ? "global" : "project";
+	const cwd = targetDir ?? (isGlobal ? process.cwd() : findWorkspaceRoot(process.cwd(),));
+	const installed = planSkillInstalls(targets, { global: isGlobal, cwd, },);
+
+	if (flags["plan"] === true) {
+		return planResult("install-skill", "run", {
+			identifiers: { scope, target: cwd, },
+			payload: { installed, },
+			idempotency: "none",
+			asyncKind: "none",
+			exitCodesOnFailure: { usage: 1, error: 2, transient: 3, },
+			plannedAndDryRun: flags["dry-run"] === true,
+		},);
+	}
+
+	return {
+		scope,
+		target: cwd,
+		installed: flags["dry-run"] === true
+			? installed
+			: installSkill(targets, { global: isGlobal, cwd, },),
+		...(flags["dry-run"] === true ? { dryRun: true, } : {}),
+	};
+}
+
+async function runMetaCommand(
+	resource: string,
+	action: string | undefined,
+	flags: Record<string, string | boolean>,
+): Promise<{ action: string; result: unknown; exitCode: number; } | undefined> {
+	if (resource === "doctor") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("doctor", action, ["run",],);
+		}
+		currentCommandContext.action = action ?? "run";
+		const { result, exitCode, } = await runDoctor(flags,);
+		return { action: "run", result, exitCode, };
+	}
+	if (resource === "auth") {
+		const validActions = Object.keys(AUTH_ACTIONS,);
+		if (!action) {
+			throw missingActionError("auth", validActions, "dss auth login --url URL --api-key KEY",);
+		}
+		currentCommandContext.action = action;
+		const authMeta = AUTH_ACTIONS[action];
+		if (!authMeta) {
+			throw unknownActionError(
+				"auth",
+				action,
+				validActions,
+				"auth only supports 'login'. To check credentials/connectivity, run 'dss doctor'.",
+			);
+		}
+		return { action, result: await authMeta.handler(flags,), exitCode: 0, };
+	}
+	if (resource === "install-skill") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("install-skill", action, ["run",],);
+		}
+		currentCommandContext.action = action ?? "run";
+		return { action: "run", result: runInstallSkill(flags,), exitCode: 0, };
+	}
+	if (resource === "agent") {
+		if (!action) throw missingActionError("agent", ["contract",], AGENT_CONTRACT_USAGE,);
+		currentCommandContext.action = action;
+		if (action !== "contract") throw unknownActionError("agent", action, ["contract",],);
+		return { action, result: buildAgentContract(), exitCode: 0, };
+	}
+	if (resource === "commands") {
+		if (!action) throw missingActionError("commands", ["run",], COMMANDS_USAGE,);
+		currentCommandContext.action = action;
+		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
+		return { action, result: buildCommandRegistry(), exitCode: 0, };
+	}
+	if (resource === "version") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("version", action, ["run",],);
+		}
+		currentCommandContext.action = action ?? "run";
+		return { action: "run", result: cliVersionResult(), exitCode: 0, };
+	}
+	if (resource === "cleanup") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("cleanup", action, ["run",],);
+		}
+		currentCommandContext.action = action ?? "run";
+		const { result, exitCode, } = await runCleanup(flags,);
+		return { action: "run", result, exitCode, };
+	}
+	if (resource === "fixtures") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("fixtures", action, ["run",],);
+		}
+		currentCommandContext.action = action ?? "run";
+		return { action: "run", result: await runFixtures(flags,), exitCode: 0, };
+	}
+	if (resource === "batch") {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError("batch", action, ["run",],);
+		}
+		currentCommandContext.action = action ?? "run";
+		const { result, exitCode, } = await runBatch(flags,);
+		return { action: "run", result, exitCode, };
+	}
+	return undefined;
+}
+
 async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 	result: Record<string, unknown>;
 	exitCode: number;
@@ -634,52 +1104,91 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 	const steps = parseBatchSteps(payload,);
 
 	if (flags["dry-run"] === true) {
-		const planned = steps.map((argv, index,) => {
-			const { positional, } = parseArgs(argv,);
-			const resource = positional[0];
-			const action = positional[1];
-			const runnable = Boolean(resource && action && commands[resource]?.[action],);
-			return { index, args: argv, resource, action, runnable, };
-		},);
+		const batchProjectKey = typeof flags["project-key"] === "string"
+			? flags["project-key"]
+			: dataikuEnvironmentEnabled()
+			? process.env.DATAIKU_PROJECT_KEY
+			: undefined;
+		const planned = await Promise.all(steps.map(async (argv, index,) => {
+			const context = batchStepCommandContext(argv,);
+			Object.assign(currentCommandContext, { ...context, projectKey: batchProjectKey, },);
+			try {
+				const step = await validateBatchStep(argv,);
+				Object.assign(currentCommandContext, {
+					resource: step.resource,
+					action: step.action,
+					projectKey: typeof step.flags["project-key"] === "string"
+						? step.flags["project-key"]
+						: batchProjectKey,
+				},);
+				return { index, args: argv, resource: step.resource, action: step.action, runnable: true, };
+			} catch (error) {
+				const envelope = buildErrorReport(error,);
+				return {
+					index,
+					args: argv,
+					resource: context.resource,
+					action: context.action,
+					runnable: false,
+					error: envelope,
+				};
+			}
+		},),);
 		return {
 			result: { dryRun: true, total: steps.length, steps: planned, },
 			exitCode: planned.every((step,) => step.runnable) ? 0 : 1,
 		};
 	}
 
-	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
-	if (!url) {
-		throw new UsageError(
-			"Missing Dataiku URL.",
-			"missing_required_flag",
-			"Set DATAIKU_URL or pass --url.",
-			{
-				requiredFlags: ["url",],
-				env: ["DATAIKU_URL",],
-			},
-		);
+	let projectKey = typeof flags["project-key"] === "string"
+		? flags["project-key"]
+		: dataikuEnvironmentEnabled()
+		? process.env.DATAIKU_PROJECT_KEY
+		: undefined;
+	let client: DataikuClient | undefined;
+	const needsClient = steps.some((argv,) => batchStepNeedsClient(argv,));
+	if (needsClient) {
+		const {
+			url,
+			apiKey,
+			projectKey: resolvedProjectKey,
+			tlsRejectUnauthorized,
+			caCertPath,
+		} = resolveCredentials(flags,);
+		projectKey = resolvedProjectKey;
+		if (!url) {
+			throw new UsageError(
+				"Missing Dataiku URL.",
+				"missing_required_flag",
+				"Set DATAIKU_URL or pass --url.",
+				{
+					requiredFlags: ["url",],
+					env: ["DATAIKU_URL",],
+				},
+			);
+		}
+		if (!apiKey) {
+			throw new UsageError(
+				"Missing API key.",
+				"missing_required_flag",
+				"Set DATAIKU_API_KEY or pass --api-key.",
+				{
+					requiredFlags: ["api-key",],
+					env: ["DATAIKU_API_KEY",],
+				},
+			);
+		}
+		client = new DataikuClient({
+			url,
+			apiKey,
+			projectKey,
+			verbose: flags["verbose"] === true,
+			requestTimeoutMs: num(flags["request-timeout"],),
+			retryMaxAttempts: num(flags["retries"],),
+			tlsRejectUnauthorized,
+			caCertPath,
+		},);
 	}
-	if (!apiKey) {
-		throw new UsageError(
-			"Missing API key.",
-			"missing_required_flag",
-			"Set DATAIKU_API_KEY or pass --api-key.",
-			{
-				requiredFlags: ["api-key",],
-				env: ["DATAIKU_API_KEY",],
-			},
-		);
-	}
-	const client = new DataikuClient({
-		url,
-		apiKey,
-		projectKey,
-		verbose: flags["verbose"] === true,
-		requestTimeoutMs: num(flags["request-timeout"],),
-		retryMaxAttempts: num(flags["retries"],),
-		tlsRejectUnauthorized,
-		caCertPath,
-	},);
 
 	const continueOnError = flags["continue-on-error"] === true;
 	const results: BatchStepResult[] = [];
@@ -687,9 +1196,9 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 
 	for (let index = 0; index < steps.length; index++) {
 		const argv = steps[index]!;
-		const { positional, flags: stepFlags, } = parseArgs(argv,);
-		const resource = positional[0];
-		const action = positional[1];
+		const context = batchStepCommandContext(argv,);
+		let resource = context.resource;
+		let action = context.action;
 		if (firstFailureExit !== undefined && !continueOnError) {
 			results.push({ index, args: argv, resource, action, ok: null, skipped: true, },);
 			continue;
@@ -697,20 +1206,50 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 		Object.assign(currentCommandContext, {
 			resource,
 			action,
-			projectKey: typeof stepFlags["project-key"] === "string" ? stepFlags["project-key"] : projectKey,
+			projectKey,
 		},);
 		try {
+			const { positional, flags: stepFlags, } = parseArgs(argv,);
+			resource = positional[0];
+			action = positional[1];
+			Object.assign(currentCommandContext, {
+				resource,
+				action,
+				projectKey: typeof stepFlags["project-key"] === "string"
+					? stepFlags["project-key"]
+					: projectKey,
+			},);
 			if (!resource) throw noCommandError();
-			const resourceActions = commands[resource];
-			if (!resourceActions) throw unknownResourceError(resource,);
-			if (!action) {
-				throw missingActionError(resource, Object.keys(resourceActions,), `dss ${resource} <action>`,);
+			const metaCommand = await runMetaCommand(resource, action, stepFlags,);
+			let result: unknown;
+			if (metaCommand) {
+				action = metaCommand.action;
+				currentCommandContext.action = action;
+				if (metaCommand.exitCode !== 0) {
+					throw new CommandResultFailure(metaCommand.result, metaCommand.exitCode,);
+				}
+				result = metaCommand.result;
+			} else {
+				const resourceActions = commands[resource];
+				if (!resourceActions) throw unknownResourceError(resource,);
+				if (!action) {
+					throw missingActionError(resource, Object.keys(resourceActions,), `dss ${resource} <action>`,);
+				}
+				const meta = resourceActions[action];
+				if (!meta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
+				validateSupportedCommandFlags(resource, action, stepFlags,);
+				if (!client) {
+					throw new UsageError(
+						"Missing Dataiku URL.",
+						"missing_required_flag",
+						"Set DATAIKU_URL or pass --url.",
+						{ requiredFlags: ["url",], env: ["DATAIKU_URL",], },
+					);
+				}
+				result = await meta.handler(client, positional.slice(2,), stepFlags,);
+				const failureExitCode = commandFailureExitCode(result,);
+				if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);
 			}
-			const meta = resourceActions[action];
-			if (!meta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
-			const result = await meta.handler(client, positional.slice(2,), stepFlags,);
-			const failureExitCode = commandFailureExitCode(result,);
-			if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);
 			const stepFieldsFlag = stepFlags["fields"];
 			const stepFields = typeof stepFieldsFlag === "string"
 				? stepFieldsFlag.split(",",).map((field,) => field.trim()).filter((field,) => field.length > 0)
@@ -928,171 +1467,10 @@ async function main(): Promise<void> {
 			: undefined,
 	},);
 
-	if (resource === "doctor") {
-		const action = positional[1];
-		currentCommandContext.action = action ?? "run";
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("doctor", action, ["run",],);
-		}
-		const { result, exitCode, } = await runDoctor(flags,);
-		writeCommandResult(result,);
-		if (exitCode !== 0) process.exit(exitCode,);
-		return;
-	}
-
-	if (resource === "auth") {
-		const action = positional[1];
-		const validActions = Object.keys(AUTH_ACTIONS,);
-		if (!action) {
-			throw missingActionError("auth", validActions, "dss auth login --url URL --api-key KEY",);
-		}
-		currentCommandContext.action = action;
-		const authMeta = AUTH_ACTIONS[action];
-		if (!authMeta) {
-			throw unknownActionError(
-				"auth",
-				action,
-				validActions,
-				"auth only supports 'login'. To check credentials/connectivity, run 'dss doctor'.",
-			);
-		}
-		const result = await authMeta.handler(flags,);
-		writeCommandResult(result,);
-		return;
-	}
-
-	if (resource === "install-skill") {
-		const action = positional[1];
-		currentCommandContext.action = action ?? "run";
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("install-skill", action, ["run",],);
-		}
-
-		const agentFilter = typeof flags["agent"] === "string" ? flags["agent"] : undefined;
-		const isGlobal = flags["global"] === true;
-		const targetDir = typeof flags["target"] === "string" ? flags["target"] : undefined;
-
-		const targets = (() => {
-			if (!agentFilter) return detectAgents();
-			const def = AGENTS[agentFilter];
-			if (!def) {
-				throw new UsageError(
-					`Unknown agent: ${agentFilter}.`,
-					"usage_error",
-					COMMANDS_RUN_HINT,
-					{ agent: agentFilter, validAgents: Object.keys(AGENTS,), },
-				);
-			}
-			return [{ id: agentFilter, def, via: "flag" as const, },];
-		})();
-
-		if (flags["list-agents"] === true) {
-			writeCommandResult({
-				agents: targets.map((target,) => ({
-					id: target.id,
-					name: target.def.name,
-					via: target.via,
-				})),
-			},);
-			return;
-		}
-
-		if (targets.length === 0) {
-			throw new UsageError(
-				"No coding agents detected.",
-				"usage_error",
-				"Use --agent NAME to choose one of the supported agents.",
-				{ validAgents: Object.keys(AGENTS,), },
-			);
-		}
-
-		const scope = isGlobal ? "global" : "project";
-		const cwd = targetDir ?? (isGlobal ? process.cwd() : findWorkspaceRoot(process.cwd(),));
-		const installed = planSkillInstalls(targets, { global: isGlobal, cwd, },);
-
-		if (flags["plan"] === true) {
-			writeCommandResult(planResult("install-skill", "run", {
-				identifiers: { scope, target: cwd, },
-				payload: { installed, },
-				idempotency: "none",
-				asyncKind: "none",
-				exitCodesOnFailure: { usage: 1, error: 2, transient: 3, },
-				plannedAndDryRun: flags["dry-run"] === true,
-			},),);
-			return;
-		}
-
-		writeCommandResult({
-			scope,
-			target: cwd,
-			installed: flags["dry-run"] === true
-				? installed
-				: installSkill(targets, { global: isGlobal, cwd, },),
-			...(flags["dry-run"] === true ? { dryRun: true, } : {}),
-		},);
-		return;
-	}
-
-	if (resource === "agent") {
-		const action = positional[1];
-		if (!action) throw missingActionError("agent", ["contract",], AGENT_CONTRACT_USAGE,);
-		currentCommandContext.action = action;
-		if (action !== "contract") throw unknownActionError("agent", action, ["contract",],);
-		writeCommandResult(buildAgentContract(),);
-		return;
-	}
-
-	if (resource === "commands") {
-		const action = positional[1];
-		if (!action) throw missingActionError("commands", ["run",], COMMANDS_USAGE,);
-		currentCommandContext.action = action;
-		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
-		writeCommandResult(buildCommandRegistry(),);
-		return;
-	}
-
-	if (resource === "version") {
-		const action = positional[1];
-		currentCommandContext.action = action ?? "run";
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("version", action, ["run",],);
-		}
-		writeCommandResult(cliVersionResult(),);
-		return;
-	}
-
-	if (resource === "cleanup") {
-		const action = positional[1];
-		currentCommandContext.action = action ?? "run";
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("cleanup", action, ["run",],);
-		}
-		const { result, exitCode, } = await runCleanup(flags,);
-		writeCommandResult(result,);
-		if (exitCode !== 0) process.exit(exitCode,);
-		return;
-	}
-
-	if (resource === "fixtures") {
-		const action = positional[1];
-		currentCommandContext.action = action ?? "run";
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("fixtures", action, ["run",],);
-		}
-		const result = await runFixtures(flags,);
-		writeCommandResult(result,);
-		return;
-	}
-
-	if (resource === "batch") {
-		const action = positional[1];
-		currentCommandContext.action = action ?? "run";
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("batch", action, ["run",],);
-		}
-		const { result, exitCode, } = await runBatch(flags,);
-		writeCommandResult(result,);
-		if (exitCode !== 0) process.exit(exitCode,);
+	const metaCommand = await runMetaCommand(resource, positional[1], flags,);
+	if (metaCommand) {
+		writeCommandResult(metaCommand.result,);
+		if (metaCommand.exitCode !== 0) process.exit(metaCommand.exitCode,);
 		return;
 	}
 
@@ -1112,6 +1490,7 @@ async function main(): Promise<void> {
 	const actionMeta = resourceActions[action];
 
 	if (!actionMeta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
+	validateSupportedCommandFlags(resource, action, flags,);
 
 	const args = positional.slice(2,);
 	if (flags["plan"] === true) {

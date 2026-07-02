@@ -53,6 +53,67 @@ const TLS_CERTIFICATE_HINT =
 	"TLS certificate verification failed. Trust the DSS/corporate CA with --ca-cert PATH or NODE_EXTRA_CA_CERTS; use --insecure only for temporary troubleshooting.";
 const BUSINESS_APPS_API_UNAVAILABLE_HINT =
 	"Business Apps API is not available on this DSS instance. Use classic app commands or check DSS version/feature availability.";
+const MAX_ERROR_SUMMARY_LENGTH = 200;
+
+function isHtmlResponseBody(body: string,): boolean {
+	const lowerTrimmed = body.trimStart().slice(0, 500,).toLowerCase();
+	return lowerTrimmed.startsWith("<",)
+		|| lowerTrimmed.includes("<!doctype html",)
+		|| lowerTrimmed.includes("<html",)
+		|| lowerTrimmed.includes("<body",)
+		|| lowerTrimmed.includes("<title",);
+}
+
+function stripServerFilesystemPaths(text: string,): string {
+	return text
+		.replace(/\b[A-Za-z]:\\[^\s"'`<>),\]}]+/g, "[server path]",)
+		.replace(
+			/(^|[\s("'`\[{])\/(?=[^\s"'`<>),\]}]*\/)(?!(?:public|dip|api|backend|auth|login|projects?|datasets?|recipes?|scenarios?|folders?)(?:\/|$))[^\s"'`<>),\]}]+/g,
+			"$1[server path]",
+		);
+}
+
+function decodeHtmlEntities(text: string,): string {
+	return text
+		.replace(/&nbsp;/gi, " ",)
+		.replace(/&amp;/gi, "&",)
+		.replace(/&lt;/gi, "<",)
+		.replace(/&gt;/gi, ">",)
+		.replace(/&quot;/gi, '"',)
+		.replace(/&#39;/g, "'",)
+		.replace(/&apos;/gi, "'",);
+}
+
+function firstHtmlTextLine(body: string,): string | undefined {
+	const text = decodeHtmlEntities(
+		body
+			.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ",)
+			.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ",)
+			.replace(/<[^>]+>/g, "\n",),
+	);
+	return text
+		.split(/\r?\n/g,)
+		.map((line,) => line.trim())
+		.find((line,) => line.length > 0);
+}
+
+function conciseErrorSummary(text: string,): string {
+	const sanitized = stripServerFilesystemPaths(text,);
+	return sanitized.length > MAX_ERROR_SUMMARY_LENGTH
+		? `${sanitized.slice(0, MAX_ERROR_SUMMARY_LENGTH,)}…`
+		: sanitized;
+}
+
+function summarizeHtmlErrorBody(body: string,): string {
+	const textLine = firstHtmlTextLine(body,);
+	if (!textLine) return "HTML error page from DSS";
+	return `HTML error page from DSS: ${conciseErrorSummary(textLine,)}`;
+}
+
+function summarizeErrorText(text: string,): string {
+	if (isHtmlResponseBody(text,)) return summarizeHtmlErrorBody(text,);
+	return conciseErrorSummary(text,);
+}
 
 function isCertificateTrustFailure(lowerBody: string,): boolean {
 	return lowerBody.includes("unable to verify the first certificate",)
@@ -118,6 +179,17 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 		};
 	}
 
+	const isLicenseDenied = status >= 400
+		&& lowerBody.includes("license does not allow",);
+	if (isLicenseDenied) {
+		return {
+			category: "forbidden",
+			retryable: false,
+			retryHint:
+				"DSS license or enabled features do not allow this operation. Contact a DSS administrator; do not retry unchanged.",
+		};
+	}
+
 	const isMissingDatasetRootPath = status === 500
 		&& lowerBody.includes("root path of the dataset",)
 		&& lowerBody.includes("does not exist",);
@@ -130,12 +202,19 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 		};
 	}
 
+	const hasServerMissingObjectToken = lowerBody.includes("package",)
+		|| lowerBody.includes("directory",);
+	const hasServerMissingObjectLanguage = lowerBody.includes("does not exist",)
+		|| lowerBody.includes("not found",);
+	const isServerFilesystemNotFoundLike = status >= 500
+		&& (lowerBody.includes("not a file",)
+			|| (hasServerMissingObjectToken && hasServerMissingObjectLanguage));
 	const isServerNotFoundLike = status >= 500
 		&& (lowerBody.includes("not found",) || lowerBody.includes("does not exist",))
 		&& ["dataset", "recipe", "scenario", "project", "folder",].some((token,) =>
 			lowerBody.includes(token,)
 		);
-	if (isServerNotFoundLike) {
+	if (isServerFilesystemNotFoundLike || isServerNotFoundLike) {
 		return {
 			category: "not_found",
 			retryable: false,
@@ -193,7 +272,7 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 			};
 		}
 
-		const isHtmlGatewayResponse = lowerBody.includes("<!doctype html>",);
+		const isHtmlGatewayResponse = isHtmlResponseBody(body,);
 		return {
 			category: "not_found",
 			retryable: false,
@@ -262,12 +341,12 @@ export class DataikuError extends Error {
 	private static extractSummary(_status: number, _statusText: string, body: string,): string {
 		try {
 			const parsed = JSON.parse(body,);
-			if (parsed.message) return String(parsed.message,);
+			if (parsed.message) return summarizeErrorText(String(parsed.message,),);
 		} catch {
 			// not JSON — use raw body
 		}
 		if (!body) return "(empty response body)";
-		return body.length > 200 ? `${body.slice(0, 200,)}…` : body;
+		return summarizeErrorText(body,);
 	}
 
 	private static formatRetryMetadata(retry?: DataikuRetryMetadata,): string | undefined {

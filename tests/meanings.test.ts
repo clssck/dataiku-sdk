@@ -164,4 +164,22 @@ describe("MeaningsResource", () => {
 		expect(observedPath,).toBe("/public/api/meanings/meaning%2Fslash",);
 		expect(observedBody,).toEqual(body,);
 	});
+
+	it("deletes a meaning definition through DELETE with encoded ids", async () => {
+		let observedMethod = "";
+		let observedPath = "";
+
+		await withServer((req, res,) => {
+			observedMethod = req.method ?? "";
+			observedPath = req.url ?? "";
+			res.statusCode = 204;
+			res.end();
+		}, async (url,) => {
+			const resource = new MeaningsResource(createClient(url,),);
+			await expect(resource.delete("meaning/slash",),).resolves.toBeUndefined();
+		},);
+
+		expect(observedMethod,).toBe("DELETE",);
+		expect(observedPath,).toBe("/public/api/meanings/meaning%2Fslash",);
+	});
 });

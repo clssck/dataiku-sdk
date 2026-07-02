@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse, } from "node:h
 import { type AddressInfo, } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
+import { projectCommands, } from "../src/cli/commands/project.js";
 import { DataikuClient, } from "../src/client.js";
 import { ProjectsResource, } from "../src/resources/projects.js";
 
@@ -68,7 +69,7 @@ async function withServer(
 }
 
 describe("ProjectsResource lifecycle", () => {
-	it("creates projects through the text endpoint", async () => {
+	it("creates projects and returns the parsed response", async () => {
 		let observedMethod = "";
 		let observedPath = "";
 		let observedBody: unknown;
@@ -77,14 +78,12 @@ describe("ProjectsResource lifecycle", () => {
 			observedMethod = req.method ?? "";
 			observedPath = req.url ?? "";
 			observedBody = JSON.parse(await readBody(req,),);
-			res.statusCode = 200;
-			res.setHeader("Content-Type", "text/plain",);
-			res.end("created",);
+			sendJson(res, { msg: "Created project NEW_PROJECT", },);
 		}, async (url,) => {
 			const resource = new ProjectsResource(createClient(url,),);
 			await expect(
 				resource.createProject("NEW_PROJECT", "New Project", "owner-login", { codeEnv: "py", },),
-			).resolves.toBe("created",);
+			).resolves.toEqual({ msg: "Created project NEW_PROJECT", },);
 		},);
 
 		expect(observedMethod,).toBe("POST",);
@@ -98,6 +97,13 @@ describe("ProjectsResource lifecycle", () => {
 			permissions: [],
 			tags: [],
 		},);
+	});
+
+	it("requires an owner when creating projects through the command handler", () => {
+		const client = createClient("http://127.0.0.1:1",);
+		expect(
+			() => projectCommands.create.handler(client, ["NEW_PROJECT", "New Project",], {},),
+		).toThrow("--owner is required",);
 	});
 
 	it("deletes projects with source-verified lifecycle query parameters", async () => {
@@ -271,6 +277,61 @@ describe("ProjectsResource lifecycle", () => {
 			{ method: "PUT", url: "/public/api/projects/PERM/permissions", body: permissions, },
 			{ method: "GET", url: "/public/api/projects/TEST/settings", },
 			{ method: "PUT", url: "/public/api/projects/TEST/settings", body: settings, },
+		],);
+	});
+
+	it("deep-merges partial settings-set payloads before replacing settings", async () => {
+		const requests: Array<{ method: string; url: string; body?: unknown; }> = [];
+		const currentSettings = {
+			settings: {
+				shortDesc: "old",
+				codeEnvs: { python: { mode: "USE_BUILTIN_MODE", }, },
+				nested: { keep: true, },
+			},
+			permissions: { owner: "owner-login", },
+		};
+		const partialSettings = { settings: { shortDesc: "new", }, };
+
+		await withServer(async (req, res,) => {
+			const method = req.method ?? "";
+			const url = req.url ?? "";
+			if (method === "GET" && url === "/public/api/projects/TEST/settings") {
+				requests.push({ method, url, },);
+				sendJson(res, currentSettings,);
+				return;
+			}
+			if (method === "PUT" && url === "/public/api/projects/TEST/settings") {
+				requests.push({ method, url, body: JSON.parse(await readBody(req,),), },);
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`${method} ${url}`,);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(
+				projectCommands["settings-set"].handler(client, [], {
+					"project-key": "TEST",
+					data: JSON.stringify(partialSettings,),
+				},),
+			).resolves.toEqual({ updated: true, },);
+		},);
+
+		expect(requests,).toEqual([
+			{ method: "GET", url: "/public/api/projects/TEST/settings", },
+			{
+				method: "PUT",
+				url: "/public/api/projects/TEST/settings",
+				body: {
+					settings: {
+						shortDesc: "new",
+						codeEnvs: { python: { mode: "USE_BUILTIN_MODE", }, },
+						nested: { keep: true, },
+					},
+					permissions: { owner: "owner-login", },
+				},
+			},
 		],);
 	});
 });

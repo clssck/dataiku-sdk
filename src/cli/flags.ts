@@ -196,7 +196,9 @@ export function requireFlagValue(
 	flagLabel: string,
 	next: string | undefined,
 ): string {
-	if (next === undefined || (next.startsWith("-",) && !isNegativeNumberToken(next,))) {
+	if (
+		next === undefined || (next !== "-" && next.startsWith("-",) && !isNegativeNumberToken(next,))
+	) {
 		throw new UsageError(`Flag ${flagLabel} requires a value.`, "missing_required_flag",);
 	}
 	return next;

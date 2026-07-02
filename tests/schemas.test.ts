@@ -29,6 +29,7 @@ import {
 	InsightSummaryArraySchema,
 	InsightSummarySchema,
 	JobSummarySchema,
+	JupyterCellSchema,
 	JupyterNotebookSummarySchema,
 	parseSchema,
 	ProjectSummaryArraySchema,
@@ -437,6 +438,24 @@ describe("Array schemas", () => {
 			hasResult: true,
 		},),).toHaveProperty("success", true,);
 		expect(() => parseSchema(DashboardSummaryArraySchema, [{ id: "dash-1", },],)).toThrow();
+	});
+});
+
+describe("JupyterCell", () => {
+	it("preserves null and numeric execution counts", () => {
+		const nullCountCell = {
+			cell_type: "code",
+			source: ["print('pending')\n",],
+			execution_count: null,
+		};
+		const numericCountCell = {
+			cell_type: "code",
+			source: ["print('done')\n",],
+			execution_count: 7,
+		};
+
+		expect(parseSchema(JupyterCellSchema, nullCountCell,),).toEqual(nullCountCell,);
+		expect(parseSchema(JupyterCellSchema, numericCountCell,),).toEqual(numericCountCell,);
 	});
 });
 

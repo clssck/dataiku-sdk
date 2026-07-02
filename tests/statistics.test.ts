@@ -135,6 +135,26 @@ describe("StatisticsResource", () => {
 		expect(observedBody,).toEqual(body,);
 	});
 
+	it("rejects worksheet definitions missing dataSpec.datasetSelection before POSTing", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			res.statusCode = 500;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const resource = new StatisticsResource(createClient(url,),);
+			await expect(
+				resource.createWorksheet("orders", {
+					name: "Missing dataset selection",
+					dataSpec: { inputDatasetSmartName: "orders", },
+				},),
+			).rejects.toThrow("dataSpec.datasetSelection",);
+		},);
+
+		expect(requests,).toEqual([],);
+	});
+
 	it("updates worksheet definitions through PUT", async () => {
 		const body = { id: "worksheet-1", name: "Renamed", rootCard: { cards: [], }, };
 		let observedMethod = "";

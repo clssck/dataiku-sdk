@@ -1,4 +1,5 @@
 import { num, } from "../coerce.js";
+import { planResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
 
@@ -36,12 +37,20 @@ export const futureCommands: Record<string, CommandMeta> = {
 	abort: {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss future abort <id>",);
+			const id = a[0];
 			if (f["dry-run"] === true) {
-				const current = await c.futures.peek(a[0],);
-				return { dryRun: true, action: "abort", resource: "future", id: a[0], current, };
+				return planResult("future", "abort", {
+					method: "POST",
+					endpoint: `/public/api/futures/${encodeURIComponent(id,)}/abort`,
+					identifiers: { id, },
+					idempotency: "none",
+					asyncKind: "future",
+					exitCodesOnFailure: { usage: 1, error: 2, transient: 3, longRunningFailure: 4, },
+					plannedAndDryRun: true,
+				},);
 			}
-			await c.futures.abort(a[0],);
-			return { aborted: a[0], resource: "future", };
+			await c.futures.abort(id,);
+			return { aborted: id, resource: "future", };
 		},
 		usage: "dss future abort <id> [--dry-run]",
 		description: "Abort a DSS future.",

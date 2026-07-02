@@ -119,7 +119,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 				timeoutMs: num(f["timeout"],),
 			},);
 		},
-		usage: "dss dataset preview <name> [--max-rows N|--rows N] [--project-key KEY] [--timeout MS]",
+		usage: "dss dataset preview <name> [--max-rows N] [--rows N] [--project-key KEY] [--timeout MS]",
 		description: "Preview dataset rows (--rows is an alias for --max-rows).",
 		examples: ["dss dataset preview orders", "dss dataset preview orders --rows 5",],
 	},
