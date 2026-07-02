@@ -104,6 +104,8 @@ describe("CLI install-skill command", () => {
 				"dss recipe get-payload compute_orders --raw --output code.py --project-key MYPROJ",
 			);
 			expect(content,).toContain("stdout is the JSON string equal to `PATH`",);
+			expect(content,).toContain("dataset_download_default_location",);
+			expect(content,).toContain("syncOutputSchemaPropagated",);
 			expect(content,).not.toContain("--help",);
 			expect(content,).not.toContain("--report-json",);
 			expect(content,).not.toContain("dss auth status",);
