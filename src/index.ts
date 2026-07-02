@@ -21,6 +21,7 @@ export {
 
 // Errors
 export {
+	ClientValidationError,
 	DataikuError,
 	type DataikuErrorCategory,
 	type DataikuErrorTaxonomy,

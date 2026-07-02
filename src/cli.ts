@@ -42,7 +42,12 @@ import {
 } from "./cli/usage.js";
 import { cliVersionResult, } from "./cli/version.js";
 import { DataikuClient, } from "./client.js";
-import { DataikuError, dataikuErrorCode, type StableErrorCode, } from "./errors.js";
+import {
+	ClientValidationError,
+	DataikuError,
+	dataikuErrorCode,
+	type StableErrorCode,
+} from "./errors.js";
 import {
 	AGENTS,
 	detectAgents,
@@ -953,7 +958,7 @@ const MISSING_PROJECT_KEY_ERROR_PREFIX = "projectKey is required";
 
 function errorExitCode(err: unknown,): number {
 	if (err instanceof CommandResultFailure) return err.exitCode;
-	if (err instanceof UsageError) return 1;
+	if (err instanceof UsageError || err instanceof ClientValidationError) return 1;
 	if (err instanceof DataikuError) return err.category === "transient" ? 3 : 2;
 	if (err instanceof Error && err.message.startsWith(MISSING_PROJECT_KEY_ERROR_PREFIX,)) return 1;
 	return 2;
@@ -962,7 +967,7 @@ function errorExitCode(err: unknown,): number {
 function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 	const context = rawCommandContext();
 	const exitCode = errorExitCode(err,);
-	if (err instanceof UsageError) {
+	if (err instanceof UsageError || err instanceof ClientValidationError) {
 		return {
 			type: "error",
 			ok: false,

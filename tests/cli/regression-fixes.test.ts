@@ -363,6 +363,51 @@ describe("CLI regression fixes", () => {
 		expect(report.error,).toContain("Unexpected argument(s)",);
 	});
 
+	it("app save-instance-manifest rejects app-instance projects before PUT", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			const request = `${req.method ?? ""} ${url.pathname}`;
+			requests.push(request,);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/INST/app-manifest") {
+				sendJson(res, { projectAppType: "APP_INSTANCE", homepageSections: [], },);
+				return;
+			}
+			if (req.method === "PUT" && url.pathname === "/public/api/projects/INST/app-manifest") {
+				res.statusCode = 500;
+				res.end("unexpected PUT",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${request}`,);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"app",
+				"save-instance-manifest",
+				"--data",
+				'{"homepageSections":[]}',
+				"--project-key",
+				"INST",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(1,);
+			const events = failure.stderr
+				.split(/\r?\n/u,)
+				.filter((line,) => line.length > 0)
+				.map((line,) => JSON.parse(line,) as Record<string, unknown>);
+			const report = events.find((event,) => event.type === "error");
+			expect(report,).toMatchObject({
+				code: "validation_failed",
+				category: "usage",
+				exitCode: 1,
+				resource: "app",
+				action: "save-instance-manifest",
+				details: { projectAppType: "APP_INSTANCE", projectKey: "INST", },
+			},);
+		},);
+		expect(requests,).toEqual(["GET /public/api/projects/INST/app-manifest",],);
+		expect(requests.some((request,) => request.startsWith("PUT ",)),).toBe(false,);
+	});
+
 	it("flow-zone graph without an id fetches the full project graph", async () => {
 		let requestPath = "";
 		await withCliServer((req, res,) => {

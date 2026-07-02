@@ -46,7 +46,7 @@ export const appCommands: Record<string, CommandMeta> = {
 			return c.applications.getInstanceManifest(f["project-key"] as string | undefined,);
 		},
 		usage: "dss app instance-manifest [--project-key KEY]",
-		description: "Get the app manifest of an app-instance project.",
+		description: "Get the app manifest of a Dataiku App template or app-instance project.",
 		examples: ["dss app instance-manifest --project-key MYINSTANCE",],
 	},
 	"save-instance-manifest": {
@@ -64,8 +64,10 @@ export const appCommands: Record<string, CommandMeta> = {
 		usage:
 			"dss app save-instance-manifest (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
 		description:
-			"Save the app manifest of an app-instance project (homepage sections, use-as-recipe settings).",
-		examples: ["dss app save-instance-manifest --data-file manifest.json --project-key MYINSTANCE",],
+			"Save the app manifest of a Dataiku App template project (homepage sections, use-as-recipe settings). Classic app-instance project manifests are read-only through this endpoint.",
+		examples: [
+			"dss app save-instance-manifest --data-file manifest.json --project-key MYAPP_TEMPLATE",
+		],
 	},
 	"delete-instance": {
 		handler: async (c, a, f,) => {

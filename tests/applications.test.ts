@@ -6,6 +6,7 @@ import { type AddressInfo, } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DataikuClient, } from "../src/client.js";
+import { ClientValidationError, } from "../src/errors.js";
 import { ApplicationsResource, } from "../src/resources/applications.js";
 
 async function readBody(req: IncomingMessage,): Promise<string> {
@@ -121,23 +122,66 @@ describe("ApplicationsResource", () => {
 			useAsRecipeSettings: { enabled: true, },
 		};
 		let observedBody: unknown;
-		let observedMethod = "";
-		let observedPath = "";
+		const requests: string[] = [];
 
 		await withServer(async (req, res,) => {
-			observedMethod = req.method ?? "";
-			observedPath = req.url ?? "";
-			observedBody = JSON.parse(await readBody(req,),);
-			res.statusCode = 204;
-			res.end();
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/app-manifest") {
+				sendJson(res, { homepageSections: [], projectAppType: "APP_TEMPLATE", },);
+				return;
+			}
+			if (req.method === "PUT" && req.url === "/public/api/projects/TEST/app-manifest") {
+				observedBody = JSON.parse(await readBody(req,),);
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${request}`,);
 		}, async (url,) => {
 			const resource = new ApplicationsResource(createClient(url,),);
 			await expect(resource.saveInstanceManifest(manifest,),).resolves.toBeUndefined();
 		},);
 
-		expect(observedMethod,).toBe("PUT",);
-		expect(observedPath,).toBe("/public/api/projects/TEST/app-manifest",);
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/app-manifest",
+			"PUT /public/api/projects/TEST/app-manifest",
+		],);
 		expect(observedBody,).toEqual(manifest,);
+	});
+
+	it("rejects saving an app-instance manifest without sending a PUT", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/app-manifest") {
+				sendJson(res, { projectAppType: "APP_INSTANCE", homepageSections: [], },);
+				return;
+			}
+			if (req.method === "PUT" && req.url === "/public/api/projects/TEST/app-manifest") {
+				res.statusCode = 500;
+				res.end("unexpected PUT",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${request}`,);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(createClient(url,),);
+			let caught: unknown;
+			try {
+				await resource.saveInstanceManifest({ homepageSections: [], },);
+			} catch (error) {
+				caught = error;
+			}
+			expect(caught,).toBeInstanceOf(ClientValidationError,);
+			expect((caught as ClientValidationError).name,).toBe("ClientValidationError",);
+			expect((caught as ClientValidationError).code,).toBe("validation_failed",);
+		},);
+
+		expect(requests,).toEqual(["GET /public/api/projects/TEST/app-manifest",],);
 	});
 
 	it("deletes an app instance project", async () => {
