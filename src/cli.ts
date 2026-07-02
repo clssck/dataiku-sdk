@@ -949,10 +949,13 @@ function requestIdFromBody(body: string,): string | undefined {
 	}
 }
 
+const MISSING_PROJECT_KEY_ERROR_PREFIX = "projectKey is required";
+
 function errorExitCode(err: unknown,): number {
 	if (err instanceof CommandResultFailure) return err.exitCode;
 	if (err instanceof UsageError) return 1;
 	if (err instanceof DataikuError) return err.category === "transient" ? 3 : 2;
+	if (err instanceof Error && err.message.startsWith(MISSING_PROJECT_KEY_ERROR_PREFIX,)) return 1;
 	return 2;
 }
 
@@ -1002,6 +1005,18 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 				body: err.body,
 				...(err.retry ? { retry: err.retry, } : {}),
 			},
+			...context,
+		};
+	}
+	if (err instanceof Error && err.message.startsWith(MISSING_PROJECT_KEY_ERROR_PREFIX,)) {
+		return {
+			type: "error",
+			ok: false,
+			error: err.message,
+			code: "missing_required_flag",
+			category: "usage",
+			exitCode,
+			hint: "Pass --project-key or set DATAIKU_PROJECT_KEY.",
 			...context,
 		};
 	}

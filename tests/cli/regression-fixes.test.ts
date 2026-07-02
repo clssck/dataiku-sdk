@@ -605,4 +605,33 @@ describe("CLI regression fixes", () => {
 			expect(report.error,).toContain("--copy-output-settings",);
 		},);
 	});
+	it("reports missing project key for project-scoped app commands as usage", async () => {
+		const failure = await dssFailure([
+			"app",
+			"instance-manifest",
+			"--url",
+			"http://127.0.0.1:9",
+			"--api-key",
+			"dummy-key",
+		], {
+			env: {
+				...cliEnv("http://127.0.0.1:9",),
+				DATAIKU_URL: "http://127.0.0.1:9",
+				DATAIKU_API_KEY: "dummy-key",
+				DATAIKU_PROJECT_KEY: "",
+				DATAIKU_DISABLE_ENV: "1",
+			},
+		},);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stdout,).toBe("",);
+		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			code: "missing_required_flag",
+			category: "usage",
+			exitCode: 1,
+		},);
+		const hint = String(report.hint ?? "",);
+		expect(hint,).toContain("--project-key",);
+		expect(hint,).toContain("DATAIKU_PROJECT_KEY",);
+	});
 });
