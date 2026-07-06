@@ -48,6 +48,7 @@ export class ContinuousActivitiesResource extends BaseResource {
 
 	/** Stop a continuous recipe activity. */
 	async stop(recipeId: string, projectKey?: string,): Promise<void> {
+		await this.getStatus(recipeId, projectKey,);
 		await this.client.postText(`${this.activityPath(recipeId, projectKey,)}/stop`,);
 	}
 

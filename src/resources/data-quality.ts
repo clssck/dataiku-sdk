@@ -1,3 +1,4 @@
+import { DataikuError, } from "../errors.js";
 import type {
 	DataQualityComputeResult,
 	DataQualityProjectStatus,
@@ -154,7 +155,13 @@ export class DataQualityResource extends BaseResource {
 	): Promise<DataQualityRule> {
 		const rules = await this.listRules(datasetName, projectKey,);
 		const rule = rules.find((candidate,) => candidate.id === ruleId);
-		if (!rule) throw new Error(`Data quality rule not found: ${ruleId}`,);
+		if (!rule) {
+			throw new DataikuError(
+				404,
+				"Not Found",
+				JSON.stringify({ message: `Data quality rule not found: ${ruleId}`, },),
+			);
+		}
 		return rule;
 	}
 
