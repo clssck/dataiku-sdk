@@ -1,5 +1,5 @@
-import { readFileSync, } from "node:fs";
-import { join, } from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { validateCredentials, } from "../auth.js";
 import { getCredentialsPath, saveCredentials, } from "../config.js";
 import { DataikuError, } from "../errors.js";
@@ -54,7 +54,7 @@ function splitPackageSpec(raw: string,): string[] {
 function codeEnvPackageList(flags: Record<string, string | boolean>,): string[] {
 	const packages: string[] = [];
 	if (typeof flags["file"] === "string") {
-		packages.push(...splitPackageSpec(readFileSync(flags["file"], "utf-8",),),);
+		packages.push(...splitPackageSpec(fs.readFileSync(flags["file"], "utf-8",),),);
 	}
 	if (typeof flags["packages"] === "string") {
 		packages.push(...splitPackageSpec(flags["packages"],),);
@@ -116,9 +116,9 @@ export const AUTH_ACTIONS: Record<string, {
 				);
 			}
 
-			const path = getCredentialsPath();
+			const credentialsPath = getCredentialsPath();
 			saveCredentials({ url, apiKey, projectKey, ...tlsSettings, },);
-			return { saved: true, path, };
+			return { saved: true, path: credentialsPath, };
 		},
 		usage: "dss auth login --url URL --api-key KEY [--project-key KEY] [--insecure] [--ca-cert PATH]",
 		description: "Validate and save DSS credentials from flags or environment variables.",
@@ -1297,6 +1297,15 @@ function jobBuildPayload(
 	return payload;
 }
 
+function uploadPayload(filePath: string,): Record<string, unknown> {
+	return {
+		contentType: "multipart/form-data",
+		fileField: "file",
+		filePath,
+		fileName: path.basename(filePath,),
+	};
+}
+
 export function commandPlanShape(
 	resource: string,
 	action: string,
@@ -1317,6 +1326,14 @@ export function commandPlanShape(
 		return encodedProjectEndpointForPlan(projectKey, suffix,);
 	};
 	const id = args[0];
+	const codeEnvEndpoint = (suffix = "",) =>
+		`/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
+			encodeURIComponent(args[1],)
+		}${suffix}`;
+	const statisticsWorksheetsEndpoint = (datasetName: string,) =>
+		projectEndpoint(`/datasets/${encodeURIComponent(datasetName,)}/statistics/worksheets/`,);
+	const statisticsWorksheetEndpoint = (datasetName: string, worksheetId: string,) =>
+		`${statisticsWorksheetsEndpoint(datasetName,)}${encodeURIComponent(worksheetId,)}`;
 	switch (`${resource}.${action}`) {
 		case "wiki.create": {
 			const name = requiredPlanFlag(flags, "name", entry.usage,);
@@ -1358,13 +1375,16 @@ export function commandPlanShape(
 				payload: { ...(jsonInput(flags,) ?? { pages: [], }), name, },
 			};
 		}
-		case "dashboard.update":
+		case "dashboard.update": {
+			const payload: Record<string, unknown> = { ...jsonInput(flags,), };
+			if (typeof flags["name"] === "string") payload.name = flags["name"];
 			return {
 				method: "PUT",
 				endpoint: projectEndpoint(`/dashboards/${encodeURIComponent(id,)}/`,),
 				identifiers: { id, },
-				payload: { ...jsonInput(flags,), name: flags["name"] as string | undefined, },
+				payload,
 			};
+		}
 		case "dashboard.delete":
 			return {
 				method: "DELETE",
@@ -1592,7 +1612,7 @@ export function commandPlanShape(
 			const backupDir = flags["no-backup"] === true
 				? undefined
 				: (flags["backup-dir"] as string | undefined)
-					?? join(process.cwd(), ".dss-backups", "recipes",);
+					?? path.join(process.cwd(), ".dss-backups", "recipes",);
 			const backupPath = backupDir ? recipeBackupPath(id, backupDir,) : undefined;
 			return {
 				method: "PUT",
@@ -1707,6 +1727,302 @@ export function commandPlanShape(
 					replace: flags["replace"] === true,
 				},
 			};
+		case "project-deployer.create-project": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			return {
+				method: "POST",
+				endpoint: "/public/api/project-deployer/projects",
+				identifiers: { projectKey: payload.projectKey, id: payload.id, },
+				payload,
+			};
+		}
+		case "project-deployer.upload-bundle":
+			return {
+				method: "POST",
+				endpoint: "/public/api/project-deployer/projects/bundles",
+				identifiers: { filePath: id, },
+				payload: uploadPayload(id,),
+			};
+		case "project-deployer.create-deployment": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			return {
+				method: "POST",
+				endpoint: "/public/api/project-deployer/deployments",
+				identifiers: { deploymentId: payload.deploymentId ?? payload.id, },
+				payload,
+			};
+		}
+		case "project-deployer.save-deployment-settings":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/project-deployer/deployments/${encodeURIComponent(id,)}/settings`,
+				identifiers: { deploymentId: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "project-deployer.deploy":
+			return {
+				method: "POST",
+				endpoint: `/public/api/project-deployer/deployments/${encodeURIComponent(id,)}/actions/update`,
+				identifiers: { deploymentId: id, },
+				payload: {},
+			};
+		case "project-deployer.delete-deployment":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/project-deployer/deployments/${encodeURIComponent(id,)}`,
+				identifiers: { deploymentId: id, },
+			};
+		case "project-deployer.create-infra": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			return {
+				method: "POST",
+				endpoint: "/public/api/project-deployer/infras",
+				identifiers: { infraId: payload.id, },
+				payload,
+			};
+		}
+		case "api-deployer.create-infra": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			return {
+				method: "POST",
+				endpoint: "/public/api/api-deployer/infras",
+				identifiers: { infraId: payload.id, },
+				payload,
+			};
+		}
+		case "api-deployer.delete-infra":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/api-deployer/infras/${encodeURIComponent(id,)}`,
+				identifiers: { infraId: id, },
+			};
+		case "api-deployer.create-service": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			return {
+				method: "POST",
+				endpoint: "/public/api/api-deployer/services",
+				identifiers: { serviceId: payload.id ?? payload.publishedServiceId, },
+				payload,
+			};
+		}
+		case "api-deployer.delete-service":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/api-deployer/services/${encodeURIComponent(id,)}`,
+				identifiers: { serviceId: id, },
+			};
+		case "api-deployer.publish-version":
+			return {
+				method: "POST",
+				endpoint: `/public/api/api-deployer/services/${encodeURIComponent(args[0],)}/versions`,
+				identifiers: { serviceId: args[0], filePath: args[1], },
+				payload: uploadPayload(args[1],),
+			};
+		case "api-deployer.delete-version":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/api-deployer/services/${encodeURIComponent(args[0],)}/versions/${
+					encodeURIComponent(args[1],)
+				}`,
+				identifiers: { serviceId: args[0], version: args[1], },
+			};
+		case "api-deployer.create-deployment": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			return {
+				method: "POST",
+				endpoint: "/public/api/api-deployer/deployments",
+				identifiers: { deploymentId: payload.deploymentId ?? payload.id, },
+				payload,
+			};
+		}
+		case "api-deployer.save-deployment-settings":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/api-deployer/deployments/${encodeURIComponent(id,)}/settings`,
+				identifiers: { deploymentId: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "api-deployer.deploy":
+			return {
+				method: "POST",
+				endpoint: `/public/api/api-deployer/deployments/${encodeURIComponent(id,)}/actions/update`,
+				identifiers: { deploymentId: id, },
+				payload: {},
+			};
+		case "api-deployer.delete-deployment":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/api-deployer/deployments/${encodeURIComponent(id,)}`,
+				identifiers: { deploymentId: id, },
+			};
+		case "workspace.create": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			return {
+				method: "POST",
+				endpoint: "/public/api/workspaces/",
+				identifiers: { workspaceKey: payload.workspaceKey, },
+				payload,
+			};
+		}
+		case "workspace.update-settings":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/workspaces/${encodeURIComponent(id,)}`,
+				identifiers: { workspaceKey: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "workspace.delete":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/workspaces/${encodeURIComponent(id,)}`,
+				identifiers: { workspaceKey: id, },
+			};
+		case "workspace.add-object":
+			return {
+				method: "POST",
+				endpoint: `/public/api/workspaces/${encodeURIComponent(id,)}/objects`,
+				identifiers: { workspaceKey: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "meaning.create": {
+			const body = jsonInput(flags,) ?? {};
+			const payload = {
+				...body,
+				id: args[0],
+				label: args[1],
+				type: args[2],
+				description: body.description ?? null,
+				entries: body.entries ?? null,
+				mappings: body.mappings ?? null,
+				pattern: body.pattern ?? null,
+				normalizationMode: body.normalizationMode ?? null,
+				detectable: body.detectable ?? false,
+			};
+			return {
+				method: "POST",
+				endpoint: "/public/api/meanings/",
+				identifiers: { id: args[0], },
+				payload,
+			};
+		}
+		case "meaning.update":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/meanings/${encodeURIComponent(id,)}`,
+				identifiers: { id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "meaning.delete":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/meanings/${encodeURIComponent(id,)}`,
+				identifiers: { id, },
+			};
+		case "business-app.save-settings":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/business-apps/${encodeURIComponent(id,)}/settings`,
+				identifiers: { id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "business-app.create-instance":
+			return {
+				method: "POST",
+				endpoint: `/public/api/business-apps/${encodeURIComponent(id,)}/instances`,
+				identifiers: { id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "business-app.upgrade-instance":
+			return {
+				method: "POST",
+				endpoint: `/public/api/business-apps/${encodeURIComponent(args[0],)}/instances/${
+					encodeURIComponent(args[1],)
+				}/upgrade`,
+				identifiers: { id: args[0], projectKey: args[1], },
+				payload: {},
+			};
+		case "business-app.install-from-archive":
+			return {
+				method: "POST",
+				endpoint: "/public/api/business-apps/install-from-archive",
+				identifiers: { filePath: id, },
+				payload: uploadPayload(id,),
+			};
+		case "app.create-instance":
+			return {
+				method: "POST",
+				endpoint: `/public/api/apps/${encodeURIComponent(id,)}/instances`,
+				identifiers: { appId: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "statistics.create-worksheet":
+			return {
+				method: "POST",
+				endpoint: statisticsWorksheetsEndpoint(args[0],),
+				identifiers: { dataset: args[0], },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "statistics.update-worksheet":
+			return {
+				method: "PUT",
+				endpoint: statisticsWorksheetEndpoint(args[0], args[1],),
+				identifiers: { dataset: args[0], worksheetId: args[1], },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "statistics.delete-worksheet":
+			return {
+				method: "DELETE",
+				endpoint: statisticsWorksheetEndpoint(args[0], args[1],),
+				identifiers: { dataset: args[0], worksheetId: args[1], },
+			};
+		case "statistics.run-worksheet":
+			return {
+				method: "POST",
+				endpoint: `${statisticsWorksheetEndpoint(args[0], args[1],)}/actions/run-card`,
+				identifiers: { dataset: args[0], worksheetId: args[1], },
+			};
+		case "statistics.run-card":
+			return {
+				method: "POST",
+				endpoint: `${statisticsWorksheetEndpoint(args[0], args[1],)}/actions/run-card`,
+				identifiers: { dataset: args[0], worksheetId: args[1], },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "statistics.run-computation":
+			return {
+				method: "POST",
+				endpoint: `${statisticsWorksheetEndpoint(args[0], args[1],)}/actions/run-computation`,
+				identifiers: { dataset: args[0], worksheetId: args[1], },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "bundle.export":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/bundles/exported/${encodeURIComponent(id,)}`,),
+				identifiers: { bundleId: id, },
+				payload: {},
+			};
+		case "bundle.publish":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/bundles/${encodeURIComponent(id,)}/publish`,),
+				identifiers: { bundleId: id, },
+				payload: {},
+			};
+		case "bundle.activate":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/bundles/imported/${encodeURIComponent(id,)}/actions/activate`,),
+				identifiers: { bundleId: id, },
+				payload: {},
+			};
+		case "bundle.preload":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/bundles/imported/${encodeURIComponent(id,)}/actions/preload`,),
+				identifiers: { bundleId: id, },
+				payload: {},
+			};
 		case "code-env.create":
 			return {
 				method: "POST",
@@ -1730,48 +2046,59 @@ export function commandPlanShape(
 				identifiers: { lang: args[0], name: args[1], },
 				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
-		case "code-env.set-packages":
-			return {
-				method: "POST",
-				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
-					encodeURIComponent(args[1],)
-				}/packages`,
-				identifiers: { lang: args[0], name: args[1], },
-				payload: {
-					packages: codeEnvPackageList(flags,),
-					installCorePackages: parseBooleanOption(
-						flags["install-core-packages"],
-						"--install-core-packages",
-					),
-				},
+		case "code-env.set-packages": {
+			const installCorePackages = parseBooleanOption(
+				flags["install-core-packages"],
+				"--install-core-packages",
+			);
+			const payload: Record<string, unknown> = {
+				specPackageList: codeEnvPackageList(flags,).join("\n",),
 			};
-		case "code-env.update-packages":
+			if (installCorePackages !== undefined) {
+				payload.desc = { installCorePackages, };
+			}
+			return {
+				method: "PUT",
+				endpoint: codeEnvEndpoint(),
+				identifiers: { lang: args[0], name: args[1], },
+				payload,
+			};
+		}
+		case "code-env.update-packages": {
+			const versionToUpdate = typeof flags["env-version"] === "string"
+				? flags["env-version"]
+				: typeof flags["version"] === "string"
+				? flags["version"]
+				: undefined;
 			return {
 				method: "POST",
-				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
-					encodeURIComponent(args[1],)
-				}/packages/actions/update`,
+				endpoint: `${codeEnvEndpoint("/packages",)}${
+					querySuffix({
+						forceRebuildEnv: flags["force-rebuild"] === true,
+						versionToUpdate,
+						wait: codeEnvWait(flags,),
+					},)
+				}`,
 				identifiers: { lang: args[0], name: args[1], },
-				payload: {
-					forceRebuildEnv: flags["force-rebuild"] === true,
-					versionToUpdate: flags["env-version"] as string | undefined,
-					wait: codeEnvWait(flags,),
-				},
 				wait: codeEnvWait(flags,),
 			};
-		case "code-env.set-jupyter":
+		}
+		case "code-env.set-jupyter": {
+			const active = parseBooleanOption(flags["active"], "--active",);
+			if (active === undefined) {
+				throw new UsageError(
+					"--active is required. Usage: dss code-env set-jupyter <lang> <name> --active true|false",
+				);
+			}
 			return {
 				method: "POST",
-				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
-					encodeURIComponent(args[1],)
-				}/jupyter`,
+				endpoint: `${codeEnvEndpoint("/jupyter",)}${
+					querySuffix({ active, wait: codeEnvWait(flags,), },)
+				}`,
 				identifiers: { lang: args[0], name: args[1], },
-				payload: {
-					active: parseBooleanOption(flags["active"], "--active",),
-					wait: codeEnvWait(flags,),
-				},
 				wait: codeEnvWait(flags,),
 			};
+		}
 		case "code-env.delete":
 			return {
 				method: "DELETE",
@@ -1922,6 +2249,12 @@ export function commandPlanShape(
 				endpoint: projectEndpoint(`/continuous-activities/${encodeURIComponent(id,)}/start`,),
 				identifiers: { recipeId: id, },
 				payload: jsonInput(flags,) ?? {},
+			};
+		case "continuous-activity.stop":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/continuous-activities/${encodeURIComponent(id,)}/stop`,),
+				identifiers: { recipeId: id, },
 			};
 		case "metrics.dataset-compute":
 			return {
