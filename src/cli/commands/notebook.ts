@@ -205,10 +205,10 @@ export const notebookCommands: Record<string, CommandMeta> = {
 					next: data,
 				};
 			}
-			try {
+			const current = await readIfExists(() => c.notebooks.getSql(a[0], pk,));
+			if (current) {
 				await c.notebooks.saveSql(a[0], data as never, pk,);
-			} catch (error) {
-				if (!isNotFoundError(error,)) throw error;
+			} else {
 				await c.notebooks.createSql(a[0], data as never, pk,);
 			}
 			return { saved: a[0], resource: "sql-notebook", };
