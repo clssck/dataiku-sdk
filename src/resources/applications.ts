@@ -1,4 +1,4 @@
-import { ClientValidationError, } from "../errors.js";
+import { ClientValidationError, DataikuError, } from "../errors.js";
 import { BaseResource, } from "./base.js";
 
 export interface AppListItem extends Record<string, unknown> {
@@ -83,6 +83,30 @@ export class ApplicationsResource extends BaseResource {
 
 	/** Delete an app instance project. */
 	async deleteInstance(projectKey?: string,): Promise<void> {
+		let manifest: Record<string, unknown> | undefined;
+		try {
+			manifest = await this.getInstanceManifest(projectKey,);
+		} catch (error) {
+			// DSS answers the app-manifest probe with 400 "neither an app template nor an app
+			// instance" for ordinary projects; treat only that as "not an app instance". Rethrow
+			// everything else (404 not-found, transient, permission) so real failures are not masked.
+			if (error instanceof DataikuError && error.status === 400) {
+				manifest = undefined;
+			} else {
+				throw error;
+			}
+		}
+		if (manifest?.projectAppType !== "APP_INSTANCE") {
+			throw new ClientValidationError(
+				"Only classic Dataiku App instance projects can be deleted through app delete-instance.",
+				"validation_failed",
+				"Use `dss app delete-instance` only for projects whose app manifest has projectAppType=APP_INSTANCE; use `dss project delete` for ordinary projects.",
+				{
+					projectAppType: manifest?.projectAppType ?? null,
+					projectKey: this.resolveProjectKey(projectKey,),
+				},
+			);
+		}
 		await this.client.del(`/public/api/projects/${this.enc(projectKey,)}`,);
 	}
 
