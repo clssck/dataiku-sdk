@@ -27,6 +27,44 @@ describe("CLI batch command", () => {
 		expect(badReport.steps[0]!.runnable,).toBe(false,);
 	});
 
+	it("plans cleanup and batch meta commands without reading ledgers or contacting DSS", async () => {
+		const missingLedger = `/tmp/dss-cli-cleanup-plan-${String(Date.now(),)}.jsonl`;
+		const cleanupPlan = JSON.parse(
+			(await dss(["cleanup", "run", "--file", missingLedger, "--plan",], { env: hermetic, },))
+				.stdout,
+		) as Record<string, unknown>;
+		expect(cleanupPlan,).toMatchObject({
+			plan: true,
+			resource: "cleanup",
+			action: "run",
+			file: missingLedger,
+		},);
+
+		let requestCount = 0;
+		await withCliServer((req, res,) => {
+			requestCount++;
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+		}, async (url,) => {
+			const batchPlan = JSON.parse(
+				(await dss(["batch", "run", "--data", '[["project","list"]]', "--plan",], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as Record<string, unknown>;
+			expect(batchPlan,).toMatchObject({
+				plan: true,
+				resource: "batch",
+				action: "run",
+				total: 1,
+				needsClient: true,
+				payload: {
+					steps: [["project", "list",],],
+				},
+			},);
+		},);
+		expect(requestCount,).toBe(0,);
+	});
+
 	it("rejects a non-array payload with a usage error", async () => {
 		const failure = await dssFailure(["batch", "--data", '{"not":"an array"}',], { env: hermetic, },);
 		expect(failure.code,).toBe(1,);

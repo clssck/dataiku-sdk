@@ -42,6 +42,63 @@ describe("CLI auth commands", () => {
 		}
 	});
 
+	it("dss auth login --plan returns a redacted plan without network or credential writes", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-plan-${Date.now()}`,);
+		const sentinelApiKey = "SENTINEL_API_KEY_SHOULD_NOT_APPEAR";
+		let requestCount = 0;
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await withCliServer((req, res,) => {
+				requestCount++;
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+			}, async (url,) => {
+				const { stdout, stderr, } = await dss([
+					"auth",
+					"login",
+					"--url",
+					`${url}/`,
+					"--api-key",
+					sentinelApiKey,
+					"--project-key",
+					"PLANPROJ",
+					"--plan",
+				], {
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: tmpDir,
+						DATAIKU_DISABLE_ENV: "1",
+					},
+				},);
+
+				expect(`${stdout}${stderr}`,).not.toContain(sentinelApiKey,);
+				expect(stderr,).toBe("",);
+				const plan = JSON.parse(stdout,) as Record<string, unknown>;
+				expect(plan,).toMatchObject({
+					plan: true,
+					action: "login",
+					resource: "auth",
+					url,
+					configTarget: join(tmpDir, "credentials.json",),
+					payload: {
+						apiKeyProvided: true,
+						projectKey: "PLANPROJ",
+					},
+					localWrites: [{
+						path: join(tmpDir, "credentials.json",),
+						target: "credentials",
+						redacted: ["apiKey",],
+					},],
+				},);
+			},);
+			expect(requestCount,).toBe(0,);
+			expect(readFileExists(join(tmpDir, "credentials.json",),),).toBe(false,);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
 	it("dss auth status and logout are rejected", async () => {
 		for (const action of ["status", "logout",]) {
 			const failure = await dssFailure(["auth", action,],);

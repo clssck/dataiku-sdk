@@ -114,6 +114,150 @@ describe("CLI regression fixes", () => {
 		expect(mutatingRequests,).toEqual([],);
 	});
 
+	it("plans fixed mutation endpoints with exact methods and payloads without contacting DSS", async () => {
+		let requestCount = 0;
+		await withCliServer((req, res,) => {
+			requestCount++;
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+		}, async (url,) => {
+			const env = cliEnv(url,);
+			const cases = [
+				{
+					name: "statistics create-worksheet",
+					argv: [
+						"statistics",
+						"create-worksheet",
+						"orders",
+						"--data",
+						'{"name":"Order stats"}',
+						"--plan",
+						"--project-key",
+						"TEST",
+					],
+					expected: {
+						resource: "statistics",
+						action: "create-worksheet",
+						method: "POST",
+						endpoint: "/public/api/projects/TEST/datasets/orders/statistics/worksheets/",
+						payload: { name: "Order stats", },
+					},
+				},
+				{
+					name: "continuous-activity stop",
+					argv: [
+						"continuous-activity",
+						"stop",
+						"build_flow",
+						"--plan",
+						"--project-key",
+						"TEST",
+					],
+					expected: {
+						resource: "continuous-activity",
+						action: "stop",
+						method: "POST",
+						endpoint: "/public/api/projects/TEST/continuous-activities/build_flow/stop",
+					},
+					payloadAbsent: true,
+				},
+				{
+					name: "api-deployer create-infra",
+					argv: [
+						"api-deployer",
+						"create-infra",
+						"--data",
+						'{"id":"infra-1","name":"Infra 1"}',
+						"--plan",
+					],
+					expected: {
+						resource: "api-deployer",
+						action: "create-infra",
+						method: "POST",
+						endpoint: "/public/api/api-deployer/infras",
+						payload: { id: "infra-1", name: "Infra 1", },
+					},
+				},
+				{
+					name: "workspace create",
+					argv: [
+						"workspace",
+						"create",
+						"--data",
+						'{"workspaceKey":"WS1","displayName":"Workspace 1"}',
+						"--plan",
+					],
+					expected: {
+						resource: "workspace",
+						action: "create",
+						method: "POST",
+						endpoint: "/public/api/workspaces/",
+						payload: { workspaceKey: "WS1", displayName: "Workspace 1", },
+					},
+				},
+				{
+					name: "meaning update",
+					argv: [
+						"meaning",
+						"update",
+						"customer_type",
+						"--data",
+						'{"label":"Customer type","type":"VALUES_LIST"}',
+						"--plan",
+					],
+					expected: {
+						resource: "meaning",
+						action: "update",
+						method: "PUT",
+						endpoint: "/public/api/meanings/customer_type",
+						payload: { label: "Customer type", type: "VALUES_LIST", },
+					},
+				},
+				{
+					name: "dashboard update keeps JSON name",
+					argv: [
+						"dashboard",
+						"update",
+						"dash-1",
+						"--data",
+						'{"name":"Kept from data"}',
+						"--plan",
+						"--project-key",
+						"TEST",
+					],
+					expected: {
+						resource: "dashboard",
+						action: "update",
+						method: "PUT",
+						endpoint: "/public/api/projects/TEST/dashboards/dash-1/",
+						payload: { name: "Kept from data", },
+					},
+				},
+				{
+					name: "bundle export",
+					argv: ["bundle", "export", "v1", "--plan", "--project-key", "TEST",],
+					expected: {
+						resource: "bundle",
+						action: "export",
+						method: "PUT",
+						endpoint: "/public/api/projects/TEST/bundles/exported/v1",
+						payload: {},
+					},
+				},
+			];
+
+			for (const { name, argv, expected, payloadAbsent, } of cases) {
+				const plan = JSON.parse((await dss(argv, { env, },)).stdout,) as Record<string, unknown>;
+				expect(plan.plan, name,).toBe(true,);
+				expect(plan, name,).toMatchObject(expected,);
+				expect(plan.endpoint, name,).not.toBeUndefined();
+				if (payloadAbsent) expect(Object.hasOwn(plan, "payload",), name,).toBe(false,);
+				else expect(plan.payload, name,).toEqual(expected.payload,);
+			}
+		},);
+		expect(requestCount,).toBe(0,);
+	});
+
 	it("plans project lifecycle and settings commands with concrete DSS endpoints", async () => {
 		let requestCount = 0;
 		await withCliServer((req, res,) => {

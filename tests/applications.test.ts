@@ -2,11 +2,10 @@ import { describe, expect, it, } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as http from "node:http";
 import { type IncomingMessage, type ServerResponse, } from "node:http";
-import { type AddressInfo, } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DataikuClient, } from "../src/client.js";
-import { ClientValidationError, } from "../src/errors.js";
+import { ClientValidationError, DataikuError, } from "../src/errors.js";
 import { ApplicationsResource, } from "../src/resources/applications.js";
 
 async function readBody(req: IncomingMessage,): Promise<string> {
@@ -52,8 +51,11 @@ async function withServer(
 		},);
 	},);
 
-	const { port, } = server.address() as AddressInfo;
-	const url = `http://127.0.0.1:${String(port,)}`;
+	const address = server.address();
+	if (!address || typeof address === "string") {
+		throw new Error("Test server did not bind to a TCP address.",);
+	}
+	const url = `http://127.0.0.1:${String(address.port,)}`;
 	try {
 		await run(url,);
 	} finally {
@@ -177,29 +179,163 @@ describe("ApplicationsResource", () => {
 				caught = error;
 			}
 			expect(caught,).toBeInstanceOf(ClientValidationError,);
-			expect((caught as ClientValidationError).name,).toBe("ClientValidationError",);
-			expect((caught as ClientValidationError).code,).toBe("validation_failed",);
+			if (!(caught instanceof ClientValidationError)) throw caught;
+			expect(caught.name,).toBe("ClientValidationError",);
+			expect(caught.code,).toBe("validation_failed",);
 		},);
 
 		expect(requests,).toEqual(["GET /public/api/projects/TEST/app-manifest",],);
 	});
 
-	it("deletes an app instance project", async () => {
-		let observedMethod = "";
-		let observedPath = "";
+	it("deletes an app instance project after verifying its manifest type", async () => {
+		const requests: string[] = [];
 
 		await withServer((req, res,) => {
-			observedMethod = req.method ?? "";
-			observedPath = req.url ?? "";
-			res.statusCode = 204;
-			res.end();
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			if (
+				req.method === "GET"
+				&& req.url === "/public/api/projects/APP%20INSTANCE/app-manifest"
+			) {
+				sendJson(res, { projectAppType: "APP_INSTANCE", homepageSections: [], },);
+				return;
+			}
+			if (req.method === "DELETE" && req.url === "/public/api/projects/APP%20INSTANCE") {
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${request}`,);
 		}, async (url,) => {
 			const resource = new ApplicationsResource(createClient(url,),);
 			await expect(resource.deleteInstance("APP INSTANCE",),).resolves.toBeUndefined();
 		},);
 
-		expect(observedMethod,).toBe("DELETE",);
-		expect(observedPath,).toBe("/public/api/projects/APP%20INSTANCE",);
+		expect(requests,).toEqual([
+			"GET /public/api/projects/APP%20INSTANCE/app-manifest",
+			"DELETE /public/api/projects/APP%20INSTANCE",
+		],);
+	});
+
+	it("rejects deleting a non-app-instance project without sending a DELETE", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			if (
+				req.method === "GET"
+				&& req.url === "/public/api/projects/ORDINARY%20PROJECT/app-manifest"
+			) {
+				sendJson(res, { projectAppType: "APP_TEMPLATE", homepageSections: [], },);
+				return;
+			}
+			if (req.method === "DELETE" && req.url === "/public/api/projects/ORDINARY%20PROJECT") {
+				res.statusCode = 500;
+				res.end("unexpected DELETE",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${request}`,);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(createClient(url,),);
+			const error = await resource.deleteInstance("ORDINARY PROJECT",).catch((caught: unknown,) =>
+				caught
+			);
+			expect(error,).toBeInstanceOf(ClientValidationError,);
+			if (!(error instanceof ClientValidationError)) throw error;
+			expect(error.code,).toBe("validation_failed",);
+			expect(error.details,).toEqual({
+				projectAppType: "APP_TEMPLATE",
+				projectKey: "ORDINARY PROJECT",
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/ORDINARY%20PROJECT/app-manifest",
+		],);
+	});
+
+	it("rejects deleting an ordinary project when the manifest probe returns DSS validation", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			if (
+				req.method === "GET"
+				&& req.url === "/public/api/projects/ORDINARY%20PROJECT/app-manifest"
+			) {
+				sendJson(res, { message: "Project ORDINARY PROJECT has no app manifest.", }, 400,);
+				return;
+			}
+			if (req.method === "DELETE" && req.url === "/public/api/projects/ORDINARY%20PROJECT") {
+				res.statusCode = 500;
+				res.end("unexpected DELETE",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${request}`,);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(createClient(url,),);
+			const error = await resource.deleteInstance("ORDINARY PROJECT",).catch((caught: unknown,) =>
+				caught
+			);
+			expect(error,).toBeInstanceOf(ClientValidationError,);
+			if (!(error instanceof ClientValidationError)) throw error;
+			expect(error.code,).toBe("validation_failed",);
+			expect(error.details,).toEqual({
+				projectAppType: null,
+				projectKey: "ORDINARY PROJECT",
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/ORDINARY%20PROJECT/app-manifest",
+		],);
+	});
+
+	it("rethrows transient manifest probe errors when deleting an app instance", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			if (
+				req.method === "GET"
+				&& req.url === "/public/api/projects/APP%20INSTANCE/app-manifest"
+			) {
+				sendJson(res, { message: "DSS is temporarily unavailable.", }, 500,);
+				return;
+			}
+			if (req.method === "DELETE" && req.url === "/public/api/projects/APP%20INSTANCE") {
+				res.statusCode = 500;
+				res.end("unexpected DELETE",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${request}`,);
+		}, async (url,) => {
+			const resource = new ApplicationsResource(
+				new DataikuClient({
+					url,
+					apiKey: "test-key",
+					projectKey: "TEST",
+					retryMaxAttempts: 1,
+				},),
+			);
+			const error = await resource.deleteInstance("APP INSTANCE",).catch((caught: unknown,) => caught);
+			expect(error,).toBeInstanceOf(DataikuError,);
+			expect(error,).not.toBeInstanceOf(ClientValidationError,);
+			if (!(error instanceof DataikuError)) throw error;
+			expect(error.status,).toBe(500,);
+			expect(error.category,).toBe("transient",);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/APP%20INSTANCE/app-manifest",
+		],);
 	});
 
 	it("upgrades a Business App instance", async () => {

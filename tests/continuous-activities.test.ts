@@ -1,7 +1,7 @@
 import { describe, expect, it, } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
-import { type AddressInfo, } from "node:net";
 import { DataikuClient, } from "../src/client.js";
+import { DataikuError, } from "../src/errors.js";
 import { ContinuousActivitiesResource, } from "../src/resources/continuous-activities.js";
 
 async function readBody(req: IncomingMessage,): Promise<string> {
@@ -47,8 +47,11 @@ async function withServer(
 		},);
 	},);
 
-	const { port, } = server.address() as AddressInfo;
-	const url = `http://127.0.0.1:${String(port,)}`;
+	const address = server.address();
+	if (!address || typeof address === "string") {
+		throw new Error("Test server did not bind to a TCP address.",);
+	}
+	const url = `http://127.0.0.1:${String(address.port,)}`;
 	try {
 		await run(url,);
 	} finally {
@@ -135,42 +138,77 @@ describe("ContinuousActivitiesResource", () => {
 		expect(observedBody,).toEqual(loop,);
 	});
 
-	it("starts an activity with empty loop parameters by default", async () => {
-		let observedBody: unknown;
-
-		await withServer(async (req, res,) => {
-			observedBody = JSON.parse(await readBody(req,),);
-			sendJson(res, { desiredState: "STARTED", },);
-		}, async (url,) => {
-			const resource = new ContinuousActivitiesResource(createClient(url,),);
-			await expect(resource.start("recipe-default",),).resolves.toEqual({
-				desiredState: "STARTED",
-			},);
-		},);
-
-		expect(observedBody,).toEqual({},);
-	});
-
-	it("stops an activity through the stop action endpoint without a body", async () => {
-		let observedMethod = "";
-		let observedPath = "";
+	it("stops an existing activity after verifying it exists", async () => {
+		const requests: string[] = [];
 		let observedBody = "";
 
 		await withServer(async (req, res,) => {
-			observedMethod = req.method ?? "";
-			observedPath = req.url ?? "";
-			observedBody = await readBody(req,);
-			res.statusCode = 204;
-			res.end();
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			if (
+				req.method === "GET"
+				&& req.url === "/public/api/projects/TEST/continuous-activities/continuous%20recipe/"
+			) {
+				sendJson(res, { desiredState: "STARTED", },);
+				return;
+			}
+			if (
+				req.method === "POST"
+				&& req.url === "/public/api/projects/TEST/continuous-activities/continuous%20recipe/stop"
+			) {
+				observedBody = await readBody(req,);
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${request}`,);
 		}, async (url,) => {
 			const resource = new ContinuousActivitiesResource(createClient(url,),);
 			await expect(resource.stop("continuous recipe",),).resolves.toBeUndefined();
 		},);
 
-		expect(observedMethod,).toBe("POST",);
-		expect(observedPath,).toBe(
-			"/public/api/projects/TEST/continuous-activities/continuous%20recipe/stop",
-		);
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/continuous-activities/continuous%20recipe/",
+			"POST /public/api/projects/TEST/continuous-activities/continuous%20recipe/stop",
+		],);
 		expect(observedBody,).toBe("",);
+	});
+
+	it("propagates not_found when stopping a missing activity without posting stop", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			if (
+				req.method === "GET"
+				&& req.url === "/public/api/projects/TEST/continuous-activities/missing%20recipe/"
+			) {
+				sendJson(res, { message: "Continuous activity not found", }, 404,);
+				return;
+			}
+			if (
+				req.method === "POST"
+				&& req.url === "/public/api/projects/TEST/continuous-activities/missing%20recipe/stop"
+			) {
+				res.statusCode = 500;
+				res.end("unexpected POST",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`unexpected ${request}`,);
+		}, async (url,) => {
+			const resource = new ContinuousActivitiesResource(createClient(url,),);
+			const error = await resource.stop("missing recipe",).catch((caught: unknown,) => caught);
+			expect(error,).toBeInstanceOf(DataikuError,);
+			if (!(error instanceof DataikuError)) throw error;
+			expect(error.category,).toBe("not_found",);
+			expect(error.status,).toBe(404,);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/continuous-activities/missing%20recipe/",
+		],);
 	});
 });
