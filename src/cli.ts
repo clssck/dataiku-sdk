@@ -30,7 +30,7 @@ import {
 	setOutputFieldProjection,
 	writeCommandResult,
 } from "./cli/output.js";
-import { currentCommandContext, resolveCredentials, } from "./cli/runtime.js";
+import { currentCommandContext, resolveCredentials, resolveTlsSettings, } from "./cli/runtime.js";
 import {
 	COMMANDS_RUN_HINT,
 	missingActionError,
@@ -42,6 +42,7 @@ import {
 } from "./cli/usage.js";
 import { cliVersionResult, } from "./cli/version.js";
 import { DataikuClient, } from "./client.js";
+import { getCredentialsPath, } from "./config.js";
 import {
 	ClientValidationError,
 	DataikuError,
@@ -599,6 +600,102 @@ function runInstallSkill(flags: Record<string, string | boolean>,): Record<strin
 	};
 }
 
+const META_PLAN_EXIT_CODES: Record<string, number> = { usage: 1, error: 2, transient: 3, };
+
+function authLoginPlan(flags: Record<string, string | boolean>,): Record<string, unknown> {
+	const tlsSettings = resolveTlsSettings(flags,);
+	const useEnv = dataikuEnvironmentEnabled();
+	const url = typeof flags["url"] === "string"
+		? flags["url"]
+		: useEnv
+		? process.env.DATAIKU_URL ?? ""
+		: "";
+	const apiKey = typeof flags["api-key"] === "string"
+		? flags["api-key"]
+		: useEnv
+		? process.env.DATAIKU_API_KEY ?? ""
+		: "";
+	const projectKey = typeof flags["project-key"] === "string"
+		? flags["project-key"]
+		: useEnv
+		? process.env.DATAIKU_PROJECT_KEY
+		: undefined;
+
+	if (!url || !apiKey) {
+		throw new UsageError(
+			"Missing --url and/or --api-key for auth login.",
+			"missing_required_flag",
+			"Pass --url and --api-key, or set DATAIKU_URL and DATAIKU_API_KEY.",
+			{ requiredFlags: ["url", "api-key",], env: ["DATAIKU_URL", "DATAIKU_API_KEY",], },
+		);
+	}
+
+	const payload: Record<string, unknown> = { apiKeyProvided: true, };
+	if (projectKey) payload.projectKey = projectKey;
+	if (tlsSettings.tlsRejectUnauthorized !== undefined) {
+		payload.tlsRejectUnauthorized = tlsSettings.tlsRejectUnauthorized;
+	}
+	if (tlsSettings.caCertPath) payload.caCertPath = tlsSettings.caCertPath;
+	const configTarget = getCredentialsPath();
+
+	return planResult("auth", "login", {
+		identifiers: {
+			url: url.trim().replace(/\/+$/, "",),
+			configTarget,
+		},
+		payload,
+		localWrites: [{ path: configTarget, target: "credentials", redacted: ["apiKey",], },],
+		idempotency: "convergent",
+		asyncKind: "none",
+		exitCodesOnFailure: META_PLAN_EXIT_CODES,
+	},);
+}
+
+function cleanupPlan(flags: Record<string, string | boolean>,): Record<string, unknown> {
+	const filePath = flags["file"];
+	if (typeof filePath !== "string" || filePath.trim().length === 0) {
+		throw new UsageError(`--file is required. Usage: ${CLEANUP_USAGE}`,);
+	}
+	return planResult("cleanup", "run", {
+		identifiers: { file: filePath, },
+		payload: {
+			apply: flags["apply"] === true,
+			continueOnError: flags["continue-on-error"] === true,
+		},
+		idempotency: "none",
+		asyncKind: "none",
+		exitCodesOnFailure: META_PLAN_EXIT_CODES,
+		plannedAndDryRun: flags["dry-run"] === true,
+	},);
+}
+
+function batchPlan(flags: Record<string, string | boolean>,): Record<string, unknown> {
+	const payload = unknownJsonInput(flags,);
+	if (payload === undefined) {
+		throw new UsageError(
+			`Provide steps via --data, --data-file, or --stdin. Usage: ${BATCH_USAGE}`,
+			"missing_required_flag",
+			BATCH_HINT,
+		);
+	}
+	const steps = parseBatchSteps(payload,);
+	return planResult("batch", "run", {
+		identifiers: {
+			total: steps.length,
+			needsClient: steps.some((argv,) => batchStepNeedsClient(argv,)),
+		},
+		payload: {
+			steps,
+			continueOnError: flags["continue-on-error"] === true,
+			dryRun: flags["dry-run"] === true,
+		},
+		idempotency: "none",
+		asyncKind: "none",
+		exitCodesOnFailure: META_PLAN_EXIT_CODES,
+		plannedAndDryRun: flags["dry-run"] === true,
+	},);
+}
+
 async function runMetaCommand(
 	resource: string,
 	action: string | undefined,
@@ -626,6 +723,9 @@ async function runMetaCommand(
 				validActions,
 				"auth only supports 'login'. To check credentials/connectivity, run 'dss doctor'.",
 			);
+		}
+		if (flags["plan"] === true) {
+			return { action, result: authLoginPlan(flags,), exitCode: 0, };
 		}
 		return { action, result: await authMeta.handler(flags,), exitCode: 0, };
 	}
@@ -660,6 +760,9 @@ async function runMetaCommand(
 			throw unknownActionError("cleanup", action, ["run",],);
 		}
 		currentCommandContext.action = action ?? "run";
+		if (flags["plan"] === true) {
+			return { action: "run", result: cleanupPlan(flags,), exitCode: 0, };
+		}
 		const { result, exitCode, } = await runCleanup(flags,);
 		return { action: "run", result, exitCode, };
 	}
@@ -675,6 +778,9 @@ async function runMetaCommand(
 			throw unknownActionError("batch", action, ["run",],);
 		}
 		currentCommandContext.action = action ?? "run";
+		if (flags["plan"] === true) {
+			return { action: "run", result: batchPlan(flags,), exitCode: 0, };
+		}
 		const { result, exitCode, } = await runBatch(flags,);
 		return { action: "run", result, exitCode, };
 	}
