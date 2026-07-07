@@ -1,0 +1,49 @@
+name: Bug report
+description: Report a problem with the dataiku-sdk SDK or CLI
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. **Redact any secrets** — DSS URLs, API keys, and tokens — from logs, commands, and reproductions before posting.
+  - type: input
+    id: version
+    attributes:
+      label: dataiku-sdk version
+      description: Output of `dss version`, or the version from your installed package.
+      placeholder: "0.11.0"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: DSS version, Bun/Node version, and OS.
+      placeholder: |
+        DSS: 14.x
+        Bun: 1.x (or Node: 20.x)
+        OS: macOS 14
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact CLI command(s) or SDK calls. Redact secrets.
+      render: shell
+      placeholder: dss dataset get orders --project-key MYPROJ
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the error envelope and exit code if any. Redact secrets.
+    validations:
+      required: true

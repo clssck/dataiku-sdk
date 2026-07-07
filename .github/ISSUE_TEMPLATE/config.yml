@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Dataiku DSS public API documentation
+    url: https://doc.dataiku.com/dss/latest/publicapi/
+    about: Reference for the underlying DSS public REST API this SDK wraps.
+  - name: Report a security vulnerability
+    url: https://github.com/clssck/dataiku-sdk/security/advisories/new
+    about: Please report security issues privately here, not as public issues.
