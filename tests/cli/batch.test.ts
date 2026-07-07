@@ -27,6 +27,28 @@ describe("CLI batch command", () => {
 		expect(badReport.steps[0]!.runnable,).toBe(false,);
 	});
 
+	it("redacts nested API keys from batch plans", async () => {
+		const secret = "DSS_SUPER_SECRET_12345";
+		const plan = JSON.parse(
+			(await dss([
+				"batch",
+				"run",
+				"--data",
+				JSON.stringify([
+					["auth", "login", "--url", "https://dss.example", "--api-key", secret,],
+					["auth", "login", "--url", "https://dss.example", `--api-key=${secret}`,],
+				],),
+				"--plan",
+			], { env: hermetic, },)).stdout,
+		) as { payload: { steps: string[][]; }; };
+
+		expect(JSON.stringify(plan,),).not.toContain(secret,);
+		expect(plan.payload.steps,).toEqual([
+			["auth", "login", "--url", "https://dss.example", "--api-key", "[REDACTED]",],
+			["auth", "login", "--url", "https://dss.example", "--api-key=[REDACTED]",],
+		],);
+	});
+
 	it("plans cleanup and batch meta commands without reading ledgers or contacting DSS", async () => {
 		const missingLedger = `/tmp/dss-cli-cleanup-plan-${String(Date.now(),)}.jsonl`;
 		const cleanupPlan = JSON.parse(
