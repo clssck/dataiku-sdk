@@ -484,6 +484,27 @@ export class ScenariosResource extends BaseResource {
 		}
 
 		const resolvedRunId = runId || triggerRunId;
+		let steps: Array<{ name?: string; type?: string; outcome: string; }> | undefined;
+		if (!timedOut && runId) {
+			try {
+				const details = await this.client.get<Record<string, unknown>>(
+					`${base}/${encodeURIComponent(runId,)}/`,
+				);
+				const stepRuns = (details.stepRuns as Array<Record<string, unknown>> | undefined) ?? [];
+				const mapped = stepRuns.map((entry,) => {
+					const stepDef = entry.step as Record<string, unknown> | undefined;
+					const stepResult = entry.result as Record<string, unknown> | undefined;
+					return {
+						name: stepDef?.name as string | undefined,
+						type: stepDef?.type as string | undefined,
+						outcome: (stepResult?.outcome as string | undefined) ?? "UNKNOWN",
+					};
+				},);
+				if (mapped.length > 0) steps = mapped;
+			} catch {
+				// Best-effort diagnostics: never fail the wait because the run report is unavailable.
+			}
+		}
 		return {
 			scenarioId,
 			runId: resolvedRunId,
@@ -493,6 +514,7 @@ export class ScenariosResource extends BaseResource {
 			pollCount,
 			...(triggerRunId !== resolvedRunId ? { triggerRunId, } : {}),
 			...(timedOut ? { timedOut: true, } : {}),
+			...(steps ? { steps, } : {}),
 		};
 	}
 

@@ -375,6 +375,13 @@ export const ScenarioStatusSchema = Type.Object({
 }, { additionalProperties: true, },);
 export type ScenarioStatus = Static<typeof ScenarioStatusSchema>;
 
+export const ScenarioStepRunSchema = Type.Object({
+	name: Type.Optional(Type.String(),),
+	type: Type.Optional(Type.String(),),
+	outcome: Type.String(),
+}, { additionalProperties: false, },);
+export type ScenarioStepRun = Static<typeof ScenarioStepRunSchema>;
+
 export const ScenarioWaitResultSchema = Type.Object({
 	scenarioId: Type.String(),
 	runId: Type.String(),
@@ -384,6 +391,7 @@ export const ScenarioWaitResultSchema = Type.Object({
 	pollCount: Type.Number(),
 	timedOut: Type.Optional(Type.Boolean(),),
 	triggerRunId: Type.Optional(Type.String(),),
+	steps: Type.Optional(Type.Array(ScenarioStepRunSchema,),),
 },);
 export type ScenarioWaitResult = Static<typeof ScenarioWaitResultSchema>;
 
