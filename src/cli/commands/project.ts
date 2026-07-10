@@ -31,11 +31,12 @@ export const projectCommands: Record<string, CommandMeta> = {
 	map: {
 		handler: (c, _a, f,) =>
 			c.projects.map({
+				projectKey: f["project-key"] as string | undefined,
 				maxNodes: num(f["max-nodes"],),
 				maxEdges: num(f["max-edges"],),
 				includeRaw: f["include-raw"] === true,
 			},),
-		usage: "dss project map [--max-nodes N] [--max-edges N] [--include-raw]",
+		usage: "dss project map [--max-nodes N] [--max-edges N] [--include-raw] [--project-key KEY]",
 		description: "Get a summarized, truncated flow map.",
 		examples: [
 			"dss project map",

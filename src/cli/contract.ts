@@ -313,6 +313,7 @@ const FIXTURES_EXAMPLES = [
 
 const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
 	// Must mirror every cleanup.argv shape emitted by cleanupLedgerEntry().
+	"project delete",
 	"dataset delete",
 	"recipe delete",
 	"scenario delete",
@@ -750,7 +751,9 @@ function inferExitCodes(asyncKind: CommandAsyncKind,): CommandExitCodes {
 }
 
 function cleanupCommandFromDeleteUsage(resource: string, action: string,): string | undefined {
-	if (!(action.startsWith("create",) || action === "clone")) return undefined;
+	if (!(action.startsWith("create",) || action === "clone" || action === "duplicate")) {
+		return undefined;
+	}
 	const deleteAction = action === "create-rule" ? "delete-rule" : "delete";
 	const deleteUsage = commands[resource]?.[deleteAction]?.usage;
 	if (!deleteUsage) return undefined;

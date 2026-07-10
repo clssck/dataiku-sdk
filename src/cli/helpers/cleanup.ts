@@ -13,7 +13,10 @@ export function cleanupLedgerEntry(
 	result: unknown,
 	projectKey: string | undefined,
 ): CleanupLedgerEntry | undefined {
-	if (!(action.startsWith("create",) || action === "clone" || action === "upload")) return undefined;
+	if (
+		!(action.startsWith("create",) || action === "clone" || action === "duplicate"
+			|| action === "upload")
+	) return undefined;
 	const record = resultRecord(result,);
 	if (record.skipped !== undefined) return undefined;
 	const project = flags["project-key"] as string | undefined ?? projectKey;
@@ -142,6 +145,17 @@ export function cleanupLedgerEntry(
 				id: `${lang}:${name}`,
 				name,
 				cleanup: { argv: ["code-env", "delete", lang, name, "--if-exists",], },
+			};
+		}
+		case "project.duplicate": {
+			const targetKey = args[1];
+			if (!targetKey) return undefined;
+			return {
+				ts,
+				action,
+				resource,
+				name: targetKey,
+				cleanup: { argv: ["project", "delete", targetKey, "--drop-data",], },
 			};
 		}
 		case "folder.upload":

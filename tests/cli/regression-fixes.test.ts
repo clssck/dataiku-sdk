@@ -1,4 +1,6 @@
 import { describe, expect, it, } from "bun:test";
+import { buildCommandRegistry, } from "../../src/cli/contract.js";
+import { cleanupLedgerEntry, } from "../../src/cli/helpers/cleanup.js";
 import {
 	cliEnv,
 	dss,
@@ -23,6 +25,48 @@ function cliEnvWithoutProject(url: string,) {
 }
 
 describe("CLI regression fixes", () => {
+	it("advertises project map as project-scoped with a project-key flag", () => {
+		const registry = buildCommandRegistry();
+		const map = registry.project?.map;
+
+		expect(map?.usage,).toBe(
+			"dss project map [--max-nodes N] [--max-edges N] [--include-raw] [--project-key KEY]",
+		);
+		expect(map?.requiresProject,).toBe(true,);
+		expect(map?.flags,).toContainEqual(
+			expect.objectContaining({ name: "project-key", kind: "value", },),
+		);
+		expect(map?.optionalFlags,).toContain("project-key",);
+	});
+
+	it("advertises and records cleanup for project duplicates", () => {
+		const registry = buildCommandRegistry();
+		const duplicate = registry.project?.duplicate;
+
+		expect(duplicate?.flags,).toContainEqual(
+			expect.objectContaining({ name: "record-cleanup", kind: "value", },),
+		);
+		expect(duplicate?.optionalFlags,).toContain("record-cleanup",);
+		expect(duplicate?.cleanupCommand,).toBe("dss project delete <projectKey>",);
+
+		const entry = cleanupLedgerEntry(
+			"project",
+			"duplicate",
+			["SRC", "DST", "Destination",],
+			{},
+			{ targetProjectKey: "DST", },
+			undefined,
+		);
+
+		expect(entry,).toMatchObject({
+			action: "duplicate",
+			resource: "project",
+			name: "DST",
+			cleanup: { argv: ["project", "delete", "DST", "--drop-data",], },
+		},);
+		expect(entry,).not.toHaveProperty("projectKey",);
+	});
+
 	it("honors dry-run for project library, statistics, and meaning creates without mutating DSS", async () => {
 		const mutatingRequests: string[] = [];
 		await withCliServer((req, res,) => {
