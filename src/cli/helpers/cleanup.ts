@@ -125,6 +125,36 @@ export function cleanupLedgerEntry(
 				cleanup: { argv: ["insight", "delete", id, "--if-exists", ...withProject,], },
 			};
 		}
+		case "analysis.create": {
+			const id = stringField(record, ["created", "id",],);
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				cleanup: { argv: ["analysis", "delete", id, "--if-exists", ...withProject,], },
+			};
+		}
+		case "model-evaluation-store.create": {
+			const id = stringField(record, ["created", "id",],);
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				cleanup: {
+					argv: ["model-evaluation-store", "delete", id, "--if-exists", ...withProject,],
+				},
+			};
+		}
+		case "ml-task.create": {
+			const analysisId = args[0] || stringField(record, ["analysisId",],);
+			const taskId = stringField(record, ["created", "mlTaskId", "id",],);
+			if (!analysisId || !taskId) return undefined;
+			return {
+				...base,
+				id: taskId,
+				cleanup: { argv: ["ml-task", "delete", analysisId, taskId, ...withProject,], },
+			};
+		}
 		case "data-quality.create-rule": {
 			const ruleId = stringField(record, ["id", "created",],);
 			if (!ruleId) return undefined;

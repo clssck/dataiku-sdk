@@ -1,4 +1,5 @@
 import type { CommandMeta, } from "../types.js";
+import { analysisCommands, } from "./analysis.js";
 import { apiDeployerCommands, } from "./api-deployer.js";
 import { apiServiceCommands, } from "./api-service.js";
 import { appCommands, } from "./app.js";
@@ -20,11 +21,14 @@ import { insightCommands, } from "./insight.js";
 import { jobCommands, } from "./job.js";
 import { meaningCommands, } from "./meaning.js";
 import { metricsCommands, } from "./metrics.js";
+import { mlTaskCommands, } from "./ml-task.js";
+import { modelEvaluationStoreCommands, } from "./model-evaluation-store.js";
 import { notebookCommands, } from "./notebook.js";
 import { projectDeployerCommands, } from "./project-deployer.js";
 import { projectLibraryCommands, } from "./project-library.js";
 import { projectCommands, } from "./project.js";
 import { recipeCommands, } from "./recipe.js";
+import { savedModelCommands, } from "./saved-model.js";
 import { scenarioCommands, } from "./scenario.js";
 import { sqlCommands, } from "./sql.js";
 import { statisticsCommands, } from "./statistics.js";
@@ -36,6 +40,10 @@ import { workspaceCommands, } from "./workspace.js";
 
 export const commands: Record<string, Record<string, CommandMeta>> = {
 	project: projectCommands,
+	analysis: analysisCommands,
+	"ml-task": mlTaskCommands,
+	"saved-model": savedModelCommands,
+	"model-evaluation-store": modelEvaluationStoreCommands,
 	app: appCommands,
 	"business-app": businessAppCommands,
 	webapp: webappCommands,

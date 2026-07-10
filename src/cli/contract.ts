@@ -84,18 +84,18 @@ export const AUTH_ACTIONS: Record<string, {
 			const url = typeof flags["url"] === "string"
 				? flags["url"]
 				: useEnv
-				? process.env.DATAIKU_URL ?? ""
-				: "";
+					? process.env.DATAIKU_URL ?? ""
+					: "";
 			const apiKey = typeof flags["api-key"] === "string"
 				? flags["api-key"]
 				: useEnv
-				? process.env.DATAIKU_API_KEY ?? ""
-				: "";
+					? process.env.DATAIKU_API_KEY ?? ""
+					: "";
 			const projectKey = typeof flags["project-key"] === "string"
 				? flags["project-key"]
 				: useEnv
-				? process.env.DATAIKU_PROJECT_KEY
-				: undefined;
+					? process.env.DATAIKU_PROJECT_KEY
+					: undefined;
 
 			if (!url || !apiKey) {
 				throw new UsageError(
@@ -256,6 +256,7 @@ const READ_ACTIONS = new Set([
 ],);
 
 const PROJECT_SCOPED_RESOURCES = new Set([
+	"analysis",
 	"data-quality",
 	"dashboard",
 	"dataset",
@@ -265,10 +266,13 @@ const PROJECT_SCOPED_RESOURCES = new Set([
 	"fixtures",
 	"job",
 	"notebook",
+	"ml-task",
+	"model-evaluation-store",
 	"recipe",
 	"scenario",
 	"sql",
 	"variable",
+	"saved-model",
 	"wiki",
 ],);
 
@@ -314,6 +318,9 @@ const FIXTURES_EXAMPLES = [
 const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
 	// Must mirror every cleanup.argv shape emitted by cleanupLedgerEntry().
 	"project delete",
+	"analysis delete",
+	"model-evaluation-store delete",
+	"ml-task delete",
 	"dataset delete",
 	"recipe delete",
 	"scenario delete",
@@ -323,6 +330,7 @@ const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
 	"insight delete",
 	"data-quality delete-rule",
 	"code-env delete",
+	"folder delete",
 	"folder delete-file",
 ],);
 
@@ -1330,8 +1338,7 @@ export function commandPlanShape(
 	};
 	const id = args[0];
 	const codeEnvEndpoint = (suffix = "",) =>
-		`/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
-			encodeURIComponent(args[1],)
+		`/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${encodeURIComponent(args[1],)
 		}${suffix}`;
 	const statisticsWorksheetsEndpoint = (datasetName: string,) =>
 		projectEndpoint(`/datasets/${encodeURIComponent(datasetName,)}/statistics/worksheets/`,);
@@ -1473,11 +1480,10 @@ export function commandPlanShape(
 				endpoint: dataQualityEndpoint(
 					projectKey!,
 					args[0],
-					`/actions/compute-rules${
-						querySuffix({
-							partition: (flags["partition"] as string | undefined) ?? "NP",
-							ruleId: flags["rule-id"] as string | undefined,
-						},)
+					`/actions/compute-rules${querySuffix({
+						partition: (flags["partition"] as string | undefined) ?? "NP",
+						ruleId: flags["rule-id"] as string | undefined,
+					},)
 					}`,
 				),
 				identifiers: { dataset: args[0], ruleId: flags["rule-id"] as string | undefined, },
@@ -1615,7 +1621,7 @@ export function commandPlanShape(
 			const backupDir = flags["no-backup"] === true
 				? undefined
 				: (flags["backup-dir"] as string | undefined)
-					?? path.join(process.cwd(), ".dss-backups", "recipes",);
+				?? path.join(process.cwd(), ".dss-backups", "recipes",);
 			const backupPath = backupDir ? recipeBackupPath(id, backupDir,) : undefined;
 			return {
 				method: "PUT",
@@ -1824,9 +1830,8 @@ export function commandPlanShape(
 		case "api-deployer.delete-version":
 			return {
 				method: "DELETE",
-				endpoint: `/public/api/api-deployer/services/${encodeURIComponent(args[0],)}/versions/${
-					encodeURIComponent(args[1],)
-				}`,
+				endpoint: `/public/api/api-deployer/services/${encodeURIComponent(args[0],)}/versions/${encodeURIComponent(args[1],)
+					}`,
 				identifiers: { serviceId: args[0], version: args[1], },
 			};
 		case "api-deployer.create-deployment": {
@@ -1938,9 +1943,8 @@ export function commandPlanShape(
 		case "business-app.upgrade-instance":
 			return {
 				method: "POST",
-				endpoint: `/public/api/business-apps/${encodeURIComponent(args[0],)}/instances/${
-					encodeURIComponent(args[1],)
-				}/upgrade`,
+				endpoint: `/public/api/business-apps/${encodeURIComponent(args[0],)}/instances/${encodeURIComponent(args[1],)
+					}/upgrade`,
 				identifiers: { id: args[0], projectKey: args[1], },
 				payload: {},
 			};
@@ -2043,9 +2047,8 @@ export function commandPlanShape(
 		case "code-env.set-definition":
 			return {
 				method: "PUT",
-				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
-					encodeURIComponent(args[1],)
-				}`,
+				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${encodeURIComponent(args[1],)
+					}`,
 				identifiers: { lang: args[0], name: args[1], },
 				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
@@ -2071,17 +2074,16 @@ export function commandPlanShape(
 			const versionToUpdate = typeof flags["env-version"] === "string"
 				? flags["env-version"]
 				: typeof flags["version"] === "string"
-				? flags["version"]
-				: undefined;
+					? flags["version"]
+					: undefined;
 			return {
 				method: "POST",
-				endpoint: `${codeEnvEndpoint("/packages",)}${
-					querySuffix({
-						forceRebuildEnv: flags["force-rebuild"] === true,
-						versionToUpdate,
-						wait: codeEnvWait(flags,),
-					},)
-				}`,
+				endpoint: `${codeEnvEndpoint("/packages",)}${querySuffix({
+					forceRebuildEnv: flags["force-rebuild"] === true,
+					versionToUpdate,
+					wait: codeEnvWait(flags,),
+				},)
+					}`,
 				identifiers: { lang: args[0], name: args[1], },
 				wait: codeEnvWait(flags,),
 			};
@@ -2095,9 +2097,8 @@ export function commandPlanShape(
 			}
 			return {
 				method: "POST",
-				endpoint: `${codeEnvEndpoint("/jupyter",)}${
-					querySuffix({ active, wait: codeEnvWait(flags,), },)
-				}`,
+				endpoint: `${codeEnvEndpoint("/jupyter",)}${querySuffix({ active, wait: codeEnvWait(flags,), },)
+					}`,
 				identifiers: { lang: args[0], name: args[1], },
 				wait: codeEnvWait(flags,),
 			};
@@ -2105,9 +2106,8 @@ export function commandPlanShape(
 		case "code-env.delete":
 			return {
 				method: "DELETE",
-				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
-					encodeURIComponent(args[1],)
-				}`,
+				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${encodeURIComponent(args[1],)
+					}`,
 				identifiers: { lang: args[0], name: args[1], },
 				wait: codeEnvWait(flags,),
 			};
@@ -2135,8 +2135,7 @@ export function commandPlanShape(
 			return {
 				method: "POST",
 				endpoint: projectEndpoint(
-					`/jupyter-notebooks/${encodeURIComponent(args[0],)}/sessions/${
-						encodeURIComponent(args[1],)
+					`/jupyter-notebooks/${encodeURIComponent(args[0],)}/sessions/${encodeURIComponent(args[1],)
 					}/unload`,
 				),
 				identifiers: { name: args[0], sessionId: args[1], },
@@ -2181,14 +2180,13 @@ export function commandPlanShape(
 		case "project.delete":
 			return {
 				method: "DELETE",
-				endpoint: `/public/api/projects/${encodeURIComponent(id,)}${
-					querySuffix({
-						clearManagedDatasets: flags["drop-data"] === true,
-						clearOutputManagedFolders: false,
-						clearJobAndScenarioLogs: true,
-						wait: true,
-					},)
-				}`,
+				endpoint: `/public/api/projects/${encodeURIComponent(id,)}${querySuffix({
+					clearManagedDatasets: flags["drop-data"] === true,
+					clearOutputManagedFolders: false,
+					clearJobAndScenarioLogs: true,
+					wait: true,
+				},)
+					}`,
 				identifiers: { projectKey: id, },
 			};
 		case "project.duplicate": {
