@@ -7,6 +7,7 @@ import { type SafeParseResult, safeParseSchema, } from "./schemas.js";
 
 import { classifyDataikuError, DataikuError, type DataikuRetryMetadata, } from "./errors.js";
 
+import { AnalysesResource, } from "./resources/analyses.js";
 import { ApiDeployerResource, } from "./resources/api-deployer.js";
 import { ApiServicesResource, } from "./resources/api-services.js";
 import { ApplicationsResource, } from "./resources/applications.js";
@@ -25,10 +26,13 @@ import { InsightsResource, } from "./resources/insights.js";
 import { JobsResource, } from "./resources/jobs.js";
 import { MeaningsResource, } from "./resources/meanings.js";
 import { MetricsResource, } from "./resources/metrics.js";
+import { MlTasksResource, } from "./resources/ml-tasks.js";
+import { ModelEvaluationStoresResource, } from "./resources/model-evaluation-stores.js";
 import { NotebooksResource, } from "./resources/notebooks.js";
 import { ProjectLibraryResource, } from "./resources/project-library.js";
 import { ProjectsResource, } from "./resources/projects.js";
 import { RecipesResource, } from "./resources/recipes.js";
+import { SavedModelsResource, } from "./resources/saved-models.js";
 import { ScenariosResource, } from "./resources/scenarios.js";
 import { SqlResource, } from "./resources/sql.js";
 import { StatisticsResource, } from "./resources/statistics.js";
@@ -245,6 +249,10 @@ export class DataikuClient {
 	private workspacesResource?: WorkspacesResource;
 	private metricsResource?: MetricsResource;
 	private meaningsResource?: MeaningsResource;
+	private analysesResource?: AnalysesResource;
+	private mlTasksResource?: MlTasksResource;
+	private savedModelsResource?: SavedModelsResource;
+	private modelEvaluationStoresResource?: ModelEvaluationStoresResource;
 
 	get projects(): ProjectsResource {
 		return (this.projectsResource ??= new ProjectsResource(this,));
@@ -338,6 +346,18 @@ export class DataikuClient {
 	}
 	get meanings(): MeaningsResource {
 		return (this.meaningsResource ??= new MeaningsResource(this,));
+	}
+	get analyses(): AnalysesResource {
+		return (this.analysesResource ??= new AnalysesResource(this,));
+	}
+	get mlTasks(): MlTasksResource {
+		return (this.mlTasksResource ??= new MlTasksResource(this,));
+	}
+	get savedModels(): SavedModelsResource {
+		return (this.savedModelsResource ??= new SavedModelsResource(this,));
+	}
+	get modelEvaluationStores(): ModelEvaluationStoresResource {
+		return (this.modelEvaluationStoresResource ??= new ModelEvaluationStoresResource(this,));
 	}
 
 	constructor(config?: DataikuClientConfig,) {

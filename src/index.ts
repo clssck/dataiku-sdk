@@ -29,6 +29,7 @@ export {
 } from "./errors.js";
 
 // Resources (for advanced use / extension)
+export * from "./resources/analyses.js";
 export { ApiDeployerResource, } from "./resources/api-deployer.js";
 export { ApiServicesResource, } from "./resources/api-services.js";
 export { ApplicationsResource, } from "./resources/applications.js";
@@ -68,6 +69,8 @@ export {
 } from "./resources/jobs.js";
 export { MeaningsResource, } from "./resources/meanings.js";
 export { MetricsResource, } from "./resources/metrics.js";
+export * from "./resources/ml-tasks.js";
+export * from "./resources/model-evaluation-stores.js";
 export { NotebooksResource, } from "./resources/notebooks.js";
 export { ProjectLibraryResource, } from "./resources/project-library.js";
 export { type FlowMapResult, ProjectsResource, } from "./resources/projects.js";
@@ -81,6 +84,7 @@ export {
 	type RecipeRunResult,
 	RecipesResource,
 } from "./resources/recipes.js";
+export * from "./resources/saved-models.js";
 export {
 	normalizeScenarioUpdateData,
 	SCENARIO_CANONICAL_EDITABLE_FIELDS,
