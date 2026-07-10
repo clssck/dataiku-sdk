@@ -25,7 +25,10 @@ export type SdkParityKind =
 	| "notebook-list-jupyter"
 	| "notebook-list-sql"
 	| "wiki-settings"
-	| "wiki-list";
+	| "wiki-list"
+	| "analysis-list"
+	| "saved-model-list"
+	| "model-evaluation-store-list";
 
 export type ReadOnlyCommandCase = {
 	id: string;
@@ -322,6 +325,42 @@ export const readOnlyCommandCases: ReadOnlyCommandCase[] = [
 		resultShape: "array",
 		sdkParity: "wiki-list",
 		stableFields: ["article",],
+	},
+	{
+		id: "analysis-list",
+		persona: "expert",
+		resource: "analysis",
+		action: "list",
+		args: ["analysis", "list",],
+		risk: "read-only",
+		requiresProject: true,
+		resultShape: "array",
+		sdkParity: "analysis-list",
+		stableFields: ["id", "name",],
+	},
+	{
+		id: "saved-model-list",
+		persona: "expert",
+		resource: "saved-model",
+		action: "list",
+		args: ["saved-model", "list",],
+		risk: "read-only",
+		requiresProject: true,
+		resultShape: "array",
+		sdkParity: "saved-model-list",
+		stableFields: ["id", "name",],
+	},
+	{
+		id: "model-evaluation-store-list",
+		persona: "expert",
+		resource: "model-evaluation-store",
+		action: "list",
+		args: ["model-evaluation-store", "list",],
+		risk: "read-only",
+		requiresProject: true,
+		resultShape: "array",
+		sdkParity: "model-evaluation-store-list",
+		stableFields: ["id", "name",],
 	},
 ];
 

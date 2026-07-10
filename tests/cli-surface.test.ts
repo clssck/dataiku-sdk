@@ -225,11 +225,26 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"restart-backend",
 		"backend-state",
 	],
+	analysis: ["list", "get", "create", "delete",],
+	"ml-task": [
+		"create",
+		"status",
+		"get-settings",
+		"set-settings",
+		"train",
+		"list-models",
+		"model-details",
+		"deploy",
+		"delete",
+	],
+	"saved-model": ["list", "get", "list-versions", "version-details", "set-active", "delete",],
+	"model-evaluation-store": ["list", "get", "create", "list-evaluations", "delete",],
 	"api-service": [
 		"list",
 		"create",
 		"get-settings",
 		"save-settings",
+		"add-prediction-endpoint",
 		"list-packages",
 		"package-summary",
 		"create-package",
@@ -618,6 +633,22 @@ describe("CLI command surface", () => {
 		).toEqual({ name: "active", kind: "value", valueType: "enum", enumValues: ["true", "false",], },);
 		expect(registry.dataset["refresh-schema"].idempotency,).toBe("convergent",);
 		expect(registry.notebook["clear-jupyter-outputs"].idempotency,).toBe("convergent",);
+		for (const action of ["create", "set-settings", "train",]) {
+			expect(registry["ml-task"][action].optionalFlags, `ml-task ${action} dry-run`,).not.toContain(
+				"dry-run",
+			);
+		}
+		for (const action of ["deploy", "delete",]) {
+			expect(registry["ml-task"][action].optionalFlags, `ml-task ${action} dry-run`,).toContain(
+				"dry-run",
+			);
+		}
+		for (const flagName of ["prediction-type", "backend-type", "guess-policy",]) {
+			expect(
+				registry["ml-task"].create.flags.find((flag,) => flag.name === flagName)?.enumValues,
+				`ml-task create --${flagName} enum lock`,
+			).toBeUndefined();
+		}
 	});
 
 	it("does not advertise removed help or report-json flags", async () => {

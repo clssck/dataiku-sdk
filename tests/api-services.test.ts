@@ -140,6 +140,46 @@ describe("ApiServicesResource", () => {
 		expect(requestBody,).toEqual(settings,);
 	});
 
+	it("adds a prediction endpoint without dropping existing service settings", async () => {
+		const requests: string[] = [];
+		let savedBody: unknown;
+		const existingSettings = {
+			authRealm: "project-default",
+			endpoints: [{ id: "existing", type: "PY_FUNCTION", config: { enabled: true, }, },],
+			versionTag: { versionNumber: 17, },
+		};
+		const response = { saved: true, };
+
+		await withServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method ?? "GET"} ${url.pathname}`,);
+			if (req.method === "GET") {
+				sendJson(res, existingSettings,);
+				return;
+			}
+			savedBody = JSON.parse(await readBody(req,),);
+			sendJson(res, response,);
+		}, async (url,) => {
+			const resource = new ApiServicesResource(createClient(url,),);
+			await expect(
+				resource.addPredictionEndpoint("svc 1", "predict churn", "model/1", "OTHER PROJECT",),
+			).resolves.toEqual(response,);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/OTHER%20PROJECT/apiservices/svc%201/settings",
+			"PUT /public/api/projects/OTHER%20PROJECT/apiservices/svc%201/settings",
+		],);
+		expect(savedBody,).toEqual({
+			authRealm: "project-default",
+			endpoints: [
+				{ id: "existing", type: "PY_FUNCTION", config: { enabled: true, }, },
+				{ id: "predict churn", type: "STD_PREDICTION", modelRef: "model/1", },
+			],
+			versionTag: { versionNumber: 17, },
+		},);
+	});
+
 	it("manages API service packages", async () => {
 		const requests: string[] = [];
 		const requestBodies: unknown[] = [];

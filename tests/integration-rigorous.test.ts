@@ -279,6 +279,12 @@ async function sdkValue(kind: SdkParityKind, client: DataikuClient,): Promise<un
 			return client.wiki.settings();
 		case "wiki-list":
 			return client.wiki.list();
+		case "analysis-list":
+			return client.analyses.list();
+		case "saved-model-list":
+			return client.savedModels.list();
+		case "model-evaluation-store-list":
+			return client.modelEvaluationStores.list();
 	}
 }
 
