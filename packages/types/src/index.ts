@@ -234,6 +234,10 @@ export const RecipeCreateOptionsSchema = Type.Object({
 	outputConnection: Type.Optional(Type.String(),),
 	joinOn: Type.Optional(Type.Union([Type.String(), Type.Array(Type.String(),),],),),
 	joinType: Type.Optional(Type.String(),),
+	fuzzyOn: Type.Optional(Type.Union([Type.String(), Type.Array(Type.String(),),],),),
+	fuzzyDistance: Type.Optional(Type.String(),),
+	fuzzyThreshold: Type.Optional(Type.Number(),),
+	fuzzyNormalize: Type.Optional(Type.Boolean(),),
 	projectKey: Type.Optional(Type.String(),),
 	outputFolder: Type.Optional(Type.String(),),
 },);

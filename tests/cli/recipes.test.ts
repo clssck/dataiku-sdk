@@ -17,6 +17,116 @@ import {
 	writeFileSync,
 } from "./_harness.js";
 
+describe("recipe create join flags", () => {
+	it("forwards repeatable exact join flags in a dry run", async () => {
+		const { stdout, stderr, } = await dss([
+			"recipe",
+			"create",
+			"--type",
+			"join",
+			"--input",
+			"left_ds",
+			"--input",
+			"right_ds",
+			"--output",
+			"joined_ds",
+			"--join-on",
+			"left_id=right_id",
+			"--join-on",
+			"shared_id",
+			"--join-type",
+			"INNER",
+			"--dry-run",
+		], {
+			env: cliEnv("http://127.0.0.1:1",),
+		},);
+
+		expect(stderr,).toBe("",);
+		expect(JSON.parse(stdout,),).toMatchObject({
+			dryRun: true,
+			action: "create",
+			resource: "recipe",
+			payload: {
+				type: "join",
+				inputDatasets: ["left_ds", "right_ds",],
+				outputDataset: "joined_ds",
+				joinOn: ["left_id=right_id", "shared_id",],
+				joinType: "INNER",
+			},
+		},);
+	});
+
+	it("forwards fuzzy matching flags in a dry run", async () => {
+		const { stdout, stderr, } = await dss([
+			"recipe",
+			"create",
+			"--type",
+			"fuzzyjoin",
+			"--input",
+			"left_ds,right_ds",
+			"--output",
+			"joined_ds",
+			"--fuzzy-on",
+			"left_name=right_name",
+			"--fuzzy-on",
+			"email",
+			"--fuzzy-distance",
+			"damerau_levenshtein",
+			"--fuzzy-threshold",
+			"0.72",
+			"--normalize",
+			"--dry-run",
+		], {
+			env: cliEnv("http://127.0.0.1:1",),
+		},);
+
+		expect(stderr,).toBe("",);
+		expect(JSON.parse(stdout,),).toMatchObject({
+			dryRun: true,
+			action: "create",
+			resource: "recipe",
+			payload: {
+				type: "fuzzyjoin",
+				inputDatasets: ["left_ds", "right_ds",],
+				outputDataset: "joined_ds",
+				fuzzyOn: ["left_name=right_name", "email",],
+				fuzzyDistance: "DAMERAU_LEVENSHTEIN",
+				fuzzyThreshold: 0.72,
+				fuzzyNormalize: true,
+			},
+		},);
+	});
+
+	it("rejects an invalid fuzzy distance before making a request", async () => {
+		const failure = await dssFailure([
+			"recipe",
+			"create",
+			"--type",
+			"fuzzyjoin",
+			"--input",
+			"left_ds,right_ds",
+			"--output",
+			"joined_ds",
+			"--fuzzy-on",
+			"name",
+			"--fuzzy-distance",
+			"edit-distance",
+			"--dry-run",
+		], {
+			env: cliEnv("http://127.0.0.1:1",),
+		},);
+
+		expect(failure.code,).toBe(1,);
+		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			code: "invalid_enum",
+			resource: "recipe",
+			action: "create",
+		},);
+		expect(report.error,).toContain("DAMERAU_LEVENSHTEIN",);
+	});
+});
+
 describe("recipe input commands", () => {
 	const baseRecipe = {
 		name: "r1",

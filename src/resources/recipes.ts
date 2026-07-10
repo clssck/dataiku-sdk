@@ -33,6 +33,83 @@ function asRecord(value: unknown,): Record<string, unknown> | undefined {
 	return value as Record<string, unknown>;
 }
 
+type JoinType = "LEFT" | "INNER" | "RIGHT" | "FULL";
+
+type JoinKeyPair = {
+	left: string;
+	right: string;
+};
+
+function parseRecipePayload(payload: string | undefined,): Record<string, unknown> {
+	if (!payload) return {};
+	const parsed = JSON.parse(payload,) as unknown;
+	return asRecord(parsed,) ?? {};
+}
+
+function parseJoinKeyPairs(values: string[], optionName = "joinOn",): JoinKeyPair[] {
+	const pairs: JoinKeyPair[] = [];
+	for (const raw of values) {
+		const token = raw.trim();
+		if (!token) continue;
+		const eq = token.indexOf("=",);
+		if (eq === -1) {
+			pairs.push({ left: token, right: token, },);
+			continue;
+		}
+		const left = token.slice(0, eq,).trim();
+		const right = token.slice(eq + 1,).trim();
+		if (!left || !right) throw new Error(`${optionName} values must use COL or LEFT=RIGHT.`,);
+		pairs.push({ left, right, },);
+	}
+	return pairs;
+}
+
+function normalizeFuzzyDistance(value: unknown,): string {
+	const normalized = typeof value === "string" && value.trim().length > 0
+		? value.trim().toUpperCase()
+		: "DAMERAU_LEVENSHTEIN";
+	if (normalized === "DAMERAU_LEVENSHTEIN") return "LEVENSHTEIN";
+	if (
+		normalized === "HAMMING" || normalized === "JACCARD" || normalized === "COSINE"
+		|| normalized === "EUCLIDEAN"
+	) {
+		return normalized;
+	}
+	throw new Error(
+		"fuzzyDistance must be one of DAMERAU_LEVENSHTEIN, HAMMING, JACCARD, COSINE, or EUCLIDEAN.",
+	);
+}
+
+function normalizeJoinType(value: unknown,): JoinType {
+	const normalized = typeof value === "string" && value.trim().length > 0
+		? value.trim().toUpperCase()
+		: "LEFT";
+	if (
+		normalized === "LEFT" || normalized === "INNER" || normalized === "RIGHT"
+		|| normalized === "FULL"
+	) {
+		return normalized;
+	}
+	throw new Error("joinType must be one of LEFT, INNER, RIGHT, or FULL.",);
+}
+
+function recipeVirtualInputs(
+	payload: Record<string, unknown>,
+	inputCount: number,
+): Record<string, unknown>[] {
+	const current = Array.isArray(payload.virtualInputs,) ? payload.virtualInputs : [];
+	const virtualInputs: Record<string, unknown>[] = [];
+	for (let i = 0; i < inputCount; i++) {
+		virtualInputs.push({
+			preFilter: {},
+			outputColumnsSelectionMode: "AUTO_NON_CONFLICTING",
+			computedColumns: [],
+			...asRecord(current[i],),
+			index: i,
+		},);
+	}
+	return virtualInputs;
+}
 const RECIPE_DEFINITION_FIELDS = new Set(["params", "inputs", "outputs", "scriptSettings",],);
 
 export interface RecipeRunOutput extends JobBuildTarget {
@@ -626,16 +703,37 @@ export class RecipesResource extends BaseResource {
 			);
 		}
 
+		const joinCols = typeof opts.joinOn === "string" ? [opts.joinOn,] : asStringArray(opts.joinOn,);
+		const joinKeys = type === "join" && joinCols?.length
+			? parseJoinKeyPairs(joinCols,)
+			: undefined;
+		const fuzzyOn = opts.fuzzyOn ?? (type === "fuzzyjoin" ? opts.joinOn : undefined);
+		const fuzzyCols = typeof fuzzyOn === "string" ? [fuzzyOn,] : asStringArray(fuzzyOn,);
+		const fuzzyKeys = type === "fuzzyjoin" && fuzzyCols?.length
+			? parseJoinKeyPairs(fuzzyCols, "fuzzyOn",)
+			: undefined;
+		const normalizedJoinType = joinKeys?.length || fuzzyKeys?.length
+			? normalizeJoinType(rawJoinType,)
+			: undefined;
+		const fuzzyDistance = fuzzyKeys?.length ? normalizeFuzzyDistance(opts.fuzzyDistance,) : undefined;
+		const fuzzyThreshold = opts.fuzzyThreshold ?? 1;
+		if (!Number.isFinite(fuzzyThreshold,)) {
+			throw new Error("fuzzyThreshold must be a finite number.",);
+		}
+
 		const recipePrototype: Record<string, unknown> = {
 			type,
 			name,
 			projectKey: pk,
-			inputs,
+			...(type === "fuzzyjoin" ? {} : { inputs, }),
 			outputs,
 		};
 		const creationSettings: Record<string, unknown> = {};
 		if (payload !== undefined) {
 			creationSettings.script = payload;
+		}
+		if (type === "fuzzyjoin") {
+			creationSettings.virtualInputs = recipeInputItems({ inputs, },).map((item,) => item.ref);
 		}
 
 		const createRecipe = () =>
@@ -776,55 +874,93 @@ export class RecipesResource extends BaseResource {
 
 		// For join recipes: configure join conditions after creation
 		let joinConfigured = false;
-		const joinCols = typeof opts.joinOn === "string" ? [opts.joinOn,] : asStringArray(opts.joinOn,);
-		const joinType = asString(rawJoinType,) ?? "LEFT";
-
-		if (type === "join" && joinCols?.length) {
+		if (type === "join" && joinKeys?.length) {
 			const rnEnc = encodeURIComponent(name,);
 			const full = await this.client.get<{
 				recipe: Record<string, unknown>;
-				payload: string;
+				payload?: string;
 			}>(`/public/api/projects/${enc}/recipes/${rnEnc}`,);
+			const joinPayload = parseRecipePayload(full.payload,);
+			const inputCount = recipeInputItems({ inputs, },).length || inputDatasets?.length || 2;
+			const joinType = normalizedJoinType ?? "LEFT";
 
-			// DSS returns empty payload for fresh join recipes — construct from scratch
-			const inputCount = inputDatasets?.length
-				?? (inputs as Record<string, { items?: unknown[]; }>)?.main?.items?.length
-				?? 2;
-
-			const virtualInputs: Record<string, unknown>[] = [{ index: 0, preFilter: {}, },];
-			for (let i = 1; i < inputCount; i++) {
-				virtualInputs.push({
-					index: i,
-					on: joinCols.map((col,) => ({
-						column: col,
-						type: "string",
-						related: col,
-						relatedType: "string",
-						maxMatches: 1,
+			joinPayload.virtualInputs = recipeVirtualInputs(joinPayload, inputCount,);
+			joinPayload.joins = Array.from({ length: Math.max(0, inputCount - 1,), }, (_, index,) => {
+				const table2 = index + 1;
+				return {
+					table1: 0,
+					table2,
+					conditionsMode: "AND",
+					type: joinType,
+					outerJoinOnTheLeft: joinType === "LEFT",
+					on: joinKeys.map((key,) => ({
+						column1: { name: key.left, table: 0, },
+						column2: { name: key.right, table: table2, },
+						type: "EQ",
 					})),
-					joinType,
-					preFilter: {},
-				},);
-			}
+				};
+			},);
 
-			const joinPayload = {
-				virtualInputs,
-				computedColumns: [],
-				postFilter: {},
-			};
-
-			// Ensure inputs/outputs are set — DSS may not persist them from the POST for join recipes
-			const updatedFull = {
+			await this.client.put(`/public/api/projects/${enc}/recipes/${rnEnc}`, {
 				...full,
 				recipe: {
-					...(full.recipe as Record<string, unknown>),
+					...full.recipe,
 					inputs,
 					outputs,
 				},
 				payload: JSON.stringify(joinPayload,),
-			};
+			},);
+			joinConfigured = true;
+		}
 
-			await this.client.put(`/public/api/projects/${enc}/recipes/${rnEnc}`, updatedFull,);
+		if (type === "fuzzyjoin" && fuzzyKeys?.length) {
+			const rnEnc = encodeURIComponent(name,);
+			const full = await this.client.get<{
+				recipe: Record<string, unknown>;
+				payload?: string;
+			}>(`/public/api/projects/${enc}/recipes/${rnEnc}`,);
+			const fuzzyPayload = parseRecipePayload(full.payload,);
+			const inputCount = recipeInputItems({ inputs, },).length || inputDatasets?.length || 2;
+			const joinType = normalizedJoinType ?? "LEFT";
+
+			fuzzyPayload.virtualInputs = recipeVirtualInputs(fuzzyPayload, inputCount,);
+			fuzzyPayload.joins = Array.from({ length: Math.max(0, inputCount - 1,), }, (_, index,) => {
+				const table2 = index + 1;
+				return {
+					table1: 0,
+					table2,
+					conditionsMode: "AND",
+					type: joinType,
+					on: fuzzyKeys.map((key,) => ({
+						column1: { name: key.left, table: 0, },
+						column2: { name: key.right, table: table2, },
+						type: "EQ",
+						fuzzyMatchDesc: {
+							distanceType: fuzzyDistance ?? "LEVENSHTEIN",
+							threshold: fuzzyThreshold,
+						},
+						...(opts.fuzzyNormalize === true
+							? {
+								normaliseDesc: {
+									caseInsensitive: true,
+									normaliseText: true,
+									unicodeCasting: true,
+								},
+							}
+							: {}),
+					})),
+				};
+			},);
+
+			await this.client.put(`/public/api/projects/${enc}/recipes/${rnEnc}`, {
+				...full,
+				recipe: {
+					...full.recipe,
+					inputs,
+					outputs,
+				},
+				payload: JSON.stringify(fuzzyPayload,),
+			},);
 			joinConfigured = true;
 		}
 

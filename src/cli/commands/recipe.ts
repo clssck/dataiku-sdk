@@ -13,6 +13,7 @@ import {
 	requiredStringFlag,
 	rewritePairsFromFlags,
 	sha256Hex,
+	splitCsvFlag,
 	stableHash,
 } from "../coerce.js";
 import { moveCreatedItemsToZone, resolveFlowZoneIdFromFlags, } from "../helpers/flow-zone.js";
@@ -221,6 +222,32 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			const name = f["name"] as string | undefined;
 			const pk = f["project-key"] as string | undefined;
 			const inputDatasets = recipeInputDatasetsFromFlags(f,);
+			const joinColumns = splitCsvFlag(f["join-on"],);
+			const fuzzyColumns = splitCsvFlag(f["fuzzy-on"],);
+			const rawFuzzyDistance = f["fuzzy-distance"];
+			let fuzzyDistance: string | undefined;
+			if (typeof rawFuzzyDistance === "string") {
+				const normalized = rawFuzzyDistance.trim().toUpperCase();
+				if (
+					![
+						"DAMERAU_LEVENSHTEIN",
+						"HAMMING",
+						"JACCARD",
+						"COSINE",
+						"EUCLIDEAN",
+					].includes(normalized,)
+				) {
+					throw new UsageError(
+						"--fuzzy-distance must be one of DAMERAU_LEVENSHTEIN, HAMMING, JACCARD, COSINE, or EUCLIDEAN.",
+						"invalid_enum",
+					);
+				}
+				fuzzyDistance = normalized;
+			}
+			const fuzzyThreshold = num(f["fuzzy-threshold"],);
+			if (typeof f["fuzzy-threshold"] === "string" && fuzzyThreshold === undefined) {
+				throw new UsageError("--fuzzy-threshold must be a finite number.", "validation_failed",);
+			}
 			const payload = {
 				type,
 				name,
@@ -228,6 +255,12 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				outputDataset,
 				outputFolder,
 				outputConnection: f["output-connection"] as string | undefined,
+				...(joinColumns.length > 0 ? { joinOn: joinColumns, } : {}),
+				...(typeof f["join-type"] === "string" ? { joinType: f["join-type"], } : {}),
+				...(fuzzyColumns.length > 0 ? { fuzzyOn: fuzzyColumns, } : {}),
+				...(fuzzyDistance ? { fuzzyDistance, } : {}),
+				...(fuzzyThreshold !== undefined ? { fuzzyThreshold, } : {}),
+				fuzzyNormalize: f["normalize"] === true,
 				projectKey: pk,
 			};
 			const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
@@ -270,7 +303,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			return { created: createdName, resource: "recipe", ...created, ...moved, };
 		},
 		usage:
-			"dss recipe create --type TYPE --input DS[,DS2] (--output DS | --output-folder FOLDER_ID) [--name NAME] [--output-connection CONN] [--zone ZONE|--zone-id ID] [--if-not-exists] [--dry-run] [--project-key KEY]",
+			"dss recipe create --type TYPE --input DS[,DS2] (--output DS | --output-folder FOLDER_ID) [--name NAME] [--output-connection CONN] [--zone ZONE|--zone-id ID] [--if-not-exists] [--dry-run] [--join-on COL|LEFT=RIGHT[,...]] [--join-type LEFT|INNER|RIGHT|FULL] [--fuzzy-on COL|LEFT=RIGHT[,...]] [--fuzzy-distance DAMERAU_LEVENSHTEIN|HAMMING|JACCARD|COSINE|EUCLIDEAN] [--fuzzy-threshold N] [--normalize] [--project-key KEY]",
 		description: "Create a recipe with one or more inputs and a dataset or managed-folder output.",
 		examples: [
 			"dss recipe create --type python --input raw_orders,lookup --output orders_clean",

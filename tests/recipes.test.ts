@@ -908,6 +908,278 @@ describe("RecipesResource", () => {
 		},);
 	});
 
+	it("configures exact joins from the created recipe skeleton", async () => {
+		const requests: string[] = [];
+		let createBody: Record<string, unknown> | undefined;
+		let updateBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				createBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { name: "join_joined_ds", },);
+				return;
+			}
+
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/recipes/join_joined_ds"
+			) {
+				sendJson(res, {
+					serverOwned: { revision: 7, },
+					recipe: {
+						name: "join_joined_ds",
+						type: "join",
+						versionTag: { versionNumber: 4, },
+						customRecipeField: "preserve-me",
+					},
+					payload: JSON.stringify({
+						selectedColumns: ["existing_column",],
+						virtualInputs: [
+							{ preFilter: { enabled: true, }, customInputField: "left", },
+							{ outputColumnsSelectionMode: "MANUAL", customInputField: "right", },
+						],
+					},),
+				},);
+				return;
+			}
+
+			if (
+				req.method === "PUT"
+				&& url.pathname === "/public/api/projects/TEST/recipes/join_joined_ds"
+			) {
+				updateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { ok: true, },);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.create({
+				type: "join",
+				inputDatasets: ["left_ds", "right_ds",],
+				outputDataset: "joined_ds",
+				joinOn: ["left_id=right_id", "shared_id",],
+				joinType: "INNER",
+			},);
+
+			expect(result,).toMatchObject({
+				recipeName: "join_joined_ds",
+				joinConfigured: true,
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			"POST /public/api/projects/TEST/recipes/",
+			"GET /public/api/projects/TEST/recipes/join_joined_ds",
+			"PUT /public/api/projects/TEST/recipes/join_joined_ds",
+		],);
+		expect(createBody,).toMatchObject({
+			recipePrototype: {
+				type: "join",
+				name: "join_joined_ds",
+				inputs: {
+					main: {
+						items: [{ ref: "left_ds", }, { ref: "right_ds", },],
+					},
+				},
+			},
+		},);
+		expect(updateBody,).toMatchObject({
+			serverOwned: { revision: 7, },
+			recipe: {
+				name: "join_joined_ds",
+				type: "join",
+				versionTag: { versionNumber: 4, },
+				customRecipeField: "preserve-me",
+				inputs: {
+					main: {
+						items: [{ ref: "left_ds", }, { ref: "right_ds", },],
+					},
+				},
+				outputs: {
+					main: {
+						items: [{ ref: "joined_ds", appendMode: false, },],
+					},
+				},
+			},
+		},);
+
+		const payload = JSON.parse(updateBody?.payload as string,) as Record<string, unknown>;
+		expect(payload.selectedColumns,).toEqual(["existing_column",],);
+		expect(payload.virtualInputs,).toMatchObject([
+			{ index: 0, preFilter: { enabled: true, }, customInputField: "left", },
+			{ index: 1, outputColumnsSelectionMode: "MANUAL", customInputField: "right", },
+		],);
+		expect(payload.joins,).toEqual([
+			{
+				table1: 0,
+				table2: 1,
+				conditionsMode: "AND",
+				type: "INNER",
+				outerJoinOnTheLeft: false,
+				on: [
+					{
+						column1: { name: "left_id", table: 0, },
+						column2: { name: "right_id", table: 1, },
+						type: "EQ",
+					},
+					{
+						column1: { name: "shared_id", table: 0, },
+						column2: { name: "shared_id", table: 1, },
+						type: "EQ",
+					},
+				],
+			},
+		],);
+	});
+
+	it("creates fuzzy joins with virtual inputs and configures fuzzy matching on the skeleton", async () => {
+		const requests: string[] = [];
+		let createBody: Record<string, unknown> | undefined;
+		let updateBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				createBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { name: "fuzzyjoin_joined_ds", },);
+				return;
+			}
+
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/recipes/fuzzyjoin_joined_ds"
+			) {
+				sendJson(res, {
+					serverOwned: { revision: 11, },
+					recipe: {
+						name: "fuzzyjoin_joined_ds",
+						type: "fuzzyjoin",
+						versionTag: { versionNumber: 6, },
+						customRecipeField: "preserve-fuzzy",
+					},
+					payload: JSON.stringify({
+						selectedColumns: ["fuzzy_existing",],
+						virtualInputs: [
+							{ preFilter: { enabled: true, }, customInputField: "left", },
+							{ outputColumnsSelectionMode: "MANUAL", customInputField: "right", },
+						],
+					},),
+				},);
+				return;
+			}
+
+			if (
+				req.method === "PUT"
+				&& url.pathname === "/public/api/projects/TEST/recipes/fuzzyjoin_joined_ds"
+			) {
+				updateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { ok: true, },);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.create({
+				type: "fuzzyjoin",
+				inputDatasets: ["left_ds", "right_ds",],
+				outputDataset: "joined_ds",
+				joinType: "INNER",
+				fuzzyOn: ["left_name=right_name",],
+				fuzzyDistance: "DAMERAU_LEVENSHTEIN",
+				fuzzyThreshold: 0.72,
+				fuzzyNormalize: true,
+			},);
+
+			expect(result,).toMatchObject({
+				recipeName: "fuzzyjoin_joined_ds",
+				joinConfigured: true,
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			"POST /public/api/projects/TEST/recipes/",
+			"GET /public/api/projects/TEST/recipes/fuzzyjoin_joined_ds",
+			"PUT /public/api/projects/TEST/recipes/fuzzyjoin_joined_ds",
+		],);
+		expect(createBody,).toMatchObject({
+			recipePrototype: {
+				type: "fuzzyjoin",
+				name: "fuzzyjoin_joined_ds",
+			},
+			creationSettings: {
+				virtualInputs: ["left_ds", "right_ds",],
+			},
+		},);
+		expect(
+			createBody?.recipePrototype as Record<string, unknown> | undefined,
+		).not.toHaveProperty("inputs",);
+		expect(updateBody,).toMatchObject({
+			serverOwned: { revision: 11, },
+			recipe: {
+				name: "fuzzyjoin_joined_ds",
+				type: "fuzzyjoin",
+				versionTag: { versionNumber: 6, },
+				customRecipeField: "preserve-fuzzy",
+				inputs: {
+					main: {
+						items: [{ ref: "left_ds", }, { ref: "right_ds", },],
+					},
+				},
+				outputs: {
+					main: {
+						items: [{ ref: "joined_ds", appendMode: false, },],
+					},
+				},
+			},
+		},);
+
+		const payload = JSON.parse(updateBody?.payload as string,) as {
+			joins: Array<{
+				on: Array<Record<string, unknown>>;
+			}>;
+			selectedColumns: string[];
+			virtualInputs: Array<Record<string, unknown>>;
+		};
+		expect(payload.selectedColumns,).toEqual(["fuzzy_existing",],);
+		expect(payload.virtualInputs,).toMatchObject([
+			{ index: 0, preFilter: { enabled: true, }, customInputField: "left", },
+			{ index: 1, outputColumnsSelectionMode: "MANUAL", customInputField: "right", },
+		],);
+		expect(payload.joins,).toHaveLength(1,);
+		expect(payload.joins[0],).toMatchObject({
+			table1: 0,
+			table2: 1,
+			conditionsMode: "AND",
+			type: "INNER",
+		},);
+		expect(payload.joins[0]?.on,).toEqual([
+			{
+				column1: { name: "left_name", table: 0, },
+				column2: { name: "right_name", table: 1, },
+				type: "EQ",
+				fuzzyMatchDesc: {
+					distanceType: "LEVENSHTEIN",
+					threshold: 0.72,
+				},
+				normaliseDesc: {
+					caseInsensitive: true,
+					normaliseText: true,
+					unicodeCasting: true,
+				},
+			},
+		],);
+	});
+
 	it("runs recipes by resolving managed-folder outputs", async () => {
 		const requests: string[] = [];
 		let buildRequestBody: Record<string, unknown> | undefined;

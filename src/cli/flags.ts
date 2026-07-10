@@ -38,6 +38,7 @@ export const BOOLEAN_FLAGS = new Set([
 	"keep",
 	"full-log",
 	"drop-data",
+	"normalize",
 ],);
 
 export const SHORT_FLAGS: Record<string, string> = {
@@ -90,12 +91,17 @@ export const VALUE_FLAGS = new Set([
 	"file",
 	"env",
 	"install-core-packages",
+	"fuzzy-on",
+	"fuzzy-distance",
+	"fuzzy-threshold",
 	"folder",
 	"input",
 	"from",
 	"knowledge-bank",
 	"labeling-task",
 	"lang",
+	"join-on",
+	"join-type",
 	"package",
 	"packages",
 	"local",
@@ -163,7 +169,9 @@ export const VALUE_FLAGS = new Set([
 export const REPEATABLE_VALUE_FLAGS = new Set([
 	"dataset",
 	"folder",
+	"fuzzy-on",
 	"input",
+	"join-on",
 	"object",
 	"package",
 	"recipe",
