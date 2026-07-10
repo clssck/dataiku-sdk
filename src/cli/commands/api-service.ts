@@ -46,6 +46,35 @@ export const apiServiceCommands: Record<string, CommandMeta> = {
 		description: "Save an API service's settings.",
 		examples: ["dss api-service save-settings my-service --data-file service.json",],
 	},
+	"add-prediction-endpoint": {
+		handler: async (c, a, f,) => {
+			requireArgs(
+				a,
+				3,
+				"dss api-service add-prediction-endpoint <serviceId> <endpointId> <savedModelId> [--dry-run] [--project-key KEY]",
+			);
+			const endpoint = {
+				id: a[1],
+				type: "STD_PREDICTION",
+				modelRef: a[2],
+			};
+			if (f["dry-run"] === true) return endpoint;
+			return c.apiServices.addPredictionEndpoint(
+				a[0],
+				a[1],
+				a[2],
+				f["project-key"] as string | undefined,
+			);
+		},
+		usage:
+			"dss api-service add-prediction-endpoint <serviceId> <endpointId> <savedModelId> [--dry-run] [--project-key KEY]",
+		description: "Add a saved-model prediction endpoint to an API service.",
+		examples: [
+			"dss api-service add-prediction-endpoint my-service predict churn-model",
+			"dss api-service add-prediction-endpoint my-service predict churn-model --dry-run",
+		],
+	},
+
 	"list-packages": {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss api-service list-packages <serviceId> [--project-key KEY]",);

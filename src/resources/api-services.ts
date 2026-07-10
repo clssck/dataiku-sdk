@@ -49,6 +49,22 @@ export class ApiServicesResource extends BaseResource {
 		);
 	}
 
+	/** Add a standard prediction endpoint backed by a saved model. */
+	async addPredictionEndpoint(
+		serviceId: string,
+		endpointId: string,
+		savedModelId: string,
+		projectKey?: string,
+	): Promise<ApiServiceActionResult> {
+		const settings = await this.getSettings(serviceId, projectKey,);
+		const endpoints = Array.isArray(settings.endpoints,) ? settings.endpoints : [];
+		settings.endpoints = [
+			...endpoints,
+			{ id: endpointId, type: "STD_PREDICTION", modelRef: savedModelId, },
+		];
+		return this.saveSettings(serviceId, settings, projectKey,);
+	}
+
 	/** List deployable packages for an API service. */
 	async listPackages(serviceId: string, projectKey?: string,): Promise<ApiServicePackageListItem[]> {
 		return this.client.get<ApiServicePackageListItem[]>(
