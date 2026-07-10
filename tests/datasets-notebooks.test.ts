@@ -1,10 +1,10 @@
 import { describe, expect, it, } from "bun:test";
 
-import { mkdtempSync, readFileSync, rmSync, } from "node:fs";
+import * as fs from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
-import { tmpdir, } from "node:os";
-import { join, resolve, } from "node:path";
+import * as os from "node:os";
+import * as path from "node:path";
 import { gunzipSync, } from "node:zlib";
 import { DataikuError, } from "../src/errors.js";
 import {
@@ -12,7 +12,7 @@ import {
 	type JupyterNotebookContent,
 	type SqlNotebookContent,
 } from "../src/index.js";
-import { buildDatasetCloneSettings, } from "../src/resources/datasets.js";
+import { buildDatasetCloneSettings, DatasetsResource, } from "../src/resources/datasets.js";
 
 async function withTestServer(
 	handler: (req: IncomingMessage, res: ServerResponse,) => Promise<void> | void,
@@ -115,8 +115,8 @@ describe("DatasetsResource.download", () => {
 			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
 			res.end("name\tcity\nAlice\tParis\n",);
 		}, async (url,) => {
-			const tempDir = mkdtempSync(join(tmpdir(), "dataiku-dataset-download-",),);
-			const outputPath = join(tempDir, "sample.csv",);
+			const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+			const outputPath = path.join(tempDir, "sample.csv",);
 
 			try {
 				const client = new DataikuClient({
@@ -132,15 +132,15 @@ describe("DatasetsResource.download", () => {
 					outputPath,
 					validateColumns: [{ name: "name", }, { name: "city", },],
 				},);
-				const fileBuffer = readFileSync(writtenPath,);
+				const fileBuffer = fs.readFileSync(writtenPath,);
 
-				expect(resolve(writtenPath,),).toBe(resolve(outputPath,),);
+				expect(path.resolve(writtenPath,),).toBe(path.resolve(outputPath,),);
 				expect(fileBuffer[0],).not.toBe(0x1f,);
 				expect(fileBuffer[1],).not.toBe(0x8b,);
 				expect(fileBuffer.toString("utf8",),).toBe("name,city\nAlice,Paris\n",);
 				expect(warnings,).toEqual([],);
 			} finally {
-				rmSync(tempDir, { recursive: true, force: true, },);
+				fs.rmSync(tempDir, { recursive: true, force: true, },);
 			}
 		},);
 	});
@@ -155,8 +155,8 @@ describe("DatasetsResource.download", () => {
 			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
 			res.end("name\tcountry\nAlice\tFrance\n",);
 		}, async (url,) => {
-			const tempDir = mkdtempSync(join(tmpdir(), "dataiku-dataset-download-",),);
-			const outputPath = join(tempDir, "sample.csv",);
+			const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+			const outputPath = path.join(tempDir, "sample.csv",);
 
 			try {
 				const client = new DataikuClient({
@@ -173,9 +173,9 @@ describe("DatasetsResource.download", () => {
 					validateColumns: [{ name: "name", }, { name: "city", },],
 				},);
 
-				expect(readFileSync(writtenPath, "utf8",),).toBe("name,country\nAlice,France\n",);
+				expect(fs.readFileSync(writtenPath, "utf8",),).toBe("name,country\nAlice,France\n",);
 			} finally {
-				rmSync(tempDir, { recursive: true, force: true, },);
+				fs.rmSync(tempDir, { recursive: true, force: true, },);
 			}
 		},);
 
@@ -195,21 +195,21 @@ describe("DatasetsResource.download", () => {
 			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
 			res.end("name\tcity\nAlice\tParis\n",);
 		}, async (url,) => {
-			const tempDir = mkdtempSync(join(tmpdir(), "dataiku-dataset-download-",),);
+			const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
 
 			try {
 				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
 				const { path: writtenPath, } = await client.datasets.download("sample dataset", {
 					outputPath: tempDir,
 				},);
-				const fileBuffer = readFileSync(writtenPath,);
+				const fileBuffer = fs.readFileSync(writtenPath,);
 
-				expect(writtenPath,).toBe(join(tempDir, "sample dataset.csv.gz",),);
+				expect(writtenPath,).toBe(path.join(tempDir, "sample dataset.csv.gz",),);
 				expect(fileBuffer[0],).toBe(0x1f,);
 				expect(fileBuffer[1],).toBe(0x8b,);
 				expect(gunzipSync(fileBuffer,).toString("utf8",),).toBe("name,city\nAlice,Paris\n",);
 			} finally {
-				rmSync(tempDir, { recursive: true, force: true, },);
+				fs.rmSync(tempDir, { recursive: true, force: true, },);
 			}
 		},);
 	});
@@ -220,21 +220,60 @@ describe("DatasetsResource.download", () => {
 			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
 			res.end("name\nA\nB\nC\nD\nE\n",);
 		}, async (url,) => {
-			const tempDir = mkdtempSync(join(tmpdir(), "dataiku-dataset-download-",),);
+			const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
 			try {
 				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
 				const result = await client.datasets.download("sample", {
-					outputPath: join(tempDir, "out.csv",),
+					outputPath: path.join(tempDir, "out.csv",),
 					limit: 2,
 				},);
 				expect(result.truncated,).toBe(true,);
 				expect(result.rows,).toBe(2,);
 				expect(result.limit,).toBe(2,);
-				expect(readFileSync(result.path, "utf-8",),).toBe("name\nA\nB\n",);
+				expect(fs.readFileSync(result.path, "utf-8",),).toBe("name\nA\nB\n",);
 			} finally {
-				rmSync(tempDir, { recursive: true, force: true, },);
+				fs.rmSync(tempDir, { recursive: true, force: true, },);
 			}
 		},);
+	});
+
+	it("creates a missing output directory before writing the download", async () => {
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+		const outputPath = path.join(tempDir, "nested", "missing", "sample.csv",);
+		let observedUrl = "";
+
+		try {
+			expect(fs.existsSync(path.dirname(outputPath,),),).toBe(false,);
+			const resource = new DatasetsResource({
+				resolveProjectKey: (projectKey?: string,) => projectKey ?? "TEST",
+				stream: async (url: string,) => {
+					observedUrl = url;
+					return {
+						body: new ReadableStream<Uint8Array>({
+							start(controller,) {
+								controller.enqueue(new TextEncoder().encode("name\tcity\nAlice\tParis\n",),);
+								controller.close();
+							},
+						},),
+					};
+				},
+			} as unknown as DataikuClient,);
+
+			const result = await resource.download("sample", { outputPath, projectKey: "TEST", },);
+
+			expect(observedUrl,).toBe(
+				"/public/api/projects/TEST/datasets/sample/data/?format=tsv-excel-header&limit=100001",
+			);
+			expect(result,).toEqual({
+				path: path.resolve(outputPath,),
+				rows: 1,
+				truncated: false,
+				limit: 100_000,
+			},);
+			expect(fs.readFileSync(outputPath, "utf8",),).toBe("name,city\nAlice,Paris\n",);
+		} finally {
+			fs.rmSync(tempDir, { recursive: true, force: true, },);
+		}
 	});
 });
 
@@ -314,6 +353,26 @@ describe("buildDatasetCloneSettings", () => {
 			metastoreTableName: "target_ds",
 			mode: "table",
 		},);
+	});
+
+	it("preserves UploadedFiles upload connections while cloning dataset params", () => {
+		const settings = buildDatasetCloneSettings(
+			{
+				name: "source_uploads",
+				type: "UploadedFiles",
+				projectKey: "TEST",
+				managed: false,
+				params: {
+					uploadConnection: "uploads-connection",
+					internalX: "server-managed",
+				} as Record<string, unknown>,
+			},
+			"target_uploads",
+			"TEST",
+			{},
+		);
+
+		expect(settings.params,).toEqual({ uploadConnection: "uploads-connection", },);
 	});
 });
 

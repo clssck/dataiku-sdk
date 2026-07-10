@@ -1,5 +1,5 @@
-import { createWriteStream, } from "node:fs";
-import { resolve, } from "node:path";
+import * as fs from "node:fs";
+import * as nodePath from "node:path";
 import { Readable, Transform, } from "node:stream";
 import { pipeline, } from "node:stream/promises";
 import { createGzip, } from "node:zlib";
@@ -412,6 +412,7 @@ function buildDatasetCreateBody(opts: {
 
 const DATASET_CLONE_PARAM_KEYS = [
 	"connection",
+	"uploadConnection",
 	"path",
 	"table",
 	"schema",
@@ -596,8 +597,8 @@ export class DatasetsResource extends BaseResource {
 
 		const safeDatasetName = sanitizeFileName(datasetName, "dataset",);
 		const filePath = opts?.outputPath?.endsWith(".gz",) || opts?.outputPath?.endsWith(".csv",)
-			? resolve(opts.outputPath,)
-			: resolve(opts?.outputPath ?? process.cwd(), `${safeDatasetName}.csv.gz`,);
+			? nodePath.resolve(opts.outputPath,)
+			: nodePath.resolve(opts?.outputPath ?? process.cwd(), `${safeDatasetName}.csv.gz`,);
 
 		const onHeader = opts?.validateColumns
 			? (headerRow: string[],) => {
@@ -612,7 +613,8 @@ export class DatasetsResource extends BaseResource {
 		const stats = { rows: 0, truncated: false, };
 		const nodeStream = Readable.fromWeb(res.body as unknown as import("stream/web").ReadableStream,);
 		const csvTransform = tsvToCsvTransform(limit, stats, onHeader,);
-		const fileOut = createWriteStream(filePath,);
+		fs.mkdirSync(nodePath.dirname(filePath,), { recursive: true, },);
+		const fileOut = fs.createWriteStream(filePath,);
 
 		if (shouldGzip) {
 			const gzip = createGzip();
