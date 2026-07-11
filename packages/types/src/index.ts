@@ -383,6 +383,11 @@ export const ScenarioStepRunSchema = Type.Object({
 	name: Type.Optional(Type.String(),),
 	type: Type.Optional(Type.String(),),
 	outcome: Type.String(),
+	warningCount: Type.Optional(Type.Number(),),
+	warnings: Type.Optional(Type.Array(Type.Object({
+		type: Type.String(),
+		count: Type.Optional(Type.Number(),),
+	}, { additionalProperties: false, },),),),
 }, { additionalProperties: false, },);
 export type ScenarioStepRun = Static<typeof ScenarioStepRunSchema>;
 

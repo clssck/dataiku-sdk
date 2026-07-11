@@ -3,6 +3,7 @@ import { DataikuError, } from "../errors.js";
 import type {
 	ScenarioDetails,
 	ScenarioStatus,
+	ScenarioStepRun,
 	ScenarioSummary,
 	ScenarioWaitResult,
 } from "../schemas.js";
@@ -145,6 +146,36 @@ function extractCodeRunOutput(log: string,): string | undefined {
 
 function isRecord(value: unknown,): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value,);
+}
+
+function scenarioStepWarningSummary(stepResult: Record<string, unknown> | undefined,): {
+	warningCount?: number;
+	warnings?: Array<{ type: string; count?: number; }>;
+} {
+	const container = stepResult?.warnings;
+	if (!isRecord(container,)) return {};
+	const rawWarnings = container.warnings;
+	const warnings = isRecord(rawWarnings,)
+		? Object.entries(rawWarnings,).flatMap(([key, value,],) => {
+			if (!isRecord(value,)) return [];
+			const rawType = value.type;
+			const type = typeof rawType === "string" && rawType.length > 0 ? rawType : key;
+			const rawCount = value.count;
+			return [{
+				type,
+				...(typeof rawCount === "number" && Number.isFinite(rawCount,)
+					? { count: rawCount, }
+					: {}),
+			},];
+		},)
+		: [];
+	const rawTotal = container.totalCount;
+	return {
+		...(typeof rawTotal === "number" && Number.isFinite(rawTotal,)
+			? { warningCount: rawTotal, }
+			: {}),
+		...(warnings.length > 0 ? { warnings, } : {}),
+	};
 }
 
 function jsonValueEqual(left: unknown, right: unknown,): boolean {
@@ -484,7 +515,7 @@ export class ScenariosResource extends BaseResource {
 		}
 
 		const resolvedRunId = runId || triggerRunId;
-		let steps: Array<{ name?: string; type?: string; outcome: string; }> | undefined;
+		let steps: ScenarioStepRun[] | undefined;
 		if (!timedOut && runId) {
 			try {
 				const details = await this.client.get<Record<string, unknown>>(
@@ -498,6 +529,7 @@ export class ScenariosResource extends BaseResource {
 						name: stepDef?.name as string | undefined,
 						type: stepDef?.type as string | undefined,
 						outcome: (stepResult?.outcome as string | undefined) ?? "UNKNOWN",
+						...scenarioStepWarningSummary(stepResult,),
 					};
 				},);
 				if (mapped.length > 0) steps = mapped;

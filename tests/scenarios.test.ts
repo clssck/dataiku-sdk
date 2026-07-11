@@ -231,7 +231,7 @@ describe("ScenariosResource.runAndWait", () => {
 		},);
 	});
 
-	it("does not leak raw step result or data fields in runAndWait steps", async () => {
+	it("returns curated warning summaries without leaking raw step data", async () => {
 		await withDataikuServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 
@@ -270,6 +270,16 @@ describe("ScenariosResource.runAndWait", () => {
 							},
 							result: {
 								outcome: "FAILED",
+								warnings: {
+									warnings: {
+										OUTPUT_DATA_BAD_FLOAT: {
+											type: "OUTPUT_DATA_BAD_FLOAT",
+											count: 725_296,
+											stored: [{ value: "secret-warning-value", },],
+										},
+									},
+									totalCount: 725_296,
+								},
 								log: "stack trace",
 								data: { secret: "token", },
 								startTime: 123,
@@ -290,9 +300,23 @@ describe("ScenariosResource.runAndWait", () => {
 			},);
 
 			expect(result.steps,).toEqual([
-				{ name: "Only safe fields", type: "custom_python", outcome: "FAILED", },
+				{
+					name: "Only safe fields",
+					type: "custom_python",
+					outcome: "FAILED",
+					warningCount: 725_296,
+					warnings: [{ type: "OUTPUT_DATA_BAD_FLOAT", count: 725_296, },],
+				},
 			],);
-			expect(Object.keys(result.steps?.[0] ?? {},).sort(),).toEqual(["name", "outcome", "type",],);
+			expect(Object.keys(result.steps?.[0] ?? {},).sort(),).toEqual([
+				"name",
+				"outcome",
+				"type",
+				"warningCount",
+				"warnings",
+			],);
+			expect(JSON.stringify(result.steps,),).not.toContain("secret-warning-value",);
+			expect(JSON.stringify(result.steps,),).not.toContain("token",);
 		},);
 	});
 
