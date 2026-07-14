@@ -4,7 +4,7 @@ Agent-only TypeScript SDK and `dss` CLI for Dataiku DSS automation.
 
 ## Platform support
 
-The published `dss` CLI supports Linux, macOS, and Windows under Bun >= 1.3.14 or Node.js >= 22.15.0. CI exercises Bun 1.4 and Node 22.15/24 on all three operating systems. The runtime dependency is pure JavaScript, so the same package also runs on runtime-supported x64 and ARM64 systems.
+The published `dss` CLI supports Linux, macOS, and Windows under Bun >= 1.3.14 or Node.js >= 22.15.0. CI exercises Bun 1.3.14 and Node 22.15/24 on all three operating systems. The runtime dependency is pure JavaScript, so the same package also runs on runtime-supported x64 and ARM64 systems.
 
 Run directly with Bun:
 

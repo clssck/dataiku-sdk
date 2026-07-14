@@ -22,7 +22,7 @@ body:
       placeholder: |
         DSS: 14.x
         Node: 22.15.x
-        Bun: 1.4.x (source/test workflows only)
+        Bun: 1.3.14 (source/test workflows only)
         OS: Windows 11, macOS 15, or Linux distribution/version
     validations:
       required: true
