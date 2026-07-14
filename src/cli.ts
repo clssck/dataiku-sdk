@@ -1190,7 +1190,7 @@ async function main(): Promise<void> {
 	const metaCommand = await runMetaCommand(resource, positional[1], flags,);
 	if (metaCommand) {
 		writeCommandResult(metaCommand.result,);
-		if (metaCommand.exitCode !== 0) process.exit(metaCommand.exitCode,);
+		if (metaCommand.exitCode !== 0) process.exitCode = metaCommand.exitCode;
 		return;
 	}
 
@@ -1274,5 +1274,5 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown,) => {
 	writeErrorReport(err,);
-	process.exit(errorExitCode(err,),);
+	process.exitCode = errorExitCode(err,);
 },);

@@ -1,7 +1,7 @@
 import { execFileSync, } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync, } from "node:fs";
-import { homedir, } from "node:os";
-import { dirname, join, } from "node:path";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 // ---------------------------------------------------------------------------
 // Agent definitions
@@ -29,7 +29,7 @@ export interface AgentDef {
 const SKILL_BODY = `# Dataiku DSS agent CLI
 
 Use \`dss\` when an agent needs to inspect or change Dataiku DSS resources: projects, datasets, recipes, jobs, scenarios, folders, notebooks, SQL, variables, code envs, and connections.
-If the installed \`dss\` binary is unavailable but the repository checkout is the current workspace, use \`./bin/dss ...\` or \`bun --no-env-file src/cli.ts ...\` with the same arguments; from another working directory, call \`/path/to/dataiku-sdk/bin/dss ...\`.
+If the installed \`dss\` binary is unavailable but the repository checkout is the current workspace, prefer \`bun --no-env-file src/cli.ts ...\` or \`bun --no-env-file ./bin/dss.js ...\`. Node users can invoke the same cross-runtime launcher as \`node ./bin/dss.js ...\`; when \`dist/\` has not been built, it delegates to Bun. From another working directory, pass the checkout's absolute \`bin/dss.js\` path to Bun or Node.
 \`--no-env-file\` disables Bun's automatic preloading only; the CLI still applies its documented \`.env\` handling unless \`DATAIKU_DISABLE_ENV=1\` is set.
 
 ## Contract
@@ -44,7 +44,7 @@ If the installed \`dss\` binary is unavailable but the repository checkout is th
 
 ## Discover commands
 
-\`\`\`bash
+\`\`\`text
 dss agent contract
 dss commands run
 \`\`\`
@@ -55,14 +55,41 @@ Set \`DATAIKU_DISABLE_ENV=1\` when a test must ignore both \`.env\` files and \`
 When \`.env\` loading is enabled, the CLI reads \`.env\` from the command's current working directory first and then the CLI build/root directory; the invocation directory wins on conflicting keys. Put test-specific \`.env\` files in the directory where you invoke \`dss\`.
 For disposable agent tests, set \`DSS_CONFIG_DIR\` to a temporary directory so saved credentials never touch the real profile.
 
+## Planning, safety, and generic inputs
+
+- Before any registry entry with \`sideEffect:"write"\`, run the exact argv with \`--plan\` first. Planning is local: it returns the derived operation without resolving credentials or calling DSS. Check \`destructive\`, \`idempotency\`, \`async\`, \`unsafeOutputs\`, and \`exitCodes\` before execution.
+- Use \`--dry-run\` only when that action's registry entry has \`dryRun:true\`. \`--plan\` explains the operation; \`--dry-run\` exercises the action-specific simulation path. Never add an unsupported flag.
+- When a create/upload action advertises \`--record-cleanup\`, pass \`--record-cleanup cleanup.jsonl\`. \`dss cleanup --file cleanup.jsonl\` previews the recorded cleanup steps in reverse order and does not mutate DSS; add \`--apply\` only after checking the preview.
+- For JSON payload actions, follow \`inputContract\`, \`requiredFlags\`, and \`requiredOneOf\`. Prefer \`--data-file PATH\` or \`--stdin\` when advertised instead of inline \`--data\`; this preserves exact JSON across shells and keeps large or sensitive payloads out of process arguments.
+- Authenticated actions advertise \`--request-timeout MS\` and \`--retries N\`. Long-running actions separately advertise controls such as \`--timeout MS\`, \`--poll-interval MS\`, and log limits; use only the flags in that action's registry entry.
+- Before live mutation tests, use \`dss fixtures --json\` to discover compatible test resources instead of guessing project objects.
+
 ## Authentication
 
-Prefer environment variables for ephemeral agent runs:
+Prefer environment variables for ephemeral agent runs. Use the syntax for the active shell:
 
-\`\`\`bash
+POSIX shell:
+
+\`\`\`sh
 export DATAIKU_URL=https://dss.example.com
 export DATAIKU_API_KEY=your-api-key
 export DATAIKU_PROJECT_KEY=MYPROJ
+\`\`\`
+
+PowerShell:
+
+\`\`\`powershell
+$env:DATAIKU_URL = "https://dss.example.com"
+$env:DATAIKU_API_KEY = "your-api-key"
+$env:DATAIKU_PROJECT_KEY = "MYPROJ"
+\`\`\`
+
+Windows Command Prompt:
+
+\`\`\`bat
+set "DATAIKU_URL=https://dss.example.com"
+set "DATAIKU_API_KEY=your-api-key"
+set "DATAIKU_PROJECT_KEY=MYPROJ"
 \`\`\`
 
 To persist credentials for later invocations:
@@ -71,14 +98,14 @@ To persist credentials for later invocations:
 dss auth login --url https://dss.example.com --api-key YOUR_KEY --project-key MYPROJ
 \`\`\`
 
-The command saves credentials and returns \`{"saved":true,"path":"..."}\`. Credentials are saved to \`~/.config/dataiku/credentials.json\` unless \`DSS_CONFIG_DIR\` or platform config env vars redirect the path.
+The command saves credentials and returns \`{"saved":true,"path":"..."}\`. \`DSS_CONFIG_DIR\` wins when set. Otherwise credentials use \`XDG_CONFIG_HOME/dataiku/credentials.json\`, the \`dataiku/credentials.json\` directory under \`APPDATA\` on Windows, or \`~/.config/dataiku/credentials.json\`.
 \`auth login\` validates by listing accessible projects before saving credentials, so the API key must be allowed to call DSS project-list APIs.
 
 TLS flags: \`--insecure\` disables certificate verification; \`--ca-cert PATH\` adds a PEM CA bundle. Environment equivalents: \`NODE_TLS_REJECT_UNAUTHORIZED\`, \`NODE_EXTRA_CA_CERTS\`.
 
 ## Common workflows
 
-\`\`\`bash
+\`\`\`text
 dss version
 dss project list
 dss doctor --fast
@@ -101,10 +128,10 @@ For fake-DSS smoke tests, return project lists as JSON arrays such as \`[{"proje
 
 Mutations print a small JSON ack to stdout and exit 0 on success (e.g. \`{"updated":"NAME","resource":"recipe"}\`); on failure they print the error envelope to stderr and exit non-zero. The exit code is the source of truth.
 
-- Chain steps with \`&&\` so a failed step halts the sequence: \`dss recipe set-payload R --file r.py --project-key P && dss recipe update R --data-file env.json --project-key P\`.
-- Never pipe a mutation into a command that prints a fixed string or merges stderr (e.g. \`dss ... 2>&1 | helper; echo done\`): the pipeline returns the helper's exit code, so a failed mutation is reported as success.
+- For portable multi-step writes, prefer \`dss batch\` (payload: a JSON array of argv arrays). It runs fail-fast, returns one envelope with per-step \`ok\`/\`result\`/\`error\`, and exits non-zero if any step fails.
+- If separate processes are required, inspect each exit code and stop before launching the next step. Do not rely on shell chaining: syntax differs between POSIX shells, Windows PowerShell 5.1, PowerShell 7, and Command Prompt.
+- Never pipe a mutation into a command that prints a fixed string or merges stderr: a pipeline may return the helper's exit code and report a failed mutation as success.
 - To branch in code, key off the exit code or the JSON ack on stdout — never a hardcoded label.
-- For multi-step writes, prefer \`dss batch\` (payload: a JSON array of argv arrays): it runs fail-fast, returns one envelope with per-step \`ok\`/\`result\`/\`error\`, and exits non-zero if any step fails — no shell chaining or per-step parsing.
 
 ## Platform & debugging notes
 
@@ -154,7 +181,7 @@ export const AGENTS: Record<string, AgentDef> = {
 		name: "Claude Code",
 		binary: "claude",
 		configDir: ".claude",
-		globalPath: (home,) => join(home, ".claude", "skills", "dataiku-dss",),
+		globalPath: (home,) => path.join(home, ".claude", "skills", "dataiku-dss",),
 		projectPath: ".claude/skills/dataiku-dss",
 		filename: "SKILL.md",
 		content: skillContent,
@@ -163,7 +190,7 @@ export const AGENTS: Record<string, AgentDef> = {
 		name: "Codex",
 		binary: "codex",
 		configDir: ".codex",
-		globalPath: (home,) => join(home, ".codex", "skills", "dataiku-dss",),
+		globalPath: (home,) => path.join(home, ".codex", "skills", "dataiku-dss",),
 		projectPath: ".codex/skills/dataiku-dss",
 		filename: "SKILL.md",
 		content: skillContent,
@@ -172,7 +199,7 @@ export const AGENTS: Record<string, AgentDef> = {
 		name: "Cursor",
 		binary: "cursor",
 		configDir: ".cursor",
-		globalPath: (home,) => join(home, ".cursor", "skills", "dataiku-dss",),
+		globalPath: (home,) => path.join(home, ".cursor", "skills", "dataiku-dss",),
 		projectPath: ".cursor/skills/dataiku-dss",
 		filename: "SKILL.md",
 		content: skillContent,
@@ -181,7 +208,7 @@ export const AGENTS: Record<string, AgentDef> = {
 		name: "Pi",
 		binary: "pi",
 		configDir: ".pi",
-		globalPath: (home,) => join(home, ".pi", "agent", "skills", "dataiku-dss",),
+		globalPath: (home,) => path.join(home, ".pi", "agent", "skills", "dataiku-dss",),
 		projectPath: ".pi/skills/dataiku-dss",
 		filename: "SKILL.md",
 		content: skillContent,
@@ -189,9 +216,9 @@ export const AGENTS: Record<string, AgentDef> = {
 	omp: {
 		name: "OhMyPi",
 		binary: "omp",
-		configDir: join(".omp", "agent",),
+		configDir: path.join(".omp", "agent",),
 		configDirRequired: true,
-		globalPath: (home,) => join(home, ".omp", "agent", "skills", "dataiku-dss",),
+		globalPath: (home,) => path.join(home, ".omp", "agent", "skills", "dataiku-dss",),
 		projectPath: ".omp/skills/dataiku-dss",
 		filename: "SKILL.md",
 		content: skillContent,
@@ -219,11 +246,11 @@ export interface DetectedAgent {
 }
 
 export function detectAgents(): DetectedAgent[] {
-	const home = homedir();
+	const home = os.homedir();
 	const found: DetectedAgent[] = [];
 	for (const [id, def,] of Object.entries(AGENTS,)) {
 		const hasBinary = binaryExists(def.binary,);
-		const hasConfigDir = existsSync(join(home, def.configDir,),);
+		const hasConfigDir = fs.existsSync(path.join(home, def.configDir,),);
 		if (hasBinary && (!def.configDirRequired || hasConfigDir)) {
 			found.push({ id, def, via: "binary", },);
 		} else if (hasConfigDir) {
@@ -250,9 +277,9 @@ export function findWorkspaceRoot(startDir: string,): string {
 	let dir = startDir;
 	for (let i = 0; i < 20; i++) {
 		for (const marker of WORKSPACE_MARKERS) {
-			if (existsSync(join(dir, marker,),)) return dir;
+			if (fs.existsSync(path.join(dir, marker,),)) return dir;
 		}
-		const parent = dirname(dir,);
+		const parent = path.dirname(dir,);
 		if (parent === dir) break;
 		dir = parent;
 	}
@@ -269,17 +296,17 @@ export function planSkillInstalls(
 	agents: DetectedAgent[],
 	opts: { global: boolean; cwd: string; },
 ): InstallResult[] {
-	const home = homedir();
+	const home = os.homedir();
 	const results: InstallResult[] = [];
 
 	for (const { id, def, via, } of agents) {
 		const dir = opts.global
 			? def.globalPath(home,)
 			: def.projectPath
-			? join(opts.cwd, def.projectPath,)
+			? path.join(opts.cwd, def.projectPath,)
 			: undefined;
 		if (!dir) continue;
-		results.push({ agent: id, path: join(dir, def.filename,), via, },);
+		results.push({ agent: id, path: path.join(dir, def.filename,), via, },);
 	}
 
 	return results;
@@ -294,8 +321,8 @@ export function installSkill(
 	for (const result of results) {
 		const def = AGENTS[result.agent];
 		if (!def) continue;
-		mkdirSync(dirname(result.path,), { recursive: true, },);
-		writeFileSync(result.path, def.content(), "utf-8",);
+		fs.mkdirSync(path.dirname(result.path,), { recursive: true, },);
+		fs.writeFileSync(result.path, def.content(), "utf-8",);
 	}
 
 	return results;

@@ -2,7 +2,23 @@
 
 Agent-only TypeScript SDK and `dss` CLI for Dataiku DSS automation.
 
-Examples below assume the installed `dss` binary. From this checkout, use `./bin/dss ...` or `bun --no-env-file src/cli.ts ...` with the same arguments; from another working directory, call `/path/to/dataiku-sdk/bin/dss ...`.
+## Platform support
+
+The published `dss` CLI supports Linux, macOS, and Windows under Bun >= 1.3.14 or Node.js >= 22.15.0. CI exercises Bun 1.4 and Node 22.15/24 on all three operating systems. The runtime dependency is pure JavaScript, so the same package also runs on runtime-supported x64 and ARM64 systems.
+
+Run directly with Bun:
+
+```text
+bunx --bun dataiku-sdk version
+```
+
+Or install the npm binary:
+
+```text
+npm install --global dataiku-sdk
+```
+
+Bun is the primary development runtime and package manager. Examples below assume an installed `dss` binary. From a checkout, use `bun --no-env-file src/cli.ts ...` or the cross-runtime `bun --no-env-file ./bin/dss.js ...` launcher. Node users can invoke the same launcher as `node ./bin/dss.js ...`; if `dist/` is absent, it delegates to Bun. From another working directory, pass the checkout's absolute `bin/dss.js` path to Bun or Node.
 `--no-env-file` disables Bun's automatic preloading only; the CLI still applies its documented `.env` handling unless `DATAIKU_DISABLE_ENV=1` is set.
 
 ## CLI contract
@@ -13,12 +29,12 @@ Examples below assume the installed `dss` binary. From this checkout, use `./bin
 - `--fields a,b,c` projects those fields from an object or array-of-objects result; dotted paths (`a.b.c`) drill into nested objects, and missing fields become `null`; string and scalar results pass through unchanged.
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: `0` success, `1` usage/configuration error, `2` DSS/internal error, `3` transient DSS error, `4` completed command with failed long-running DSS work.
-- The exit code is the success signal: chain mutations with `&&` and never infer success from piped output that discards the exit code (e.g. `dss ... 2>&1 | helper; echo done` reports success even when the command failed).
+- The exit code is the success signal. For portable multi-step mutations, prefer `dss batch`; shell chaining and pipeline exit semantics differ across POSIX shells, Windows PowerShell, PowerShell 7, and Command Prompt.
 - `--raw` is only for recipe payload commands. Without `--output`, stdout is raw bytes; with `--output PATH`, stdout is the JSON string equal to `PATH` and the file contains the exact raw bytes.
 
 Discover the agent protocol and complete machine-readable command surface:
 
-```bash
+```text
 dss agent contract
 dss commands run
 ```
@@ -27,7 +43,7 @@ Agents should parse `agent contract` once for protocol/schema compatibility, the
 
 ## Agent skill installation
 
-```bash
+```text
 dss install-skill --list-agents
 dss install-skill --agent omp --target .
 dss install-skill --agent omp --target . --dry-run
@@ -48,22 +64,41 @@ Global installs write under the agent's home config path, for example OMP: `~/.o
 
 ## Credentials
 
-Use environment variables for ephemeral runs:
-For disposable agent tests, set `DSS_CONFIG_DIR` to a temporary directory so saved credentials never touch your real profile.
+Use environment variables for ephemeral runs. For disposable agent tests, set `DSS_CONFIG_DIR` to a temporary directory so saved credentials never touch your real profile.
 Credential precedence is flags first, then `DATAIKU_*` environment variables, then saved credentials in `DSS_CONFIG_DIR` or the platform config directory.
 Set `DATAIKU_DISABLE_ENV=1` when a test must ignore both `.env` files and `DATAIKU_*` environment variables.
 When `.env` loading is enabled, the CLI reads `.env` from the CLI build/root directory and from the command's current working directory; put test-specific `.env` files in the directory where you invoke `dss`.
 
-```bash
-DATAIKU_URL=https://dss.example.com \
-DATAIKU_API_KEY=your-api-key \
-DATAIKU_PROJECT_KEY=MYPROJ \
+POSIX shell:
+
+```sh
+export DATAIKU_URL=https://dss.example.com
+export DATAIKU_API_KEY=your-api-key
+export DATAIKU_PROJECT_KEY=MYPROJ
+dss project list
+```
+
+PowerShell:
+
+```powershell
+$env:DATAIKU_URL = "https://dss.example.com"
+$env:DATAIKU_API_KEY = "your-api-key"
+$env:DATAIKU_PROJECT_KEY = "MYPROJ"
+dss project list
+```
+
+Windows Command Prompt:
+
+```bat
+set "DATAIKU_URL=https://dss.example.com"
+set "DATAIKU_API_KEY=your-api-key"
+set "DATAIKU_PROJECT_KEY=MYPROJ"
 dss project list
 ```
 
 Persist credentials when needed:
 
-```bash
+```text
 dss auth login --url https://dss.example.com --api-key YOUR_KEY --project-key MYPROJ
 ```
 

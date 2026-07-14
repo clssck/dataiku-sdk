@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 import { spawnSync, } from "node:child_process";
-import { existsSync, } from "node:fs";
-import { dirname, resolve, } from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { fileURLToPath, pathToFileURL, } from "node:url";
 
 const args = process.argv.slice(2,);
 const optionArgs = args.includes("--",) ? args.slice(0, args.indexOf("--",),) : args;
-const here = dirname(fileURLToPath(import.meta.url,),);
-const distCliPath = resolve(here, "../dist/src/cli.js",);
-const sourceCliPath = resolve(here, "../src/cli.ts",);
-const cliPath = existsSync(distCliPath,) ? distCliPath : sourceCliPath;
+const here = path.dirname(fileURLToPath(import.meta.url,),);
+const distCliPath = path.resolve(here, "../dist/src/cli.js",);
+const sourceCliPath = path.resolve(here, "../src/cli.ts",);
+const cliPath = fs.existsSync(distCliPath,) ? distCliPath : sourceCliPath;
 const cliUrl = pathToFileURL(cliPath,).href;
 
 function flagValue(names,) {
@@ -40,11 +40,6 @@ async function loadSavedTlsSettings() {
 	}
 }
 
-function supportsSystemCa(nodeBin,) {
-	const probe = spawnSync(nodeBin, ["--use-system-ca", "-e", "",], { stdio: "ignore", },);
-	return !probe.error && probe.status === 0;
-}
-
 const savedTls = await loadSavedTlsSettings();
 const env = { ...process.env, };
 const explicitCaCert = flagValue(["--ca-cert", "--extra-ca-certs",],);
@@ -62,12 +57,13 @@ if (hasFlag(["--insecure", "--skip-tls-verify",],)) {
 	env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 }
 
-const nodeBin = process.versions.bun ? "node" : process.execPath;
+const runningOnBun = Boolean(process.versions.bun,);
 const usesSourceCli = cliPath === sourceCliPath;
-const nodeArgs = !usesSourceCli && supportsSystemCa(nodeBin,) ? ["--use-system-ca",] : [];
+const runtimeBin = runningOnBun ? process.execPath : usesSourceCli ? "bun" : process.execPath;
+const runtimeArgs = runningOnBun || usesSourceCli ? ["--no-env-file",] : ["--use-system-ca",];
 const result = spawnSync(
-	usesSourceCli ? "bun" : nodeBin,
-	[...(usesSourceCli ? ["--no-env-file",] : nodeArgs), cliPath, ...args,],
+	runtimeBin,
+	[...runtimeArgs, cliPath, ...args,],
 	{
 		stdio: "inherit",
 		env,
@@ -77,25 +73,24 @@ const result = spawnSync(
 if (result.error) {
 	const message = usesSourceCli
 		? `Unable to start Bun runtime for source dss CLI (${result.error.message}).`
-		: `Unable to start Node runtime for packaged dss CLI (${result.error.message}); falling back to current runtime without Node system CA bootstrap.`;
+		: `Unable to start ${
+			runningOnBun ? "Bun" : "Node"
+		} runtime for packaged dss CLI (${result.error.message}); falling back to the current runtime.`;
 	if (usesSourceCli) {
 		process.stderr.write(`${
-			JSON.stringify(
-				{
-					ok: false,
-					error: message,
-					code: "internal_error",
-					category: "internal",
-					message,
-					exitCode: 2,
-				},
-				null,
-				2,
-			)
+			JSON.stringify({
+				type: "error",
+				ok: false,
+				error: message,
+				code: "internal_error",
+				category: "internal",
+				exitCode: 2,
+			},)
 		}\n`,);
-		process.exit(2,);
+		process.exitCode = 2;
+	} else {
+		await import(cliUrl);
 	}
-	await import(cliUrl);
 } else if (result.signal) {
 	process.kill(process.pid, result.signal,);
 } else {

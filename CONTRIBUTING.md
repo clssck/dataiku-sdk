@@ -4,15 +4,16 @@ Thanks for your interest in improving the Dataiku DSS SDK & CLI. This guide cove
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) >= 1.0 — the project's runtime, test runner, and script runner
+- [Bun](https://bun.sh) >= 1.3.14 — primary package manager, source runtime, and test runner (CI uses Bun 1.4)
+- [Node.js](https://nodejs.org) >= 22.15.0 with npm — published CLI runtime and npm release tooling
 - Git
 
 ## Setup
 
-```bash
+```text
 git clone https://github.com/clssck/dataiku-sdk
 cd dataiku-sdk
-bun install
+bun install --frozen-lockfile
 ```
 
 ## Project layout
@@ -23,13 +24,14 @@ bun install
 
 ## Everyday commands
 
-| Task       | Command                                        |
-| ---------- | ---------------------------------------------- |
-| Type-check | `bun run check` (`tsc --noEmit`)               |
-| Build      | `bun run build`                                |
-| Lint       | `bun run lint` — autofix with `bun run lint:fix` |
-| Format     | `bun run format` — verify with `bun run format:check` |
-| Test       | `bun test`                                     |
+| Task                    | Command                                                    |
+| ----------------------- | ---------------------------------------------------------- |
+| Type-check              | `bun run check` (`tsc --noEmit`)                            |
+| Build                   | `bun run build`                                            |
+| Lint                    | `bun run lint` — autofix with `bun run lint:fix`            |
+| Format                  | `bun run format` — verify with `bun run format:check`       |
+| Test                    | `bun test`                                                 |
+| Packaged platform smoke | `bun run test:platform`                                    |
 
 ## Checks your change must pass
 
@@ -39,6 +41,7 @@ Before opening a pull request, all of these must be green:
 2. `bun run format:check` — dprint formatting is applied
 3. `bun run lint` — oxlint reports no errors
 4. `bun test` — the unit suite passes
+5. `bun run test:platform` — the packed artifact runs under Bun and Node, preserves JSON errors, and installs the skill
 
 ## Tests
 

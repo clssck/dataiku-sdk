@@ -17,25 +17,28 @@
 		"packages/types/dist/"
 	],
 	"engines": {
-		"bun": ">=1.0"
+		"node": ">=22.15.0",
+		"bun": ">=1.3.14"
 	},
 	"scripts": {
-		"build": "tsc && cd packages/types && npx tsc",
-		"prepack": "bun run build",
-		"prepublishOnly": "bun run build",
+		"build": "tsc && tsc -p packages/types/tsconfig.json",
+		"prepack": "tsc && tsc -p packages/types/tsconfig.json",
+		"prepublishOnly": "tsc && tsc -p packages/types/tsconfig.json",
 		"check": "tsc --noEmit",
 		"lint": "oxlint src/",
 		"lint:fix": "oxlint --fix src/",
 		"format": "dprint fmt",
 		"format:check": "dprint check",
 		"test": "bun test",
-		"test:integration": "RUN_DATAIKU_INTEGRATION=1 bun test tests/integration-playground.test.ts",
-		"test:integration:mutating": "RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 bun test tests/integration-playground.test.ts",
-		"test:integration:rigorous": "RUN_DATAIKU_INTEGRATION=1 bun test tests/integration-rigorous.test.ts",
-		"test:integration:rigorous:mutating": "RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 bun test tests/integration-rigorous.test.ts"
+		"test:platform": "bun scripts/platform-smoke.mjs",
+		"test:integration": "cross-env RUN_DATAIKU_INTEGRATION=1 bun test tests/integration-playground.test.ts",
+		"test:integration:mutating": "cross-env RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 bun test tests/integration-playground.test.ts",
+		"test:integration:rigorous": "cross-env RUN_DATAIKU_INTEGRATION=1 bun test tests/integration-rigorous.test.ts",
+		"test:integration:rigorous:mutating": "cross-env RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 bun test tests/integration-rigorous.test.ts"
 	},
 	"devDependencies": {
 		"@types/bun": "^1.3.14",
+		"cross-env": "^10.1.0",
 		"dprint": "^0.54.0",
 		"oxlint": "^1.68.0",
 		"typescript": "^6.0.3"
@@ -53,5 +56,8 @@
 	},
 	"publishConfig": {
 		"access": "public"
-	}
+	},
+	"bundleDependencies": [
+		"@sinclair/typebox"
+	]
 }

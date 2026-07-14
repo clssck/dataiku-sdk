@@ -18,11 +18,12 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: DSS version, Bun/Node version, and OS.
+      description: DSS version, Node version, Bun version when developing from source, and OS.
       placeholder: |
         DSS: 14.x
-        Bun: 1.x (or Node: 20.x)
-        OS: macOS 14
+        Node: 22.15.x
+        Bun: 1.4.x (source/test workflows only)
+        OS: Windows 11, macOS 15, or Linux distribution/version
     validations:
       required: true
   - type: textarea

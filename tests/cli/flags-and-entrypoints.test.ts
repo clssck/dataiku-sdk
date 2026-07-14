@@ -1,4 +1,5 @@
 import { describe, expect, it, } from "bun:test";
+import * as fs from "node:fs";
 import {
 	cliEnv,
 	dss,
@@ -54,14 +55,45 @@ describe("CLI bin entrypoints", () => {
 		expect(pkg.bin?.dss,).toBe("bin/dss.js",);
 		expect((statSync(binJs,).mode & 0o111) !== 0,).toBe(true,);
 	});
+
+	it("reports a missing source Bun runtime as one JSONL event", async () => {
+		const tmpRoot = join(tmpdir(), `dss-bin-missing-bun-${Date.now()}`,);
+		const copiedBin = join(tmpRoot, "bin", "dss.mjs",);
+		mkdirSync(join(tmpRoot, "bin",), { recursive: true, },);
+		fs.copyFileSync(binJs, copiedBin,);
+		const nodeBin = Bun.which("node",);
+		expect(nodeBin,).not.toBeNull();
+		try {
+			await exec(nodeBin!, [copiedBin, "version",], {
+				cwd: tmpRoot,
+				env: { ...process.env, PATH: "", },
+			},);
+			throw new Error("expected source launcher to fail without Bun",);
+		} catch (error: unknown) {
+			const failure = error as { code?: number; stdout?: string; stderr?: string; };
+			expect(failure.code,).toBe(2,);
+			expect(failure.stdout ?? "",).toBe("",);
+			const lines = (failure.stderr ?? "").trim().split(/\r?\n/,);
+			expect(lines,).toHaveLength(1,);
+			expect(JSON.parse(lines[0]!,),).toMatchObject({
+				type: "error",
+				ok: false,
+				code: "internal_error",
+				exitCode: 2,
+			},);
+		} finally {
+			rmSync(tmpRoot, { recursive: true, force: true, },);
+		}
+	});
 	it("source checkout entrypoints emit version JSON", async () => {
-		for (
-			const [cmd, args,] of [
-				[binShim, ["version",],],
-				[binJs, ["version",],],
-				["node", [binJs, "version",],],
-			] as const
-		) {
+		const entrypoints: Array<[string, string[],]> = [
+			[process.execPath, ["--no-env-file", binJs, "version",],],
+			["node", [binJs, "version",],],
+		];
+		if (process.platform !== "win32") {
+			entrypoints.unshift([binShim, ["version",],], [binJs, ["version",],],);
+		}
+		for (const [cmd, args,] of entrypoints) {
 			const { stdout, stderr, } = await exec(cmd, args, {
 				cwd: SDK_ROOT,
 				env: {
