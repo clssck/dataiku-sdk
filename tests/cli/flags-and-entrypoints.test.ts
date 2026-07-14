@@ -53,7 +53,9 @@ describe("CLI bin entrypoints", () => {
 			bin?: Record<string, string>;
 		};
 		expect(pkg.bin?.dss,).toBe("bin/dss.js",);
-		expect((statSync(binJs,).mode & 0o111) !== 0,).toBe(true,);
+		if (process.platform !== "win32") {
+			expect((statSync(binJs,).mode & 0o111) !== 0,).toBe(true,);
+		}
 	});
 
 	it("reports a missing source Bun runtime as one JSONL event", async () => {

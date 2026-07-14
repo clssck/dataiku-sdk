@@ -25,16 +25,21 @@ describe("getConfigDir", () => {
 
 	it("uses XDG_CONFIG_HOME when set", () => {
 		delete process.env.DSS_CONFIG_DIR;
-		process.env.XDG_CONFIG_HOME = "/tmp/xdg";
-		expect(getConfigDir(),).toBe(join("/tmp/xdg", "dataiku",),);
+		const xdgConfigHome = join(tmpdir(), "xdg",);
+		process.env.XDG_CONFIG_HOME = xdgConfigHome;
+		expect(getConfigDir(),).toBe(join(xdgConfigHome, "dataiku",),);
 	});
 
-	it("defaults to ~/.config/dataiku", () => {
+	it("uses the platform default config directory", () => {
 		delete process.env.DSS_CONFIG_DIR;
 		delete process.env.XDG_CONFIG_HOME;
 		const dir = getConfigDir();
-		expect(dir,).toContain(".config",);
-		expect(dir,).toEndWith("dataiku",);
+		if (process.platform === "win32" && process.env.APPDATA) {
+			expect(dir,).toBe(join(process.env.APPDATA, "dataiku",),);
+		} else {
+			expect(dir,).toContain(".config",);
+			expect(dir,).toEndWith("dataiku",);
+		}
 	});
 });
 

@@ -505,7 +505,9 @@ describe("RecipesResource", () => {
 				const client = createClient(url,);
 				for (const [recipeName, expected,] of Object.entries(payloadByRecipeName,)) {
 					const filePath = await client.recipes.downloadCode(recipeName,);
-					expect(filePath,).toBe(resolve(resolvedTempDir, `${recipeName}${expected.ext}`,),);
+					expect(await realpath(filePath,),).toBe(
+						resolve(resolvedTempDir, `${recipeName}${expected.ext}`,),
+					);
 					expect(await readFile(filePath, "utf-8",),).toBe(expected.payload,);
 				}
 			},);
