@@ -6,6 +6,7 @@ import {
 	mkdirSync,
 	readBody,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	sendJson,
 	tmpdir,
@@ -146,7 +147,7 @@ describe("CLI command behavioral smoke coverage", () => {
 	it("warns when dataset download writes to the current directory by default", async () => {
 		const downloadDir = join(tmpdir(), `dss-cli-dataset-default-output-${Date.now()}`,);
 		mkdirSync(downloadDir, { recursive: true, },);
-		const expectedPath = join(downloadDir, "orders.csv.gz",);
+		const expectedPath = join(realpathSync(downloadDir,), "orders.csv.gz",);
 		try {
 			await withCliServer((req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);
