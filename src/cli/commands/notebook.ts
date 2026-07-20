@@ -45,7 +45,10 @@ export const notebookCommands: Record<string, CommandMeta> = {
 				const current = await c.notebooks.getJupyter(a[0], pk,);
 				const next = {
 					...current,
-					cells: current.cells.map((cell,) => ({ ...cell, outputs: [], execution_count: null, })),
+					cells: current.cells.map((cell,) => {
+						if (cell.cell_type !== "code") return cell;
+						return { ...cell, outputs: [], execution_count: 0, };
+					},),
 				};
 				return {
 					dryRun: true,

@@ -440,7 +440,7 @@ describe("NotebooksResource.create", () => {
 });
 
 describe("NotebooksResource.clearJupyterOutputs", () => {
-	it("fetches the notebook, strips outputs, and saves the updated content", async () => {
+	it("fetches the notebook, strips code-cell outputs, and preserves non-code cells", async () => {
 		const requests: string[] = [];
 		let savedNotebook: JupyterNotebookContent | undefined;
 		const notebookName = "analysis notebook";
@@ -462,6 +462,12 @@ describe("NotebooksResource.clearJupyterOutputs", () => {
 					cell_type: "markdown",
 					source: ["# Title\n",],
 					metadata: { tag: "intro", },
+				},
+				{
+					cell_type: "raw",
+					source: ["unexecuted payload\n",],
+					metadata: { format: "text/plain", },
+					custom: { retained: true, },
 				},
 			],
 		};
@@ -506,14 +512,15 @@ describe("NotebooksResource.clearJupyterOutputs", () => {
 				{
 					...notebook.cells[0],
 					outputs: [],
-					execution_count: null,
+					execution_count: 0,
 				},
-				{
-					...notebook.cells[1],
-					outputs: [],
-					execution_count: null,
-				},
+				notebook.cells[1],
+				notebook.cells[2],
 			],
 		},);
+		expect(savedNotebook?.cells.slice(1,),).toStrictEqual(notebook.cells.slice(1,),);
+		expect(JSON.stringify(savedNotebook?.cells.slice(1,),),).toBe(
+			JSON.stringify(notebook.cells.slice(1,),),
+		);
 	});
 });

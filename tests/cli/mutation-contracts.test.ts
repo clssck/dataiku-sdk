@@ -309,8 +309,34 @@ describe("CLI agent-readiness mutation contracts", () => {
 		expect(failure.stderr,).toContain("--connection is required",);
 	});
 
-	it("dry-runs variable and notebook mutations with current and next state", async () => {
+	it("dry-runs variable and notebook mutations with current and next state without mutating notebooks", async () => {
+		let mutationRequests = 0;
+		const notebook = {
+			cells: [
+				{
+					cell_type: "code",
+					source: ["1",],
+					outputs: [{ text: "old", },],
+					execution_count: 7,
+				},
+				{
+					cell_type: "markdown",
+					source: ["# Overview\n",],
+					metadata: { tags: ["intro",], },
+				},
+				{
+					cell_type: "raw",
+					source: ["unexecuted payload\n",],
+					metadata: { format: "text/plain", },
+					custom: { retained: true, },
+				},
+			],
+			metadata: {},
+			nbformat: 4,
+			nbformat_minor: 5,
+		};
 		await withCliServer((req, res,) => {
+			if (req.method !== "GET") mutationRequests++;
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/variables/") {
 				sendJson(res, { standard: { a: 1, }, local: {}, },);
@@ -319,17 +345,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 			if (
 				req.method === "GET" && url.pathname === "/public/api/projects/TEST/jupyter-notebooks/book"
 			) {
-				sendJson(res, {
-					cells: [{
-						cell_type: "code",
-						source: "1",
-						outputs: [{ text: "old", },],
-						execution_count: 7,
-					},],
-					metadata: {},
-					nbformat: 4,
-					nbformat_minor: 5,
-				},);
+				sendJson(res, notebook,);
 				return;
 			}
 			res.statusCode = 500;
@@ -345,10 +361,24 @@ describe("CLI agent-readiness mutation contracts", () => {
 				(await dss(["notebook", "clear-jupyter-outputs", "book", "--dry-run",], {
 					env: cliEnv(url,),
 				},)).stdout,
-			) as { next?: { cells?: Array<{ outputs?: unknown[]; execution_count?: number | null; }>; }; };
+			) as {
+				current?: { cells?: Array<Record<string, unknown>>; };
+				next?: { cells?: Array<Record<string, unknown>>; };
+			};
 			expect(clearDryRun.next?.cells?.[0]?.outputs,).toEqual([],);
-			expect(clearDryRun.next?.cells?.[0]?.execution_count,).toBeNull();
+			expect(clearDryRun.next?.cells?.[0]?.execution_count,).toBe(0,);
+			expect(clearDryRun.next?.cells?.[0],).toEqual({
+				...notebook.cells[0],
+				outputs: [],
+				execution_count: 0,
+			},);
+			expect(clearDryRun.current,).toStrictEqual(notebook,);
+			expect(clearDryRun.next?.cells?.slice(1,),).toStrictEqual(notebook.cells.slice(1,),);
+			expect(JSON.stringify(clearDryRun.next?.cells?.slice(1,),),).toBe(
+				JSON.stringify(notebook.cells.slice(1,),),
+			);
 		},);
+		expect(mutationRequests,).toBe(0,);
 	});
 
 	it("dry-runs install-skill without credentials or file writes", async () => {

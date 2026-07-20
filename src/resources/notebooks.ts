@@ -76,11 +76,14 @@ export class NotebooksResource extends BaseResource {
 	 */
 	async clearJupyterOutputs(name: string, projectKey?: string,): Promise<void> {
 		const notebook = await this.getJupyter(name, projectKey,);
-		const clearedCells = notebook.cells.map((cell,) => ({
-			...cell,
-			outputs: [],
-			execution_count: null,
-		}));
+		const clearedCells = notebook.cells.map((cell,) => {
+			if (cell.cell_type !== "code") return cell;
+			return {
+				...cell,
+				outputs: [],
+				execution_count: 0,
+			};
+		},);
 
 		await this.saveJupyter(name, { ...notebook, cells: clearedCells, }, projectKey,);
 	}
