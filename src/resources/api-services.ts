@@ -67,6 +67,7 @@ export class ApiServicesResource extends BaseResource {
 
 	/** List deployable packages for an API service. */
 	async listPackages(serviceId: string, projectKey?: string,): Promise<ApiServicePackageListItem[]> {
+		await this.getSettings(serviceId, projectKey,);
 		return this.client.get<ApiServicePackageListItem[]>(
 			`${this.servicePath(serviceId, projectKey,)}/packages`,
 		);

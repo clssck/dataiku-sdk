@@ -2,6 +2,7 @@ import { describe, expect, it, } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
 import { DataikuClient, } from "../src/client.js";
+import { DataikuError, } from "../src/errors.js";
 import { ApiServicesResource, } from "../src/resources/api-services.js";
 
 async function readBody(req: IncomingMessage,): Promise<string> {
@@ -180,6 +181,53 @@ describe("ApiServicesResource", () => {
 		},);
 	});
 
+	it("preflights an existing service before returning an empty package list", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method ?? "GET"} ${url.pathname}`,);
+			if (url.pathname.endsWith("/settings",)) {
+				sendJson(res, { id: "svc-empty", },);
+				return;
+			}
+			sendJson(res, [],);
+		}, async (url,) => {
+			const resource = new ApiServicesResource(createClient(url,),);
+			await expect(resource.listPackages("svc-empty",),).resolves.toEqual([],);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/apiservices/svc-empty/settings",
+			"GET /public/api/projects/TEST/apiservices/svc-empty/packages",
+		],);
+	});
+
+	it("does not list packages when the parent service is missing", async () => {
+		const requests: string[] = [];
+
+		await withServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method ?? "GET"} ${url.pathname}`,);
+			res.statusCode = 404;
+			sendJson(res, { message: "service not found", }, 404,);
+		}, async (url,) => {
+			const resource = new ApiServicesResource(createClient(url,),);
+			try {
+				await resource.listPackages("missing-service",);
+				throw new Error("expected listPackages to reject",);
+			} catch (error) {
+				expect(error,).toBeInstanceOf(DataikuError,);
+				if (!(error instanceof DataikuError)) throw error;
+				expect(error.category,).toBe("not_found",);
+			}
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/apiservices/missing-service/settings",
+		],);
+	});
+
 	it("manages API service packages", async () => {
 		const requests: string[] = [];
 		const requestBodies: unknown[] = [];
@@ -191,6 +239,10 @@ describe("ApiServicesResource", () => {
 		await withServer(async (req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			requests.push(`${req.method ?? "GET"} ${url.pathname}`,);
+			if (req.method === "GET" && url.pathname.endsWith("/settings",)) {
+				sendJson(res, { id: "svc id", endpoints: [], },);
+				return;
+			}
 			if (req.method === "GET" && url.pathname.endsWith("/packages",)) {
 				sendJson(res, packages,);
 				return;
@@ -223,6 +275,7 @@ describe("ApiServicesResource", () => {
 		},);
 
 		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/apiservices/svc%20id/settings",
 			"GET /public/api/projects/TEST/apiservices/svc%20id/packages",
 			"GET /public/api/projects/TEST/apiservices/svc%20id/packages/pkg%2F1/summary",
 			"POST /public/api/projects/TEST/apiservices/svc%20id/packages/pkg%2F1",

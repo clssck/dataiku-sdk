@@ -79,7 +79,6 @@ export const apiServiceCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss api-service list-packages <serviceId> [--project-key KEY]",);
 			const projectKey = f["project-key"] as string | undefined;
-			await c.apiServices.getSettings(a[0], projectKey,);
 			return c.apiServices.listPackages(a[0], projectKey,);
 		},
 		usage: "dss api-service list-packages <serviceId> [--project-key KEY]",
