@@ -44,6 +44,7 @@ import { cliVersionResult, } from "./cli/version.js";
 import { DataikuClient, } from "./client.js";
 import { getCredentialsPath, } from "./config.js";
 import {
+	canonicalStatusText,
 	ClientValidationError,
 	DataikuError,
 	dataikuErrorCode,
@@ -1050,14 +1051,41 @@ function rawCommandContext(): { resource?: string; action?: string; projectKey?:
 	};
 }
 
-function requestIdFromBody(body: string,): string | undefined {
+const SAFE_RESPONSE_METADATA_KEYS = [
+	"requestId",
+	"request_id",
+	"errorId",
+	"elapsedMs",
+] as const;
+
+function safeResponseMetadata(body: string,): Record<string, string | number | boolean> {
 	try {
-		const parsed = JSON.parse(body,) as Record<string, unknown>;
-		const value = parsed.requestId ?? parsed.request_id ?? parsed.errorId;
-		return typeof value === "string" && value.length > 0 ? value : undefined;
+		const parsed: unknown = JSON.parse(body,);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed,)) return {};
+		const metadata: Record<string, string | number | boolean> = {};
+		for (const key of SAFE_RESPONSE_METADATA_KEYS) {
+			const value = (parsed as Record<string, unknown>)[key];
+			if (
+				(typeof value === "string" && value.length > 0)
+				|| (typeof value === "number" && Number.isFinite(value,))
+				|| typeof value === "boolean"
+			) {
+				metadata[key] = value;
+			}
+		}
+		return metadata;
 	} catch {
-		return undefined;
+		return {};
 	}
+}
+
+function requestIdFromBody(body: string,): string | undefined {
+	const metadata = safeResponseMetadata(body,);
+	for (const key of ["requestId", "request_id", "errorId",] as const) {
+		const value = metadata[key];
+		if (typeof value === "string") return value;
+	}
+	return undefined;
 }
 
 const MISSING_PROJECT_KEY_ERROR_PREFIX = "projectKey is required";
@@ -1099,13 +1127,16 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 		};
 	}
 	if (err instanceof DataikuError) {
-		const errorMessage = err.category === "not_found"
-				&& err.message.includes("Dataiku instance not found",)
-				&& context.resource
+		const errorMessage = err.category === "not_found" && context.resource
 			? `Not found: ${context.resource}${context.action ? ` ${context.action}` : ""}`
 				+ `${context.projectKey ? ` in project ${context.projectKey}` : ""}`
-				+ ` — verify the object identifier and project key (DSS: ${err.message.split("\n",)[0]}).`
-			: err.message;
+				+ " — verify the object identifier and project key."
+				+ `\nHint: ${err.retryHint}`
+			: err.safeMessage;
+		const safeMetadata = safeResponseMetadata(err.body,);
+		if (err.trustedTarget) safeMetadata.target = err.trustedTarget;
+		if (err.trustedElapsedMs !== undefined) safeMetadata.elapsedMs = err.trustedElapsedMs;
+		const safeBody = JSON.stringify(safeMetadata,);
 		return {
 			type: "error",
 			ok: false,
@@ -1119,8 +1150,8 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			requestId: err.requestId ?? requestIdFromBody(err.body,),
 			details: {
 				dssCategory: err.category,
-				statusText: err.statusText,
-				body: err.body,
+				statusText: canonicalStatusText(err.status,),
+				body: safeBody,
 				...(err.retry ? { retry: err.retry, } : {}),
 			},
 			...context,

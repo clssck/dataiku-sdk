@@ -220,8 +220,8 @@ describe("CLI execution behavior", () => {
 				resource: "scenario",
 				action: "update",
 			},);
-			expect(report.error,).toContain("Scenario update did not persist requested fields",);
-			expect(report.error,).toContain("params.steps",);
+			expect(report.error,).toContain("400 Bad Request",);
+			expect(report.error,).toContain("Error type: validation",);
 		},);
 	});
 

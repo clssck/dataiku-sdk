@@ -103,7 +103,9 @@ describe("CLI missing credentials", () => {
 				status: 403,
 				retryable: false,
 			},);
-			expect(report.error,).toContain("Access denied",);
+			expect(report.error,).toContain("403 Forbidden",);
+			expect(report.error,).toContain("Check API key validity and project permissions",);
+			expect(report.error,).not.toContain("Access denied",);
 		},);
 	});
 

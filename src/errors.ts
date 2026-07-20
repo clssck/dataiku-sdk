@@ -48,6 +48,31 @@ export interface DataikuRetryMetadata {
 	delaysMs: number[];
 	timedOut: boolean;
 }
+export interface DataikuErrorTrustedMetadata {
+	target?: string;
+	elapsedMs?: number;
+}
+
+const CANONICAL_STATUS_TEXT: Record<number, string> = {
+	400: "Bad Request",
+	401: "Unauthorized",
+	403: "Forbidden",
+	404: "Not Found",
+	408: "Request Timeout",
+	409: "Conflict",
+	422: "Unprocessable Entity",
+	425: "Too Early",
+	429: "Too Many Requests",
+	500: "Internal Server Error",
+	501: "Not Implemented",
+	502: "Bad Gateway",
+	503: "Service Unavailable",
+	504: "Gateway Timeout",
+};
+
+export function canonicalStatusText(status: number,): string {
+	return CANONICAL_STATUS_TEXT[status] ?? (status === 0 ? "Network Error" : "HTTP Error");
+}
 
 export class ClientValidationError extends Error {
 	readonly code: StableErrorCode;
@@ -361,6 +386,8 @@ export class DataikuError extends Error {
 	public retryHint: string;
 	public retry?: DataikuRetryMetadata;
 	public requestId?: string;
+	public readonly trustedTarget?: string;
+	public readonly trustedElapsedMs?: number;
 
 	constructor(
 		public status: number,
@@ -368,8 +395,9 @@ export class DataikuError extends Error {
 		public body: string,
 		retry?: DataikuRetryMetadata,
 		requestId?: string,
+		trustedMetadata?: DataikuErrorTrustedMetadata,
 	) {
-		const details = DataikuError.buildDetails(status, statusText, body, retry,);
+		const details = DataikuError.buildDetails(status, body, retry,);
 		super(details.message,);
 		this.name = "DataikuError";
 		this.category = details.category;
@@ -377,9 +405,21 @@ export class DataikuError extends Error {
 		this.retryHint = details.retryHint;
 		this.retry = retry;
 		this.requestId = requestId;
+		this.trustedTarget = trustedMetadata?.target;
+		this.trustedElapsedMs = trustedMetadata?.elapsedMs;
+	}
+	public get safeMessage(): string {
+		const retrySummary = DataikuError.formatRetryMetadata(this.retry,);
+		return [
+			`${this.status} ${canonicalStatusText(this.status,)}`,
+			`Error type: ${this.category}`,
+			`Retryable: ${this.retryable ? "yes" : "no"}`,
+			`Hint: ${this.retryHint}`,
+			...(retrySummary ? [retrySummary,] : []),
+		].join("\n",);
 	}
 
-	private static extractSummary(_status: number, _statusText: string, body: string,): string {
+	private static extractSummary(_status: number, body: string,): string {
 		try {
 			const parsed = JSON.parse(body,);
 			if (parsed.message) return summarizeErrorText(String(parsed.message,),);
@@ -406,17 +446,16 @@ export class DataikuError extends Error {
 
 	private static buildDetails(
 		status: number,
-		statusText: string,
 		body: string,
 		retry?: DataikuRetryMetadata,
 	): { message: string; } & DataikuErrorTaxonomy {
-		const summary = DataikuError.extractSummary(status, statusText, body,);
+		const summary = DataikuError.extractSummary(status, body,);
 		const taxonomy = classifyDataikuError(status, body,);
 		const retrySummary = DataikuError.formatRetryMetadata(retry,);
 		return {
 			...taxonomy,
 			message: [
-				`${status} ${statusText}: ${summary}`,
+				`${status} ${canonicalStatusText(status,)}: ${summary}`,
 				`Error type: ${taxonomy.category}`,
 				`Retryable: ${taxonomy.retryable ? "yes" : "no"}`,
 				`Hint: ${taxonomy.retryHint}`,

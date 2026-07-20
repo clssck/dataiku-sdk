@@ -306,6 +306,19 @@ describe("DataikuError", () => {
 		// should use the extracted message, not the raw JSON
 		expect(err.message,).not.toContain("{",);
 	});
+	it("provides a body-independent safe message", () => {
+		const err = new DataikuError(
+			502,
+			"REMOTE_STATUS_TEXT_SECRET",
+			JSON.stringify({ message: "REMOTE_SECRET", apiKey: "TOKEN_SECRET", },),
+		);
+		expect(err.safeMessage,).toContain("502 Bad Gateway",);
+		expect(err.safeMessage,).toContain("Error type: transient",);
+		expect(err.safeMessage,).toContain("Retryable: yes",);
+		expect(err.safeMessage,).not.toContain("REMOTE_SECRET",);
+		expect(err.safeMessage,).not.toContain("TOKEN_SECRET",);
+		expect(err.safeMessage,).not.toContain("REMOTE_STATUS_TEXT_SECRET",);
+	});
 
 	it("summarizes HTML error pages without leaking raw markup or server paths", () => {
 		const err = new DataikuError(

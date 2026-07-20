@@ -461,6 +461,66 @@ describe("CLI regression fixes", () => {
 			expect(JSON.parse(success.stdout,),).toEqual([{ projectKey: "P1", name: "One", },],);
 		},);
 	});
+	it("does not expose arbitrary remote error response text", async () => {
+		const sentinels = [
+			"REMOTE_MESSAGE_SENTINEL",
+			"REMOTE_API_KEY_SENTINEL",
+			"REMOTE_PASSWORD_SENTINEL",
+			"REMOTE_AUTHORIZATION_SENTINEL",
+			"REMOTE_BEARER_SENTINEL",
+			"REMOTE_TARGET_SENTINEL",
+			"REMOTE_STATUS_TEXT_SENTINEL",
+		];
+		await withCliServer((req, res,) => {
+			expect(req.url,).toContain("/public/api/projects/",);
+			res.statusMessage = sentinels[6]!;
+			sendJson(res, {
+				message: sentinels[0],
+				apiKey: sentinels[1],
+				nested: {
+					password: sentinels[2],
+					authorization: sentinels[3],
+					token: `Bearer ${sentinels[4]}`,
+				},
+				requestId: "req-safe-123",
+				target: sentinels[5],
+				elapsedMs: 37,
+			}, 400,);
+		}, async (url,) => {
+			const failure = await dssFailure(["project", "list",], { env: cliEnv(url,), },);
+			const combined = `${failure.stdout}\n${failure.stderr}`;
+			for (const sentinel of sentinels) expect(combined,).not.toContain(sentinel,);
+			const report = JSON.parse(failure.stderr,) as {
+				code?: string;
+				category?: string;
+				exitCode?: number;
+				requestId?: string;
+				status?: number;
+				retryable?: boolean;
+				hint?: string;
+				details?: { dssCategory?: string; statusText?: string; body?: string; };
+			};
+			expect(report,).toMatchObject({
+				code: "validation_failed",
+				category: "dss",
+				exitCode: 2,
+				requestId: "req-safe-123",
+				status: 400,
+				retryable: false,
+				hint: expect.any(String,),
+				details: {
+					dssCategory: "validation",
+					statusText: "Bad Request",
+					body: JSON.stringify({
+						requestId: "req-safe-123",
+						elapsedMs: 37,
+					},),
+				},
+			},);
+			expect(report.details.body,).not.toContain("message",);
+			expect(report.details.body,).not.toContain("apiKey",);
+		},);
+	});
 
 	it("batch runs meta commands and dry-run validates steps deeply", async () => {
 		const meta = await dss(["batch", "--data", '[["version"]]',], { env: hermeticEnv, },);
@@ -867,7 +927,7 @@ describe("CLI regression fixes", () => {
 		expect(hint,).toContain("--project-key",);
 		expect(hint,).toContain("DATAIKU_PROJECT_KEY",);
 	});
-	it("rewrites generic DSS 404 dataset failures with command context while preserving the raw body", async () => {
+	it("rewrites generic DSS 404 dataset failures with command context without exposing raw body", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			if (req.method === "GET" && url.pathname.includes("/datasets/NOPE",)) {
@@ -892,7 +952,7 @@ describe("CLI regression fixes", () => {
 			};
 			expect(report.code,).toBe("not_found",);
 			expect(report.error,).toContain("Not found: dataset get in project TEST",);
-			expect(report.details?.body,).toContain("Dataiku instance not found",);
+			expect(report.details?.body,).toBe("{}",);
 		},);
 	});
 });

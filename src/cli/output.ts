@@ -93,6 +93,7 @@ export function addTransientTargetContext(
 			transientBodyWithTargetContext(error.body, target, elapsedMs,),
 			error.retry,
 			error.requestId,
+			{ target, elapsedMs, },
 		);
 	}
 	throw error;
