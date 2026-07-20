@@ -1,7 +1,7 @@
 import { describe, expect, it, } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
-import { DataikuError, } from "../src/errors.js";
+import { ClientValidationError, DataikuError, } from "../src/errors.js";
 import { SqlResource, } from "../src/resources/sql.js";
 
 class TestHttpClient {
@@ -210,23 +210,82 @@ describe("SqlResource", () => {
 		},);
 	});
 
-	it("query rewrites the unsupported dataset-connection error with the dataset name", async () => {
+	it("reports unsupported dataset connections without a usable fallback as validation", async () => {
 		await withSqlServer(async (req, res,) => {
-			if (req.url === "/public/api/sql/queries/") {
+			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+				res.statusCode = 400;
+				res.statusMessage = "Bad Request";
+				res.end("Connection is neither of SQL nor HDFS type",);
+				return;
+			}
+			if (req.method === "GET" && req.url === "/public/api/projects/PROJECT/datasets/dataset_orders") {
+				res.setHeader("content-type", "application/json",);
+				res.end(JSON.stringify({ name: "dataset_orders", params: {}, },),);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (sql,) => {
+			const failure = await sql.query({
+				query: "SELECT 1",
+				datasetFullName: "PROJECT.dataset_orders",
+			},).catch((error: unknown,) => error);
+			expect(failure,).toBeInstanceOf(ClientValidationError,);
+			expect(failure,).toMatchObject({
+				code: "validation_failed",
+				message:
+					'Dataset "PROJECT.dataset_orders" uses a connection that DSS does not support for direct SQL queries. Use --connection with a SQL-compatible connection instead.',
+			},);
+		},);
+	});
+
+	it("propagates dataset metadata not-found errors during SQL fallback", async () => {
+		await withSqlServer(async (req, res,) => {
+			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
 				res.statusCode = 400;
 				res.statusMessage = "Bad Request";
 				res.end("Connection is neither of SQL nor HDFS type",);
 				return;
 			}
 			res.statusCode = 404;
+			res.statusMessage = "Not Found";
 			res.end("dataset lookup failed",);
 		}, async (sql,) => {
-			await expect(sql.query({
+			const failure = await sql.query({
 				query: "SELECT 1",
 				datasetFullName: "PROJECT.dataset_orders",
-			},),).rejects.toThrow(
-				'Dataset "PROJECT.dataset_orders" uses a connection that DSS does not support for direct SQL queries. Use --connection with a SQL-compatible connection instead.',
-			);
+			},).catch((error: unknown,) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect(failure,).toMatchObject({
+				status: 404,
+				category: "not_found",
+				message: expect.stringContaining("dataset lookup failed",),
+			},);
+		},);
+	});
+
+	it("propagates dataset metadata forbidden errors during SQL fallback", async () => {
+		await withSqlServer(async (req, res,) => {
+			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+				res.statusCode = 400;
+				res.statusMessage = "Bad Request";
+				res.end("Connection is neither of SQL nor HDFS type",);
+				return;
+			}
+			res.statusCode = 403;
+			res.statusMessage = "Forbidden";
+			res.end("dataset access denied",);
+		}, async (sql,) => {
+			const failure = await sql.query({
+				query: "SELECT 1",
+				datasetFullName: "PROJECT.dataset_orders",
+			},).catch((error: unknown,) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect(failure,).toMatchObject({
+				status: 403,
+				category: "forbidden",
+				message: expect.stringContaining("dataset access denied",),
+			},);
 		},);
 	});
 
@@ -236,8 +295,12 @@ describe("SqlResource", () => {
 			res.statusMessage = "Bad Request";
 			res.end("Some other DSS validation failure",);
 		}, async (sql,) => {
-			await expect(sql.query({ query: "SELECT 1", },),).rejects.toThrow(
-				"Some other DSS validation failure",
+			const failure = await sql.query({ query: "SELECT 1", },).catch((error: unknown,) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect(failure,).toMatchObject({ category: "validation", },);
+			expect(failure,).toHaveProperty(
+				"message",
+				expect.stringContaining("Some other DSS validation failure",),
 			);
 		},);
 	});

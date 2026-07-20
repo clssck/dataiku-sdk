@@ -1,4 +1,4 @@
-import { DataikuError, } from "../errors.js";
+import { ClientValidationError, DataikuError, } from "../errors.js";
 import type { SqlQueryResponse, SqlQueryResult, } from "../schemas.js";
 import { BaseResource, } from "./base.js";
 
@@ -186,28 +186,24 @@ export class SqlResource extends BaseResource {
 		const datasetFullName = opts.datasetFullName;
 		if (!datasetFullName) return null;
 
-		try {
-			const identifier = splitDatasetIdentifier(datasetFullName, opts.projectKey,);
-			const projectKey = identifier.projectKey
-				? identifier.projectKey
-				: this.resolveProjectKey(opts.projectKey,);
-			const dsEnc = encodeURIComponent(identifier.datasetName,);
-			const raw = await this.client.get<Record<string, unknown>>(
-				`/public/api/projects/${encodeURIComponent(projectKey,)}/datasets/${dsEnc}`,
-			);
-			const params = asRecord(raw.params,);
-			const connection = asString(params?.connection,);
-			if (!connection) return null;
-			return {
-				...opts,
-				connection,
-				datasetFullName: undefined,
-				database: opts.database ?? asString(params?.schema,) ?? asString(params?.catalog,),
-				projectKey,
-			};
-		} catch {
-			return null;
-		}
+		const identifier = splitDatasetIdentifier(datasetFullName, opts.projectKey,);
+		const projectKey = identifier.projectKey
+			? identifier.projectKey
+			: this.resolveProjectKey(opts.projectKey,);
+		const dsEnc = encodeURIComponent(identifier.datasetName,);
+		const raw = await this.client.get<Record<string, unknown>>(
+			`/public/api/projects/${encodeURIComponent(projectKey,)}/datasets/${dsEnc}`,
+		);
+		const params = asRecord(raw.params,);
+		const connection = asString(params?.connection,);
+		if (!connection) return null;
+		return {
+			...opts,
+			connection,
+			datasetFullName: undefined,
+			database: opts.database ?? asString(params?.schema,) ?? asString(params?.catalog,),
+			projectKey,
+		};
 	}
 
 	/**
@@ -222,9 +218,9 @@ export class SqlResource extends BaseResource {
 			if (!isUnsupportedSqlDatasetConnectionError(error,)) withSqlErrorContext(error,);
 			const retryOpts = await this.resolveDatasetQueryFallback(queryOpts,);
 			if (!retryOpts) {
-				throw new Error(buildUnsupportedSqlDatasetConnectionMessage(queryOpts.datasetFullName,), {
-					cause: error,
-				},);
+				throw new ClientValidationError(
+					buildUnsupportedSqlDatasetConnectionMessage(queryOpts.datasetFullName,),
+				);
 			}
 			try {
 				return await this.executeQuery(retryOpts,);

@@ -295,6 +295,103 @@ describe("CLI execution behavior", () => {
 		},);
 	});
 
+	it("classifies unsupported dataset SQL fallback as usage validation", async () => {
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+				res.statusCode = 400;
+				res.statusMessage = "Bad Request";
+				res.end("Connection is neither of SQL nor HDFS type",);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/orders") {
+				sendJson(res, { name: "orders", params: {}, },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				["sql", "query", "SELECT 1", "--dataset", "TEST.orders",],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(1,);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "validation_failed",
+				category: "usage",
+				exitCode: 1,
+				resource: "sql",
+				action: "query",
+			},);
+			expect(report.error,).toContain('Dataset "TEST.orders" uses a connection',);
+		},);
+	});
+
+	it("propagates dataset metadata not-found errors from SQL fallback", async () => {
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+				res.statusCode = 400;
+				res.statusMessage = "Bad Request";
+				res.end("Connection is neither of SQL nor HDFS type",);
+				return;
+			}
+			res.statusCode = 404;
+			res.statusMessage = "Not Found";
+			res.end("dataset lookup failed",);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				["sql", "query", "SELECT 1", "--dataset", "TEST.orders",],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(2,);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "not_found",
+				category: "dss",
+				status: 404,
+				exitCode: 2,
+				resource: "sql",
+				action: "query",
+			},);
+			expect(report.error,).toContain("Not found: sql query",);
+			expect(report.error,).not.toContain("dataset lookup failed",);
+		},);
+	});
+
+	it("propagates dataset metadata forbidden errors from SQL fallback", async () => {
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+				res.statusCode = 400;
+				res.statusMessage = "Bad Request";
+				res.end("Connection is neither of SQL nor HDFS type",);
+				return;
+			}
+			res.statusCode = 403;
+			res.statusMessage = "Forbidden";
+			res.end("dataset access denied",);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				["sql", "query", "SELECT 1", "--dataset", "TEST.orders",],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(2,);
+			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "permission_denied",
+				category: "dss",
+				status: 403,
+				exitCode: 2,
+				resource: "sql",
+				action: "query",
+			},);
+			expect(report.error,).toContain("403 Forbidden",);
+			expect(report.error,).not.toContain("dataset access denied",);
+		},);
+	});
+
 	it("supports --sql-file input", async () => {
 		let capturedBody: Record<string, unknown> | undefined;
 		const tmpFile = join(tmpdir(), `dss-cli-sql-${Date.now()}.sql`,);
