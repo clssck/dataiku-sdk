@@ -120,6 +120,9 @@ dss recipe set-payload compute_orders --file code.py --project-key MYPROJ
 dss job build-and-wait orders --include-logs --project-key MYPROJ
 dss scenario run daily_build --project-key MYPROJ
 dss sql query --connection analytics --sql "select 1" --project-key MYPROJ
+dss sql query --dataset MYPROJ.orders --sql-file query.sql
+dss notebook clear-jupyter-outputs exploration --dry-run --project-key MYPROJ
+dss api-service list-packages churn-service --project-key MYPROJ
 dss batch --data-file steps.json
 \`\`\`
 For fake-DSS smoke tests, return project lists as JSON arrays such as \`[{"projectKey":"MYPROJ","name":"My Project"}]\` from \`/public/api/projects/\`; recipe payload commands read \`/public/api/projects/<PROJECT>/recipes/<NAME>?includePayload=true\` and expect a JSON object shaped like \`{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}\`.
@@ -140,6 +143,9 @@ Mutations print a small JSON ack to stdout and exit 0 on success (e.g. \`{"updat
 - Build failures: \`dss job log <id> --errors-only\` surfaces just error/traceback lines, and \`--output PATH\` saves the full log to a file. Logs are one long line with JVM noise; the \`Error in Python process: At line <N>\` marker maps \`<N>\` straight to your recipe payload's source line.
 - Schema changes aren't automatic for code recipes: after changing a python/SQL/prepare recipe's output columns run \`dss dataset refresh-schema\` (or rebuild) before downstream reads, and \`dss dataset validate-build\` to catch file-backed misconfig before launching a build. Exception: \`dss recipe create --type sync\` copies the input schema onto a schemaless dataset output at create time (see \`syncOutputSchemaPropagated\` in the result), so a fresh sync output builds populated without a manual refresh.
 - \`dss dataset download\` is capped (default 100k rows) and returns \`{ path, rows, truncated, limit }\`: check \`truncated\` and raise \`--limit N\` when you need more — treat it as a sample, not a guaranteed full export. Without \`--output\` the file lands in the current working directory (and a \`dataset_download_default_location\` warning names that path); pass \`--output PATH\` to control the destination. For very large tables, aggregate in SQL or read inside a recipe instead.
+- \`dss api-service list-packages SERVICE\` first verifies the parent service through its settings. A \`not_found\` error means the service is missing (verify the service ID and project key); an empty array means the service exists but has no deployable packages. Do not reinterpret \`not_found\` as an empty package list or retry the lower-level packages route.
+- \`dss notebook clear-jupyter-outputs NAME --dry-run\` returns the full \`current\` and \`next\` notebook states. Applying it clears \`outputs\` and resets \`execution_count\` to \`0\` only on code cells, preserving markdown and raw cells unchanged.
+- \`dss sql query ... --dataset PROJECT.NAME\` first queries through the dataset. If DSS rejects that dataset connection as neither SQL nor HDFS, the CLI reads dataset metadata and retries with \`params.connection\` (using its schema or catalog as the database when available). A readable dataset with no usable connection exits with \`validation_failed\` and advises \`--connection\`; dataset metadata \`404\` and \`403\` errors propagate as \`not_found\` and \`permission_denied\`.
 
 ## Error envelope
 
@@ -159,6 +165,7 @@ Parse each stderr line as JSON; on non-zero exit the final line is an error even
 \`\`\`
 
 Use \`code\`, \`category\`, \`exitCode\`, \`retryable\`, \`status\`, and \`details\` for recovery logic. Do not scrape message text when a structured field is available.
+Treat \`details.body\` as sanitized metadata only: it contains at most \`requestId\`/\`request_id\`/\`errorId\`/\`elapsedMs\` plus locally trusted target/timing fields, not the arbitrary DSS response body. \`details.statusText\` is canonical text derived from the numeric status, not a remote reason phrase. Base recovery on top-level \`code\`, \`category\`, \`status\`, \`retryable\`, \`requestId\`, \`hint\`, and \`details.dssCategory\`; never parse or expose assumed server-body fields.
 `;
 
 const SKILL_FRONTMATTER = `---

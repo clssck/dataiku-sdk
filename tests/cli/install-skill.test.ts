@@ -119,6 +119,15 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain("stdout is the JSON string equal to `PATH`",);
 			expect(content,).toContain("dataset_download_default_location",);
 			expect(content,).toContain("syncOutputSchemaPropagated",);
+			expect(content,).toContain("first verifies the parent service through its settings",);
+			expect(content,).toContain("preserving markdown and raw cells unchanged",);
+			expect(content,).toContain(
+				"dataset metadata `404` and `403` errors propagate as `not_found` and `permission_denied`",
+			);
+			expect(content,).toContain("Treat `details.body` as sanitized metadata only",);
+			expect(content,).toContain(
+				"`details.statusText` is canonical text derived from the numeric status",
+			);
 			expect(content,).not.toContain("--help",);
 			expect(content,).not.toContain("--report-json",);
 			expect(content,).not.toContain("dss auth status",);
