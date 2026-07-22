@@ -208,6 +208,28 @@ function parseBatchSteps(payload: unknown,): string[][] {
 	},);
 }
 
+const REDACTED_ARG_VALUE = "[REDACTED]";
+const SENSITIVE_BATCH_ARG_FLAGS = new Set(["--api-key",],);
+
+function redactBatchStepArgs(argv: string[],): string[] {
+	let redactNext = false;
+	return argv.map((token,) => {
+		if (redactNext) {
+			redactNext = false;
+			return REDACTED_ARG_VALUE;
+		}
+
+		const equalsIndex = token.indexOf("=",);
+		const flag = equalsIndex === -1 ? token : token.slice(0, equalsIndex,);
+		if (!SENSITIVE_BATCH_ARG_FLAGS.has(flag,)) return token;
+		if (equalsIndex === -1) {
+			redactNext = true;
+			return token;
+		}
+		return `${flag}=${REDACTED_ARG_VALUE}`;
+	},);
+}
+
 type CommandRegistry = Record<string, Record<string, CommandRegistryEntry>>;
 
 const ALWAYS_ALLOWED_COMMAND_FLAGS: Record<string, true> = {
@@ -686,7 +708,7 @@ function batchPlan(flags: Record<string, string | boolean>,): Record<string, unk
 			needsClient: steps.some((argv,) => batchStepNeedsClient(argv,)),
 		},
 		payload: {
-			steps,
+			steps: steps.map((argv,) => redactBatchStepArgs(argv,),),
 			continueOnError: flags["continue-on-error"] === true,
 			dryRun: flags["dry-run"] === true,
 		},
