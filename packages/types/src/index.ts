@@ -107,6 +107,11 @@ export const ProjectDetailsSchema = Type.Object({
 	name: Type.String(),
 	shortDesc: Type.Optional(Type.String(),),
 	projectStatus: Type.Optional(Type.String(),),
+	projectAppType: Type.Optional(Type.String(),),
+	creationTag: Type.Optional(Type.Object({
+		versionNumber: Type.Optional(Type.Number(),),
+		lastModifiedOn: Type.Optional(Type.Union([Type.Number(), Type.String(),],),),
+	}, { additionalProperties: true, },),),
 	ownerLogin: Type.Optional(Type.String(),),
 	tags: Type.Optional(Type.Array(Type.String(),),),
 	versionTag: Type.Optional(Type.Object({

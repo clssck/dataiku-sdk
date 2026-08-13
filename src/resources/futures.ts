@@ -53,7 +53,10 @@ export class FuturesResource extends BaseResource {
 
 	async wait(futureId: string, opts: FutureWaitOptions = {},): Promise<FutureWaitResult> {
 		const baseIntervalMs = Math.max(1, opts.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,);
-		const timeoutMs = Math.max(baseIntervalMs, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,);
+		// A caller's budget is never rounded up to a whole poll interval: a 5ms
+		// wait must answer in about 5ms. One state observation always happens
+		// regardless, because the poll precedes the deadline check.
+		const timeoutMs = Math.max(0, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,);
 		const startedAt = Date.now();
 		let pollCount = 0;
 
@@ -97,7 +100,9 @@ export class FuturesResource extends BaseResource {
 				return this.client.safeParse(FutureWaitResultSchema, result, "futures.wait",);
 			}
 
-			await sleep(baseIntervalMs,);
+			// Only the remaining budget is slept: a longer sleep would report an
+			// elapsed time the caller never authorized.
+			await sleep(Math.min(baseIntervalMs, timeoutMs - elapsedMs,),);
 		}
 	}
 }

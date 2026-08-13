@@ -5,7 +5,12 @@ import { type Static, type TSchema, } from "@sinclair/typebox";
 import { Value, } from "@sinclair/typebox/value";
 import { type SafeParseResult, safeParseSchema, } from "./schemas.js";
 
-import { classifyDataikuError, DataikuError, type DataikuRetryMetadata, } from "./errors.js";
+import {
+	classifyDataikuError,
+	ClientValidationError,
+	DataikuError,
+	type DataikuRetryMetadata,
+} from "./errors.js";
 
 import { AnalysesResource, } from "./resources/analyses.js";
 import { ApiDeployerResource, } from "./resources/api-deployer.js";
@@ -202,6 +207,22 @@ function buildFetchTlsOptions(config: DataikuClientConfig,): FetchTlsOptions | u
 	return tls;
 }
 
+/**
+ * True when the URL embeds userinfo (`https://user:password@host`). Embedded
+ * credentials are rejected up front so they can never reach the canonical base
+ * URL that gets persisted in recorded artifacts (cleanup ledgers, permission
+ * snapshots) or echoed in diagnostics. Malformed URLs fall through to the
+ * existing request-time failure.
+ */
+function hasEmbeddedUserinfo(url: string,): boolean {
+	try {
+		const parsed = new URL(url,);
+		return parsed.username !== "" || parsed.password !== "";
+	} catch {
+		return false;
+	}
+}
+
 /* ------------------------------------------------------------------ */
 /*  Client                                                             */
 /* ------------------------------------------------------------------ */
@@ -370,6 +391,14 @@ export class DataikuClient {
 				"Dataiku URL and API key are required: pass {url, apiKey} or set DATAIKU_URL/DATAIKU_API_KEY",
 			);
 		}
+		if (hasEmbeddedUserinfo(url,)) {
+			throw new ClientValidationError(
+				"Dataiku URL must not contain embedded credentials (userinfo). Authenticate with an API key instead.",
+				"validation_failed",
+				"Pass the DSS base URL without a username or password.",
+				{ urlHasEmbeddedUserinfo: true, },
+			);
+		}
 
 		this.baseUrl = url.replace(/\/+$/, "",);
 		this.apiKey = apiKey;
@@ -382,6 +411,15 @@ export class DataikuClient {
 		this.tlsOptions = config ? buildFetchTlsOptions(config,) : undefined;
 		this.onTrace = config?.onTrace ?? defaultTrace;
 		this.onValidationWarning = config?.onValidationWarning ?? defaultValidationWarning;
+	}
+
+	/**
+	 * Canonical request base URL: the exact prefix every HTTP verb concatenates
+	 * paths onto (trimmed, trailing slashes stripped). Callers that must bind a
+	 * recorded artifact to its originating DSS server compare against this.
+	 */
+	getBaseUrl(): string {
+		return this.baseUrl;
 	}
 
 	getRequestTimeoutMs(): number {

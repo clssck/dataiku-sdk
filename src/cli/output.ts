@@ -1,5 +1,5 @@
 import type { DataikuClient, } from "../client.js";
-import { DataikuError, } from "../errors.js";
+import { DataikuError, type StableErrorCode, } from "../errors.js";
 
 let outputFieldProjection: string[] | undefined;
 
@@ -119,12 +119,14 @@ export function commandFailureExitCode(result: unknown,): number | undefined {
 export class CommandResultFailure extends Error {
 	readonly result: unknown;
 	readonly exitCode: number;
+	readonly code?: StableErrorCode;
 
-	constructor(result: unknown, exitCode: number,) {
+	constructor(result: unknown, exitCode: number, code?: StableErrorCode,) {
 		super(commandFailureMessage(result,),);
 		this.name = "CommandResultFailure";
 		this.result = result;
 		this.exitCode = exitCode;
+		this.code = code;
 	}
 }
 

@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { validateCredentials, } from "../auth.js";
 import { getCredentialsPath, saveCredentials, } from "../config.js";
 import { DataikuError, } from "../errors.js";
+import { APP_MANIFEST_CONCURRENCY_CONTROL, } from "../resources/applications.js";
 import {
 	jobBuildTargetTypeFromFlags,
 	json,
@@ -11,16 +12,18 @@ import {
 	parseBooleanOption,
 	parseJsonObject,
 	requiredJsonInput,
+	rewritePairsFromFlags,
 	schemaColumnsInput,
+	stringField,
 	textInput,
 } from "./coerce.js";
 import { commands, } from "./commands/index.js";
 import { dataikuEnvironmentEnabled, } from "./env.js";
-import { BOOLEAN_FLAGS, FLAG_ALIASES, KNOWN_LONG_FLAGS, } from "./flags.js";
+import { BOOLEAN_FLAGS, FLAG_ALIASES, KNOWN_LONG_FLAGS, SHORT_FLAGS, } from "./flags.js";
 import { flowZoneColor, flowZoneMoveItems, flowZoneName, } from "./helpers/flow-zone.js";
 import { recipeBackupPath, recipeRunShouldWait, } from "./helpers/recipe.js";
 import { encodedProjectEndpointForPlan, planResult, } from "./output.js";
-import { resolveCredentials, resolveTlsSettings, } from "./runtime.js";
+import { resolveTlsSettings, } from "./runtime.js";
 import type {
 	CommandFlagChoice,
 	CommandMeta,
@@ -156,6 +159,7 @@ export type CommandFlagMetadata = {
 	valueType?: string;
 	enumValues?: string[];
 	aliases?: string[];
+	allowEmptyValue?: boolean;
 };
 
 export interface CommandStructuredExample {
@@ -235,6 +239,7 @@ const READ_ACTIONS = new Set([
 	"list-sql",
 	"log",
 	"log-url",
+	"manifest-version",
 	"map",
 	"metadata",
 	"peek",
@@ -253,6 +258,7 @@ const READ_ACTIONS = new Set([
 	"settings-get",
 	"status-by-partition",
 	"usages",
+	"verify-instance",
 ],);
 
 const PROJECT_SCOPED_RESOURCES = new Set([
@@ -317,7 +323,6 @@ const FIXTURES_EXAMPLES = [
 
 const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
 	// Must mirror every cleanup.argv shape emitted by cleanupLedgerEntry().
-	"project delete",
 	"analysis delete",
 	"model-evaluation-store delete",
 	"ml-task delete",
@@ -332,6 +337,7 @@ const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
 	"code-env delete",
 	"folder delete",
 	"folder delete-file",
+	"app delete-instance",
 ],);
 
 export function isAllowedCleanupAction(resource: string, action: string,): boolean {
@@ -390,7 +396,74 @@ function splitShellLike(input: string,): string[] | undefined {
 function exampleArgv(example: string,): string[] | undefined {
 	const tokens = splitShellLike(example,);
 	if (!tokens || tokens[0] !== "dss") return undefined;
-	return tokens.slice(1,);
+	const argv = canonicalizeArgv(tokens.slice(1,),);
+	// Global flag aliases like `dss --version` have no command path to emit.
+	return argv[0]?.startsWith("--",) ? undefined : argv;
+}
+
+/**
+ * Fold a parsed shell argv into the machine-canonical flag form the argv
+ * schemas advertise: value flags become one `--flag=VALUE` token and boolean
+ * flags stay standalone, so structured examples always validate against their
+ * own generated argv schema. Alias flags are rewritten to their canonical
+ * name. Positional tokens and tokens after the `--` separator pass through
+ * unchanged; the human-facing `shell` examples are never rewritten.
+ */
+function canonicalizeArgv(argv: string[],): string[] {
+	const canonical: string[] = [];
+	let afterSeparator = false;
+	for (let index = 0; index < argv.length; index++) {
+		const token = argv[index]!;
+		if (afterSeparator || token === "--") {
+			canonical.push(token,);
+			afterSeparator = true;
+			continue;
+		}
+		if (token.length === 2 && token[0] === "-" && token[1] !== "-") {
+			const flagName = SHORT_FLAGS[token[1]!];
+			if (!flagName) {
+				canonical.push(token,);
+				continue;
+			}
+			if (BOOLEAN_FLAGS.has(flagName,)) {
+				canonical.push(`--${flagName}`,);
+				continue;
+			}
+			const next = argv[index + 1];
+			if (next === undefined || (next !== "-" && next.startsWith("-",))) {
+				canonical.push(token,);
+				continue;
+			}
+			canonical.push(`--${flagName}=${next}`,);
+			index++;
+			continue;
+		}
+		if (!token.startsWith("--",)) {
+			canonical.push(token,);
+			continue;
+		}
+		const eqIdx = token.indexOf("=",);
+		const rawFlagName = eqIdx === -1 ? token.slice(2,) : token.slice(2, eqIdx,);
+		const flagName = FLAG_ALIASES[rawFlagName] ?? rawFlagName;
+		if (eqIdx !== -1) {
+			canonical.push(
+				BOOLEAN_FLAGS.has(flagName,) ? `--${flagName}` : `--${flagName}=${token.slice(eqIdx + 1,)}`,
+			);
+			continue;
+		}
+		if (BOOLEAN_FLAGS.has(flagName,)) {
+			canonical.push(`--${flagName}`,);
+			continue;
+		}
+		const next = argv[index + 1];
+		if (next === undefined || next.startsWith("--",)) {
+			canonical.push(`--${flagName}`,);
+			continue;
+		}
+		canonical.push(`--${flagName}=${next}`,);
+		index++;
+	}
+	return canonical;
 }
 
 function structuredExamples(
@@ -424,20 +497,136 @@ function payloadJsonSchema(
 		: { type: "object", additionalProperties: true, };
 }
 
+/**
+ * Value flags the runtime meaningfully accepts with an empty value. Only flags
+ * with proven clear semantics belong here: `--version-notes ""` clears saved
+ * notes, while `--content ""` clears text payloads such as wiki articles,
+ * insights, and project-library files. Canonical argv patterns emit `*` for
+ * these and `+` for every other value flag, so `--flag=` alone can never
+ * validate for a required non-empty flag.
+ */
+const ALLOW_EMPTY_VALUE_FLAGS: Record<string, true> = {
+	content: true,
+	"version-notes": true,
+};
+
+function flagValueTokenPattern(flag: CommandFlagMetadata,): string {
+	const names = [flag.name, ...(flag.aliases ?? []),];
+	const quantifier = flag.allowEmptyValue === true ? "*" : "+";
+	return `^--(${names.join("|",)})=[\\s\\S]${quantifier}$`;
+}
+
+function booleanFlagPattern(names: string[],): string {
+	return `^--(${names.join("|",)})$`;
+}
+
+function shortFlagsFor(names: string[],): string[] {
+	return Object.entries(SHORT_FLAGS,)
+		.filter(([, canonical,],) => names.includes(canonical,))
+		.map(([short,],) => short);
+}
+
+function shortFlagPattern(flags: CommandFlagMetadata[],): string | undefined {
+	const shortChars = shortFlagsFor(
+		flags.filter((flag,) => flag.kind === "boolean").map((flag,) => flag.name),
+	);
+	return shortChars.length > 0 ? `^-(${shortChars.join("|",)})$` : undefined;
+}
+
+/**
+ * Machine-canonical argv prefix for a registry entry: the public usage tokens
+ * between `dss` and the first positional. Synthetic single-action commands
+ * whose usage omits their action token (e.g. `dss batch ...`, `dss version`)
+ * use an actionless prefix, while real command paths that spell `run` in their
+ * usage (e.g. `dss commands run [--json]`) keep the action token.
+ */
+function argvPrefix(resource: string, action: string, usage: string,): string[] {
+	const usageTokens = usage.split(/\s+/,).filter((token,) => token.length > 0);
+	const head = usageTokens.slice(1,);
+	return head[0] === resource && head[1] === action ? [resource, action,] : [resource,];
+}
+
+/**
+ * Describe one invocation as a canonical argv token array. Agents emit the
+ * usage-derived prefix, then the required `<...>` positionals first; flags and
+ * values follow, so `prefixItems` pins the head of the array and the tail is
+ * validated against the canonical flag token alphabet. Constraints mirror the
+ * runtime checks in `validateRegistryCommandInputs`: required positional arity,
+ * required flags, required choice groups, and rejection of unknown long and
+ * short flags. Value flags only validate in `--flag=VALUE` form, so a bare
+ * value flag can never pass without its value; boolean flags stay standalone.
+ * Tradeoff: a positional/value token that itself begins with `-` (e.g. a
+ * negative number) is rejected unless it is the literal `-` stdin marker or a
+ * supported flag; the runtime additionally accepts such tokens via its
+ * negative-number and `--` separator rules.
+ */
 function argvJsonSchema(
 	resource: string,
 	action: string,
-	_flags: CommandFlagMetadata[],
-	_positionals: string[],
-	_requiredFlags: string[],
-	_requiredOneOf: CommandFlagChoice[],
+	flags: CommandFlagMetadata[],
+	usage: string,
+	requiredFlags: string[],
+	requiredOneOf: CommandFlagChoice[],
 ): Record<string, unknown> {
+	const prefix = argvPrefix(resource, action, usage,);
+	const aliases: Record<string, string[]> = {};
+	for (const flag of flags) {
+		aliases[flag.name] = flag.aliases ?? [];
+	}
+	const booleanNames = flags.filter((flag,) => flag.kind === "boolean")
+		.flatMap((flag,) => [flag.name, ...(flag.aliases ?? []),]);
+	const valueFlags = flags.filter((flag,) => flag.kind === "value");
+	const requiredPositionals = requiredPlanPositionals(usage,);
+	const itemSchemas: Record<string, unknown>[] = [
+		{ not: { pattern: "^-", }, },
+		{ const: "-", },
+		{ pattern: "^--$", },
+	];
+	if (booleanNames.length > 0) itemSchemas.push({ pattern: booleanFlagPattern(booleanNames,), },);
+	if (valueFlags.length > 0) {
+		itemSchemas.push({ pattern: valueFlags.map(flagValueTokenPattern,).join("|",), },);
+	}
+	const shortPattern = shortFlagPattern(flags,);
+	if (shortPattern) itemSchemas.push({ pattern: shortPattern, },);
+	const contains = (names: string[],): Record<string, unknown> => {
+		const requiredValuePatterns = flags
+			.filter((flag,) => flag.kind === "value" && names.includes(flag.name,))
+			.map(flagValueTokenPattern,);
+		const pattern = requiredValuePatterns.length > 0
+			? requiredValuePatterns.join("|",)
+			: booleanFlagPattern(names,);
+		return { contains: { pattern, }, minContains: 1, };
+	};
+	const constraints: Record<string, unknown>[] = requiredFlags.map((name,) =>
+		contains([name, ...(aliases[name] ?? []),],)
+	);
+	for (const choice of requiredOneOf) {
+		const alternativeSchema = (alternative: string[],): Record<string, unknown> => {
+			const required = alternative.map((name,) => contains([name, ...(aliases[name] ?? []),],));
+			return required.length === 1 ? required[0]! : { allOf: required, };
+		};
+		constraints.push({ anyOf: choice.oneOf.map(alternativeSchema,), },);
+	}
 	return {
+		$schema: JSON_SCHEMA_DRAFT,
 		type: "object",
 		additionalProperties: true,
 		required: ["argv",],
 		properties: {
-			argv: { type: "array", items: { type: "string", }, minItems: 1, },
+			argv: {
+				type: "array",
+				prefixItems: [
+					...prefix.map((token,) => ({ const: token, })),
+					...requiredPositionals.map((name,) => ({
+						type: "string",
+						title: name.replace(/\.\.\.$/, "",),
+						not: { pattern: "^-", },
+					})),
+				],
+				items: { type: "string", anyOf: itemSchemas, },
+				minItems: prefix.length + requiredPositionals.length,
+				...(constraints.length > 0 ? { allOf: constraints, } : {}),
+			},
 			resource: { const: resource, },
 			action: { const: action, },
 		},
@@ -462,10 +651,19 @@ function unsafeOutputs(
 		},);
 	}
 	if (producesLocalFile) {
+		const sensitivePermissions = resource === "app" && action === "permissions-snapshot";
 		outputs.push({
 			condition: "--output or --output-file",
 			kind: "local-file",
-			detail: "Command writes bytes to a local path and returns JSON metadata on stdout.",
+			detail: sensitivePermissions
+				? "Command writes access-control identities and permissions to an owner-only local file."
+				: "Command writes bytes to a local path and returns JSON metadata on stdout.",
+			...(sensitivePermissions
+				? {
+					safeAlternative:
+						"Keep the file owner-only and outside version control unless repository policy explicitly permits committing access-control data.",
+				}
+				: {}),
 		},);
 	}
 	return outputs.length > 0 ? outputs : undefined;
@@ -475,14 +673,14 @@ export function buildCommandSchemas(
 	resource: string,
 	action: string,
 	flags: CommandFlagMetadata[],
-	positionals: string[],
 	requiredFlags: string[],
 	requiredOneOf: CommandFlagChoice[],
 	payloadSchema: CommandPayloadSchema | undefined,
 	outputShape: CommandOutputShape,
+	usage: string,
 ): CommandAgentSchemas {
 	return {
-		argv: argvJsonSchema(resource, action, flags, positionals, requiredFlags, requiredOneOf,),
+		argv: argvJsonSchema(resource, action, flags, usage, requiredFlags, requiredOneOf,),
 		...(payloadSchema ? { input: payloadJsonSchema(payloadSchema,), } : {}),
 		output: outputJsonSchema(outputShape,),
 	};
@@ -526,6 +724,10 @@ const EXPLICIT_REGISTRY_OVERRIDES: Record<string, CommandRegistryOverride> = {
 	"scenario.update": {
 		examplePayload: { active: false, },
 	},
+	"variable.set": {
+		requiredFlags: [],
+		requiredOneOf: [{ oneOf: [["standard",], ["local",],], },],
+	},
 	"wiki.update": {
 		examplePayload: { article: { name: "Updated article", }, },
 	},
@@ -553,13 +755,17 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 		return "read";
 	}
 	if (resource === "install-skill") return "write";
+	// `project export` streams an archive over the API and writes it to a local
+	// path; the DSS-side project is untouched, so it reads remotely and only
+	// mutates the local filesystem.
+	if (resource === "project" && action === "export") return "read";
 	if (resource === "data-quality" && action === "compute") return "write";
 	if (READ_ACTIONS.has(action,)) return "read";
 	if (
 		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove|publish|activate|deploy|import|export|preload|upgrade|start|stop|restart|duplicate|put|rename|reply|compute|organize)/
 			.test(action,)
 		// Compound actions whose mutating verb is a suffix (e.g. permissions-set, dataset-compute).
-		|| /-(set|compute)$/.test(action,)
+		|| /-(set|compute|restore)$/.test(action,)
 	) {
 		return "write";
 	}
@@ -666,10 +872,12 @@ function splitTopLevelChoices(group: string,): string[] {
 	const parts: string[] = [];
 	let depth = 0;
 	let current = "";
-	for (const char of group) {
+	for (let index = 0; index < group.length; index++) {
+		const char = group[index]!;
 		if (char === "[" || char === "(") depth++;
 		else if (char === "]" || char === ")") depth--;
-		if (char === "|" && depth === 0) {
+		const nextAlternative = group.slice(index + 1,).trimStart();
+		if (char === "|" && depth === 0 && nextAlternative.startsWith("--",)) {
 			parts.push(current,);
 			current = "";
 		} else {
@@ -685,9 +893,9 @@ function flagsInUsageFragment(fragment: string,): string[] {
 }
 
 /**
- * Split required usage flags into unconditional flags and mutually-exclusive
- * choice groups. A required `(--a X | --b Y)` group becomes a requiredOneOf entry
- * (pick exactly one alternative; an alternative listing several flags must be
+ * Split required usage flags into unconditional flags and required choice
+ * groups. A required `(--a X | --b Y)` group becomes a requiredOneOf entry
+ * (at least one alternative; an alternative listing several flags must be
  * supplied together) instead of marking every flag as unconditionally required.
  */
 function deriveRequiredUsage(
@@ -704,6 +912,14 @@ function deriveRequiredUsage(
 		const oneOf = alternatives
 			.map((alternative,) => flagsInUsageFragment(alternative,))
 			.filter((alternativeFlags,) => alternativeFlags.length > 0);
+		// A group mixing a positional alternative with flags (e.g. sql query's
+		// `(SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin)`) cannot be
+		// expressed as a flag-only choice: filtering out the flagless alternative
+		// would falsely require one of the flags. Omit the group from the flag
+		// contract entirely; the handler stays the runtime authority.
+		if (alternatives.some((alternative,) => flagsInUsageFragment(alternative,).length === 0)) {
+			continue;
+		}
 		if (oneOf.length > 1) requiredOneOf.push({ oneOf, },);
 		else if (oneOf.length === 1) requiredFlags.push(...oneOf[0]!,);
 	}
@@ -726,7 +942,11 @@ function extractFlagValueHints(
 	usage: string,
 ): Map<string, { valueType: string; enumValues?: string[]; }> {
 	const hints = new Map<string, { valueType: string; enumValues?: string[]; }>();
-	for (const match of usage.matchAll(/--([a-z0-9-]+)\s+([a-z]+(?:\|[a-z]+)+)/g,)) {
+	for (
+		const match of usage.matchAll(
+			/--([a-z0-9-]+)\s+([A-Za-z][A-Za-z0-9_-]*(?:\|[A-Za-z][A-Za-z0-9_-]*)+)(?![A-Za-z0-9_=-])/g,
+		)
+	) {
 		const flag = FLAG_ALIASES[match[1]!] ?? match[1]!;
 		if (!hints.has(flag,)) {
 			hints.set(flag, { valueType: "enum", enumValues: match[2]!.split("|",), },);
@@ -748,21 +968,39 @@ function inferPayloadSchema(
 	return { ...inputContract, jsonShape: "object", };
 }
 
-function inferExitCodes(asyncKind: CommandAsyncKind,): CommandExitCodes {
+/**
+ * Long-running commands surface exit 4 when the remote work itself fails.
+ * `batch run` is synchronous, yet any step it dispatches may be a long-running
+ * lifecycle command (app instance create/delete, job build, scenario run), so a
+ * batch can end on 4 as well and must advertise it.
+ */
+function inferExitCodes(
+	resource: string,
+	action: string,
+	asyncKind: CommandAsyncKind,
+): CommandExitCodes {
+	const longRunning = asyncKind !== "none" || `${resource}.${action}` === "batch.run";
 	return {
 		ok: 0,
 		usage: 1,
 		error: 2,
 		transient: 3,
-		...(asyncKind !== "none" ? { longRunningFailure: 4 as const, } : {}),
+		...(longRunning ? { longRunningFailure: 4 as const, } : {}),
 	};
 }
 
 function cleanupCommandFromDeleteUsage(resource: string, action: string,): string | undefined {
+	if (resource === "project" && (action === "create" || action === "duplicate")) {
+		return undefined;
+	}
 	if (!(action.startsWith("create",) || action === "clone" || action === "duplicate")) {
 		return undefined;
 	}
-	const deleteAction = action === "create-rule" ? "delete-rule" : "delete";
+	const deleteAction = action === "create-rule"
+		? "delete-rule"
+		: action === "create-instance" || action === "create-successor-instance"
+		? "delete-instance"
+		: "delete";
 	const deleteUsage = commands[resource]?.[deleteAction]?.usage;
 	if (!deleteUsage) return undefined;
 	const base = stripOptionalUsageGroups(deleteUsage,).replace(/\s+/g, " ",).trim();
@@ -797,10 +1035,17 @@ function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
 	}
 	if (resource === "data-quality" && action === "compute") return "future";
 	if (resource === "code" && action === "run") return "future";
+	if (
+		resource === "app"
+		&& ["create-instance", "create-successor-instance", "delete-instance",].includes(action,)
+	) {
+		return "future";
+	}
 	return "none";
 }
 
 function inferIdempotency(
+	resource: string,
 	sideEffect: CommandSideEffect,
 	action: string,
 	usage: string,
@@ -808,13 +1053,40 @@ function inferIdempotency(
 	if (sideEffect === "read") return "safe";
 	if (action.startsWith("create",) && usage.includes("--if-not-exists",)) return "if-not-exists";
 	if (action.startsWith("delete",) && usage.includes("--if-exists",)) return "if-exists";
+	if (`${resource}.${action}` === "app.set-manifest-version") return "none";
+	// `app delete-instance` converges without an `--if-exists` flag: an absent
+	// target project is reported as an already-absent success instead of an
+	// error, so replaying the delete cannot fail on absence alone.
+	if (`${resource}.${action}` === "app.delete-instance") return "convergent";
 	if (/^(clear|refresh|set|save)/.test(action,)) return "convergent";
 	return "none";
 }
 
+/**
+ * `app create-instance` and `app create-successor-instance` hand back a DSS
+ * creation future, and the created project only becomes safe to delete once
+ * that future is terminal. A directly runnable delete command cannot express
+ * that gate, so these commands advertise no `cleanupCommand` at all: recovery
+ * goes through the recorded cleanup ledger, whose replay carries the creation
+ * future ID and refuses to delete while creation is unconfirmed.
+ */
+const LEDGER_ONLY_CLEANUP_KEYS: Record<string, true> = {
+	"app.create-instance": true,
+	"app.create-successor-instance": true,
+};
+const LEDGER_ONLY_CLEANUP_HINT =
+	"Pass `--record-cleanup PATH` when creating, then recover with `dss cleanup --file PATH --apply`. Do not issue direct instance deletion as cleanup: it bypasses the creation-future gate and can delete the project while DSS is still creating it.";
+
 export function inferCleanupHint(resource: string, action: string,): string | undefined {
 	if (!(action.startsWith("create",) || action === "clone")) return undefined;
-	const deleteAction = action === "create-rule" ? "delete-rule" : "delete";
+	if (LEDGER_ONLY_CLEANUP_KEYS[`${resource}.${action}`] === true) {
+		return LEDGER_ONLY_CLEANUP_HINT;
+	}
+	const deleteAction = action === "create-rule"
+		? "delete-rule"
+		: action === "create-instance" || action === "create-successor-instance"
+		? "delete-instance"
+		: "delete";
 	const deleteUsage = commands[resource]?.[deleteAction]?.usage;
 	const ifExists = deleteUsage?.includes("--if-exists",) ? " --if-exists" : "";
 	if (resource === "code-env") {
@@ -867,9 +1139,12 @@ function buildRegistryEntry(
 		?? inferPayloadSchema(inputContract,);
 	const examplePayload = meta.examplePayload
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.examplePayload;
-	const cleanupCommand = meta.cleanupCommand
+	const inferredCleanupCommand = meta.cleanupCommand
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.cleanupCommand
 		?? cleanupCommandFromDeleteUsage(resource, action,);
+	const cleanupCommand = LEDGER_ONLY_CLEANUP_KEYS[`${resource}.${action}`] === true
+		? undefined
+		: inferredCleanupCommand;
 	const flagMetadata: CommandFlagMetadata[] = flags.map((name,) => {
 		const aliases = Object.entries(FLAG_ALIASES,)
 			.filter(([raw, canonical,],) =>
@@ -879,14 +1154,16 @@ function buildRegistryEntry(
 		const aliasPart = aliases.length > 0 ? { aliases, } : {};
 		const kind = flagKind(name,);
 		if (kind === "boolean") return { name, kind, ...aliasPart, };
+		const allowEmptyPart = ALLOW_EMPTY_VALUE_FLAGS[name] === true ? { allowEmptyValue: true, } : {};
 		const hint = valueHints.get(name,) ?? GLOBAL_FLAG_VALUE_HINTS[name];
-		if (!hint) return { name, kind, ...aliasPart, };
+		if (!hint) return { name, kind, ...aliasPart, ...allowEmptyPart, };
 		return {
 			name,
 			kind,
 			valueType: hint.valueType,
 			...(hint.enumValues ? { enumValues: hint.enumValues, } : {}),
 			...aliasPart,
+			...allowEmptyPart,
 		};
 	},);
 	const positionals = extractPositionals(meta.usage,);
@@ -914,7 +1191,7 @@ function buildRegistryEntry(
 		producesLocalFile,
 		mutatesDss,
 		async: asyncKind,
-		idempotency: inferIdempotency(sideEffect, action, meta.usage,),
+		idempotency: inferIdempotency(resource, sideEffect, action, meta.usage,),
 		dryRun: meta.usage.includes("--dry-run",),
 		requiredFlags: uniqueRequiredFlags,
 		optionalFlags: uniqueOptionalFlags,
@@ -924,16 +1201,16 @@ function buildRegistryEntry(
 			resource,
 			action,
 			flagMetadata,
-			positionals,
 			uniqueRequiredFlags,
 			requiredOneOf,
 			payloadSchema,
 			outputShape,
+			meta.usage,
 		),
 		...(unsafe ? { unsafeOutputs: unsafe, } : {}),
 		...(examplePayload !== undefined ? { examplePayload, } : {}),
 		...(cleanupCommand ? { cleanupCommand, } : {}),
-		exitCodes: inferExitCodes(asyncKind,),
+		exitCodes: inferExitCodes(resource, action, asyncKind,),
 		...(cleanupHint ? { cleanupHint, } : {}),
 		agentContractVersion: AGENT_CONTRACT_VERSION,
 	};
@@ -1029,6 +1306,7 @@ function commandFlagJsonSchema(): Record<string, unknown> {
 			valueType: { type: "string", },
 			enumValues: { type: "array", items: { type: "string", }, },
 			aliases: { type: "array", items: { type: "string", }, },
+			allowEmptyValue: { type: "boolean", },
 		},
 	};
 }
@@ -1179,6 +1457,13 @@ export function buildAgentContract(): Record<string, unknown> {
 		cli: cliVersionResult(),
 		commands: {
 			discoveryCommand: "dss commands run",
+			scopedDiscoveryCommand: "dss commands run --fields RESOURCE[.ACTION[.FIELD...]]",
+			scopedDiscoveryExamples: [
+				"dss commands run --fields dataset",
+				"dss commands run --fields dataset.create",
+			],
+			scopedDiscoveryHint:
+				"--fields RESOURCE returns every action of one resource; --fields RESOURCE.ACTION returns a single registry entry keyed by the dotted path; append .FIELD paths to project nested metadata. Comma-separate paths to select several.",
 			actions: commandActionSummary(registry,),
 		},
 		schemas: {
@@ -1226,12 +1511,47 @@ function exitCodesOnFailure(entry: CommandRegistryEntry,): Record<string, number
 	};
 }
 
+/**
+ * Plan-local project key resolution. `--plan` is a purely local preview, so it
+ * resolves the target project from the explicit `--project-key` flag and the
+ * documented `DATAIKU_PROJECT_KEY` environment variable only. The saved
+ * credentials file is never opened and no API key is ever resolved, so planning
+ * can neither depend on nor leak stored secrets.
+ */
+function planProjectKeyFromArgs(
+	flags: Record<string, string | boolean>,
+): string | undefined {
+	const fromFlag = flags["project-key"];
+	if (typeof fromFlag === "string" && fromFlag.trim().length > 0) return fromFlag.trim();
+	if (!dataikuEnvironmentEnabled()) return undefined;
+	const fromEnv = process.env.DATAIKU_PROJECT_KEY;
+	return fromEnv !== undefined && fromEnv.trim().length > 0 ? fromEnv.trim() : undefined;
+}
+
+/**
+ * Commands whose plan must pin the target with an explicit `--project-key`
+ * instead of falling back to ambient `DATAIKU_PROJECT_KEY`, so a cleanup plan
+ * can never silently retarget a project the caller did not name.
+ */
+const EXPLICIT_PLAN_PROJECT_KEY: Record<string, true> = { "app.delete-instance": true, };
+
+/** Plan-local project key, or the canonical `--project-key` usage error. */
+function requiredPlanProjectKey(
+	flags: Record<string, string | boolean>,
+	usage: string,
+): string {
+	return planProjectKeyFromArgs(flags,) ?? requiredPlanFlag(flags, "project-key", usage,);
+}
+
 function projectKeyForPlan(
 	entry: CommandRegistryEntry,
 	flags: Record<string, string | boolean>,
 ): string | undefined {
 	if (!entry.requiresProject) return undefined;
-	const projectKey = resolveCredentials(flags,).projectKey;
+	if (EXPLICIT_PLAN_PROJECT_KEY[`${entry.resource}.${entry.action}`] === true) {
+		return requiredPlanFlag(flags, "project-key", entry.usage,);
+	}
+	const projectKey = planProjectKeyFromArgs(flags,);
 	if (projectKey) return projectKey;
 	throw new UsageError(
 		`Missing project key. Pass --project-key or set DATAIKU_PROJECT_KEY before planning ${entry.resource} ${entry.action}.`,
@@ -1244,7 +1564,9 @@ function requiredPlanFlag(
 	usage: string,
 ): string {
 	const value = flags[name];
-	if (typeof value === "string" && value.trim().length > 0) return value;
+	// Return trimmed like the runtime's requiredStringFlag so plans advertise
+	// exactly the identifier the command will act on.
+	if (typeof value === "string" && value.trim().length > 0) return value.trim();
 	throw new UsageError(`--${name} is required. Usage: ${usage}`,);
 }
 
@@ -1542,6 +1864,31 @@ export function commandPlanShape(
 				payload: { datasetName: name, connection, dsType, projectKey, },
 			};
 		}
+		case "dataset.clone": {
+			const source = args[0];
+			const target = args[1];
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/datasets/",),
+				identifiers: { source, target, },
+				payload: {
+					sourceDataset: source,
+					targetDataset: target,
+					path: flags["path"] as string | undefined,
+					table: flags["table"] as string | undefined,
+					metastoreTableName: flags["metastore-table"] as string | undefined,
+					allowSamePath: flags["allow-same-path"] === true,
+					projectKey,
+				},
+			};
+		}
+		case "dataset.rename":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/actions/renameDataset",),
+				identifiers: { oldName: args[0], newName: args[1], },
+				payload: { oldName: args[0], newName: args[1], },
+			};
 		case "dataset.delete":
 			return {
 				method: "DELETE",
@@ -1564,6 +1911,64 @@ export function commandPlanShape(
 				identifiers: { name: id, },
 				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
+		case "recipe.add-input":
+		case "recipe.remove-input": {
+			const role = (flags["role"] as string | undefined) ?? "main";
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/recipes/${encodeURIComponent(args[0],)}`,),
+				identifiers: { recipe: args[0], dataset: args[1], role, },
+				payload: {
+					operation: action === "add-input" ? "append" : "remove",
+					dataset: args[1],
+					role,
+					projectKey,
+				},
+			};
+		}
+		case "recipe.clone": {
+			const positionalSource = args[0];
+			const fromFlag = typeof flags["from"] === "string" ? flags["from"].trim() : "";
+			const source = positionalSource ?? fromFlag;
+			if (!source) {
+				throw new UsageError(
+					`Source recipe is required. Usage: ${entry.usage}`,
+					"missing_required_flag",
+				);
+			}
+			if (positionalSource && fromFlag && positionalSource !== fromFlag) {
+				throw new UsageError(
+					"Positional source and --from must match when both are provided.",
+					"invalid_enum",
+				);
+			}
+			const toFlag = typeof flags["to"] === "string" ? flags["to"].trim() : "";
+			const nameFlag = typeof flags["name"] === "string" ? flags["name"].trim() : "";
+			const target = toFlag || nameFlag;
+			if (!target) {
+				throw new UsageError(
+					`--name or --to is required. Usage: ${entry.usage}`,
+					"missing_required_flag",
+				);
+			}
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/recipes/",),
+				identifiers: { source, target, },
+				payload: {
+					sourceRecipe: source,
+					targetRecipe: target,
+					inputRewrites: rewritePairsFromFlags(flags, "replace-input",),
+					outputRewrites: rewritePairsFromFlags(flags, "replace-output",),
+					payloadTextRewrites: rewritePairsFromFlags(flags, "replace-payload-text",),
+					outputDataset: flags["output"] as string | undefined,
+					copyOutputSettings: flags["copy-output-settings"] === true,
+					outputPath: flags["path"] as string | undefined,
+					metastoreTableName: flags["metastore-table"] as string | undefined,
+					projectKey,
+				},
+			};
+		}
 		case "recipe.delete":
 			return {
 				method: "DELETE",
@@ -1959,13 +2364,423 @@ export function commandPlanShape(
 				identifiers: { filePath: id, },
 				payload: uploadPayload(id,),
 			};
-		case "app.create-instance":
+		case "app.save-instance-manifest": {
+			const targetProjectKey = requiredPlanProjectKey(flags, entry.usage,);
+			return {
+				method: "PUT",
+				endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/app-manifest`,
+				identifiers: { projectKey: targetProjectKey, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		}
+		case "app.create-instance": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			const rawTargetProjectKey = stringField(payload, ["targetProjectKey",],);
+			if (!rawTargetProjectKey || rawTargetProjectKey.trim() === "") {
+				throw new UsageError(
+					"Instance creation payload must include a non-empty targetProjectKey.",
+					"validation_failed",
+					`Usage: ${entry.usage}`,
+				);
+			}
+			// The runtime trims and rewrites body.targetProjectKey; the plan
+			// advertises the normalized identifier and payload.
+			const targetProjectKey = rawTargetProjectKey.trim();
+			const normalizedPayload = { ...payload, targetProjectKey, };
 			return {
 				method: "POST",
 				endpoint: `/public/api/apps/${encodeURIComponent(id,)}/instances`,
-				identifiers: { appId: id, },
-				payload: requiredPlanJsonInput(flags, entry.usage,),
+				identifiers: {
+					appId: id,
+					targetProjectKey,
+					incarnationControl: "client-side-non-atomic-future-target-and-creation-tag-join",
+					incarnationObservationRequests: [
+						{
+							method: "GET",
+							endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/`,
+							when: flags["wait"] === true
+								? "after-terminal-future-target"
+								: "conditional-inline-hasResult-target",
+							intent:
+								"After DSS reports inline or terminal creation success for the requested key, observe creationTag for later cleanup binding.",
+						},
+					],
+					preflightRequests: [
+						{
+							method: "GET",
+							endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/`,
+							when: "before-create",
+							intent: "Require the target project to be absent before creating the instance.",
+						},
+						{
+							method: "GET",
+							endpoint: "/public/api/projects/",
+							when: "conditional",
+							intent:
+								"Fallback list probe issued only when the direct project GET is forbidden (403) to confirm the target is absent; an unconfirmed target rejects creation.",
+						},
+					],
+					note:
+						"Strict preflight: the instance POST runs only after the payload targetProjectKey is confirmed absent. Creation never writes into an existing or unprovable project.",
+				},
+				payload: normalizedPayload,
+				wait: flags["wait"] === true,
 			};
+		}
+		case "app.set-manifest-version": {
+			const targetProjectKey = requiredPlanProjectKey(flags, entry.usage,);
+			const payloadPatch: Record<string, unknown> = {};
+			const version = flags["manifest-version"] as string | undefined;
+			if (version !== undefined) {
+				if (version.trim() === "") {
+					throw new UsageError(
+						"App manifest version must be a non-empty string.",
+						"validation_failed",
+						`Usage: ${entry.usage}`,
+					);
+				}
+				payloadPatch.version = version;
+			}
+			const versionNotes = flags["version-notes"] as string | undefined;
+			if (versionNotes !== undefined) payloadPatch.versionNotes = versionNotes;
+			if (version === undefined && versionNotes === undefined) {
+				throw new UsageError(
+					"At least one of --manifest-version or --version-notes is required.",
+					"usage_error",
+					`Usage: ${entry.usage}`,
+				);
+			}
+			const expectHash = flags["expect-hash"] as string | undefined;
+			if (expectHash !== undefined && !/^[a-fA-F0-9]{64}$/.test(expectHash,)) {
+				throw new UsageError(
+					"Expected manifest hash must be a 64-character SHA-256 hex digest.",
+					"validation_failed",
+					`Usage: ${entry.usage}`,
+				);
+			}
+			return {
+				method: "PUT",
+				endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/app-manifest`,
+				identifiers: {
+					projectKey: targetProjectKey,
+					payloadPatch,
+					...(expectHash !== undefined ? { expectHash: expectHash.toLowerCase(), } : {}),
+					concurrencyControl: APP_MANIFEST_CONCURRENCY_CONTROL,
+					staleReadCheck: expectHash === undefined
+						? "none"
+						: "client-side-expect-hash-compare-before-put",
+					note: expectHash === undefined
+						? "Unconditional PUT: no stale-read check is armed because --expect-hash was not supplied."
+						: "The hash is compared client-side against a fresh read; the PUT itself stays unconditional, so this command can overwrite a writer that commits between that read and this PUT without detecting the lost update.",
+				},
+			};
+		}
+		case "app.create-successor-instance": {
+			const sourceProjectKey = requiredPlanFlag(flags, "from", entry.usage,);
+			const targetProjectKey = requiredPlanFlag(flags, "to", entry.usage,);
+			if (sourceProjectKey === targetProjectKey) {
+				throw new UsageError(
+					"--from and --to must be different project keys.",
+					"validation_failed",
+					`Usage: ${entry.usage}`,
+				);
+			}
+			const targetProjectName = flags["name"] as string | undefined;
+			const copyPermissions = parseBooleanOption(flags["copy-permissions"], "--copy-permissions",)
+				?? false;
+			return {
+				method: "POST",
+				endpoint: `/public/api/apps/${encodeURIComponent(id,)}/instances`,
+				identifiers: {
+					appId: id,
+					sourceProjectKey,
+					targetProjectKey,
+					...(targetProjectName !== undefined ? { targetProjectName, } : {}),
+					copyPermissions,
+					incarnationControl: "client-side-non-atomic-future-target-and-creation-tag-join",
+					postFutureRequests: [
+						{
+							method: "GET",
+							endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/`,
+							intent:
+								"After the terminal future names the successor key, observe creationTag and bind later target checks and cleanup to that hash.",
+						},
+					],
+					...(copyPermissions
+						? {
+							permissionConcurrencyControl: "client-side-non-atomic-stale-identity-and-hash-checks",
+						}
+						: {}),
+					preflightRequests: [
+						{
+							method: "GET",
+							endpoint: `/public/api/apps/${encodeURIComponent(id,)}/instances/`,
+							when: "before-create",
+							intent: "Verify the --from project is a registered instance of the app.",
+						},
+						{
+							method: "GET",
+							endpoint: `/public/api/projects/${encodeURIComponent(sourceProjectKey,)}/app-manifest`,
+							when: "before-create",
+							intent: "Verify the --from project is an APP_INSTANCE project.",
+						},
+						{
+							method: "GET",
+							endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/`,
+							when: "before-create",
+							intent: "Require the --to target project to be absent before creating the successor.",
+						},
+						{
+							method: "GET",
+							endpoint: "/public/api/projects/",
+							when: "conditional",
+							intent:
+								"Fallback list probe issued only when the direct project GET is forbidden (403) to confirm the target is absent; an unconfirmed target rejects creation.",
+						},
+					],
+					...(copyPermissions
+						? {
+							permissionRequests: [
+								{
+									method: "GET",
+									endpoint: `/public/api/projects/${encodeURIComponent(sourceProjectKey,)}/permissions`,
+									intent: "Snapshot the predecessor instance ACL before creation.",
+								},
+								{
+									method: "GET",
+									endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/permissions`,
+									intent: "Read the successor ACL to decide whether the copy is a no-op.",
+								},
+								{
+									method: "GET",
+									endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/`,
+									intent:
+										"Recheck successor creationTag after reading its ACL; stop if the project key was reused.",
+								},
+								{
+									method: "GET",
+									endpoint: `/public/api/projects/${encodeURIComponent(sourceProjectKey,)}/permissions`,
+									intent:
+										"Recheck the predecessor ACL immediately before the write and stop if its hash drifted.",
+								},
+								{
+									method: "GET",
+									endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/`,
+									intent:
+										"Recheck successor creationTag immediately before the unconditional permission PUT.",
+								},
+								{
+									method: "PUT",
+									endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/permissions`,
+									intent: "Apply the predecessor ACL snapshot to the successor instance.",
+								},
+								{
+									method: "GET",
+									endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/permissions`,
+									intent: "Verify the successor ACL hash equals the predecessor snapshot hash.",
+								},
+								{
+									method: "GET",
+									endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/`,
+									intent:
+										"Detect successor project-key reuse across the permission write and verification read.",
+								},
+							],
+						}
+						: {}),
+					note:
+						"Additive, non-transactional: strict preflight verifies the predecessor instance and the --to target absence before the single instance POST, then waits on the DSS future. The predecessor is never modified or deleted; cleanup targets only the successor key. DSS exposes no immutable future target ID, conditional DELETE, or conditional permission PUT: later creationTag and ACL checks narrow and detect races but cannot atomically join creation provenance or serialize writes.",
+				},
+				payload: {
+					targetProjectKey,
+					targetProjectName: targetProjectName ?? targetProjectKey,
+				},
+				wait: true,
+			};
+		}
+		case "app.delete-instance": {
+			const targetProjectKey = requiredPlanFlag(flags, "project-key", entry.usage,);
+			const futureId = flags["future-id"] === undefined
+				? undefined
+				: requiredPlanFlag(flags, "future-id", entry.usage,);
+			const expectedProjectIncarnation = flags["expect-project-incarnation"] === undefined
+				? undefined
+				: requiredPlanFlag(flags, "expect-project-incarnation", entry.usage,);
+			if (
+				expectedProjectIncarnation !== undefined
+				&& !/^[0-9a-f]{64}$/.test(expectedProjectIncarnation,)
+			) {
+				throw new UsageError(
+					"--expect-project-incarnation must be a 64-character lowercase SHA-256 hash.",
+					"validation_failed",
+				);
+			}
+			const unconfirmedCreation = parseBooleanOption(
+				flags["unconfirmed-creation"],
+				"--unconfirmed-creation",
+			) ?? false;
+			const manifestProbe = `/public/api/projects/${
+				encodeURIComponent(targetProjectKey,)
+			}/app-manifest`;
+			const projectDetailsProbe = `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/`;
+			const typeValidationRequests = [
+				{
+					method: "GET",
+					endpoint: manifestProbe,
+					when: "before-delete",
+					intent: "Verify the target is an APP_INSTANCE project before deleting.",
+				},
+				{
+					method: "GET",
+					endpoint: projectDetailsProbe,
+					when: expectedProjectIncarnation === undefined
+						? "conditional-type-check-before-delete"
+						: "incarnation-and-conditional-type-check-before-delete",
+					intent: expectedProjectIncarnation === undefined
+						? "Fallback probe issued only when the app-manifest response omits projectAppType (live DSS does)."
+						: "Recompute the current project-incarnation hash from creationTag after the manifest probe; the same response supplies projectAppType when the manifest omits it.",
+				},
+			];
+			const preflightRequests = typeValidationRequests;
+			if (unconfirmedCreation) {
+				return {
+					identifiers: {
+						projectKey: targetProjectKey,
+						...(futureId !== undefined ? { futureId, } : {}),
+						unconfirmedCreation: true,
+						note:
+							"Indeterminate creation without a DSS future ID: no DSS request is issued. The command reports an unresolved cleanup failure (exit 4, cleanupResolved false) without deleting, because creation may still be running.",
+					},
+				};
+			}
+			if (futureId === undefined) {
+				return {
+					method: "DELETE",
+					endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}`,
+					identifiers: {
+						projectKey: targetProjectKey,
+						...(expectedProjectIncarnation === undefined
+							? {}
+							: {
+								projectIncarnationGate: {
+									required: false,
+									provided: true,
+									expectedHash: expectedProjectIncarnation,
+								},
+								incarnationControl: "client-side-non-atomic-stale-identity-check",
+							}),
+						preflightRequests,
+						note: expectedProjectIncarnation === undefined
+							? "Convergent direct delete: the manifest preflight rejects non-instance targets, an absent target (404) is an already-absent success issued without any DELETE, and only a verified instance target receives the project DELETE. No project-incarnation binding was requested."
+							: "Incarnation-bound direct delete: after verifying APP_INSTANCE type, a project GET must match the expected creationTag hash before an unconditional DELETE. DSS exposes no immutable project ID or conditional DELETE, so this client-side check narrows but cannot serialize against project-key reuse after the GET.",
+					},
+				};
+			}
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/projects/${encodeURIComponent(targetProjectKey,)}`,
+				identifiers: {
+					projectKey: targetProjectKey,
+					futureId,
+					projectIncarnationGate: {
+						required: true,
+						provided: expectedProjectIncarnation !== undefined,
+						...(expectedProjectIncarnation === undefined
+							? {}
+							: { expectedHash: expectedProjectIncarnation, }),
+					},
+					incarnationControl: "client-side-non-atomic-future-target-and-creation-tag-join",
+					preflightRequests: [
+						{
+							method: "GET",
+							endpoint: manifestProbe,
+							when: "before-future-wait",
+							intent:
+								"Verify the target is an APP_INSTANCE project before the supplied future is touched, so an invalid target cannot affect it.",
+						},
+						{
+							method: "GET",
+							endpoint: projectDetailsProbe,
+							when: "conditional-before-wait",
+							intent:
+								"Fallback probe issued only when the pre-wait app-manifest response omits projectAppType (live DSS does).",
+						},
+					],
+					futureGate: [
+						{
+							method: "GET",
+							endpoint: `/public/api/futures/${encodeURIComponent(futureId,)}?peek=false`,
+							intent:
+								"Wait for the supplied creation future to settle or time out; never abort it, and repeat this read-only GET while it is live.",
+						},
+					],
+					postFutureValidationRequests: expectedProjectIncarnation === undefined
+						? []
+						: typeValidationRequests,
+					note: expectedProjectIncarnation === undefined
+						? "The target type is verified before the future is touched. Waiting never aborts the future, but a terminal target match still cannot authorize deletion without --expect-project-incarnation; the command then exits with validation_failed and issues no DELETE."
+						: "The target type is verified before the future is touched. The DELETE runs only after the terminal future reports the requested target, then a later project GET still matches the recorded creationTag hash and the target is re-verified as APP_INSTANCE. DSS exposes no immutable future target ID or conditional DELETE: the future target and creationTag are independent, non-atomic observations that narrow but cannot eliminate a project-key-reuse race.",
+				},
+			};
+		}
+		case "app.permissions-restore": {
+			const file = requiredPlanFlag(flags, "file", entry.usage,);
+			const targetProjectKey = requiredPlanProjectKey(flags, entry.usage,);
+			const permissionsEndpoint = `/public/api/projects/${
+				encodeURIComponent(targetProjectKey,)
+			}/permissions`;
+			const projectDetailsEndpoint = `/public/api/projects/${encodeURIComponent(targetProjectKey,)}/`;
+			return {
+				method: "PUT",
+				endpoint: permissionsEndpoint,
+				identifiers: {
+					file,
+					projectKey: targetProjectKey,
+					localPreflight: [
+						"Read and hash-verify the owner-only snapshot file.",
+						"Require its project key and canonical DSS URL to match this invocation.",
+					],
+					preflightRequests: [
+						{
+							method: "GET",
+							endpoint: projectDetailsEndpoint,
+							intent: "Require the snapshot project-incarnation hash to match creationTag.",
+						},
+						{
+							method: "GET",
+							endpoint: permissionsEndpoint,
+							intent: "Read current permissions; an equal hash makes the PUT unnecessary.",
+						},
+						{
+							method: "GET",
+							endpoint: projectDetailsEndpoint,
+							intent:
+								"Recheck the project incarnation after the permission read and immediately before any PUT.",
+						},
+					],
+					conditionalWrite: {
+						method: "PUT",
+						endpoint: permissionsEndpoint,
+						when: "permissions-differ-and-dry-run-is-false",
+					},
+					verificationRequests: [
+						{
+							method: "GET",
+							endpoint: permissionsEndpoint,
+							intent: "Verify DSS persisted the desired permission hash.",
+						},
+						{
+							method: "GET",
+							endpoint: projectDetailsEndpoint,
+							intent: "Detect project-key reuse across the permission write.",
+						},
+					],
+					incarnationControl: "client-side-non-atomic-stale-identity-check",
+					note:
+						"DSS exposes no conditional permission PUT or immutable project ID. The repeated creationTag checks narrow and detect key-reuse races but cannot serialize the check with the PUT.",
+				},
+			};
+		}
 		case "statistics.create-worksheet":
 			return {
 				method: "POST",
@@ -2220,16 +3035,6 @@ export function commandPlanShape(
 				},
 			};
 		}
-		case "project.export": {
-			const output = requiredPlanFlag(flags, "output", entry.usage,);
-			return {
-				method: "POST",
-				endpoint: `/public/api/projects/${encodeURIComponent(id,)}/export`,
-				identifiers: { projectKey: id, output, },
-				payload: jsonInput(flags,) ?? {},
-				localWrites: [{ path: output, source: "remote project archive", after: "POST", },],
-			};
-		}
 		case "project.import":
 			return {
 				method: "POST",
@@ -2316,6 +3121,16 @@ export function buildMutationPlan(
 		plannedAndDryRun: flags["dry-run"] === true,
 	},);
 }
+/**
+ * Batch plans may surface exit 4: any dispatched step can be a long-running
+ * lifecycle command whose remote work fails. Batch itself stays async "none".
+ */
+export const BATCH_PLAN_EXIT_CODES: Record<string, number> = {
+	usage: 1,
+	error: 2,
+	transient: 3,
+	longRunningFailure: 4,
+};
 
 export const BATCH_USAGE =
 	"dss batch (--data JSON|--data-file PATH|--stdin) [--continue-on-error] [--dry-run]";

@@ -16,6 +16,8 @@ export type StableErrorCode =
 	| "validation_failed"
 	| "transient"
 	| "long_running_failure"
+	| "command_result_failure"
+	| "ambiguous_outcome"
 	| "internal_error";
 
 export function dataikuErrorCode(category: DataikuErrorCategory,): StableErrorCode {

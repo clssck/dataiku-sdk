@@ -7,6 +7,7 @@ import {
 	AUTH_ACTIONS,
 	BATCH_EXAMPLE_PAYLOAD,
 	BATCH_HINT,
+	BATCH_PLAN_EXIT_CODES,
 	BATCH_USAGE,
 	buildAgentContract,
 	buildCommandRegistry,
@@ -20,11 +21,19 @@ import {
 } from "./cli/contract.js";
 import { runDoctor, runFixtures, } from "./cli/doctor.js";
 import { dataikuEnvironmentEnabled, loadEnvFile, } from "./cli/env.js";
-import { FLAG_ALIASES, parseArgs, SHORT_FLAGS, VALUE_FLAGS, } from "./cli/flags.js";
+import {
+	FLAG_ALIASES,
+	isNegativeNumberToken,
+	parseArgs,
+	SHORT_FLAGS,
+	VALUE_FLAGS,
+} from "./cli/flags.js";
 import { cleanupLedgerEntry, } from "./cli/helpers/cleanup.js";
 import {
 	commandFailureExitCode,
+	commandFailureMessage,
 	CommandResultFailure,
+	isFailedWaitResult,
 	planResult,
 	projectResultFields,
 	setOutputFieldProjection,
@@ -60,8 +69,12 @@ import {
 import {
 	appendCleanupLedgerEntry,
 	type CleanupLedgerEntry,
+	findCleanupLedgerBindingViolation,
+	preflightCleanupLedgerPath,
 	readCleanupLedger,
+	reserveCleanupLedgerDssUrl,
 } from "./utils/cleanup-ledger.js";
+import { canonicalDssUrl, } from "./utils/dss-url.js";
 
 // ---------------------------------------------------------------------------
 // Arg parsing
@@ -82,6 +95,21 @@ import {
 // ---------------------------------------------------------------------------
 // Auth commands (run before client creation)
 // ---------------------------------------------------------------------------
+
+function findUnboundAppCleanup(
+	entries: CleanupLedgerEntry[],
+): { index: number; reason: "missing" | "invalid"; } | undefined {
+	for (const [index, entry,] of entries.entries()) {
+		const parsed = parseArgs(entry.cleanup.argv,);
+		const [resource, action,] = parsed.positional;
+		if (resource !== "app" || action !== "delete-instance") continue;
+		if (parsed.flags["unconfirmed-creation"] === true) continue;
+		const expected = parsed.flags["expect-project-incarnation"];
+		if (typeof expected !== "string") return { index, reason: "missing", };
+		if (!/^[0-9a-f]{64}$/.test(expected,)) return { index, reason: "invalid", };
+	}
+	return undefined;
+}
 
 async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 	result: Record<string, unknown>;
@@ -109,6 +137,7 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 		name: entry.name,
 		path: entry.path,
 		projectKey: entry.projectKey,
+		dssUrl: typeof entry.dssUrl === "string" ? canonicalDssUrl(entry.dssUrl,) : null,
 		cleanup: entry.cleanup,
 	}));
 	if (flags["apply"] !== true) {
@@ -141,6 +170,49 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 		caCertPath,
 	},);
 
+	// Refuse before any DSS call when the ledger is not entirely bound to this
+	// server: a mixed ledger must never partially apply.
+	const bindingViolation = findCleanupLedgerBindingViolation(ordered, client.getBaseUrl(),);
+	if (bindingViolation) {
+		return {
+			result: {
+				applied: false,
+				steps,
+				bindingError: {
+					entryIndex: bindingViolation.index,
+					resource: bindingViolation.resource,
+					action: bindingViolation.action,
+					reason: bindingViolation.reason,
+					expectedDssUrl: client.getBaseUrl(),
+					...(bindingViolation.found === undefined
+						? {}
+						: { foundDssUrl: bindingViolation.found, }),
+				},
+			},
+			exitCode: 2,
+		};
+	}
+
+	// Lifecycle binding is as load-bearing as server binding. Validate the whole
+	// reversed plan before step one so a later legacy app entry cannot leave an
+	// earlier cleanup applied and then fail on project-key reuse protection.
+	const lifecycleViolation = findUnboundAppCleanup(ordered,);
+	if (lifecycleViolation) {
+		return {
+			result: {
+				applied: false,
+				steps,
+				lifecycleError: {
+					entryIndex: lifecycleViolation.index,
+					resource: "app",
+					action: "delete-instance",
+					reason: lifecycleViolation.reason,
+				},
+			},
+			exitCode: 2,
+		};
+	}
+
 	const applied: Array<Record<string, unknown>> = [];
 	const failures: Array<Record<string, unknown>> = [];
 	for (const [index, entry,] of ordered.entries()) {
@@ -153,7 +225,35 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 			) {
 				throw new UsageError(`Invalid cleanup argv: ${entry.cleanup.argv.join(" ",)}`,);
 			}
+			if (
+				resource === "app"
+				&& action === "delete-instance"
+				&& parsed.flags["unconfirmed-creation"] !== true
+				&& typeof parsed.flags["expect-project-incarnation"] !== "string"
+			) {
+				throw new UsageError(
+					"App cleanup entry is not bound to a project incarnation. Refusing deletion after possible project-key reuse.",
+					"validation_failed",
+					"Capture a new cleanup entry from the current CLI. Legacy entries cannot safely delete app projects.",
+				);
+			}
 			const result = await commands[resource][action].handler(client, args, parsed.flags,);
+			if (isFailedWaitResult(result,)) {
+				const failure = {
+					index,
+					cleanup: entry.cleanup,
+					error: commandFailureMessage(result,),
+					result,
+				};
+				failures.push(failure,);
+				if (flags["continue-on-error"] !== true) {
+					return {
+						result: { applied: true, steps, results: applied, failures, },
+						exitCode: 2,
+					};
+				}
+				continue;
+			}
 			applied.push({ index, cleanup: entry.cleanup, result, },);
 		} catch (error) {
 			const failure = {
@@ -273,6 +373,15 @@ function validateSupportedCommandFlags(
 			throw new UsageError(`Unknown flag --${flagName} for ${resource} ${action}`, "unknown_flag",);
 		}
 	}
+	if (flags["dry-run"] === true && !entry.dryRun) {
+		throw new UsageError(
+			`--dry-run is not supported for ${resource} ${action}.`,
+			"unknown_flag",
+			entry.flags.some((flag,) => flag.name === "plan")
+				? "Remove --dry-run; use --plan to preview the mutation instead."
+				: `Remove --dry-run; ${resource} ${action} has no dry-run mode.`,
+		);
+	}
 }
 
 function stripOptionalUsageGroupsForValidation(usage: string,): string {
@@ -300,10 +409,15 @@ function requiredPositionalCount(usage: string,): number {
 	return positionalTokens.length;
 }
 
-function flagIsProvided(flags: Record<string, string | boolean>, name: string,): boolean {
+function flagIsProvided(
+	flags: Record<string, string | boolean>,
+	name: string,
+	allowEmpty = false,
+): boolean {
 	const value = flags[name];
 	if (value === undefined || value === false) return false;
-	return typeof value !== "string" || value.length > 0;
+	if (typeof value !== "string") return true;
+	return allowEmpty || value.length > 0;
 }
 
 function validateRequiredCommandInputs(
@@ -314,9 +428,13 @@ function validateRequiredCommandInputs(
 	entry: CommandRegistryEntry,
 ): void {
 	const argCount = requiredPositionalCount(entry.usage,);
+	const allowEmptyFlags: Record<string, true> = {};
+	for (const flag of entry.flags) {
+		if (flag.allowEmptyValue === true) allowEmptyFlags[flag.name] = true;
+	}
 	if (args.length < argCount) requireArgs(args, argCount, entry.usage,);
 	for (const flagName of entry.requiredFlags) {
-		if (!flagIsProvided(flags, flagName,)) {
+		if (!flagIsProvided(flags, flagName, allowEmptyFlags[flagName] === true,)) {
 			throw new UsageError(
 				`--${flagName} is required. Usage: ${entry.usage}`,
 				"missing_required_flag",
@@ -325,7 +443,9 @@ function validateRequiredCommandInputs(
 	}
 	for (const choice of entry.requiredOneOf ?? []) {
 		const satisfied = choice.oneOf.some((alternative,) =>
-			alternative.every((flagName,) => flagIsProvided(flags, flagName,))
+			alternative.every((flagName,) =>
+				flagIsProvided(flags, flagName, allowEmptyFlags[flagName] === true,)
+			)
 		);
 		if (!satisfied) {
 			const alternatives = choice.oneOf.map((alternative,) =>
@@ -504,7 +624,8 @@ async function validateBatchStep(
 
 function batchStepNeedsClient(argv: string[],): boolean {
 	try {
-		const { positional, } = parseArgs(argv,);
+		const { positional, flags, } = parseArgs(argv,);
+		if (flags["plan"] === true) return false;
 		const resource = positional[0];
 		if (!resource) return false;
 		const isMetaCommand = META_COMMAND_RESOURCES[resource] === true;
@@ -536,6 +657,85 @@ function batchStepCommandContext(argv: string[],): { resource?: string; action?:
 		positionals.push(arg,);
 	}
 	return { resource: positionals[0], action: positionals[1], };
+}
+
+const SENSITIVE_ARGV_VALUE_FLAGS: ReadonlySet<string> = new Set([
+	"api-key",
+],);
+
+function redactArgv(argv: string[],): string[] {
+	const redacted: string[] = [];
+	for (let index = 0; index < argv.length; index++) {
+		const arg = argv[index]!;
+		if (arg === "--") {
+			redacted.push(...argv.slice(index,),);
+			break;
+		}
+		if (arg.startsWith("--",)) {
+			const eqIdx = arg.indexOf("=",);
+			const rawFlagName = eqIdx === -1 ? arg.slice(2,) : arg.slice(2, eqIdx,);
+			const flagName = FLAG_ALIASES[rawFlagName] ?? rawFlagName;
+			if (SENSITIVE_ARGV_VALUE_FLAGS.has(flagName,)) {
+				if (eqIdx !== -1) {
+					redacted.push(`${arg.slice(0, eqIdx + 1,)}***`,);
+				} else {
+					redacted.push(arg,);
+					const next = argv[index + 1];
+					if (
+						next !== undefined
+						&& (next === "-" || !next.startsWith("-",) || isNegativeNumberToken(next,))
+					) {
+						redacted.push("***",);
+						index++;
+					}
+				}
+				continue;
+			}
+		}
+		redacted.push(arg,);
+	}
+	return redacted;
+}
+
+function validateBatchStepMode(argv: string[], index: number,): void {
+	let positional: string[];
+	let flags: Record<string, string | boolean>;
+	try {
+		({ positional, flags, } = parseArgs(argv,));
+	} catch {
+		return;
+	}
+	if (flags["plan"] !== true && flags["dry-run"] !== true) return;
+	const resource = positional[0];
+	const action = positional[1];
+	if (!resource) return;
+	if (META_COMMAND_RESOURCES[resource] === true) return;
+	const resourceActions = commands[resource];
+	if (!resourceActions) return;
+	const meta = resourceActions[action ?? ""];
+	if (!meta) return;
+	const entry = cachedCommandRegistry()[resource]?.[action ?? ""];
+	if (!entry) return;
+	if (flags["plan"] === true && !entry.flags.some((flag,) => flag.name === "plan")) {
+		throw new UsageError(
+			`Batch step ${index} requests --plan, which is not supported for ${resource} ${action}.`,
+			"unknown_flag",
+			"Remove --plan from the step; only mutating commands support --plan.",
+		);
+	}
+	if (flags["dry-run"] === true && !entry.dryRun) {
+		throw new UsageError(
+			`Batch step ${index} requests --dry-run, which is not supported for ${resource} ${action}.`,
+			"unknown_flag",
+			"Remove --dry-run from the step.",
+		);
+	}
+}
+
+function validateBatchStepModes(steps: string[][],): void {
+	for (let index = 0; index < steps.length; index++) {
+		validateBatchStepMode(steps[index]!, index,);
+	}
 }
 
 function runInstallSkill(flags: Record<string, string | boolean>,): Record<string, unknown> {
@@ -686,13 +886,13 @@ function batchPlan(flags: Record<string, string | boolean>,): Record<string, unk
 			needsClient: steps.some((argv,) => batchStepNeedsClient(argv,)),
 		},
 		payload: {
-			steps,
+			steps: steps.map((argv,) => redactArgv(argv,)),
 			continueOnError: flags["continue-on-error"] === true,
 			dryRun: flags["dry-run"] === true,
 		},
 		idempotency: "none",
 		asyncKind: "none",
-		exitCodesOnFailure: META_PLAN_EXIT_CODES,
+		exitCodesOnFailure: BATCH_PLAN_EXIT_CODES,
 		plannedAndDryRun: flags["dry-run"] === true,
 	},);
 }
@@ -747,7 +947,33 @@ async function runMetaCommand(
 		if (!action) throw missingActionError("commands", ["run",], COMMANDS_USAGE,);
 		currentCommandContext.action = action;
 		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
-		return { action, result: buildCommandRegistry(), exitCode: 0, };
+		const registry = buildCommandRegistry();
+		if (typeof flags["fields"] === "string") {
+			for (
+				const selector of flags["fields"].split(",",).map((field,) => field.trim()).filter(Boolean,)
+			) {
+				const selectorParts = selector.split(".",);
+				if (selectorParts.some((part,) => part.length === 0)) {
+					throw new UsageError(
+						`Invalid --fields selector: ${selector}. Expected RESOURCE or RESOURCE.ACTION[.FIELD...].`,
+						"usage_error",
+						COMMANDS_USAGE,
+						{ selector, },
+					);
+				}
+				const [selectedResource, selectedAction,] = selectorParts;
+				const resourceActions = registry[selectedResource];
+				if (!resourceActions) throw unknownResourceError(selectedResource,);
+				if (selectedAction && !resourceActions[selectedAction]) {
+					throw unknownActionError(
+						selectedResource,
+						selectedAction,
+						Object.keys(resourceActions,),
+					);
+				}
+			}
+		}
+		return { action, result: registry, exitCode: 0, };
 	}
 	if (resource === "version") {
 		if (action !== undefined && action !== "run") {
@@ -788,6 +1014,101 @@ async function runMetaCommand(
 	return undefined;
 }
 
+/**
+ * Cleanup-ledger support is checked before a handler runs so an unsupported
+ * `--record-cleanup` fails without mutating DSS. Direct dispatch and batch steps
+ * share this guard.
+ */
+function assertCleanupLedgerSupported(
+	resource: string,
+	action: string,
+	flags: Record<string, string | boolean>,
+): void {
+	if (typeof flags["record-cleanup"] !== "string" || flags["dry-run"] === true) return;
+	if (!supportsCleanupLedger(resource, action,)) {
+		throw new UsageError(`--record-cleanup is not supported for ${resource} ${action}.`,);
+	}
+}
+
+/**
+ * Preflight a requested cleanup ledger path before any remote mutation so an
+ * unwritable (or unwritable-to-be) ledger fails fast with no DSS-side change.
+ * Shares assertCleanupLedgerSupported's placement: direct dispatch and batch
+ * steps both call it, and dry-run/preview runs never touch the ledger.
+ */
+async function preflightCleanupLedgerForFlags(
+	client: DataikuClient,
+	flags: Record<string, string | boolean>,
+): Promise<void> {
+	if (flags["dry-run"] === true) return;
+	const ledgerPath = flags["record-cleanup"];
+	if (typeof ledgerPath !== "string") return;
+	if (ledgerPath.trim().length === 0) {
+		throw new UsageError("--record-cleanup requires a non-empty file path.", "validation_failed",);
+	}
+	const assertExistingEntriesBound = async (): Promise<void> => {
+		let entries: CleanupLedgerEntry[];
+		try {
+			entries = await readCleanupLedger(ledgerPath,);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+			throw error;
+		}
+		const violation = findCleanupLedgerBindingViolation(entries, client.getBaseUrl(),);
+		if (violation) {
+			throw new UsageError(
+				`Existing cleanup ledger entry ${
+					violation.index + 1
+				} is not bound to the configured DSS server.`,
+				"validation_failed",
+				"Use a new cleanup ledger path, or run the mutation against the DSS server already bound to this ledger.",
+				{
+					entryIndex: violation.index,
+					resource: violation.resource,
+					action: violation.action,
+					reason: violation.reason,
+				},
+			);
+		}
+	};
+	try {
+		await preflightCleanupLedgerPath(ledgerPath,);
+		await assertExistingEntriesBound();
+		await reserveCleanupLedgerDssUrl(ledgerPath, client.getBaseUrl(),);
+		// Re-read after winning the atomic reservation. This catches an entry
+		// appended between the initial compatibility check and reservation.
+		await assertExistingEntriesBound();
+	} catch (error) {
+		if (error instanceof UsageError) throw error;
+		throw new UsageError(
+			`Could not preflight cleanup ledger: ${error instanceof Error ? error.message : String(error,)}`,
+			"validation_failed",
+		);
+	}
+}
+
+/**
+ * Append the cleanup entry for a completed handler result. Callers must pass the
+ * raw, unprojected result and must call this before any failure exit code is
+ * raised: an indeterminate post-POST outcome stays addressable only when the
+ * ledger records it first. Eligibility (dry runs, skipped work, an explicit
+ * `cleanupEligible:false`) is decided by `cleanupLedgerEntry`, never here.
+ */
+async function recordCleanupLedgerEntry(
+	client: DataikuClient,
+	resource: string,
+	action: string,
+	args: string[],
+	flags: Record<string, string | boolean>,
+	result: unknown,
+	projectKey: string | undefined,
+): Promise<void> {
+	const ledgerPath = flags["record-cleanup"];
+	if (typeof ledgerPath !== "string" || flags["dry-run"] === true) return;
+	const entry = cleanupLedgerEntry(resource, action, args, flags, result, projectKey,);
+	if (entry) await appendCleanupLedgerEntry(ledgerPath, entry, client.getBaseUrl(),);
+}
+
 async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 	result: Record<string, unknown>;
 	exitCode: number;
@@ -812,6 +1133,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 			const context = batchStepCommandContext(argv,);
 			Object.assign(currentCommandContext, { ...context, projectKey: batchProjectKey, },);
 			try {
+				validateBatchStepMode(argv, index,);
 				const step = await validateBatchStep(argv,);
 				Object.assign(currentCommandContext, {
 					resource: step.resource,
@@ -820,12 +1142,18 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 						? step.flags["project-key"]
 						: batchProjectKey,
 				},);
-				return { index, args: argv, resource: step.resource, action: step.action, runnable: true, };
+				return {
+					index,
+					args: redactArgv(argv,),
+					resource: step.resource,
+					action: step.action,
+					runnable: true,
+				};
 			} catch (error) {
 				const envelope = buildErrorReport(error,);
 				return {
 					index,
-					args: argv,
+					args: redactArgv(argv,),
 					resource: context.resource,
 					action: context.action,
 					runnable: false,
@@ -838,6 +1166,8 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 			exitCode: planned.every((step,) => step.runnable) ? 0 : 1,
 		};
 	}
+
+	validateBatchStepModes(steps,);
 
 	let projectKey = typeof flags["project-key"] === "string"
 		? flags["project-key"]
@@ -899,7 +1229,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 		let resource = context.resource;
 		let action = context.action;
 		if (firstFailureExit !== undefined && !continueOnError) {
-			results.push({ index, args: argv, resource, action, ok: null, skipped: true, },);
+			results.push({ index, args: redactArgv(argv,), resource, action, ok: null, skipped: true, },);
 			continue;
 		}
 		Object.assign(currentCommandContext, {
@@ -937,15 +1267,31 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 				const meta = resourceActions[action];
 				if (!meta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
 				validateSupportedCommandFlags(resource, action, stepFlags,);
-				if (!client) {
-					throw new UsageError(
-						"Missing Dataiku URL.",
-						"missing_required_flag",
-						"Set DATAIKU_URL or pass --url.",
-						{ requiredFlags: ["url",], env: ["DATAIKU_URL",], },
+				if (stepFlags["plan"] === true) {
+					result = buildMutationPlan(resource, action, meta, positional.slice(2,), stepFlags,);
+				} else {
+					if (!client) {
+						throw new UsageError(
+							"Missing Dataiku URL.",
+							"missing_required_flag",
+							"Set DATAIKU_URL or pass --url.",
+							{ requiredFlags: ["url",], env: ["DATAIKU_URL",], },
+						);
+					}
+					assertCleanupLedgerSupported(resource, action, stepFlags,);
+					await preflightCleanupLedgerForFlags(client, stepFlags,);
+					const stepArgs = positional.slice(2,);
+					result = await meta.handler(client, stepArgs, stepFlags,);
+					await recordCleanupLedgerEntry(
+						client,
+						resource,
+						action,
+						stepArgs,
+						stepFlags,
+						result,
+						projectKey,
 					);
 				}
-				result = await meta.handler(client, positional.slice(2,), stepFlags,);
 				const failureExitCode = commandFailureExitCode(result,);
 				if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);
 			}
@@ -954,10 +1300,17 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 				? stepFieldsFlag.split(",",).map((field,) => field.trim()).filter((field,) => field.length > 0)
 				: [];
 			const stepResult = stepFields.length > 0 ? projectResultFields(result, stepFields,) : result;
-			results.push({ index, args: argv, resource, action, ok: true, result: stepResult, },);
+			results.push({
+				index,
+				args: redactArgv(argv,),
+				resource,
+				action,
+				ok: true,
+				result: stepResult,
+			},);
 		} catch (error) {
 			const envelope = buildErrorReport(error,);
-			results.push({ index, args: argv, resource, action, ok: false, error: envelope, },);
+			results.push({ index, args: redactArgv(argv,), resource, action, ok: false, error: envelope, },);
 			if (firstFailureExit === undefined) firstFailureExit = envelope.exitCode;
 		}
 	}
@@ -1119,7 +1472,7 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			type: "error",
 			ok: false,
 			error: err.message,
-			code: "long_running_failure",
+			code: err.code ?? (err.exitCode === 4 ? "long_running_failure" : "command_result_failure"),
 			category: "dss",
 			exitCode: err.exitCode,
 			details: { result: err.result, },
@@ -1284,16 +1637,10 @@ async function main(): Promise<void> {
 		caCertPath,
 	},);
 
-	if (typeof flags["record-cleanup"] === "string" && flags["dry-run"] !== true) {
-		if (!supportsCleanupLedger(resource, action,)) {
-			throw new UsageError(`--record-cleanup is not supported for ${resource} ${action}.`,);
-		}
-	}
+	assertCleanupLedgerSupported(resource, action, flags,);
+	await preflightCleanupLedgerForFlags(client, flags,);
 	const result = await actionMeta.handler(client, args, flags,);
-	if (typeof flags["record-cleanup"] === "string" && flags["dry-run"] !== true) {
-		const entry = cleanupLedgerEntry(resource, action, args, flags, result, projectKey,);
-		if (entry) await appendCleanupLedgerEntry(flags["record-cleanup"], entry,);
-	}
+	await recordCleanupLedgerEntry(client, resource, action, args, flags, result, projectKey,);
 	const failureExitCode = commandFailureExitCode(result,);
 	if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);
 	if (flags["raw"] === true && typeof result === "string" && typeof flags["output"] !== "string") {

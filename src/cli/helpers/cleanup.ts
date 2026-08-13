@@ -19,6 +19,9 @@ export function cleanupLedgerEntry(
 	) return undefined;
 	const record = resultRecord(result,);
 	if (record.skipped !== undefined) return undefined;
+	// Only an explicit `cleanupEligible:false` suppresses the ledger: absent or
+	// true (including indeterminate post-POST outcomes) must stay addressable.
+	if (record.cleanupEligible === false) return undefined;
 	const project = flags["project-key"] as string | undefined ?? projectKey;
 	const withProject = projectArg(project,);
 	const ts = new Date().toISOString();
@@ -177,17 +180,6 @@ export function cleanupLedgerEntry(
 				cleanup: { argv: ["code-env", "delete", lang, name, "--if-exists",], },
 			};
 		}
-		case "project.duplicate": {
-			const targetKey = args[1];
-			if (!targetKey) return undefined;
-			return {
-				ts,
-				action,
-				resource,
-				name: targetKey,
-				cleanup: { argv: ["project", "delete", targetKey, "--drop-data",], },
-			};
-		}
 		case "folder.upload":
 			return {
 				...base,
@@ -195,6 +187,47 @@ export function cleanupLedgerEntry(
 				path: args[1],
 				cleanup: { argv: ["folder", "delete-file", args[0], args[1], ...withProject,], },
 			};
+		case "app.create-instance":
+		case "app.create-successor-instance": {
+			const targetKey = stringField(record, ["projectKey", "targetProjectKey",],);
+			if (!targetKey) return undefined;
+			const nestedInstance = resultRecord(record.instance,);
+			const futureId = stringField(record, ["futureId", "jobId",],)
+				?? stringField(nestedInstance, ["futureId", "jobId",],);
+			const projectIncarnationHash = stringField(record, ["projectIncarnationHash",],);
+			const boundIncarnation = projectIncarnationHash
+					&& /^[0-9a-f]{64}$/.test(projectIncarnationHash,)
+				? projectIncarnationHash
+				: undefined;
+			// Cleanup can delete only the concrete project incarnation created by
+			// this lifecycle. A terminal future proves the requested key, but not
+			// that the same project still occupies that key at replay time.
+			const settled = record.futureTargetVerified === true;
+			const lifecycleArgs = !boundIncarnation || (!settled && !futureId)
+				? ["--unconfirmed-creation",]
+				: futureId && !settled
+				? [
+					"--future-id",
+					futureId,
+					"--expect-project-incarnation",
+					boundIncarnation,
+				]
+				: ["--expect-project-incarnation", boundIncarnation,];
+			return {
+				...base,
+				projectKey: targetKey,
+				name: targetKey,
+				cleanup: {
+					argv: [
+						"app",
+						"delete-instance",
+						"--project-key",
+						targetKey,
+						...lifecycleArgs,
+					],
+				},
+			};
+		}
 		default:
 			return undefined;
 	}

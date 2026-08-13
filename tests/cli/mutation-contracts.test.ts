@@ -8,6 +8,7 @@ import {
 	readFileSync,
 	rmSync,
 	sendJson,
+	statSync,
 	tmpdir,
 	withCliServer,
 	writeFileSync,
@@ -407,10 +408,11 @@ describe("CLI agent-readiness mutation contracts", () => {
 		}
 	});
 
-	it("records cleanup ledger entries for successful creates", async () => {
+	it("records cleanup ledger entries bound to the canonical server URL", async () => {
 		const tmpDir = join(tmpdir(), `dss-cleanup-ledger-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		let serverUrl = "";
 		try {
 			await withCliServer((req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);
@@ -421,6 +423,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 				res.statusCode = 500;
 				res.end(`unexpected ${req.method} ${url.pathname}`,);
 			}, async (url,) => {
+				serverUrl = url;
 				await dss([
 					"scenario",
 					"create",
@@ -428,7 +431,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 					"Cleanup Test",
 					"--record-cleanup",
 					ledgerPath,
-				], { env: cliEnv(url,), },);
+				], { env: { ...cliEnv(url,), DATAIKU_URL: `${url}/`, }, },);
 			},);
 			const lines = readFileSync(ledgerPath, "utf-8",).trim().split("\n",);
 			expect(lines,).toHaveLength(1,);
@@ -436,6 +439,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 				action?: string;
 				resource?: string;
 				id?: string;
+				dssUrl?: string;
 				cleanup?: { argv?: string[]; };
 			};
 			expect(entry,).toMatchObject({
@@ -446,6 +450,246 @@ describe("CLI agent-readiness mutation contracts", () => {
 					argv: ["scenario", "delete", "cleanup_test", "--if-exists", "--project-key", "TEST",],
 				},
 			},);
+			// The ledger must be bound to the exact canonical request base URL,
+			// even when the operator supplied trailing slashes.
+			expect(entry.dssUrl,).toBe(serverUrl,);
+			expect(entry.dssUrl,).not.toMatch(/\/$/,);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("atomically reserves a new cleanup ledger for one DSS server", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-reservation-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		try {
+			await withCliServer((_req, res,) => {
+				res.statusCode = 500;
+				res.end("unexpected",);
+			}, async (firstUrl,) => {
+				const firstFailure = await dssFailure([
+					"scenario",
+					"create",
+					"first",
+					"First",
+					"--record-cleanup",
+					ledgerPath,
+				], { env: cliEnv(firstUrl,), },);
+				expect(firstFailure.code,).toBe(3,);
+				const bindingPath = `${ledgerPath}.dss-url`;
+				expect(readFileSync(bindingPath, "utf-8",).trim(),).toBe(firstUrl,);
+				expect(statSync(bindingPath,).mode & 0o777,).toBe(0o600,);
+			},);
+			const requests: string[] = [];
+			await withCliServer((req, res,) => {
+				requests.push(`${req.method} ${req.url ?? ""}`,);
+				res.statusCode = 500;
+				res.end("mutation must not run",);
+			}, async (secondUrl,) => {
+				const failure = await dssFailure([
+					"scenario",
+					"create",
+					"second",
+					"Second",
+					"--record-cleanup",
+					ledgerPath,
+				], { env: cliEnv(secondUrl,), },);
+				expect(failure.code,).toBe(1,);
+				expect(failure.stderr,).toContain(
+					"Cleanup ledger is reserved for a different DSS server",
+				);
+			},);
+			expect(requests,).toEqual([],);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("redacts embedded URL credentials from cleanup previews", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-preview-redaction-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		try {
+			writeFileSync(
+				ledgerPath,
+				`${
+					JSON.stringify({
+						ts: "2026-05-07T00:00:00.000Z",
+						action: "create",
+						resource: "scenario",
+						dssUrl: "https://user:secret@example.com/",
+						cleanup: { argv: ["scenario", "delete", "old", "--if-exists",], },
+					},)
+				}\n`,
+			);
+			const { stdout, stderr, } = await dss(["cleanup", "--file", ledgerPath,],);
+			expect(stderr,).toBe("",);
+			expect(stdout,).not.toContain("user",);
+			expect(stdout,).not.toContain("secret",);
+			const report = JSON.parse(stdout,) as { steps: Array<{ dssUrl?: string; }>; };
+			expect(report.steps[0]?.dssUrl,).toBe("https://example.com",);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("blocks direct dispatch on an unwritable cleanup ledger path before any DSS call", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-preflight-direct-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerAsDirectory = join(tmpDir, "ledger-dir",);
+		mkdirSync(ledgerAsDirectory, { recursive: true, },);
+		const requests: string[] = [];
+		try {
+			await withCliServer((req, res,) => {
+				requests.push(`${req.method} ${req.url ?? ""}`,);
+				res.statusCode = 500;
+				res.end("unexpected",);
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"scenario",
+					"create",
+					"cleanup_preflight",
+					"Preflight test",
+					"--record-cleanup",
+					ledgerAsDirectory,
+				], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(1,);
+				expect(failure.stderr,).toContain("Cleanup ledger path is a directory",);
+			},);
+			expect(requests,).toEqual([],);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("blocks direct mutation when an existing cleanup ledger belongs to another DSS server", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-binding-direct-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		const original = `${
+			JSON.stringify({
+				ts: "2026-05-07T00:00:00.000Z",
+				action: "create",
+				resource: "scenario",
+				dssUrl: "http://other-dss.example",
+				cleanup: { argv: ["scenario", "delete", "old", "--if-exists",], },
+			},)
+		}\n`;
+		writeFileSync(ledgerPath, original,);
+		const requests: string[] = [];
+		try {
+			await withCliServer((req, res,) => {
+				requests.push(`${req.method} ${req.url ?? ""}`,);
+				res.statusCode = 500;
+				res.end("mutation must not run",);
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"scenario",
+					"create",
+					"new_scenario",
+					"New scenario",
+					"--record-cleanup",
+					ledgerPath,
+				], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(1,);
+				expect(failure.stderr,).toContain("is not bound to the configured DSS server",);
+				expect(failure.stderr,).toContain('"reason":"mismatch"',);
+			},);
+			expect(requests,).toEqual([],);
+			expect(readFileSync(ledgerPath, "utf-8",),).toBe(original,);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("blocks a batch mutation when an existing cleanup ledger is legacy-unbound", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-binding-batch-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		const original = `${
+			JSON.stringify({
+				ts: "2026-05-07T00:00:00.000Z",
+				action: "create",
+				resource: "scenario",
+				cleanup: { argv: ["scenario", "delete", "old", "--if-exists",], },
+			},)
+		}\n`;
+		writeFileSync(ledgerPath, original,);
+		const requests: string[] = [];
+		try {
+			await withCliServer((req, res,) => {
+				requests.push(`${req.method} ${req.url ?? ""}`,);
+				res.statusCode = 500;
+				res.end("mutation must not run",);
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"batch",
+					"--data",
+					JSON.stringify([[
+						"scenario",
+						"create",
+						"new_scenario",
+						"New scenario",
+						"--record-cleanup",
+						ledgerPath,
+					],],),
+				], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(1,);
+				const report = JSON.parse(failure.stdout,) as {
+					steps: Array<{
+						ok: boolean;
+						error?: { error?: string; details?: { reason?: string; }; };
+					}>;
+				};
+				expect(report.steps[0]?.ok,).toBe(false,);
+				expect(report.steps[0]?.error?.error,).toContain(
+					"is not bound to the configured DSS server",
+				);
+				expect(report.steps[0]?.error?.details?.reason,).toBe("missing",);
+			},);
+			expect(requests,).toEqual([],);
+			expect(readFileSync(ledgerPath, "utf-8",),).toBe(original,);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("blocks batch steps on an unwritable cleanup ledger path before any DSS call", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-preflight-batch-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerAsDirectory = join(tmpDir, "ledger-dir",);
+		mkdirSync(ledgerAsDirectory, { recursive: true, },);
+		const requests: string[] = [];
+		try {
+			await withCliServer((req, res,) => {
+				requests.push(`${req.method} ${req.url ?? ""}`,);
+				res.statusCode = 500;
+				res.end("unexpected",);
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"batch",
+					"--data",
+					JSON.stringify([
+						[
+							"scenario",
+							"create",
+							"cleanup_preflight_batch",
+							"Preflight test",
+							"--record-cleanup",
+							ledgerAsDirectory,
+						],
+					],),
+				], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(1,);
+				const report = JSON.parse(failure.stdout,) as {
+					steps: Array<{ ok: boolean; error?: { error?: string; }; }>;
+				};
+				expect(report.steps[0]?.ok,).toBe(false,);
+				expect(report.steps[0]?.error?.error,).toContain("Could not preflight cleanup ledger",);
+				expect(report.steps[0]?.error?.error,).toContain("Cleanup ledger path is a directory",);
+			},);
+			expect(requests,).toEqual([],);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
@@ -473,7 +717,6 @@ describe("CLI agent-readiness mutation contracts", () => {
 				cleanup: { argv: ["scenario", "delete", "second", "--if-exists", "--project-key", "TEST",], },
 			},
 		];
-		writeFileSync(ledgerPath, `${entries.map((entry,) => JSON.stringify(entry,)).join("\n",)}\n`,);
 		const deleted: string[] = [];
 		try {
 			await withCliServer((req, res,) => {
@@ -491,6 +734,10 @@ describe("CLI agent-readiness mutation contracts", () => {
 				res.statusCode = 500;
 				res.end(`unexpected ${req.method} ${url.pathname}`,);
 			}, async (url,) => {
+				writeFileSync(
+					ledgerPath,
+					`${entries.map((entry,) => JSON.stringify({ ...entry, dssUrl: url, },)).join("\n",)}\n`,
+				);
 				const applied = JSON.parse(
 					(await dss(["cleanup", "--file", ledgerPath, "--apply",], { env: cliEnv(url,), },)).stdout,
 				) as { applied?: boolean; failures?: unknown[]; };
@@ -532,23 +779,24 @@ describe("CLI agent-readiness mutation contracts", () => {
 		const tmpDir = join(tmpdir(), `dss-cleanup-disallowed-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
-		writeFileSync(
-			ledgerPath,
-			`${
-				JSON.stringify({
-					ts: "2026-05-07T00:00:00.000Z",
-					action: "create",
-					resource: "scenario",
-					id: "x",
-					cleanup: { argv: ["folder", "upload", "f", "/r", "/tmp/local",], },
-				},)
-			}\n`,
-		);
 		try {
 			await withCliServer((_req, res,) => {
 				res.statusCode = 500;
 				res.end("unexpected",);
 			}, async (url,) => {
+				writeFileSync(
+					ledgerPath,
+					`${
+						JSON.stringify({
+							ts: "2026-05-07T00:00:00.000Z",
+							action: "create",
+							resource: "scenario",
+							id: "x",
+							dssUrl: url,
+							cleanup: { argv: ["folder", "upload", "f", "/r", "/tmp/local",], },
+						},)
+					}\n`,
+				);
 				const failure = await dssFailure(["cleanup", "--file", ledgerPath, "--apply",], {
 					env: cliEnv(url,),
 				},);
@@ -561,37 +809,130 @@ describe("CLI agent-readiness mutation contracts", () => {
 		}
 	});
 
+	it("classifies a failed wait result during cleanup apply as a cleanup failure", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-failed-wait-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		try {
+			await withCliServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (
+					req.method === "GET"
+					&& url.pathname === "/public/api/projects/TEST/app-manifest"
+				) {
+					sendJson(res, { message: "Project not found", }, 404,);
+					return;
+				}
+				if (url.pathname === "/public/api/futures/f-1") {
+					sendJson(res, {
+						jobId: "f-1",
+						alive: true,
+						hasResult: false,
+						aborted: false,
+						unknown: false,
+					},);
+					return;
+				}
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${url.pathname}`,);
+			}, async (url,) => {
+				writeFileSync(
+					ledgerPath,
+					`${
+						JSON.stringify({
+							ts: "2026-05-07T00:00:00.000Z",
+							action: "create-instance",
+							resource: "app",
+							id: "f-1",
+							dssUrl: url,
+							cleanup: {
+								argv: [
+									"app",
+									"delete-instance",
+									"--project-key",
+									"TEST",
+									"--future-id",
+									"f-1",
+									"--expect-project-incarnation",
+									"0".repeat(64,),
+									"--timeout",
+									"0",
+									"--poll-interval",
+									"1",
+								],
+							},
+						},)
+					}\n`,
+				);
+				const failure = await dssFailure(["cleanup", "--file", ledgerPath, "--apply",], {
+					env: cliEnv(url,),
+				},);
+				expect(failure.code,).toBe(2,);
+				const report = JSON.parse(failure.stdout,) as {
+					applied?: boolean;
+					results?: unknown[];
+					failures?: Array<{
+						error?: string;
+						result?: {
+							state?: string;
+							projectKey?: string;
+							deletePerformed?: boolean | null;
+							remediation?: string;
+						};
+					}>;
+				};
+				expect(report.applied,).toBe(true,);
+				expect(report.results ?? [],).toEqual([],);
+				expect(report.failures,).toHaveLength(1,);
+				expect(report.failures?.[0]?.error,).toContain(
+					"failed long-running result: FUTURE_STILL_RUNNING",
+				);
+				expect(report.failures?.[0]?.result,).toMatchObject({
+					state: "FUTURE_STILL_RUNNING",
+					projectKey: "TEST",
+					deletePerformed: false,
+				},);
+				expect(report.failures?.[0]?.result?.remediation,).toContain(
+					"retry only with a future whose terminal result reports this project",
+				);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
 	it("applies allowlisted data-quality delete-rule cleanups", async () => {
 		const tmpDir = join(tmpdir(), `dss-cleanup-dq-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
-		writeFileSync(
-			ledgerPath,
-			`${
-				JSON.stringify({
-					ts: "2026-05-07T00:00:00.000Z",
-					action: "create-rule",
-					resource: "data-quality",
-					id: "rule-1",
-					cleanup: {
-						argv: [
-							"data-quality",
-							"delete-rule",
-							"ds1",
-							"rule-1",
-							"--if-exists",
-							"--project-key",
-							"TEST",
-						],
-					},
-				},)
-			}\n`,
-		);
 		try {
 			await withCliServer((_req, res,) => {
 				res.statusCode = 404;
 				res.end(`{"message":"not found"}`,);
 			}, async (url,) => {
+				writeFileSync(
+					ledgerPath,
+					`${
+						JSON.stringify({
+							ts: "2026-05-07T00:00:00.000Z",
+							action: "create-rule",
+							resource: "data-quality",
+							id: "rule-1",
+							dssUrl: url,
+							cleanup: {
+								argv: [
+									"data-quality",
+									"delete-rule",
+									"ds1",
+									"rule-1",
+									"--if-exists",
+									"--project-key",
+									"TEST",
+								],
+							},
+						},)
+					}\n`,
+				);
 				const { stdout, } = await dss(["cleanup", "--file", ledgerPath, "--apply",], {
 					env: cliEnv(url,),
 				},);
@@ -599,6 +940,148 @@ describe("CLI agent-readiness mutation contracts", () => {
 				const result = JSON.parse(stdout,) as { failures?: unknown[]; };
 				expect(result.failures ?? [],).toEqual([],);
 			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+	it("refuses cleanup apply for a ledger bound to a different DSS server before any request", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-bound-other-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		const requests: string[] = [];
+		try {
+			await withCliServer((req, res,) => {
+				requests.push(`${req.method} ${req.url ?? ""}`,);
+				res.statusCode = 500;
+				res.end("unexpected",);
+			}, async (url,) => {
+				writeFileSync(
+					ledgerPath,
+					`${
+						JSON.stringify({
+							ts: "2026-05-07T00:00:00.000Z",
+							action: "create",
+							resource: "scenario",
+							id: "x",
+							dssUrl: "http://127.0.0.1:1",
+							cleanup: { argv: ["scenario", "delete", "x", "--if-exists", "--project-key", "TEST",], },
+						},)
+					}\n`,
+				);
+				const failure = await dssFailure(["cleanup", "--file", ledgerPath, "--apply",], {
+					env: cliEnv(url,),
+				},);
+				expect(failure.code,).toBe(2,);
+				const report = JSON.parse(failure.stdout,) as {
+					applied?: boolean;
+					bindingError?: { entryIndex?: number; reason?: string; foundDssUrl?: string; };
+				};
+				expect(report.applied,).toBe(false,);
+				expect(report.bindingError,).toMatchObject({
+					entryIndex: 0,
+					reason: "mismatch",
+					foundDssUrl: "http://127.0.0.1:1",
+				},);
+				expect(failure.stdout,).not.toContain('"failures"',);
+			},);
+			expect(requests,).toEqual([],);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("refuses cleanup apply for a legacy unbound ledger entry before any request", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-legacy-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		const requests: string[] = [];
+		try {
+			await withCliServer((req, res,) => {
+				requests.push(`${req.method} ${req.url ?? ""}`,);
+				res.statusCode = 500;
+				res.end("unexpected",);
+			}, async (url,) => {
+				writeFileSync(
+					ledgerPath,
+					`${
+						JSON.stringify({
+							ts: "2026-05-07T00:00:00.000Z",
+							action: "create",
+							resource: "scenario",
+							id: "x",
+							cleanup: { argv: ["scenario", "delete", "x", "--if-exists", "--project-key", "TEST",], },
+						},)
+					}\n`,
+				);
+				const failure = await dssFailure(["cleanup", "--file", ledgerPath, "--apply",], {
+					env: cliEnv(url,),
+				},);
+				expect(failure.code,).toBe(2,);
+				const report = JSON.parse(failure.stdout,) as {
+					applied?: boolean;
+					bindingError?: { entryIndex?: number; reason?: string; };
+				};
+				expect(report.applied,).toBe(false,);
+				expect(report.bindingError,).toMatchObject({ entryIndex: 0, reason: "missing", },);
+			},);
+			expect(requests,).toEqual([],);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("refuses mixed ledgers without applying any entry", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-mixed-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		const requests: string[] = [];
+		try {
+			await withCliServer((req, res,) => {
+				requests.push(`${req.method} ${req.url ?? ""}`,);
+				res.statusCode = 500;
+				res.end("unexpected",);
+			}, async (url,) => {
+				// The first-applied entry (last ledger line) is bound to this
+				// server; the first line is bound elsewhere. A partial apply
+				// would already have hit the server before the violation.
+				writeFileSync(
+					ledgerPath,
+					`${
+						JSON.stringify({
+							ts: "2026-05-07T00:00:00.000Z",
+							action: "create",
+							resource: "scenario",
+							id: "first",
+							dssUrl: "http://127.0.0.1:1",
+							cleanup: { argv: ["scenario", "delete", "first", "--if-exists", "--project-key", "TEST",], },
+						},)
+					}\n${
+						JSON.stringify({
+							ts: "2026-05-07T00:00:01.000Z",
+							action: "create",
+							resource: "scenario",
+							id: "second",
+							dssUrl: url,
+							cleanup: {
+								argv: ["scenario", "delete", "second", "--if-exists", "--project-key", "TEST",],
+							},
+						},)
+					}\n`,
+				);
+				const failure = await dssFailure(["cleanup", "--file", ledgerPath, "--apply",], {
+					env: cliEnv(url,),
+				},);
+				expect(failure.code,).toBe(2,);
+				const report = JSON.parse(failure.stdout,) as {
+					applied?: boolean;
+					bindingError?: { entryIndex?: number; reason?: string; };
+				};
+				expect(report.applied,).toBe(false,);
+				// Apply order is reversed: ordered[0] is "second" (valid) and
+				// ordered[1] is "first" (mismatch). Nothing may have run.
+				expect(report.bindingError,).toMatchObject({ entryIndex: 1, reason: "mismatch", },);
+			},);
+			expect(requests,).toEqual([],);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}

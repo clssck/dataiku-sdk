@@ -35,6 +35,8 @@ export const BUN = process.execPath;
 export type CliExecOptions = { cwd?: string; env?: NodeJS.ProcessEnv; };
 export type CliFailure = { code: number | null; stdout: string; stderr: string; };
 
+const CLI_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+
 export async function dss(
 	args: string[],
 	opts: CliExecOptions = {},
@@ -42,6 +44,7 @@ export async function dss(
 	return exec(BUN, ["--no-env-file", "run", CLI_PATH, ...args,], {
 		cwd: opts.cwd ?? SDK_ROOT,
 		env: opts.env ?? process.env,
+		maxBuffer: CLI_MAX_BUFFER_BYTES,
 	},);
 }
 
