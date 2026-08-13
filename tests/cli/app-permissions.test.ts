@@ -185,7 +185,9 @@ describe("app permissions snapshot", () => {
 					permissionsHash: saved.permissionsHash,
 					permissions: saved.permissions,
 				},),);
-				expect(statSync(out,).mode & 0o777,).toBe(0o600,);
+				if (process.platform !== "win32") {
+					expect(statSync(out,).mode & 0o777,).toBe(0o600,);
+				}
 			},);
 		} finally {
 			rmSync(dir, { recursive: true, force: true, },);
@@ -270,7 +272,9 @@ describe("app permissions snapshot writer safety", () => {
 			fs.writeFileSync(out, "stale content", { mode: 0o644, },);
 			fs.chmodSync(out, 0o644,);
 			writeAppPermissionsSnapshot(out, canonical,);
-			expect(fs.statSync(out,).mode & 0o777,).toBe(0o600,);
+			if (process.platform !== "win32") {
+				expect(fs.statSync(out,).mode & 0o777,).toBe(0o600,);
+			}
 			expect(fs.readFileSync(out, "utf-8",),).toBe(canonicalText,);
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true, },);
@@ -295,7 +299,9 @@ describe("app permissions snapshot writer safety", () => {
 		try {
 			writeAppPermissionsSnapshot(out, canonical,);
 			expect(fs.readFileSync(out, "utf-8",),).toBe(canonicalText,);
-			expect(fs.statSync(out,).mode & 0o777,).toBe(0o600,);
+			if (process.platform !== "win32") {
+				expect(fs.statSync(out,).mode & 0o777,).toBe(0o600,);
+			}
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true, },);
 		}
@@ -354,7 +360,9 @@ describe("app permissions snapshot writer safety", () => {
 			expect(String((threw as Error).message,),).not.toContain(marker,);
 			// Serialization fails before the file is touched at all.
 			expect(fs.readFileSync(out, "utf-8",),).toBe("previous-content",);
-			expect(fs.statSync(out,).mode & 0o777,).toBe(0o644,);
+			if (process.platform !== "win32") {
+				expect(fs.statSync(out,).mode & 0o777,).toBe(0o644,);
+			}
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true, },);
 		}

@@ -479,7 +479,9 @@ describe("CLI agent-readiness mutation contracts", () => {
 				expect(firstFailure.code,).toBe(3,);
 				const bindingPath = `${ledgerPath}.dss-url`;
 				expect(readFileSync(bindingPath, "utf-8",).trim(),).toBe(firstUrl,);
-				expect(statSync(bindingPath,).mode & 0o777,).toBe(0o600,);
+				if (process.platform !== "win32") {
+					expect(statSync(bindingPath,).mode & 0o777,).toBe(0o600,);
+				}
 			},);
 			const requests: string[] = [];
 			await withCliServer((req, res,) => {
