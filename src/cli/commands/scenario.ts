@@ -196,7 +196,7 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			};
 		},
 		usage:
-			"dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
+			"dss scenario update <id> (--data '{...}' | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description:
 			"Update scenario settings via JSON merge; edit step-based scenario steps at params.steps, not rawParams.params.steps.",
 		examples: [

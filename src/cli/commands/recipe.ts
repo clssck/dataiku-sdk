@@ -314,7 +314,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	clone: {
 		handler: async (c, a, f,) => {
 			const usage =
-				"dss recipe clone [source|--from SOURCE] (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--replace-payload-text FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
+				"dss recipe clone (source|--from SOURCE) (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--replace-payload-text FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
 			const fromFlag = typeof f["from"] === "string" ? f["from"].trim() : "";
 			const sourceName = a[0] ?? fromFlag;
 			if (!sourceName) {
@@ -406,7 +406,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			return { ...cloned, resource: "recipe", ...moved, };
 		},
 		usage:
-			"dss recipe clone [source|--from SOURCE] (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--replace-payload-text FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
+			"dss recipe clone (source|--from SOURCE) (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--replace-payload-text FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
 		description: "Clone a recipe graph/settings/payload into a separate experiment recipe.",
 		examples: [
 			"dss recipe clone compute_orders --name compute_orders_opt --output orders_opt --copy-output-settings --dry-run",
@@ -464,7 +464,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			return { updated: a[0], resource: "recipe", };
 		},
 		usage:
-			"dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
+			"dss recipe update <name> (--data '{...}' | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description:
 			"Update recipe settings via JSON merge. Recipe definition fields must be nested under a top-level recipe key.",
 		examples: [

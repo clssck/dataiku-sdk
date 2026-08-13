@@ -33,6 +33,132 @@ describe("CLI planned command coverage", () => {
 		);
 	});
 
+	it("dataset clone plans the target creation without contacting DSS", async () => {
+		const { stdout, stderr, } = await dss([
+			"dataset",
+			"clone",
+			"source_ds",
+			"target_ds",
+			"--path",
+			"/dataiku/TEST/target_ds",
+			"--plan",
+			"--project-key",
+			"TEST",
+		], { env: cliEnv("http://127.0.0.1:1",), },);
+
+		expect(stderr,).toBe("",);
+		expect(JSON.parse(stdout,),).toMatchObject({
+			plan: true,
+			resource: "dataset",
+			action: "clone",
+			method: "POST",
+			endpoint: "/public/api/projects/TEST/datasets/",
+			source: "source_ds",
+			target: "target_ds",
+			payload: {
+				sourceDataset: "source_ds",
+				targetDataset: "target_ds",
+				path: "/dataiku/TEST/target_ds",
+				allowSamePath: false,
+				projectKey: "TEST",
+			},
+		},);
+	});
+
+	it("dataset rename plans the actual rename action and both names", async () => {
+		const { stdout, stderr, } = await dss([
+			"dataset",
+			"rename",
+			"source_ds",
+			"target_ds",
+			"--plan",
+			"--project-key",
+			"TEST",
+		], { env: cliEnv("http://127.0.0.1:1",), },);
+
+		expect(stderr,).toBe("",);
+		expect(JSON.parse(stdout,),).toMatchObject({
+			plan: true,
+			resource: "dataset",
+			action: "rename",
+			method: "POST",
+			endpoint: "/public/api/projects/TEST/actions/renameDataset",
+			oldName: "source_ds",
+			newName: "target_ds",
+			payload: { oldName: "source_ds", newName: "target_ds", },
+		},);
+	});
+
+	it("recipe input edit plans expose the dataset, role, and update operation", async () => {
+		for (
+			const [action, operation,] of [
+				["add-input", "append",],
+				["remove-input", "remove",],
+			] as const
+		) {
+			const { stdout, stderr, } = await dss([
+				"recipe",
+				action,
+				"compute_orders",
+				"lookup",
+				"--role",
+				"reference",
+				"--plan",
+				"--project-key",
+				"TEST",
+			], { env: cliEnv("http://127.0.0.1:1",), },);
+
+			expect(stderr,).toBe("",);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				plan: true,
+				resource: "recipe",
+				action,
+				method: "PUT",
+				endpoint: "/public/api/projects/TEST/recipes/compute_orders",
+				recipe: "compute_orders",
+				dataset: "lookup",
+				role: "reference",
+				payload: { operation, dataset: "lookup", role: "reference", projectKey: "TEST", },
+			},);
+		}
+	});
+
+	it("recipe clone plans the target and rewrites without contacting DSS", async () => {
+		const { stdout, stderr, } = await dss([
+			"recipe",
+			"clone",
+			"source_recipe",
+			"--name",
+			"target_recipe",
+			"--replace-input",
+			"old_input=new_input",
+			"--replace-output",
+			"old_output=new_output",
+			"--plan",
+			"--project-key",
+			"TEST",
+		], { env: cliEnv("http://127.0.0.1:1",), },);
+
+		expect(stderr,).toBe("",);
+		expect(JSON.parse(stdout,),).toMatchObject({
+			plan: true,
+			resource: "recipe",
+			action: "clone",
+			method: "POST",
+			endpoint: "/public/api/projects/TEST/recipes/",
+			source: "source_recipe",
+			target: "target_recipe",
+			payload: {
+				sourceRecipe: "source_recipe",
+				targetRecipe: "target_recipe",
+				inputRewrites: { old_input: "new_input", },
+				outputRewrites: { old_output: "new_output", },
+				copyOutputSettings: false,
+				projectKey: "TEST",
+			},
+		},);
+	});
+
 	it("recipe create dry-run expands repeated and comma-separated inputs", async () => {
 		const { stdout, stderr, } = await dss([
 			"recipe",

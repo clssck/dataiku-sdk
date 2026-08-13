@@ -6,7 +6,7 @@ import type { CommandMeta, } from "../types.js";
 import { UsageError, } from "../usage.js";
 
 const SQL_QUERY_USAGE =
-	"dss sql query [SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin] (--connection CONN | --dataset FULL_NAME) [--database DB] [--output PATH|--output-file PATH] [--preview N] [--request-timeout MS] [--project-key KEY]";
+	"dss sql query (SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin) (--connection CONN | --dataset FULL_NAME) [--database DB] [--output PATH|--output-file PATH] [--preview N] [--request-timeout MS] [--project-key KEY]";
 
 const DEFAULT_SQL_PREVIEW_ROWS = 5;
 

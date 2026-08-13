@@ -39,32 +39,81 @@ describe("CLI regression fixes", () => {
 		expect(map?.optionalFlags,).toContain("project-key",);
 	});
 
-	it("advertises and records cleanup for project duplicates", () => {
-		const registry = buildCommandRegistry();
-		const duplicate = registry.project?.duplicate;
+	it("does not advertise unguarded cleanup for newly created projects", () => {
+		const create = buildCommandRegistry().project?.create;
 
-		expect(duplicate?.flags,).toContainEqual(
+		expect(create?.optionalFlags,).not.toContain("record-cleanup",);
+		expect(create?.cleanupCommand,).toBeUndefined();
+		expect(
+			cleanupLedgerEntry(
+				"project",
+				"create",
+				["NEW_PROJECT", "New project",],
+				{},
+				{ created: "NEW_PROJECT", resource: "project", },
+				undefined,
+			),
+		).toBeUndefined();
+	});
+
+	it("does not advertise unguarded cleanup for project duplicates", () => {
+		const duplicate = buildCommandRegistry().project?.duplicate;
+
+		expect(duplicate?.flags,).not.toContainEqual(
 			expect.objectContaining({ name: "record-cleanup", kind: "value", },),
 		);
-		expect(duplicate?.optionalFlags,).toContain("record-cleanup",);
-		expect(duplicate?.cleanupCommand,).toBe("dss project delete <projectKey>",);
+		expect(duplicate?.optionalFlags,).not.toContain("record-cleanup",);
+		expect(duplicate?.cleanupCommand,).toBeUndefined();
+		expect(
+			cleanupLedgerEntry(
+				"project",
+				"duplicate",
+				["SRC", "DST", "Destination",],
+				{},
+				{ targetProjectKey: "DST", },
+				undefined,
+			),
+		).toBeUndefined();
+	});
 
-		const entry = cleanupLedgerEntry(
-			"project",
-			"duplicate",
-			["SRC", "DST", "Destination",],
-			{},
-			{ targetProjectKey: "DST", },
-			undefined,
-		);
-
-		expect(entry,).toMatchObject({
-			action: "duplicate",
-			resource: "project",
-			name: "DST",
-			cleanup: { argv: ["project", "delete", "DST", "--drop-data",], },
+	it("rejects unguarded project cleanup recording before mutation", async () => {
+		let requests = 0;
+		await withCliServer((_req, res,) => {
+			requests += 1;
+			res.statusCode = 500;
+			res.end("mutation must not run",);
+		}, async (url,) => {
+			for (
+				const argv of [
+					[
+						"project",
+						"create",
+						"NEW_PROJECT",
+						"New project",
+						"--owner",
+						"alice",
+						"--record-cleanup",
+						"/tmp/project-cleanup.jsonl",
+					],
+					[
+						"project",
+						"duplicate",
+						"SRC",
+						"DST",
+						"Destination",
+						"--record-cleanup",
+						"/tmp/project-cleanup.jsonl",
+					],
+				]
+			) {
+				const failure = await dssFailure(argv, { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(1,);
+				expect(failure.stderr,).toContain(
+					`Unknown flag --record-cleanup for project ${argv[1]}`,
+				);
+			}
 		},);
-		expect(entry,).not.toHaveProperty("projectKey",);
+		expect(requests,).toBe(0,);
 	});
 
 	it("honors dry-run for project library, statistics, and meaning creates without mutating DSS", async () => {
@@ -374,20 +423,27 @@ describe("CLI regression fixes", () => {
 				},
 			},);
 
-			const exportPlan = JSON.parse(
-				(await dss(["project", "export", "SRC", "--output", "out.zip", "--plan",], { env, },)).stdout,
+			// `project export` is a remote read plus a local file write, not a DSS
+			// mutation, so --plan is rejected before anything executes.
+			const exportPlanFailure = await dssFailure(
+				["project", "export", "SRC", "--output", "out.zip", "--plan",],
+				{ env, },
+			);
+			expect(exportPlanFailure.code,).toBe(1,);
+			const exportPlanReport = JSON.parse(
+				exportPlanFailure.stderr,
 			) as Record<string, unknown>;
-			expect(exportPlan,).toMatchObject({
-				plan: true,
+			expect(exportPlanReport,).toMatchObject({
+				ok: false,
+				code: "usage_error",
+				category: "usage",
 				resource: "project",
 				action: "export",
-				projectKey: "SRC",
-				output: "out.zip",
-				method: "POST",
-				endpoint: "/public/api/projects/SRC/export",
-				payload: {},
-				localWrites: [{ path: "out.zip", source: "remote project archive", after: "POST", },],
+				exitCode: 1,
 			},);
+			expect(String(exportPlanReport.error,),).toContain(
+				"--plan is only supported for mutating commands",
+			);
 
 			const importPlan = JSON.parse(
 				(await dss(["project", "import", "archive.zip", "--plan",], { env, },)).stdout,
@@ -898,6 +954,30 @@ describe("CLI regression fixes", () => {
 			expect(report.error,).toContain("--copy-output-settings",);
 		},);
 	});
+
+	it("reports required recipe clone source syntax without contacting DSS", async () => {
+		let requests = 0;
+		await withCliServer((_req, res,) => {
+			requests += 1;
+			res.statusCode = 500;
+			res.end("clone must not run",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"recipe",
+				"clone",
+				"--name",
+				"target_recipe",
+				"--project-key",
+				"TEST",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toContain(
+				"dss recipe clone (source|--from SOURCE) (--name NAME|--to NAME)",
+			);
+			expect(failure.stderr,).not.toContain("[source|--from SOURCE]",);
+		},);
+		expect(requests,).toBe(0,);
+	});
 	it("reports missing project key for project-scoped app commands as usage", async () => {
 		const failure = await dssFailure([
 			"app",
@@ -926,6 +1006,27 @@ describe("CLI regression fixes", () => {
 		const hint = String(report.hint ?? "",);
 		expect(hint,).toContain("--project-key",);
 		expect(hint,).toContain("DATAIKU_PROJECT_KEY",);
+	});
+
+	it("classifies embedded URL credentials as validation without echoing them", async () => {
+		const secret = "embedded-secret";
+		const failure = await dssFailure([
+			"project",
+			"list",
+			"--url",
+			`https://user:${secret}@example.com`,
+			"--api-key",
+			"test-key",
+		], { env: hermeticEnv, },);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stdout,).toBe("",);
+		expect(failure.stderr,).not.toContain(secret,);
+		expect(JSON.parse(failure.stderr,),).toMatchObject({
+			code: "validation_failed",
+			category: "usage",
+			exitCode: 1,
+			details: { urlHasEmbeddedUserinfo: true, },
+		},);
 	});
 	it("rewrites generic DSS 404 dataset failures with command context without exposing raw body", async () => {
 		await withCliServer((req, res,) => {

@@ -1,4 +1,5 @@
 import { describe, expect, it, } from "bun:test";
+import { commands, } from "../../src/cli/commands/index.js";
 import { dss, dssFailure, } from "./_harness.js";
 
 describe("CLI agent-only command surface", () => {
@@ -220,5 +221,82 @@ describe("CLI command registry short flags", () => {
 		const projectFlags = registry.project.list.flags?.map((flag,) => flag.name) ?? [];
 		expect(projectFlags,).toContain("verbose",);
 		expect(projectFlags,).not.toContain("help",);
+	});
+});
+
+describe("CLI registry required-input usage accuracy", () => {
+	it("marks handler-required payload/file/SQL inputs as required in usage", () => {
+		const registry = commands as unknown as Record<
+			string,
+			Record<string, { usage: string; }>
+		>;
+		// Each handler unconditionally requires its payload/file/SQL input (requireArgs /
+		// explicit validation), so the registry usage must advertise it as a required
+		// "(...)" group rather than an optional "[...]" group.
+		const expectedRequired = [
+			["code-env", "set-definition", "(--data JSON|--data-file PATH|--stdin)",],
+			["code-env", "set-packages", "(--packages PKGS|--package PKG|--file PATH)",],
+			["dashboard", "update", "(--name NAME|--data JSON|--data-file PATH|--stdin)",],
+			["dataset", "refresh-schema", "(--data JSON | --data-file PATH | --stdin)",],
+			["dataset", "update", "(--data '{...}' | --data-file PATH | --stdin)",],
+			["folder", "update", "(--data JSON | --data-file PATH | --stdin)",],
+			[
+				"insight",
+				"update",
+				"(--name NAME|--listed true|false|--params JSON|--content TEXT|--file PATH --content-type MIME|--data JSON|--data-file PATH|--stdin)",
+			],
+			["notebook", "save-jupyter", "(--data '{...}' | --data-file PATH | --stdin)",],
+			["notebook", "save-sql", "(--data '{...}' | --data-file PATH | --stdin)",],
+			["recipe", "clone", "(source|--from SOURCE)",],
+			["recipe", "update", "(--data '{...}' | --data-file PATH | --stdin)",],
+			["scenario", "update", "(--data '{...}' | --data-file PATH | --stdin)",],
+			["sql", "query", "(SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin)",],
+			[
+				"wiki",
+				"update",
+				"(--name NAME | --content TEXT|--file PATH|--data JSON|--data-file PATH|--stdin)",
+			],
+		];
+		for (const [resource, action, requiredGroup,] of expectedRequired) {
+			const usage = registry[resource]?.[action]?.usage ?? "";
+			expect(usage, `${resource} ${action} must advertise required input group`,).toContain(
+				requiredGroup,
+			);
+		}
+	});
+
+	it("never advertises an optional payload group for a handler-required payload", () => {
+		const registry = commands as unknown as Record<
+			string,
+			Record<string, { usage: string; }>
+		>;
+		// Commands whose payload/file group is genuinely optional (handler accepts an
+		// absent payload); everything else must not bracket-mark a payload input.
+		const optionalPayload = new Set([
+			"project create",
+			"project duplicate",
+			"project export",
+			"streaming-endpoint create",
+			"continuous-activity start",
+			"meaning create",
+			"wiki create",
+			"dashboard create",
+			"insight create",
+			"code-env create",
+		],);
+		const payloadTokens =
+			/--data\b|--stdin\b|--file\b|--content\b|--sql\b|\[SQL\b|--packages\b|--package\b|--params\b/;
+		for (const [resource, actions,] of Object.entries(registry,)) {
+			for (const [action, meta,] of Object.entries(actions,)) {
+				if (/validate/.test(action,)) continue; // validation commands are out of audit scope
+				if (optionalPayload.has(`${resource} ${action}`,)) continue;
+				const bracketed = meta.usage.match(/\[[^\]]*\]/g,) ?? [];
+				const offending = bracketed.filter((group,) => payloadTokens.test(group,));
+				expect(
+					offending,
+					`${resource} ${action} marks a handler-required payload optional: ${offending.join(" ",)}`,
+				).toEqual([],);
+			}
+		}
 	});
 });

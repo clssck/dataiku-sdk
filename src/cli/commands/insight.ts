@@ -85,7 +85,11 @@ export const insightCommands: Record<string, CommandMeta> = {
 	},
 	update: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss insight update <id> [--name NAME|--params JSON|--data JSON]",);
+			requireArgs(
+				a,
+				1,
+				"dss insight update <id> (--name NAME|--listed true|false|--params JSON|--content TEXT|--file PATH|--content-type MIME|--data JSON|--data-file PATH|--stdin)",
+			);
 			const data = jsonInput(f,);
 			const name = f["name"] as string | undefined;
 			const params = json(f["params"],);
@@ -134,7 +138,7 @@ export const insightCommands: Record<string, CommandMeta> = {
 			},);
 		},
 		usage:
-			"dss insight update <id> [--name NAME] [--listed true|false] [--params JSON] [--content TEXT|--file PATH --content-type MIME] [--data JSON|--data-file PATH|--stdin] [--dry-run] [--project-key KEY]",
+			"dss insight update <id> (--name NAME|--listed true|false|--params JSON|--content TEXT|--file PATH|--content-type MIME|--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description: "Update an insight using GET-before-POST merge semantics.",
 		examples: ["dss insight update INSIGHT_ID --name 'Updated' --dry-run",],
 	},

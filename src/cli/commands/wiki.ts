@@ -105,7 +105,7 @@ export const wikiCommands: Record<string, CommandMeta> = {
 			},);
 		},
 		usage:
-			"dss wiki update <id-or-name> [--name NAME] [--content TEXT|--file PATH|--data JSON|--data-file PATH|--stdin] [--dry-run] [--project-key KEY]",
+			"dss wiki update <id-or-name> (--name NAME | --content TEXT|--file PATH|--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description: "Update wiki article metadata/body via merge.",
 		examples: ["dss wiki update ARTICLE_ID --content '# Updated' --dry-run",],
 	},

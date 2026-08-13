@@ -8,6 +8,7 @@ const exec = promisify(execFile,);
 const SDK_ROOT = resolve(dirname(fileURLToPath(import.meta.url,),), "..",);
 const CLI_PATH = join(SDK_ROOT, "src/cli.ts",);
 const BUN = process.execPath;
+const CLI_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 
 type CommandRegistryEntry = {
 	resource: string;
@@ -199,11 +200,20 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 	app: [
 		"list",
 		"manifest",
+		"manifest-version",
 		"instances",
 		"create-instance",
+		"create-successor-instance",
 		"instance-manifest",
 		"save-instance-manifest",
+		"set-manifest-version",
+		"validate-manifest",
+		"verify-instance",
+		"compare-manifest",
 		"delete-instance",
+		"permissions-snapshot",
+		"permissions-diff",
+		"permissions-restore",
 		"business-app-instance-permissions",
 	],
 	"business-app": [
@@ -339,6 +349,7 @@ async function dss(args: string[],): Promise<{ stdout: string; stderr: string; }
 			DATAIKU_API_KEY: "",
 			DATAIKU_PROJECT_KEY: "",
 		},
+		maxBuffer: CLI_MAX_BUFFER_BYTES,
 	},);
 }
 
@@ -447,7 +458,9 @@ describe("CLI command surface", () => {
 					usage: 1,
 					error: 2,
 					transient: 3,
-					...(meta?.async !== "none" ? { longRunningFailure: 4, } : {}),
+					...(meta?.async !== "none" || (resource === "batch" && action === "run")
+						? { longRunningFailure: 4, }
+						: {}),
 				},);
 			}
 		}
@@ -455,6 +468,7 @@ describe("CLI command surface", () => {
 		for (const [resource, actions,] of Object.entries(registry,)) {
 			for (const [action, meta,] of Object.entries(actions,)) {
 				if (!action.startsWith("create",)) continue;
+				if (resource === "project") continue;
 				const deleteAction = action === "create-rule" ? "delete-rule" : "delete";
 				const deleteMeta = registry[resource]?.[deleteAction];
 				if (!deleteMeta) continue;
@@ -480,6 +494,45 @@ describe("CLI command surface", () => {
 		expect(registry.dataset.create.optionalFlags,).toContain("dry-run",);
 		expect(registry.dataset.create.cleanupCommand,).toBe("dss dataset delete <name> --if-exists",);
 		expect(registry.dataset.create.idempotency,).toBe("if-not-exists",);
+		expect(registry.app["create-instance"].cleanupCommand,).toBeUndefined();
+		expect(registry.app["create-instance"].cleanupHint,).toContain("--record-cleanup",);
+		expect(registry.app["create-instance"].async,).toBe("future",);
+		expect(registry.app["create-successor-instance"].cleanupCommand,).toBeUndefined();
+		expect(registry.app["create-successor-instance"].cleanupHint,).toContain("dss cleanup --file",);
+		expect(registry.app["permissions-snapshot"].description,).toContain(
+			"commit it only when repository policy permits",
+		);
+		expect(registry.app["permissions-snapshot"].unsafeOutputs,).toContainEqual(
+			expect.objectContaining({
+				kind: "local-file",
+				detail: expect.stringContaining("access-control identities",),
+				safeAlternative: expect.stringContaining("outside version control",),
+			},),
+		);
+		expect(registry.app["create-successor-instance"].async,).toBe("future",);
+		expect(registry.app["delete-instance"].async,).toBe("future",);
+		expect(registry.app["delete-instance"].exitCodes.longRunningFailure,).toBe(4,);
+		expect(registry.app["delete-instance"].idempotency,).toBe("convergent",);
+		expect(
+			registry.app["delete-instance"].flags.some((flag,) => flag.name === "if-exists"),
+			"delete-instance must converge without an --if-exists flag",
+		).toBe(false,);
+		expect(registry.batch.run.async,).toBe("none",);
+		expect(registry.batch.run.exitCodes,).toMatchObject({ longRunningFailure: 4, },);
+		expect(registry.app["create-successor-instance"].sideEffect,).toBe("write",);
+		expect(registry.app["create-successor-instance"].flags.some((flag,) => flag.name === "wait"),)
+			.toBe(
+				false,
+			);
+		expect(
+			registry.app["create-successor-instance"].flags.some((flag,) =>
+				flag.name === "copy-permissions"
+			),
+		).toBe(true,);
+		expect(registry.app["manifest-version"].sideEffect,).toBe("read",);
+		expect(registry.app["verify-instance"].sideEffect,).toBe("read",);
+		expect(registry.app["set-manifest-version"].sideEffect,).toBe("write",);
+		expect(registry.app["set-manifest-version"].idempotency,).toBe("none",);
 		expect(registry.dataset.update.payloadSchema,).toEqual({
 			stdin: true,
 			dataFlag: true,
@@ -487,6 +540,12 @@ describe("CLI command surface", () => {
 			jsonShape: "object",
 		},);
 		expect(registry.dataset.update.examplePayload,).toEqual({ tags: ["production",], },);
+		expect(registry.variable.set.requiredFlags,).toEqual([],);
+		expect(registry.variable.set.requiredOneOf,).toEqual([
+			{ oneOf: [["standard",], ["local",],], },
+		],);
+		expect(registry.variable.set.optionalFlags,).not.toContain("standard",);
+		expect(registry.variable.set.optionalFlags,).not.toContain("local",);
 		expect(registry.project.list.sideEffect,).toBe("read",);
 		expect(registry.project.list.requiresProject,).toBe(false,);
 		expect(registry.wiki.settings.sideEffect,).toBe("read",);

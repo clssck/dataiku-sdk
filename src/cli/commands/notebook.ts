@@ -180,7 +180,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			return { saved: a[0], resource: "jupyter-notebook", };
 		},
 		usage:
-			"dss notebook save-jupyter <name> [--data '{...}' | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
+			"dss notebook save-jupyter <name> (--data '{...}' | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description: "Save content to a Jupyter notebook, creating it if missing.",
 		examples: [
 			"dss notebook save-jupyter my_notebook --data-file notebook.json --dry-run",
@@ -217,7 +217,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			return { saved: a[0], resource: "sql-notebook", };
 		},
 		usage:
-			"dss notebook save-sql <id> [--data '{...}' | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
+			"dss notebook save-sql <id> (--data '{...}' | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description: "Save content to a SQL notebook, creating it if missing.",
 		examples: ["dss notebook save-sql my_sql_notebook --data-file content.json --dry-run",],
 	},

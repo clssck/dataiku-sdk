@@ -1,8 +1,9 @@
 import type { StableErrorCode, } from "../errors.js";
 
 export const RESOURCE_NAMES = [
-	"project",
+	"agent",
 	"app",
+	"batch",
 	"business-app",
 	"webapp",
 	"api-service",
@@ -44,6 +45,8 @@ export const RESOURCE_NAMES = [
 	"commands",
 	"fixtures",
 	"install-skill",
+	"project",
+	"version",
 ]
 	.sort();
 

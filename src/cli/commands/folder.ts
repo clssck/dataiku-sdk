@@ -115,7 +115,7 @@ export const folderCommands: Record<string, CommandMeta> = {
 			return { updated: folderId, resource: "folder", };
 		},
 		usage:
-			"dss folder update <name-or-id> [--data JSON | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
+			"dss folder update <name-or-id> (--data JSON | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description: "Update managed folder settings by deep-merging a JSON patch.",
 		examples: [
 			'dss folder update exports --data \'{"tags":["agent"]}\' --dry-run',

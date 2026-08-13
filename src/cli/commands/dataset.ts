@@ -95,7 +95,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			return { updated: a[0], resource: "dataset", schema: { columns, }, };
 		},
 		usage:
-			"dss dataset refresh-schema <name> [--data JSON | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
+			"dss dataset refresh-schema <name> (--data JSON | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description: "Replace a dataset schema through the DSS schema endpoint.",
 		examples: [
 			`dss dataset refresh-schema orders --data '{"columns":[{"name":"id","type":"bigint"}]}' --dry-run`,
@@ -306,7 +306,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			return { updated: a[0], resource: "dataset", };
 		},
 		usage:
-			"dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]",
+			"dss dataset update <name> (--data '{...}' | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description: "Update dataset settings via JSON merge.",
 		examples: [
 			'dss dataset update orders --data \'{"tags":["production"]}\' --dry-run',

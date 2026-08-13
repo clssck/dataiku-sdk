@@ -42,7 +42,7 @@ export const variableCommands: Record<string, CommandMeta> = {
 			},);
 		},
 		usage:
-			`dss variable set --standard '{"k":"v"}' --local '{"k":"v"}' [--replace] [--dry-run] [--project-key KEY]`,
+			`dss variable set (--standard '{"k":"v"}'|--local '{"k":"v"}') [--replace] [--dry-run] [--project-key KEY]`,
 		description: "Set project variables via JSON merge (or full replace with --replace).",
 		examples: [
 			'dss variable set --standard \'{"env":"staging"}\' --dry-run',

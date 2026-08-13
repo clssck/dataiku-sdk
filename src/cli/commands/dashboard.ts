@@ -75,7 +75,7 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 			},);
 		},
 		usage:
-			"dss dashboard update <id> [--name NAME|--data JSON|--data-file PATH|--stdin] [--dry-run] [--project-key KEY]",
+			"dss dashboard update <id> (--name NAME|--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description: "Update dashboard settings via merge.",
 		examples: ["dss dashboard update DASHBOARD_ID --name 'New name' --dry-run",],
 	},

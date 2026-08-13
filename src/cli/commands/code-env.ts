@@ -139,7 +139,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			return c.codeEnvs.setDefinition(a[0], a[1], definition,);
 		},
 		usage:
-			"dss code-env set-definition <lang> <name> [--data JSON|--data-file PATH|--stdin] [--dry-run]",
+			"dss code-env set-definition <lang> <name> (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description: "Replace a code environment definition previously fetched from DSS.",
 		examples: ["dss code-env set-definition PYTHON my_env --data-file code-env.json --dry-run",],
 	},
@@ -165,7 +165,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			return c.codeEnvs.setPackages(a[0], a[1], packages, { installCorePackages, },);
 		},
 		usage:
-			"dss code-env set-packages <lang> <name> [--packages PKGS|--package PKG|--file PATH] [--install-core-packages true|false] [--dry-run]",
+			"dss code-env set-packages <lang> <name> (--packages PKGS|--package PKG|--file PATH) [--install-core-packages true|false] [--dry-run]",
 		description: "Update requested package specs without rebuilding packages.",
 		examples: [
 			"dss code-env set-packages PYTHON my_env --packages 'tabulate\\nnameparser' --dry-run",
