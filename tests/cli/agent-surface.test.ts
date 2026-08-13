@@ -243,7 +243,7 @@ describe("CLI registry required-input usage accuracy", () => {
 			[
 				"insight",
 				"update",
-				"(--name NAME|--listed true|false|--params JSON|--content TEXT|--file PATH --content-type MIME|--data JSON|--data-file PATH|--stdin)",
+				"(--name NAME|--listed true|false|--params JSON|--content TEXT|--file PATH|--content-type MIME|--data JSON|--data-file PATH|--stdin)",
 			],
 			["notebook", "save-jupyter", "(--data '{...}' | --data-file PATH | --stdin)",],
 			["notebook", "save-sql", "(--data '{...}' | --data-file PATH | --stdin)",],
