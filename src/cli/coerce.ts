@@ -1,4 +1,3 @@
-import { createHash, } from "node:crypto";
 import { readFileSync, } from "node:fs";
 import type { JobBuildTargetType, JobLogFilter, } from "../resources/jobs.js";
 import { UsageError, } from "./usage.js";
@@ -56,28 +55,10 @@ export function jobLogFilterFromFlag(v: string | boolean | undefined,): JobLogFi
 	);
 }
 
-export function sha256Hex(value: string,): string {
-	return createHash("sha256",).update(value,).digest("hex",);
-}
+export { sha256Hex, stableHash, stableJson, } from "../utils/stable-hash.js";
 
 export function normalizeLineEndings(value: string,): string {
 	return value.replace(/\r\n/g, "\n",);
-}
-
-export function stableJson(value: unknown,): string {
-	if (value === undefined) return "undefined";
-	if (value === null || typeof value !== "object") return JSON.stringify(value,);
-	if (Array.isArray(value,)) return `[${value.map((item,) => stableJson(item,)).join(",",)}]`;
-	const entries = Object.entries(value as Record<string, unknown>,).sort(([a,], [b,],) =>
-		a.localeCompare(b,)
-	);
-	return `{${
-		entries.map(([key, item,],) => `${JSON.stringify(key,)}:${stableJson(item,)}`).join(",",)
-	}}`;
-}
-
-export function stableHash(value: unknown,): string {
-	return sha256Hex(stableJson(value,),);
 }
 
 export function splitCsvFlag(v: string | boolean | undefined,): string[] {
