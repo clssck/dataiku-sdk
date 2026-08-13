@@ -779,7 +779,7 @@ describe("CLI execution behavior", () => {
 		expect(failure.stderr,).toContain("Pass exactly one of --connection or --dataset",);
 	});
 
-	it("outputs JSON by default and with explicit --json", async () => {
+	it("pretty-prints JSON by default and emits compact JSON with explicit --json", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			expect(req.method,).toBe("GET",);
@@ -794,6 +794,7 @@ describe("CLI execution behavior", () => {
 				{ projectKey: "P1", name: "One", },
 				{ projectKey: "P2", name: "Two", },
 			],);
+			expect(implicitJson.stdout,).toContain("\n  {",);
 		},);
 
 		await withCliServer((req, res,) => {
@@ -804,6 +805,7 @@ describe("CLI execution behavior", () => {
 		}, async (url,) => {
 			const explicitJson = await dss(["project", "list", "--json",], { env: cliEnv(url,), },);
 			expect(JSON.parse(explicitJson.stdout,),).toEqual([{ projectKey: "P1", name: "One", },],);
+			expect(explicitJson.stdout,).toBe('[{"projectKey":"P1","name":"One"}]\n',);
 		},);
 	});
 

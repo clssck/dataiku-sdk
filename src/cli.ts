@@ -36,6 +36,7 @@ import {
 	isFailedWaitResult,
 	planResult,
 	projectResultFields,
+	setCompactJsonOutput,
 	setOutputFieldProjection,
 	writeCommandResult,
 } from "./cli/output.js";
@@ -1545,6 +1546,7 @@ function writeErrorReport(err: unknown,): void {
 async function main(): Promise<void> {
 	loadEnvFile();
 	const { positional, flags, } = parseArgs(process.argv.slice(2,),);
+	setCompactJsonOutput(flags["json"] === true,);
 	const fieldsFlag = flags["fields"];
 	if (typeof fieldsFlag === "string") {
 		const selected = fieldsFlag.split(",",).map((field,) => field.trim()).filter((field,) =>

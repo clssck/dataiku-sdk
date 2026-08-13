@@ -1458,6 +1458,9 @@ export function buildAgentContract(): Record<string, unknown> {
 		commands: {
 			discoveryCommand: "dss commands run",
 			scopedDiscoveryCommand: "dss commands run --fields RESOURCE[.ACTION[.FIELD...]]",
+			compactOutputFlag: "--json",
+			compactOutputHint:
+				"Pass --json to emit compact single-line JSON and reduce agent context usage.",
 			scopedDiscoveryExamples: [
 				"dss commands run --fields dataset",
 				"dss commands run --fields dataset.create",

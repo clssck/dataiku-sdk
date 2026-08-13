@@ -39,22 +39,22 @@ If the installed \`dss\` binary is unavailable but the repository checkout is th
 - Non-fatal warnings and \`--verbose\` HTTP traces are JSONL stderr events (\`type:"warning"\` / \`type:"trace"\`), never prose.
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: 0 success, 1 usage/configuration error, 2 DSS or internal error, 3 transient/retryable DSS error, 4 completed command with failed long-running DSS work.
+- Pass \`--json\` for compact single-line JSON on stdout; use it for agent discovery and other JSON results to minimize tokens. Without it, success JSON is pretty-printed.
 - \`--raw\` is the only stdout escape hatch: recipe payload commands emit raw bytes to stdout unless \`--output PATH\` is also set; with \`--output\`, stdout is the JSON string equal to \`PATH\` and the file receives exact raw bytes.
 - \`--fields a,b,c\` projects those fields from object or array-of-objects results; dotted paths (\`a.b.c\`) drill into nested objects, and missing fields become \`null\`; string and scalar results pass through unchanged.
 
 ## Discover commands
 
 \`\`\`text
-dss agent contract
-dss commands run
-dss commands run --fields dataset
-dss commands run --fields dataset.create
-dss commands run --fields dataset.create,dataset.list
+dss agent contract --json
+dss commands run --fields dataset --json
+dss commands run --fields dataset.create --json
+dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples --json
 \`\`\`
 
 Use \`dss agent contract\` once to check \`agentContractVersion\`, stderr event schemas, non-JSON escape hatches, and compatibility rules. The command registry from \`dss commands run\` is the canonical schema for resources, actions, flags, positional arguments, side effects, auth requirements, output shape, idempotency, dry-run support, structured examples, payload schemas, unsafe outputs, cleanup hints, and exit codes. Use it before choosing command syntax.
 
-Scope that lookup with \`--fields\` before generating an invocation. The unscoped registry is more than 1 MB of JSON; \`--fields RESOURCE\` returns only that resource's actions, and \`--fields RESOURCE.ACTION\` returns a single entry of a few KB. Prefer the scoped form by default and read the full registry only when you must enumerate every resource.
+Scope that lookup with \`--fields\` and pass \`--json\` before generating an invocation. The unscoped registry is hundreds of thousands of tokens; \`--fields RESOURCE\` returns only that resource's actions, \`--fields RESOURCE.ACTION\` returns one complete entry, and appended \`.FIELD\` paths return only the metadata needed. Prefer action or field scope by default and read the full registry only when you must enumerate every resource.
 
 \`--fields\` takes a comma-separated list, so request several actions in one call. Each key is echoed exactly as requested (\`--fields dataset.create\` returns \`{"dataset.create": {...}}\`). An unknown resource or action exits with code 1 and a JSON error envelope on stderr containing the valid options.
 Credential lookup order is flags first, then \`DATAIKU_*\` environment variables, then saved credentials.

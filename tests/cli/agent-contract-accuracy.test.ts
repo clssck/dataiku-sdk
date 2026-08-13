@@ -267,6 +267,8 @@ describe("agent contract accuracy", () => {
 		expect(commands.scopedDiscoveryCommand,).toBe(
 			"dss commands run --fields RESOURCE[.ACTION[.FIELD...]]",
 		);
+		expect(commands.compactOutputFlag,).toBe("--json",);
+		expect(commands.compactOutputHint,).toContain("reduce agent context usage",);
 		expect(commands.scopedDiscoveryExamples,).toEqual(
 			expect.arrayContaining(["dss commands run --fields dataset.create",],),
 		);

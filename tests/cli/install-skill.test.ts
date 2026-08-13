@@ -94,6 +94,7 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain("dss commands run",);
 			expect(content,).toContain("dss commands run --fields dataset",);
 			expect(content,).toContain("dss commands run --fields dataset.create",);
+			expect(content,).toContain("Pass `--json` for compact single-line JSON",);
 			expect(content,).toContain('sideEffect:"write"',);
 			expect(content,).toContain("exact argv with `--plan`",);
 			expect(content,).toContain("`dryRun:true`",);
