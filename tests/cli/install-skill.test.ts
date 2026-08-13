@@ -92,6 +92,8 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain('type:"error"',);
 			expect(content,).toContain('type:"trace"',);
 			expect(content,).toContain("dss commands run",);
+			expect(content,).toContain("dss commands run --fields dataset",);
+			expect(content,).toContain("dss commands run --fields dataset.create",);
 			expect(content,).toContain('sideEffect:"write"',);
 			expect(content,).toContain("exact argv with `--plan`",);
 			expect(content,).toContain("`dryRun:true`",);
@@ -115,6 +117,43 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain('{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}',);
 			expect(content,).toContain(
 				"dss recipe get-payload compute_orders --raw --output code.py --project-key MYPROJ",
+			);
+			expect(content,).toContain(
+				"dss app create-instance APP_ID --data-file instance.json --wait --record-cleanup cleanup.jsonl",
+			);
+			expect(content,).toContain(
+				"dss app permissions-restore --project-key RELEASE_INSTANCE --file permissions.json --dry-run",
+			);
+			expect(content,).toContain(
+				"dss app manifest-version --project-key APP_TEMPLATE",
+			);
+			expect(content,).toContain(
+				"dss app set-manifest-version --manifest-version 1.4.0 --project-key APP_TEMPLATE",
+			);
+			expect(content,).toContain(
+				"dss app create-successor-instance APP_ID --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 --copy-permissions --record-cleanup cleanup.jsonl",
+			);
+			expect(content,).toContain(
+				"dss app verify-instance APP_ID --project-key RELEASE_INSTANCE_V2 --expect-version 1.4.0",
+			);
+			expect(content,).toContain("writing it is NOT a publish transaction",);
+			expect(content,).toContain("existing instances are never upgraded in",);
+			expect(content,).toContain("the predecessor is never targeted",);
+			expect(content,).toContain('`status:"API_VERIFIED_UI_PENDING"`',);
+			expect(content,).toContain("The API key authenticates public REST only",);
+			expect(content,).toContain("instance creation requires confirmed target absence",);
+			expect(content,).toContain("exercising the affected tiles, forms, and actions",);
+			expect(content,).toContain(
+				'`concurrencyControl:"client-side-non-atomic-stale-read-check"`',
+			);
+			expect(content,).toContain("Never treat the hash as a serializing lock",);
+			expect(content.toLowerCase(),).not.toContain("optimistic",);
+			expect(content,).not.toContain("published:true",);
+			expect(content,).not.toContain("uiPublicationVerified:true",);
+			expect(content,).toContain("canonical DSS URL, project key, and",);
+			expect(content,).toContain("concrete project incarnation",);
+			expect(content,).toContain(
+				"legacy, mixed-server, mismatched-server, or unbound app cleanup entries",
 			);
 			expect(content,).toContain("stdout is the JSON string equal to `PATH`",);
 			expect(content,).toContain("dataset_download_default_location",);

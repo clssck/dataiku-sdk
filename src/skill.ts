@@ -47,9 +47,16 @@ If the installed \`dss\` binary is unavailable but the repository checkout is th
 \`\`\`text
 dss agent contract
 dss commands run
+dss commands run --fields dataset
+dss commands run --fields dataset.create
+dss commands run --fields dataset.create,dataset.list
 \`\`\`
 
 Use \`dss agent contract\` once to check \`agentContractVersion\`, stderr event schemas, non-JSON escape hatches, and compatibility rules. The command registry from \`dss commands run\` is the canonical schema for resources, actions, flags, positional arguments, side effects, auth requirements, output shape, idempotency, dry-run support, structured examples, payload schemas, unsafe outputs, cleanup hints, and exit codes. Use it before choosing command syntax.
+
+Scope that lookup with \`--fields\` before generating an invocation. The unscoped registry is more than 1 MB of JSON; \`--fields RESOURCE\` returns only that resource's actions, and \`--fields RESOURCE.ACTION\` returns a single entry of a few KB. Prefer the scoped form by default and read the full registry only when you must enumerate every resource.
+
+\`--fields\` takes a comma-separated list, so request several actions in one call. Each key is echoed exactly as requested (\`--fields dataset.create\` returns \`{"dataset.create": {...}}\`). An unknown resource or action exits with code 1 and a JSON error envelope on stderr containing the valid options.
 Credential lookup order is flags first, then \`DATAIKU_*\` environment variables, then saved credentials.
 Set \`DATAIKU_DISABLE_ENV=1\` when a test must ignore both \`.env\` files and \`DATAIKU_*\` environment variables.
 When \`.env\` loading is enabled, the CLI reads \`.env\` from the command's current working directory first and then the CLI build/root directory; the invocation directory wins on conflicting keys. Put test-specific \`.env\` files in the directory where you invoke \`dss\`.
@@ -126,6 +133,64 @@ dss api-service list-packages churn-service --project-key MYPROJ
 dss batch --data-file steps.json
 \`\`\`
 For fake-DSS smoke tests, return project lists as JSON arrays such as \`[{"projectKey":"MYPROJ","name":"My Project"}]\` from \`/public/api/projects/\`; recipe payload commands read \`/public/api/projects/<PROJECT>/recipes/<NAME>?includePayload=true\` and expect a JSON object shaped like \`{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}\`.
+
+## Application release safety
+
+Treat app release as explicit validate, compare, version, successor, verify, and permission gates.
+The public app-manifest \`version\` field is raw metadata: writing it is NOT a publish transaction.
+New instances inherit the template's raw \`version\`; existing instances are never upgraded in
+place — create an additive successor (the old instance is preserved), verify it, then retire the
+old one as a separate guarded step. Never infer private publish/recreate/rename,
+recipient-sharing, or UI-click operations that the public DSS API does not expose.
+
+\`\`\`text
+dss app validate-manifest --project-key APP_TEMPLATE
+dss app compare-manifest APP_ID --project-key RELEASE_INSTANCE
+dss app manifest-version --project-key APP_TEMPLATE
+dss app set-manifest-version --manifest-version 1.4.0 --project-key APP_TEMPLATE
+# targetProjectKey in instance.json must be confirmed absent
+dss app create-instance APP_ID --data-file instance.json --wait --record-cleanup cleanup.jsonl
+dss app create-successor-instance APP_ID --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 --copy-permissions --record-cleanup cleanup.jsonl
+dss app verify-instance APP_ID --project-key RELEASE_INSTANCE_V2 --expect-version 1.4.0
+dss cleanup --file cleanup.jsonl
+dss app permissions-snapshot --project-key RELEASE_INSTANCE --output permissions.json
+dss app permissions-diff --project-key RELEASE_INSTANCE --file permissions.json
+dss app permissions-restore --project-key RELEASE_INSTANCE --file permissions.json --dry-run
+\`\`\`
+
+An invalid manifest exits non-zero with the validation result in the structured error details.
+Review the cleanup preview before \`dss cleanup --file cleanup.jsonl --apply\`. Every new entry is
+bound to the canonical DSS URL. App cleanup records a \`creationTag\` hash observed after the DSS
+future identifies its target key; unconfirmed creation stops unresolved. The future target and
+later \`creationTag\` are independent, non-atomic observations because the public API exposes
+neither an immutable project ID joined to the future nor a conditional DELETE. Cleanup rechecks
+type and \`creationTag\` immediately before deletion, rejecting detected key reuse but unable to
+eliminate replacement in the remaining check-to-DELETE gap. Apply validates the full ledger before
+any request and rejects legacy, mixed-server, mismatched-server, or unbound app cleanup entries.
+The successor's cleanup ledger entry targets only the new project key;
+the predecessor is never targeted. Some DSS deployments return 403 for an unknown target project:
+instance creation requires confirmed target absence before POST, so an inaccessible target absent
+from the visible project list is still rejected as unconfirmed rather than risking cleanup against
+a pre-existing project. A definitive create rejection never produces a cleanup entry.
+
+\`app set-manifest-version\` reports
+\`concurrencyControl:"client-side-non-atomic-stale-read-check"\`. \`--expect-hash SHA256\` refuses the
+write when the manifest already changed, but the PUT itself stays unconditional: this command can
+overwrite a writer that commits inside the read-then-write window, and the post-write read cannot
+detect that lost update when this command's payload wins. Never treat the hash as a serializing lock.
+An ambiguous manifest PUT or verification read exits non-zero with \`persisted:null\`,
+\`after:null\`, and \`outcome:"indeterminate"\`; it never claims success or rejection.
+
+The API key authenticates public REST only. \`app verify-instance\` reports \`apiReady:true\`,
+\`status:"API_VERIFIED_UI_PENDING"\`, and \`uiPublicationVerified:false\`. Its \`visual-ui\` gate
+requires a pre-authenticated SSO browser session or dedicated UI test identity and evidence from
+exercising the affected tiles, forms, and actions; the CLI never marks that external gate complete.
+Permission snapshots have an integrity hash bound to the canonical DSS URL, project key, and
+observed concrete project incarnation from \`creationTag\`; diff and restore reject detected server,
+key, or incarnation mismatches. DSS exposes no conditional permission PUT, so these client-side checks
+narrow and detect key-reuse races but cannot serialize the final check with the write. Snapshots
+contain access-control identities; keep them mode \`0600\` and commit them only when repository
+policy permits.
 
 ## Confirming mutations
 
