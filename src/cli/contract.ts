@@ -151,6 +151,7 @@ export interface CommandExitCodes {
 	error: 2;
 	transient: 3;
 	longRunningFailure?: 4;
+	assertionFailure?: 4;
 }
 
 export type CommandFlagMetadata = {
@@ -291,13 +292,22 @@ const AUTHENTICATED_AGENT_FLAGS = [
 	"insecure",
 	"ca-cert",
 ];
-export const COMMANDS_USAGE = "dss commands run [--json]";
-const COMMANDS_DESCRIPTION = "Print the machine-readable command registry for agent planning.";
-const COMMANDS_EXAMPLES = ["dss commands run", "dss commands run --json",];
-export const AGENT_CONTRACT_USAGE = "dss agent contract";
+export const COMMANDS_USAGE = "dss commands run [--fields PATHS] [--json]";
+const COMMANDS_DESCRIPTION =
+	"Print the machine-readable command registry for agent planning; scope it with --fields RESOURCE, RESOURCE.ACTION, or RESOURCE.ACTION.FIELD instead of reading the whole registry.";
+const COMMANDS_EXAMPLES = [
+	"dss commands run --fields dataset --json",
+	"dss commands run --fields dataset.create --json",
+	"dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples --json",
+];
+export const AGENT_CONTRACT_COMMAND = "dss agent contract";
+export const AGENT_CONTRACT_USAGE = "dss agent contract [--fields PATHS] [--json]";
 const AGENT_CONTRACT_DESCRIPTION =
-	"Print the versioned JSON contract agents should use to drive dss.";
-const AGENT_CONTRACT_EXAMPLES = ["dss agent contract",];
+	"Print the versioned JSON agent contract; scope bootstrap fields, use commands.actions to enumerate the surface, and read schemas only when needed.";
+const AGENT_CONTRACT_EXAMPLES = [
+	"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility --json",
+	"dss agent contract --fields commands.actions --json",
+];
 const VERSION_USAGE = "dss version";
 const VERSION_DESCRIPTION = "Print the CLI version and git revision as JSON.";
 const VERSION_EXAMPLES = ["dss version", "dss --version",];
@@ -973,6 +983,9 @@ function inferPayloadSchema(
  * `batch run` is synchronous, yet any step it dispatches may be a long-running
  * lifecycle command (app instance create/delete, job build, scenario run), so a
  * batch can end on 4 as well and must advertise it.
+ * `recipe assert-unchanged` is synchronous: a drift check exits 4 with the
+ * stable code `assertion_failed`, advertised as `assertionFailure` and never
+ * as a long-running outcome.
  */
 function inferExitCodes(
 	resource: string,
@@ -980,12 +993,15 @@ function inferExitCodes(
 	asyncKind: CommandAsyncKind,
 ): CommandExitCodes {
 	const longRunning = asyncKind !== "none" || `${resource}.${action}` === "batch.run";
+	const assertion = `${resource}.${action}` === "recipe.assert-unchanged"
+		|| `${resource}.${action}` === "batch.run";
 	return {
 		ok: 0,
 		usage: 1,
 		error: 2,
 		transient: 3,
 		...(longRunning ? { longRunningFailure: 4 as const, } : {}),
+		...(assertion ? { assertionFailure: 4 as const, } : {}),
 	};
 }
 
@@ -1457,13 +1473,14 @@ export function buildAgentContract(): Record<string, unknown> {
 		cli: cliVersionResult(),
 		commands: {
 			discoveryCommand: "dss commands run",
-			scopedDiscoveryCommand: "dss commands run --fields RESOURCE[.ACTION[.FIELD...]]",
+			scopedDiscoveryCommand: "dss commands run --fields RESOURCE[.ACTION[.FIELD...]] --json",
+			actionIndexCommand: "dss agent contract --fields commands.actions --json",
 			compactOutputFlag: "--json",
 			compactOutputHint:
 				"Pass --json to emit compact single-line JSON and reduce agent context usage.",
 			scopedDiscoveryExamples: [
-				"dss commands run --fields dataset",
-				"dss commands run --fields dataset.create",
+				"dss commands run --fields dataset --json",
+				"dss commands run --fields dataset.create --json",
 			],
 			scopedDiscoveryHint:
 				"--fields RESOURCE returns every action of one resource; --fields RESOURCE.ACTION returns a single registry entry keyed by the dotted path; append .FIELD paths to project nested metadata. Comma-separate paths to select several.",
@@ -1489,11 +1506,20 @@ export function buildAgentContract(): Record<string, unknown> {
 				format: "jsonl",
 				events: ["warning", "trace", "error",],
 				error: "single-final-error-event-on-nonzero-exit",
+				failureRouting: {
+					commandFailure: "doctor/batch/cleanup failures: single JSON stdout; empty stderr",
+					dispatchFailure:
+						"usage/unknown/transport/internal failures: empty stdout; single JSON error stderr",
+				},
 			},
 		},
 		planning: {
 			discoveryCommand: "dss commands run",
-			contractCommand: AGENT_CONTRACT_USAGE,
+			contractCommand: AGENT_CONTRACT_COMMAND,
+			bootstrapCommand:
+				"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility --json",
+			preferredDiscoveryCommand: "dss commands run --fields RESOURCE.ACTION --json",
+			actionIndexCommand: "dss agent contract --fields commands.actions --json",
 			mutatingCommandsAdvertisePlan: true,
 		},
 		compatibility: {
@@ -1510,6 +1536,9 @@ function exitCodesOnFailure(entry: CommandRegistryEntry,): Record<string, number
 		transient: entry.exitCodes.transient,
 		...(entry.exitCodes.longRunningFailure !== undefined
 			? { longRunningFailure: entry.exitCodes.longRunningFailure, }
+			: {}),
+		...(entry.exitCodes.assertionFailure !== undefined
+			? { assertionFailure: entry.exitCodes.assertionFailure, }
 			: {}),
 	};
 }
@@ -3126,13 +3155,15 @@ export function buildMutationPlan(
 }
 /**
  * Batch plans may surface exit 4: any dispatched step can be a long-running
- * lifecycle command whose remote work fails. Batch itself stays async "none".
+ * lifecycle command whose remote work fails, or a synchronous assertion
+ * mismatch (`recipe assert-unchanged`). Batch itself stays async "none".
  */
 export const BATCH_PLAN_EXIT_CODES: Record<string, number> = {
 	usage: 1,
 	error: 2,
 	transient: 3,
 	longRunningFailure: 4,
+	assertionFailure: 4,
 };
 
 export const BATCH_USAGE =

@@ -361,6 +361,33 @@ function supportedCommandFlags(entry: CommandRegistryEntry,): Record<string, tru
 	return supported;
 }
 
+function scopedCommandDiscoveryHint(resource: string, action: string,): string {
+	return `Use \`dss commands run --fields ${resource}.${action} --json\` to list the flags this command supports.`;
+}
+
+/**
+ * Resolve the registry field selectors for `commands run --fields`. Omitting the flag
+ * selects the whole registry, but an explicitly supplied value carrying no selector is a
+ * usage error: an agent that asked for a scoped subset must never be handed the full
+ * registry instead.
+ */
+function commandRegistrySelectors(flags: Record<string, string | boolean>,): string[] {
+	const fieldsFlag = flags["fields"];
+	if (typeof fieldsFlag !== "string") return [];
+	const selectors = fieldsFlag.split(",",).map((field,) => field.trim()).filter((field,) =>
+		field.length > 0
+	);
+	if (selectors.length === 0) {
+		throw new UsageError(
+			"--fields requires at least one selector. Expected RESOURCE or RESOURCE.ACTION[.FIELD...].",
+			"usage_error",
+			COMMANDS_RUN_HINT,
+			{ fields: fieldsFlag, },
+		);
+	}
+	return selectors;
+}
+
 function validateSupportedCommandFlags(
 	resource: string,
 	action: string,
@@ -371,7 +398,11 @@ function validateSupportedCommandFlags(
 	const supported = supportedCommandFlags(entry,);
 	for (const flagName of Object.keys(flags,)) {
 		if (supported[flagName] !== true) {
-			throw new UsageError(`Unknown flag --${flagName} for ${resource} ${action}`, "unknown_flag",);
+			throw new UsageError(
+				`Unknown flag --${flagName} for ${resource} ${action}`,
+				"unknown_flag",
+				scopedCommandDiscoveryHint(resource, action,),
+			);
 		}
 	}
 	if (flags["dry-run"] === true && !entry.dryRun) {
@@ -562,6 +593,7 @@ function validateMetaCommandInputs(
 	if (resource === "commands") {
 		if (!action) throw missingActionError("commands", ["run",], COMMANDS_USAGE,);
 		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
+		commandRegistrySelectors(flags,);
 		return action;
 	}
 	if (resource === "version") {
@@ -948,30 +980,27 @@ async function runMetaCommand(
 		if (!action) throw missingActionError("commands", ["run",], COMMANDS_USAGE,);
 		currentCommandContext.action = action;
 		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
+		const selectors = commandRegistrySelectors(flags,);
 		const registry = buildCommandRegistry();
-		if (typeof flags["fields"] === "string") {
-			for (
-				const selector of flags["fields"].split(",",).map((field,) => field.trim()).filter(Boolean,)
-			) {
-				const selectorParts = selector.split(".",);
-				if (selectorParts.some((part,) => part.length === 0)) {
-					throw new UsageError(
-						`Invalid --fields selector: ${selector}. Expected RESOURCE or RESOURCE.ACTION[.FIELD...].`,
-						"usage_error",
-						COMMANDS_USAGE,
-						{ selector, },
-					);
-				}
-				const [selectedResource, selectedAction,] = selectorParts;
-				const resourceActions = registry[selectedResource];
-				if (!resourceActions) throw unknownResourceError(selectedResource,);
-				if (selectedAction && !resourceActions[selectedAction]) {
-					throw unknownActionError(
-						selectedResource,
-						selectedAction,
-						Object.keys(resourceActions,),
-					);
-				}
+		for (const selector of selectors) {
+			const selectorParts = selector.split(".",);
+			if (selectorParts.some((part,) => part.length === 0)) {
+				throw new UsageError(
+					`Invalid --fields selector: ${selector}. Expected RESOURCE or RESOURCE.ACTION[.FIELD...].`,
+					"usage_error",
+					COMMANDS_USAGE,
+					{ selector, },
+				);
+			}
+			const [selectedResource, selectedAction,] = selectorParts;
+			const resourceActions = registry[selectedResource];
+			if (!resourceActions) throw unknownResourceError(selectedResource,);
+			if (selectedAction && !resourceActions[selectedAction]) {
+				throw unknownActionError(
+					selectedResource,
+					selectedAction,
+					Object.keys(resourceActions,),
+				);
 			}
 		}
 		return { action, result: registry, exitCode: 0, };
@@ -1473,7 +1502,7 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			type: "error",
 			ok: false,
 			error: err.message,
-			code: err.code ?? (err.exitCode === 4 ? "long_running_failure" : "command_result_failure"),
+			code: err.code,
 			category: "dss",
 			exitCode: err.exitCode,
 			details: { result: err.result, },

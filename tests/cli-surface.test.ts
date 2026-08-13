@@ -461,6 +461,10 @@ describe("CLI command surface", () => {
 					...(meta?.async !== "none" || (resource === "batch" && action === "run")
 						? { longRunningFailure: 4, }
 						: {}),
+					...((resource === "recipe" && action === "assert-unchanged")
+							|| (resource === "batch" && action === "run")
+						? { assertionFailure: 4, }
+						: {}),
 				},);
 			}
 		}
@@ -598,7 +602,12 @@ describe("CLI command surface", () => {
 		expect(registry.commands.run.requiresAuth,).toBe(false,);
 		expect(registry.agent.contract.sideEffect,).toBe("read",);
 		expect(registry.agent.contract.requiresAuth,).toBe(false,);
-		expect(registry.agent.contract.structuredExamples[0]?.argv,).toEqual(["agent", "contract",],);
+		expect(registry.agent.contract.structuredExamples[0]?.argv,).toEqual([
+			"agent",
+			"contract",
+			"--fields=protocol,agentContractVersion,cli,stdio,planning,compatibility",
+			"--json",
+		],);
 		expect(registry["install-skill"].run.sideEffect,).toBe("write",);
 		expect(registry["install-skill"].run.requiresAuth,).toBe(false,);
 		expect(registry["install-skill"].run.flags,).toContainEqual(

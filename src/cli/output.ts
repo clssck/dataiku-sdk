@@ -115,25 +115,60 @@ export function isFailedWaitResult(result: unknown,): boolean {
 		&& (typeof record.state === "string" || typeof record.outcome === "string");
 }
 
+export function isAssertionFailureResult(result: unknown,): boolean {
+	return result !== null
+		&& typeof result === "object"
+		&& !Array.isArray(result,)
+		&& (result as Record<string, unknown>).unchanged === false;
+}
+
+function isNestedAssertionFailureResult(result: unknown,): boolean {
+	if (result === null || typeof result !== "object" || Array.isArray(result,)) return false;
+	const steps = (result as Record<string, unknown>).steps;
+	if (!Array.isArray(steps,)) return false;
+	for (const step of steps) {
+		if (step === null || typeof step !== "object" || Array.isArray(step,)) continue;
+		const stepRecord = step as Record<string, unknown>;
+		if (stepRecord.ok !== false) continue;
+		const error = stepRecord.error;
+		return error !== null
+			&& typeof error === "object"
+			&& !Array.isArray(error,)
+			&& (error as Record<string, unknown>).code === "assertion_failed";
+	}
+	return false;
+}
+
 export function commandFailureExitCode(result: unknown,): number | undefined {
-	if (isFailedWaitResult(result,)) return 4;
-	if (
-		result && typeof result === "object" && (result as Record<string, unknown>).unchanged === false
-	) return 4;
+	if (isFailedWaitResult(result,) || isAssertionFailureResult(result,)) return 4;
 	return undefined;
+}
+
+/**
+ * Stable error code for a command-level failure report. A failed synchronous
+ * assertion (exit 4) is a distinct outcome from a failed long-running remote
+ * operation (also exit 4), so agents must never see `long_running_failure`
+ * for a result that finished synchronously with `unchanged: false`.
+ */
+export function commandFailureCode(result: unknown, exitCode: number,): StableErrorCode {
+	if (isAssertionFailureResult(result,) || isNestedAssertionFailureResult(result,)) {
+		return "assertion_failed";
+	}
+	if (isFailedWaitResult(result,)) return "long_running_failure";
+	return exitCode === 4 ? "long_running_failure" : "command_result_failure";
 }
 
 export class CommandResultFailure extends Error {
 	readonly result: unknown;
 	readonly exitCode: number;
-	readonly code?: StableErrorCode;
+	readonly code: StableErrorCode;
 
 	constructor(result: unknown, exitCode: number, code?: StableErrorCode,) {
 		super(commandFailureMessage(result,),);
 		this.name = "CommandResultFailure";
 		this.result = result;
 		this.exitCode = exitCode;
-		this.code = code;
+		this.code = code ?? commandFailureCode(result, exitCode,);
 	}
 }
 
@@ -143,13 +178,15 @@ export function commandFailureMessage(result: unknown,): string {
 		const state = typeof record.state === "string" ? record.state : record.outcome;
 		return `Command completed with failed long-running result${state ? `: ${state}` : ""}.`;
 	}
-	if (
-		result && typeof result === "object" && (result as Record<string, unknown>).unchanged === false
-	) {
+	if (isAssertionFailureResult(result,)) {
 		return "Command completed with failed assertion result.";
+	}
+	if (isNestedAssertionFailureResult(result,)) {
+		return "Command completed with nested failed assertion result.";
 	}
 	return "Command completed with failed result.";
 }
+
 export function isNotFoundError(error: unknown,): boolean {
 	if (error instanceof DataikuError) return error.category === "not_found";
 	if (error instanceof Error) return /not found|does not exist|unknown/i.test(error.message,);

@@ -17,6 +17,7 @@ export type StableErrorCode =
 	| "transient"
 	| "long_running_failure"
 	| "command_result_failure"
+	| "assertion_failed"
 	| "ambiguous_outcome"
 	| "internal_error";
 

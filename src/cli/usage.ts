@@ -69,7 +69,8 @@ export class UsageError extends Error {
 	}
 }
 
-export const COMMANDS_RUN_HINT = "Use `dss commands run` for machine-readable command discovery.";
+export const COMMANDS_RUN_HINT =
+	"Use `dss commands run --fields RESOURCE.ACTION --json` for scoped, compact command discovery; omit --fields only when you need the full registry.";
 
 export function unsupportedHelpFlag(): UsageError {
 	return new UsageError(

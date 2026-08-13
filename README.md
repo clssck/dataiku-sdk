@@ -23,28 +23,28 @@ Bun is the primary development runtime and package manager. Examples below assum
 
 ## CLI contract
 
-- Success: stdout contains one JSON result.
-- Failure: stderr contains one JSONL error event with `type:"error"`, `ok:false`, `error`, `code`, and `exitCode`.
+- Command results write exactly one JSON value to stdout, including `doctor`, `batch`, and `cleanup` failure reports; use the exit code and result fields.
+- Dispatch/runtime failures write one JSONL error event to stderr with `type:"error"`, `ok:false`, `error`, `code`, and `exitCode`, while stdout stays empty.
 - Non-fatal diagnostics and `--verbose` traces are JSONL stderr events (`type:"warning"` / `type:"trace"`); no prose trace lines are part of the contract.
 - `--fields a,b,c` projects those fields from an object or array-of-objects result; dotted paths (`a.b.c`) drill into nested objects, and missing fields become `null`; string and scalar results pass through unchanged.
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
-- Exit codes: `0` success, `1` usage/configuration error, `2` DSS/internal error, `3` transient DSS error, `4` completed command with failed long-running DSS work.
+- Exit codes: `0` success, `1` usage/configuration error, `2` DSS/internal error, `3` transient DSS error, `4` a failed long-running result or synchronous assertion.
 - The exit code is the success signal. For portable multi-step mutations, prefer `dss batch`; shell chaining and pipeline exit semantics differ across POSIX shells, Windows PowerShell, PowerShell 7, and Command Prompt.
 - `--raw` is only for recipe payload commands. Without `--output`, stdout is raw bytes; with `--output PATH`, stdout is the JSON string equal to `PATH` and the file contains the exact raw bytes.
 
-Discover the agent protocol and complete machine-readable command surface:
+Discover the agent contract and command surface with compact, scoped, `--json` calls:
 
 ```text
-dss agent contract
-dss commands run
-dss commands run --fields dataset
-dss commands run --fields dataset.create
-dss commands run --fields dataset.create,dataset.list
+dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility --json
+dss commands run --fields dataset.create --json
+dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples --json
+dss commands run --fields dataset --json
+dss agent contract --fields commands.actions --json
 ```
 
-Agents should parse `agent contract` once for protocol/schema compatibility, then parse `commands run` before choosing syntax; inspect `flags`, `structuredExamples`, `schemas`, `requiresAuth`, `requiresProject`, `sideEffect`, `unsafeOutputs`, and `outputShape` instead of guessing.
+For JSON outputs, prefer `--json`: compact single-line JSON cuts the full registry's context usage by about 40% (~220k tokens versus ~358k pretty-printed). Bootstrap by scoping `agent contract` to `protocol,agentContractVersion,cli,stdio,planning,compatibility` (~250 tokens); request `schemas` or `commands` only when you actually need them. Before choosing syntax, scope `commands run` with `--fields`: `--fields RESOURCE.ACTION` returns one complete registry entry, and appending `.FIELD` paths projects the metadata you need — the four-field per-action projection `usage,description,flags,examples` is the smallest self-sufficient starting point for constructing an invocation. Inspect `flags`, `structuredExamples`, `schemas`, `requiresAuth`, `requiresProject`, `sideEffect`, `async`, `idempotency`, `dryRun`, `cleanupCommand`, `unsafeOutputs`, `outputShape`, `inputContract`, and `exitCodes` instead of guessing.
 
-Scope that lookup with `--fields` before generating an invocation: the unscoped registry is more than 1 MB of JSON, `--fields RESOURCE` returns only that resource's actions, and `--fields RESOURCE.ACTION` returns a single entry of a few KB. Prefer the scoped form by default; read the full registry only when you must enumerate every resource. `--fields` takes a comma-separated list, so request several actions in one call. Each key is echoed exactly as requested (`--fields dataset.create` returns `{"dataset.create": {...}}`). An unknown resource or action exits with code 1 and a JSON error envelope on stderr containing the valid options.
+`--fields` takes a comma-separated list, so request several actions in one call. Each key is echoed exactly as requested (`--fields dataset.create` returns `{"dataset.create": {...}}`). Enumerate every resource and action with `dss agent contract --fields commands.actions --json` (~1k tokens); the ~220k-token unscoped registry remains a compatibility surface, not a discovery workflow. An unknown resource or action exits with code 1 and a JSON error envelope on stderr containing the valid options.
 
 ## Agent skill installation
 

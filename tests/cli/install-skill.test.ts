@@ -94,7 +94,42 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain("dss commands run",);
 			expect(content,).toContain("dss commands run --fields dataset",);
 			expect(content,).toContain("dss commands run --fields dataset.create",);
-			expect(content,).toContain("Pass `--json` for compact single-line JSON",);
+			expect(content,).toContain(
+				"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility --json",
+			);
+			expect(content,).toContain(
+				"dss agent contract --fields commands.actions --json",
+			);
+			expect(content,).toContain(
+				"dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples --json",
+			);
+			expect(content,).toContain(
+				"Prefer the four-field projection `usage,description,flags,examples`",
+			);
+			expect(content,).toContain("including `doctor`, `batch`, and `cleanup` failure reports",);
+			expect(content,).toContain("Dispatch/runtime failures write one JSONL error event to stderr",);
+			expect(content,).toContain("a failed long-running result or synchronous assertion",);
+			expect(content,).toContain(
+				"dss commands run --fields RESOURCE.ACTION --json",
+			);
+			expect(content,).toContain(
+				"the hundreds-of-thousands-token unscoped registry is compatibility-only",
+			);
+			expect(content,).not.toContain("Failure writes exactly one JSONL error event",);
+			expect(content,).not.toContain("dss doctor --fast",);
+			expect(content,).not.toContain("dss dataset preview orders",);
+			expect(content,).not.toContain("dss scenario run daily_build",);
+			expect(content,).not.toContain("clear-jupyter-outputs exploration",);
+			expect(content,).not.toContain("api-service list-packages churn-service",);
+			expect(content,).not.toContain("compute_orders --raw --project-key",);
+			expect(content,).not.toContain("--dataset MYPROJ.orders --sql-file query.sql",);
+			expect(content,).toContain(
+				"dss recipe diff compute_orders --file code.py --project-key MYPROJ",
+			);
+			expect(content,).toContain("dss job build-and-wait orders --include-logs --project-key MYPROJ",);
+			expect(content,).toContain(
+				'dss sql query --connection analytics --sql "select 1" --project-key MYPROJ',
+			);
 			expect(content,).toContain('sideEffect:"write"',);
 			expect(content,).toContain("exact argv with `--plan`",);
 			expect(content,).toContain("`dryRun:true`",);

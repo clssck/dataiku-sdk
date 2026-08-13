@@ -14,7 +14,8 @@ describe("CLI agent-only command surface", () => {
 			code: "usage_error",
 			category: "usage",
 			exitCode: 1,
-			hint: "Use `dss commands run` for machine-readable command discovery.",
+			hint:
+				"Use `dss commands run --fields RESOURCE.ACTION --json` for scoped, compact command discovery; omit --fields only when you need the full registry.",
 		},);
 		expect((report.details as Record<string, unknown>).command,).toBe("dss commands run",);
 	});
