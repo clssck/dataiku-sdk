@@ -89,10 +89,13 @@ export const describeSqlLiveIntegration = sqlLiveIntegrationEnabled
 	? describe
 	: describe.skip;
 
-function dssExecOptions(opts: DssRunOptions,): { cwd: string; env: typeof process.env; } {
+function dssExecOptions(
+	opts: DssRunOptions,
+): { cwd: string; env: typeof process.env; maxBuffer: number; } {
 	return {
 		cwd: opts.cwd ?? SDK_ROOT,
 		env: opts.env ?? process.env,
+		maxBuffer: 16 * 1024 * 1024,
 	};
 }
 

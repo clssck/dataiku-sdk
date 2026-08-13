@@ -312,6 +312,38 @@ describe("DatasetsResource.create", () => {
 			managed: true,
 		},);
 	});
+
+	it("uses the DSS uploaded-files request shape", async () => {
+		let createBody: Record<string, unknown> | undefined;
+
+		await withTestServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				createBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify({ name: "uploaded_input", },),);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await client.datasets.create({
+				datasetName: "uploaded_input",
+				connection: "Default (in DSS data dir.)",
+				dsType: "UploadedFiles",
+			},);
+		},);
+
+		expect(createBody,).toEqual({
+			projectKey: "TEST",
+			name: "uploaded_input",
+			type: "UploadedFiles",
+			params: { uploadConnection: "Default (in DSS data dir.)", },
+		},);
+	});
 });
 
 describe("buildDatasetCloneSettings", () => {

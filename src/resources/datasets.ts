@@ -368,6 +368,14 @@ function buildDatasetCreateBody(opts: {
 	formatParams?: Record<string, unknown>;
 	managed?: boolean;
 },): Record<string, unknown> {
+	if (opts.dsType.toLowerCase() === "uploadedfiles") {
+		return {
+			projectKey: opts.projectKey,
+			name: opts.datasetName,
+			type: opts.dsType,
+			params: { uploadConnection: opts.connection, },
+		};
+	}
 	if (opts.table) {
 		const params: Record<string, unknown> = {
 			connection: opts.connection,
