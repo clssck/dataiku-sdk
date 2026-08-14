@@ -69,7 +69,7 @@ For disposable agent tests, set \`DSS_CONFIG_DIR\` to a temporary directory so s
 - Use \`--dry-run\` only when that action's registry entry has \`dryRun:true\`. \`--plan\` explains the operation; \`--dry-run\` exercises the action-specific simulation path. Never add an unsupported flag.
 - When a create/upload action advertises \`--record-cleanup\`, pass \`--record-cleanup cleanup.jsonl\`. \`dss cleanup --file cleanup.jsonl\` previews the recorded cleanup steps in reverse order and does not mutate DSS; add \`--apply\` only after checking the preview.
 - For JSON payload actions, follow \`inputContract\`, \`requiredFlags\`, and \`requiredOneOf\`. Prefer \`--data-file PATH\` or \`--stdin\` when advertised instead of inline \`--data\`; this preserves exact JSON across shells and keeps large or sensitive payloads out of process arguments.
-- Authenticated actions advertise \`--request-timeout MS\` and \`--retries N\`. Long-running actions separately advertise controls such as \`--timeout MS\`, \`--poll-interval MS\`, and log limits; use only the flags in that action's registry entry.
+- Authenticated actions advertise \`--request-timeout MS\` and \`--retries N\`; \`--retries\` applies to idempotent GET requests. Long-running actions separately advertise controls such as \`--timeout MS\`, \`--poll-interval MS\`, and log limits; use only the flags in that action's registry entry.
 - Before live mutation tests, use \`dss fixtures --json\` to discover compatible test resources instead of guessing project objects.
 
 ## Authentication
@@ -203,6 +203,7 @@ Mutations print a small JSON ack to stdout and exit 0 on success (e.g. \`{"updat
 - \`dss api-service list-packages SERVICE\` first verifies the parent service through its settings. A \`not_found\` error means the service is missing (verify the service ID and project key); an empty array means the service exists but has no deployable packages. Do not reinterpret \`not_found\` as an empty package list or retry the lower-level packages route.
 - \`dss notebook clear-jupyter-outputs NAME --dry-run\` returns the full \`current\` and \`next\` notebook states. Applying it clears \`outputs\` and resets \`execution_count\` to \`0\` only on code cells, preserving markdown and raw cells unchanged.
 - \`dss sql query ... --dataset PROJECT.NAME\` first queries through the dataset. If DSS rejects that dataset connection as neither SQL nor HDFS, the CLI reads dataset metadata and retries with \`params.connection\` (using its schema or catalog as the database when available). A readable dataset with no usable connection exits with \`validation_failed\` and advises \`--connection\`; dataset metadata \`404\` and \`403\` errors propagate as \`not_found\` and \`permission_denied\`.
+- \`dss sql query ... --start-retries N\` opts the query-start POST into transient retries with exponential backoff. A lost response can cause DSS to execute the SQL more than once, so use it only for SQL whose repetition is safe; ordinary \`--retries N\` remains GET-only.
 
 ## Error envelope
 

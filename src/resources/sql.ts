@@ -13,6 +13,11 @@ type SqlQueryOptions = {
 	postQueries?: string[];
 	type?: string;
 	projectKey?: string;
+	/**
+	 * Opt in to transient retries while starting the query. The SQL may execute
+	 * more than once when DSS accepts a request but loses its response.
+	 */
+	retryMaxAttempts?: number;
 };
 
 function isUnsupportedSqlDatasetConnectionError(error: unknown,): error is DataikuError {
@@ -145,11 +150,12 @@ export class SqlResource extends BaseResource {
 	 * or `datasetFullName` (run against a dataset's connection).
 	 */
 	async startQuery(opts: SqlQueryOptions,): Promise<SqlQueryResult> {
+		const { retryMaxAttempts, ...queryOpts } = opts;
 		return this.client.post<SqlQueryResult>("/public/api/sql/queries/", {
-			...opts,
-			projectKey: opts.projectKey ?? this.resolveOptionalProjectKey(opts.projectKey,),
-			type: opts.type ?? "sql",
-		},);
+			...queryOpts,
+			projectKey: queryOpts.projectKey ?? this.resolveOptionalProjectKey(queryOpts.projectKey,),
+			type: queryOpts.type ?? "sql",
+		}, retryMaxAttempts === undefined ? undefined : { retryMaxAttempts, },);
 	}
 
 	/**

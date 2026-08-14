@@ -503,12 +503,27 @@ export class DataikuClient {
 		return { text: new TextDecoder().decode(usable,), truncated, };
 	}
 
-	async post<T = unknown,>(path: string, body?: unknown,): Promise<T> {
+	/**
+	 * POST with optional transient retry. Only opt in when repeating the request
+	 * is safe: the server may have accepted an attempt whose response was lost.
+	 */
+	async post<T = unknown,>(
+		path: string,
+		body?: unknown,
+		options?: { retryMaxAttempts?: number; },
+	): Promise<T> {
+		const retryMaxAttempts = options?.retryMaxAttempts;
+		if (
+			retryMaxAttempts !== undefined
+			&& (!Number.isInteger(retryMaxAttempts,) || retryMaxAttempts < 1)
+		) {
+			throw new ClientValidationError("retryMaxAttempts must be a positive integer.",);
+		}
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "POST",
 			headers: this.getHeaders(),
 			body: body !== undefined ? JSON.stringify(body,) : undefined,
-		},);
+		}, retryMaxAttempts,);
 		return this.parseJsonResponse<T>(res,);
 	}
 
@@ -661,10 +676,18 @@ export class DataikuClient {
 
 	/* ---- private: retry loop ---- */
 
-	private async fetchWithRetry(url: string, init: RequestInit,): Promise<Response> {
+	private async fetchWithRetry(
+		url: string,
+		init: RequestInit,
+		retryMaxAttempts?: number,
+	): Promise<Response> {
 		const method = (init.method ?? "GET").toUpperCase();
-		const retryEnabled = shouldRetryMethod(method,);
-		const maxAttempts = retryEnabled ? this.retryMaxAttempts : 1;
+		const retryEnabled = shouldRetryMethod(method,) || retryMaxAttempts !== undefined;
+		const maxAttempts = retryMaxAttempts === undefined
+			? retryEnabled
+				? this.retryMaxAttempts
+				: 1
+			: Math.min(retryMaxAttempts, MAX_RETRY_ATTEMPTS_CAP,);
 		const delaysMs: number[] = [];
 
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {

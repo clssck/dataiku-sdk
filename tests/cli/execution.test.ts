@@ -545,6 +545,100 @@ describe("CLI execution behavior", () => {
 		}
 	});
 
+	it("does not retry the SQL start POST without explicit opt-in", async () => {
+		let startAttempts = 0;
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+				startAttempts++;
+				sendJson(res, { message: "Temporary failure", }, 500,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"sql",
+				"query",
+				"SELECT 1",
+				"--connection",
+				"CONN",
+				"--retries",
+				"2",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(3,);
+			expect(startAttempts,).toBe(1,);
+			const report = JSON.parse(failure.stderr,) as {
+				details?: { retry?: { enabled?: boolean; maxAttempts?: number; }; };
+			};
+			expect(report.details?.retry,).toMatchObject({ enabled: false, maxAttempts: 1, },);
+		},);
+	});
+
+	it("retries transient SQL start failures only with --start-retries", async () => {
+		let startAttempts = 0;
+		let startBody: Record<string, unknown> | undefined;
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+				startAttempts++;
+				startBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				if (startAttempts === 1) {
+					sendJson(res, { message: "Temporary failure", }, 500,);
+					return;
+				}
+				sendJson(res, { queryId: "q-retried", hasResults: true, schema: [], },);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/sql/queries/q-retried/stream") {
+				sendJson(res, [[1,],],);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/sql/queries/q-retried/finish-streaming"
+			) {
+				res.statusCode = 200;
+				res.end("",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"sql",
+				"query",
+				"SELECT 1",
+				"--connection",
+				"CONN",
+				"--start-retries",
+				"2",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toMatchObject({ queryId: "q-retried", rows: [[1,],], },);
+			expect(startAttempts,).toBe(2,);
+			expect(startBody,).toEqual({
+				query: "SELECT 1",
+				connection: "CONN",
+				projectKey: "TEST",
+				type: "sql",
+			},);
+		},);
+	});
+
+	it("rejects invalid --start-retries before querying", async () => {
+		const failure = await dssFailure([
+			"sql",
+			"query",
+			"SELECT 1",
+			"--connection",
+			"CONN",
+			"--start-retries",
+			"0",
+		], { env: cliEnv("http://127.0.0.1:1",), },);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toContain("--start-retries must be a positive integer",);
+	});
+
 	function sqlPreviewServer(queryId: string, rows: number[][],) {
 		return (req: IncomingMessage, res: ServerResponse,): void => {
 			const url = new URL(req.url ?? "/", "http://localhost",);

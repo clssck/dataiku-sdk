@@ -164,6 +164,7 @@ export const VALUE_FLAGS = new Set([
 	"sql",
 	"schema",
 	"sql-file",
+	"start-retries",
 	"standard",
 	"state",
 	"streaming-endpoint",

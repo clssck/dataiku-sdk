@@ -29,6 +29,7 @@ Bun is the primary development runtime and package manager. Examples below assum
 - `--fields a,b,c` projects those fields from an object or array-of-objects result; dotted paths (`a.b.c`) drill into nested objects, and missing fields become `null`; string and scalar results pass through unchanged.
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: `0` success, `1` usage/configuration error, `2` DSS/internal error, `3` transient DSS error, `4` a failed long-running result or synchronous assertion.
+- `--retries N` controls idempotent GET retries only. `dss sql query --start-retries N` explicitly retries transient failures while starting a query; use it only when executing the SQL more than once is safe.
 - The exit code is the success signal. For portable multi-step mutations, prefer `dss batch`; shell chaining and pipeline exit semantics differ across POSIX shells, Windows PowerShell, PowerShell 7, and Command Prompt.
 - `--raw` is only for recipe payload commands. Without `--output`, stdout is raw bytes; with `--output PATH`, stdout is the JSON string equal to `PATH` and the file contains the exact raw bytes.
 

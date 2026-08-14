@@ -6,7 +6,7 @@ import type { CommandMeta, } from "../types.js";
 import { UsageError, } from "../usage.js";
 
 const SQL_QUERY_USAGE =
-	"dss sql query (SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin) (--connection CONN | --dataset FULL_NAME) [--database DB] [--output PATH|--output-file PATH] [--preview N] [--request-timeout MS] [--project-key KEY]";
+	"dss sql query (SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin) (--connection CONN | --dataset FULL_NAME) [--database DB] [--output PATH|--output-file PATH] [--preview N] [--start-retries N] [--request-timeout MS] [--project-key KEY]";
 
 const DEFAULT_SQL_PREVIEW_ROWS = 5;
 
@@ -27,6 +27,25 @@ function parseSqlPreviewCount(value: string | boolean | undefined,): number {
 	if (trimmed.length === 0 || !Number.isInteger(parsed,) || parsed < 0) {
 		throw new UsageError(
 			`--preview must be a non-negative integer (got "${value}"). Usage: ${SQL_QUERY_USAGE}`,
+			"validation_failed",
+		);
+	}
+	return parsed;
+}
+
+function parseSqlStartRetries(value: string | boolean | undefined,): number | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "string") {
+		throw new UsageError(
+			`--start-retries requires a positive integer. Usage: ${SQL_QUERY_USAGE}`,
+			"validation_failed",
+		);
+	}
+	const trimmed = value.trim();
+	const parsed = Number(trimmed,);
+	if (trimmed.length === 0 || !Number.isInteger(parsed,) || parsed < 1) {
+		throw new UsageError(
+			`--start-retries must be a positive integer (got "${value}"). Usage: ${SQL_QUERY_USAGE}`,
 			"validation_failed",
 		);
 	}
@@ -107,6 +126,7 @@ export const sqlCommands: Record<string, CommandMeta> = {
 				datasetFullName,
 				database: f["database"] as string | undefined,
 				projectKey: f["project-key"] as string | undefined,
+				retryMaxAttempts: parseSqlStartRetries(f["start-retries"],),
 			},);
 			if (!outputFile) return result;
 
@@ -124,13 +144,15 @@ export const sqlCommands: Record<string, CommandMeta> = {
 			};
 		},
 		usage: SQL_QUERY_USAGE,
-		description: "Run a SQL query against a DSS connection or dataset.",
+		description:
+			"Run a SQL query against a DSS connection or dataset. --start-retries may execute the SQL more than once; use it only when repetition is safe.",
 		examples: [
 			"dss sql query 'SELECT * FROM orders LIMIT 10' --connection my_pg",
 			"dss sql query --sql-file query.sql --connection my_pg",
 			"echo 'SELECT 1' | dss sql query --stdin --dataset MYPROJ.orders",
 			"dss sql query --sql-file query.sql --connection my_pg --output results.json --request-timeout 120000",
 			"dss sql query --sql-file query.sql --connection my_pg --output results.json --preview 10",
+			"dss sql query 'SELECT 1' --connection my_pg --start-retries 4",
 		],
 	},
 };
