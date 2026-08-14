@@ -1,0 +1,13 @@
+{
+	"servers": {
+		"typescript-language-server": {
+			"command": "node",
+			"args": ["./node_modules/typescript-language-server/lib/cli.mjs", "--stdio"],
+			"initOptions": {
+				"tsserver": {
+					"path": "./node_modules/typescript-language-service/lib/tsserver.js"
+				}
+			}
+		}
+	}
+}
