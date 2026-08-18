@@ -13,6 +13,8 @@
 	},
 	"files": [
 		"dist/",
+		"plugin.json",
+		"skills/",
 		"bin/dss.js",
 		"packages/types/dist/"
 	],
@@ -22,9 +24,10 @@
 	},
 	"scripts": {
 		"build": "tsc && tsc -p packages/types/tsconfig.json",
-		"prepack": "tsc && tsc -p packages/types/tsconfig.json",
-		"prepublishOnly": "tsc && tsc -p packages/types/tsconfig.json",
-		"check": "tsc --noEmit",
+		"prepack": "node scripts/sync-plugin-version.mjs --check && tsc && tsc -p packages/types/tsconfig.json",
+		"prepublishOnly": "node scripts/sync-plugin-version.mjs --check && tsc && tsc -p packages/types/tsconfig.json",
+		"check": "tsc --noEmit && node scripts/sync-plugin-version.mjs --check",
+		"version": "node scripts/sync-plugin-version.mjs && git add plugin.json",
 		"lint": "oxlint src/",
 		"lint:fix": "oxlint --fix src/",
 		"format": "dprint fmt",

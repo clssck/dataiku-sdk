@@ -1,0 +1,15 @@
+{
+	"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+	"name": "dataiku-sdk",
+	"version": "0.12.6",
+	"description": "Dataiku DSS SDK and agent-oriented CLI for programmatic access to DSS REST APIs.",
+	"homepage": "https://github.com/clssck/dataiku-sdk",
+	"repository": "https://github.com/clssck/dataiku-sdk",
+	"license": "MIT",
+	"keywords": [
+		"dataiku",
+		"dss",
+		"cli",
+		"agent-skills"
+	]
+}

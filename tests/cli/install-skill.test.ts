@@ -7,10 +7,38 @@ import {
 	readFileExists,
 	readFileSync,
 	rmSync,
+	SDK_ROOT,
 	tmpdir,
 } from "./_harness.js";
 
 describe("CLI install-skill command", () => {
+	it("ships an Agent Plugin manifest and canonical skill", () => {
+		const packageJson = JSON.parse(
+			readFileSync(join(SDK_ROOT, "package.json",), "utf-8",),
+		) as { version: string; files?: string[]; scripts?: Record<string, string>; };
+		const plugin = JSON.parse(
+			readFileSync(join(SDK_ROOT, "plugin.json",), "utf-8",),
+		) as Record<string, unknown>;
+		const canonicalSkill = readFileSync(
+			join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",),
+			"utf-8",
+		);
+
+		expect(plugin,).toMatchObject({
+			$schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+			name: "dataiku-sdk",
+			version: packageJson.version,
+			license: "MIT",
+		},);
+		expect(packageJson.files,).toEqual(expect.arrayContaining(["plugin.json", "skills/",],),);
+		expect(packageJson.scripts?.version,).toContain("sync-plugin-version.mjs",);
+		expect(packageJson.scripts?.prepack,).toContain("sync-plugin-version.mjs --check",);
+		expect(packageJson.scripts?.prepublishOnly,).toContain("sync-plugin-version.mjs --check",);
+		expect(canonicalSkill,).toContain("name: dataiku-dss",);
+		expect(canonicalSkill,).toContain("compatibility: >-",);
+		expect(canonicalSkill.split("\n",).length,).toBeLessThan(500,);
+	});
+
 	it("error envelope example in the skill matches a real envelope", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-skill-parity-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
@@ -87,6 +115,11 @@ describe("CLI install-skill command", () => {
 			const skillPath = result.installed[0]!.path;
 
 			const content = readFileSync(skillPath, "utf-8",);
+			const canonicalSkill = readFileSync(
+				join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",),
+				"utf-8",
+			);
+			expect(content,).toBe(canonicalSkill,);
 			expect(content,).toContain("name: dataiku-dss",);
 			expect(content,).toContain("dss agent contract",);
 			expect(content,).toContain('type:"error"',);
