@@ -43,7 +43,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          NEW_VERSION=$(npm version ${{ inputs.version }} -m "v%s")
+          npm version ${{ inputs.version }} -m "v%s"
+          NEW_VERSION="v$(node -p 'require("./package.json").version')"
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish to npm
