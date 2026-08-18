@@ -226,6 +226,8 @@ describe("CLI install-skill command", () => {
 			);
 			expect(content,).toContain("stdout is the JSON string equal to `PATH`",);
 			expect(content,).toContain("dataset_download_default_location",);
+			expect(content,).toContain("validate every `INSIGHT` tile before mutation",);
+			expect(content,).toContain("a `403` blocks the save",);
 			expect(content,).toContain("syncOutputSchemaPropagated",);
 			expect(content,).toContain("first verifies the parent service through its settings",);
 			expect(content,).toContain("preserving markdown and raw cells unchanged",);
