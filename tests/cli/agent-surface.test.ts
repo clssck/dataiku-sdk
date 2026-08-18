@@ -237,7 +237,11 @@ describe("CLI registry required-input usage accuracy", () => {
 		const expectedRequired = [
 			["code-env", "set-definition", "(--data JSON|--data-file PATH|--stdin)",],
 			["code-env", "set-packages", "(--packages PKGS|--package PKG|--file PATH)",],
-			["dashboard", "update", "(--name NAME|--data JSON|--data-file PATH|--stdin)",],
+			[
+				"dashboard",
+				"update",
+				"(--name NAME|--listed true|false|--data JSON|--data-file PATH|--stdin)",
+			],
 			["dataset", "refresh-schema", "(--data JSON | --data-file PATH | --stdin)",],
 			["dataset", "update", "(--data '{...}' | --data-file PATH | --stdin)",],
 			["folder", "update", "(--data JSON | --data-file PATH | --stdin)",],
@@ -266,6 +270,24 @@ describe("CLI registry required-input usage accuracy", () => {
 		}
 	});
 
+	it("dashboard raw-data example includes the required name", async () => {
+		const { stdout, } = await dss([
+			"commands",
+			"run",
+			"--fields",
+			"dashboard.create.structuredExamples",
+			"--json",
+		],);
+		const registry = JSON.parse(stdout,) as {
+			"dashboard.create.structuredExamples"?: Array<{ payload?: Record<string, unknown>; }>;
+		};
+		const examples = registry["dashboard.create.structuredExamples"] ?? [];
+		expect(examples.find((example,) => example.payload)?.payload,).toEqual({
+			name: "Agent dashboard",
+			pages: [],
+		},);
+	});
+
 	it("never advertises an optional payload group for a handler-required payload", () => {
 		const registry = commands as unknown as Record<
 			string,
@@ -286,7 +308,7 @@ describe("CLI registry required-input usage accuracy", () => {
 			"code-env create",
 		],);
 		const payloadTokens =
-			/--data\b|--stdin\b|--file\b|--content\b|--sql\b|\[SQL\b|--packages\b|--package\b|--params\b/;
+			/--data\b|--stdin\b|--file(?!-)\b|--content\b|--sql\b|\[SQL\b|--packages\b|--package\b|--params\b/;
 		for (const [resource, actions,] of Object.entries(registry,)) {
 			for (const [action, meta,] of Object.entries(actions,)) {
 				if (/validate/.test(action,)) continue; // validation commands are out of audit scope

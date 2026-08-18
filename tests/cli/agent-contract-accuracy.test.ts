@@ -41,18 +41,20 @@ describe("agent contract accuracy", () => {
 		expect(flagByName("project", "export", "output",),).not.toHaveProperty("enumValues",);
 	});
 
-	it("classifies project export as a remote read plus local write, not a DSS mutation", () => {
+	it("classifies remote exports as local-file reads, not DSS mutations", () => {
 		const registry = buildCommandRegistry();
-		const entry = registry.project?.export;
-		expect(entry,).toBeDefined();
-		expect(entry?.sideEffect,).toBe("read",);
-		expect(entry?.mutatesDss,).toBe(false,);
-		expect(entry?.destructive,).toBe("none",);
-		expect(entry?.producesLocalFile,).toBe(true,);
-		expect(entry?.idempotency,).toBe("safe",);
-		expect(entry?.flags.some((flag,) => flag.name === "plan"),).toBe(false,);
-		expect(entry?.optionalFlags,).not.toContain("plan",);
-		expect(entry?.requiredFlags,).toContain("output",);
+		const exports = [registry.project?.export, registry.dashboard?.export,];
+		for (const entry of exports) {
+			expect(entry,).toBeDefined();
+			expect(entry?.sideEffect,).toBe("read",);
+			expect(entry?.mutatesDss,).toBe(false,);
+			expect(entry?.destructive,).toBe("none",);
+			expect(entry?.producesLocalFile,).toBe(true,);
+			expect(entry?.idempotency,).toBe("safe",);
+			expect(entry?.flags.some((flag,) => flag.name === "plan"),).toBe(false,);
+			expect(entry?.optionalFlags,).not.toContain("plan",);
+			expect(entry?.requiredFlags,).toContain("output",);
+		}
 		// Nearby real mutations keep their classification.
 		expect(registry.project?.import?.mutatesDss,).toBe(true,);
 		expect(registry.project?.import?.sideEffect,).toBe("write",);

@@ -77,7 +77,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"settings-set",
 	],
 	"flow-zone": ["list", "find", "get", "create", "update", "delete", "move", "organize", "graph",],
-	dashboard: ["list", "get", "create", "update", "delete",],
+	dashboard: ["list", "get", "export", "create", "update", "delete",],
 	"data-quality": [
 		"rules",
 		"get-rule",

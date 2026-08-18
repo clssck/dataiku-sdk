@@ -38,7 +38,7 @@ const SDK_SURFACE: Array<
 	{
 		key: "dashboards",
 		ctor: DashboardsResource,
-		methods: ["list", "get", "create", "update", "delete",],
+		methods: ["list", "get", "create", "update", "export", "delete",],
 	},
 	{
 		key: "datasets",

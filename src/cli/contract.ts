@@ -698,7 +698,7 @@ export function buildCommandSchemas(
 
 const EXPLICIT_REGISTRY_OVERRIDES: Record<string, CommandRegistryOverride> = {
 	"dashboard.create": {
-		examplePayload: { pages: [], },
+		examplePayload: { name: "Agent dashboard", pages: [], },
 	},
 	"dashboard.update": {
 		examplePayload: { name: "Updated dashboard", },
@@ -765,10 +765,9 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 		return "read";
 	}
 	if (resource === "install-skill") return "write";
-	// `project export` streams an archive over the API and writes it to a local
-	// path; the DSS-side project is untouched, so it reads remotely and only
-	// mutates the local filesystem.
-	if (resource === "project" && action === "export") return "read";
+	// Project and dashboard exports stream a rendered/archive artifact and write it
+	// locally; the DSS-side resource is untouched.
+	if ((resource === "project" || resource === "dashboard") && action === "export") return "read";
 	if (resource === "data-quality" && action === "compute") return "write";
 	if (READ_ACTIONS.has(action,)) return "read";
 	if (
@@ -1732,17 +1731,30 @@ export function commandPlanShape(
 				identifiers: { article: id, },
 			};
 		case "dashboard.create": {
-			const name = requiredPlanFlag(flags, "name", entry.usage,);
+			const data = jsonInput(flags,);
+			const flagName = flags["name"] as string | undefined;
+			const dataName = data?.["name"];
+			const name = flagName ?? (typeof dataName === "string" ? dataName : undefined);
+			if (!name) {
+				throw new UsageError(
+					"--name or dashboard settings containing a string name are required. Usage: dss dashboard create --name NAME",
+				);
+			}
+			const listed = parseBooleanOption(flags["listed"], "--listed",);
+			const payload: Record<string, unknown> = { ...(data ?? { pages: [], }), name, };
+			if (listed !== undefined) payload.listed = listed;
 			return {
 				method: "POST",
 				endpoint: projectEndpoint("/dashboards/",),
 				identifiers: { name, },
-				payload: { ...(jsonInput(flags,) ?? { pages: [], }), name, },
+				payload,
 			};
 		}
 		case "dashboard.update": {
 			const payload: Record<string, unknown> = { ...jsonInput(flags,), };
 			if (typeof flags["name"] === "string") payload.name = flags["name"];
+			const listed = parseBooleanOption(flags["listed"], "--listed",);
+			if (listed !== undefined) payload.listed = listed;
 			return {
 				method: "PUT",
 				endpoint: projectEndpoint(`/dashboards/${encodeURIComponent(id,)}/`,),

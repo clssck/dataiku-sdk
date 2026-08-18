@@ -2,6 +2,7 @@ import { describe, expect, it, } from "bun:test";
 import {
 	cliEnv,
 	dss,
+	dssFailure,
 	join,
 	mkdirSync,
 	readBody,
@@ -9,6 +10,7 @@ import {
 	realpathSync,
 	rmSync,
 	sendJson,
+	statSync,
 	tmpdir,
 	withCliServer,
 	writeFileSync,
@@ -821,6 +823,32 @@ describe("CLI command behavioral smoke coverage", () => {
 		let wikiUpdateBody: Record<string, unknown> | undefined;
 		let dashboardCreateBody: Record<string, unknown> | undefined;
 		let dashboardUpdateBody: Record<string, unknown> | undefined;
+		let dashboardCreateRequests = 0;
+		let dashboardUpdateRequests = 0;
+		let dashboardExportBody: Record<string, unknown> | undefined;
+		const dashboardExportPath = join(
+			tmpdir(),
+			`dss-cli-dashboard-export-${Date.now()}.pdf`,
+		);
+		let dashboardName = "Dashboard 1";
+		let dashboardListed = true;
+		const validDashboardPages = [{
+			id: "overview",
+			grid: {
+				tiles: [
+					{
+						tileType: "INSIGHT",
+						insightId: "dashboard-insight",
+						targetInsightId: "dashboard-insight",
+					},
+					{
+						tileType: "TEXT",
+						insightId: null,
+						targetInsightId: null,
+					},
+				],
+			},
+		},];
 		let insightName = "Insight 1";
 		let insightCreateBody: Record<string, unknown> | undefined;
 		let insightUpdateBody: Record<string, unknown> | undefined;
@@ -870,26 +898,108 @@ describe("CLI command behavioral smoke coverage", () => {
 				return;
 			}
 			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/dashboards/dash-1/") {
-				sendJson(res, { id: "dash-1", name: "Dashboard 1", projectKey: "TEST", pages: [], },);
+				sendJson(res, {
+					id: "dash-1",
+					name: dashboardName,
+					projectKey: "TEST",
+					listed: dashboardListed,
+					pages: validDashboardPages,
+				},);
 				return;
 			}
 			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/dashboards/") {
+				dashboardCreateRequests += 1;
 				dashboardCreateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
 				sendJson(res, { id: "dash-2", },);
 				return;
 			}
 			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/dashboards/dash-2/") {
-				sendJson(res, { id: "dash-2", name: "Created dashboard", projectKey: "TEST", pages: [], },);
+				sendJson(res, {
+					id: "dash-2",
+					name: "Created dashboard",
+					projectKey: "TEST",
+					listed: false,
+					pages: validDashboardPages,
+				},);
 				return;
 			}
 			if (req.method === "PUT" && url.pathname === "/public/api/projects/TEST/dashboards/dash-1/") {
+				dashboardUpdateRequests += 1;
 				dashboardUpdateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
-				sendJson(res, dashboardUpdateBody,);
+				dashboardName = dashboardUpdateBody.name as string;
+				dashboardListed = dashboardUpdateBody.listed as boolean;
+				sendJson(res, {
+					name: dashboardName,
+					listed: dashboardListed,
+					pages: dashboardUpdateBody.pages,
+				},);
+				return;
+			}
+			if (
+				req.method === "POST"
+				&& url.pathname === "/public/api/projects/TEST/dashboards/dash-1/action/export"
+			) {
+				dashboardExportBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				res.statusCode = 200;
+				if (dashboardExportBody.paperSize === "HTML") {
+					res.setHeader("content-type", "text/html",);
+					res.end("<html>renderer unavailable</html>",);
+				} else {
+					res.setHeader("content-type", "application/pdf",);
+					res.end("%PDF-1.7\nrendered dashboard\n%%EOF",);
+				}
 				return;
 			}
 			if (req.method === "DELETE" && url.pathname === "/public/api/projects/TEST/dashboards/dash-1/") {
 				res.statusCode = 204;
 				res.end();
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/insights/dashboard-insight/"
+			) {
+				sendJson(res, {
+					id: "dashboard-insight",
+					name: "Orders table",
+					type: "dataset_table",
+					projectKey: "TEST",
+					params: { datasetSmartName: "OTHER.orders", },
+				},);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/insights/stale-dataset/"
+			) {
+				sendJson(res, {
+					id: "stale-dataset",
+					name: "Missing table",
+					type: "dataset_table",
+					projectKey: "TEST",
+					params: { datasetSmartName: "missing_dataset", },
+				},);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/insights/missing-insight/"
+			) {
+				sendJson(res, { message: "missing", }, 404,);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/OTHER/datasets/orders/"
+			) {
+				sendJson(res, { name: "orders", projectKey: "OTHER", type: "UploadedFiles", },);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/datasets/missing_dataset/"
+			) {
+				sendJson(res, { message: "missing", }, 404,);
 				return;
 			}
 			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/insights/") {
@@ -1019,11 +1129,65 @@ describe("CLI command behavioral smoke coverage", () => {
 			)
 				.toHaveProperty("name", "Dashboard 1",);
 
+			const dashboardExport = JSON.parse(
+				(
+					await dss([
+						"dashboard",
+						"export",
+						"dash-1",
+						"--output",
+						dashboardExportPath,
+						"--paper-size",
+						"CustomSize",
+						"--orientation",
+						"landscape",
+						"--slide-index",
+						"0",
+					], { env: cliEnv(url,), },)
+				).stdout,
+			) as Record<string, unknown>;
+			expect(dashboardExport,).toMatchObject({
+				path: dashboardExportPath,
+				contentType: "application/pdf",
+				dashboardId: "dash-1",
+				paperSize: "CustomSize",
+				orientation: "LANDSCAPE",
+				fileType: "PDF",
+				slideIndex: 0,
+			},);
+			expect(dashboardExportBody,).toEqual({
+				paperSize: "CustomSize",
+				orientation: "LANDSCAPE",
+				fileType: "PDF",
+				slideIndex: 0,
+			},);
+			expect(readFileSync(dashboardExportPath, "utf8",),).toContain("rendered dashboard",);
+			rmSync(dashboardExportPath, { force: true, },);
+
+			const invalidExport = await dssFailure([
+				"dashboard",
+				"export",
+				"dash-1",
+				"--output",
+				dashboardExportPath,
+				"--paper-size",
+				"HTML",
+			], { env: cliEnv(url,), },);
+			expect(invalidExport.code,).toBe(1,);
+			expect(invalidExport.stderr,).toContain("DSS dashboard export did not return a PDF.",);
+			expect(() => statSync(dashboardExportPath,)).toThrow();
+
 			const dashboardCreateDryRun = JSON.parse(
 				(
-					await dss(["dashboard", "create", "--name", "Dry dashboard", "--dry-run",], {
-						env: cliEnv(url,),
-					},)
+					await dss([
+						"dashboard",
+						"create",
+						"--name",
+						"Dry dashboard",
+						"--listed",
+						"true",
+						"--dry-run",
+					], { env: cliEnv(url,), },)
 				).stdout,
 			) as Record<string, unknown>;
 			expect(dashboardCreateDryRun,).toMatchObject({
@@ -1031,30 +1195,146 @@ describe("CLI command behavioral smoke coverage", () => {
 				action: "create",
 				resource: "dashboard",
 				name: "Dry dashboard",
-				payload: { pages: [], },
+				payload: { pages: [], name: "Dry dashboard", listed: true, },
 			},);
+			const missingInsightPages = [{
+				grid: {
+					tiles: [{
+						tileType: "INSIGHT",
+						insightId: "missing-insight",
+						targetInsightId: "missing-insight",
+					},],
+				},
+			},];
+			const missingInsightCreate = await dssFailure([
+				"dashboard",
+				"create",
+				"--data",
+				JSON.stringify({ name: "Broken insight dashboard", pages: missingInsightPages, },),
+			], { env: cliEnv(url,), },);
+			expect(missingInsightCreate.code,).toBe(1,);
+			expect(missingInsightCreate.stderr,).toContain(
+				"Dashboard references missing insight missing-insight.",
+			);
+			expect(dashboardCreateRequests,).toBe(0,);
+
+			const missingDatasetPages = [{
+				grid: {
+					tiles: [{
+						tileType: "INSIGHT",
+						insightId: "stale-dataset",
+						targetInsightId: "stale-dataset",
+					},],
+				},
+			},];
+			const missingDatasetCreate = await dssFailure([
+				"dashboard",
+				"create",
+				"--data",
+				JSON.stringify({ name: "Broken dataset dashboard", pages: missingDatasetPages, },),
+			], { env: cliEnv(url,), },);
+			expect(missingDatasetCreate.code,).toBe(1,);
+			expect(missingDatasetCreate.stderr,).toContain(
+				"Dashboard insight references missing dataset missing_dataset.",
+			);
+			expect(dashboardCreateRequests,).toBe(0,);
+
 			expect(JSON.parse(
-				(await dss(["dashboard", "create", "--name", "Created dashboard",], {
-					env: cliEnv(url,),
-				},)).stdout,
-			),).toHaveProperty("id", "dash-2",);
-			expect(dashboardCreateBody,).toEqual({ pages: [], name: "Created dashboard", },);
+				(await dss([
+					"dashboard",
+					"create",
+					"--data",
+					JSON.stringify({ name: "Created dashboard", pages: validDashboardPages, },),
+					"--listed",
+					"false",
+				], { env: cliEnv(url,), },)).stdout,
+			),).toMatchObject({ id: "dash-2", name: "Created dashboard", listed: false, },);
+			expect(dashboardCreateBody,).toEqual({
+				pages: validDashboardPages,
+				name: "Created dashboard",
+				listed: false,
+			},);
+			expect(dashboardCreateRequests,).toBe(1,);
+
+			const missingInsightUpdate = await dssFailure([
+				"dashboard",
+				"update",
+				"dash-1",
+				"--data",
+				JSON.stringify({ pages: missingInsightPages, },),
+			], { env: cliEnv(url,), },);
+			expect(missingInsightUpdate.code,).toBe(1,);
+			expect(missingInsightUpdate.stderr,).toContain(
+				"Dashboard references missing insight missing-insight.",
+			);
+			expect(dashboardUpdateRequests,).toBe(0,);
+
+			const missingDatasetUpdate = await dssFailure([
+				"dashboard",
+				"update",
+				"dash-1",
+				"--data",
+				JSON.stringify({ pages: missingDatasetPages, },),
+			], { env: cliEnv(url,), },);
+			expect(missingDatasetUpdate.code,).toBe(1,);
+			expect(missingDatasetUpdate.stderr,).toContain(
+				"Dashboard insight references missing dataset missing_dataset.",
+			);
+			expect(dashboardUpdateRequests,).toBe(0,);
+
+			const mismatchedInsightPages = [{
+				grid: {
+					tiles: [{
+						tileType: "INSIGHT",
+						insightId: "dashboard-insight",
+						targetInsightId: "different-insight",
+					},],
+				},
+			},];
+			const mismatchedInsightUpdate = await dssFailure([
+				"dashboard",
+				"update",
+				"dash-1",
+				"--data",
+				JSON.stringify({ pages: mismatchedInsightPages, },),
+			], { env: cliEnv(url,), },);
+			expect(mismatchedInsightUpdate.code,).toBe(1,);
+			expect(mismatchedInsightUpdate.stderr,).toContain(
+				"has mismatched insightId and targetInsightId.",
+			);
+			expect(dashboardUpdateRequests,).toBe(0,);
 
 			const dashboardUpdateDryRun = JSON.parse(
 				(
-					await dss(["dashboard", "update", "dash-1", "--name", "Dry dashboard update", "--dry-run",], {
-						env: cliEnv(url,),
-					},)
+					await dss([
+						"dashboard",
+						"update",
+						"dash-1",
+						"--listed",
+						"false",
+						"--dry-run",
+					], { env: cliEnv(url,), },)
 				).stdout,
-			) as { current?: { name?: string; }; next?: { name?: string; }; };
-			expect(dashboardUpdateDryRun.current?.name,).toBe("Dashboard 1",);
-			expect(dashboardUpdateDryRun.next?.name,).toBe("Dry dashboard update",);
+			) as { current?: { listed?: boolean; }; next?: { listed?: boolean; }; };
+			expect(dashboardUpdateDryRun.current?.listed,).toBe(true,);
+			expect(dashboardUpdateDryRun.next?.listed,).toBe(false,);
 			expect(JSON.parse(
-				(await dss(["dashboard", "update", "dash-1", "--name", "Updated dashboard",], {
-					env: cliEnv(url,),
-				},)).stdout,
-			),).toHaveProperty("name", "Updated dashboard",);
-			expect(dashboardUpdateBody,).toMatchObject({ id: "dash-1", name: "Updated dashboard", },);
+				(await dss([
+					"dashboard",
+					"update",
+					"dash-1",
+					"--name",
+					"Updated dashboard",
+					"--listed",
+					"false",
+				], { env: cliEnv(url,), },)).stdout,
+			),).toMatchObject({ name: "Updated dashboard", listed: false, },);
+			expect(dashboardUpdateBody,).toMatchObject({
+				id: "dash-1",
+				name: "Updated dashboard",
+				listed: false,
+			},);
+			expect(dashboardUpdateRequests,).toBe(1,);
 
 			const dashboardDeleteDryRun = JSON.parse(
 				(
