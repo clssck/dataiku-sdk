@@ -11,6 +11,7 @@ import {
 	num,
 	parseBooleanOption,
 	parseJsonObject,
+	recipeInputDatasetsFromFlags,
 	requiredJsonInput,
 	rewritePairsFromFlags,
 	schemaColumnsInput,
@@ -2022,7 +2023,7 @@ export function commandPlanShape(
 				payload: {
 					type,
 					name: flags["name"] as string | undefined,
-					inputDatasets: flags["input"] ? [flags["input"] as string,] : undefined,
+					inputDatasets: recipeInputDatasetsFromFlags(flags,),
 					outputDataset,
 					outputFolder,
 					outputConnection: flags["output-connection"] as string | undefined,

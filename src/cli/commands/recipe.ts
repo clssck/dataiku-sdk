@@ -203,7 +203,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			const type = f["type"] as string;
 			if (!type) {
 				throw new UsageError(
-					"--type is required. Usage: dss recipe create --type TYPE --input DS (--output DS | --output-folder FOLDER_ID)",
+					"--type is required. Usage: dss recipe create --type TYPE [--input DS] (--output DS | --output-folder FOLDER_ID)",
 				);
 			}
 			const outputDataset = f["output"] as string | undefined;
@@ -213,7 +213,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			}
 			if (!outputDataset && !outputFolder) {
 				throw new UsageError(
-					"--output or --output-folder is required. Usage: dss recipe create --type TYPE --input DS (--output DS | --output-folder FOLDER_ID)",
+					"--output or --output-folder is required. Usage: dss recipe create --type TYPE [--input DS] (--output DS | --output-folder FOLDER_ID)",
 				);
 			}
 			if (outputFolder && !f["output-connection"]) {
@@ -300,8 +300,8 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			return { created: createdName, resource: "recipe", ...created, ...moved, };
 		},
 		usage:
-			"dss recipe create --type TYPE --input DS[,DS2] (--output DS | --output-folder FOLDER_ID) [--name NAME] [--output-connection CONN] [--zone ZONE|--zone-id ID] [--if-not-exists] [--dry-run] [--join-on COL|LEFT=RIGHT[,...]] [--join-type LEFT|INNER|RIGHT|FULL] [--fuzzy-on COL|LEFT=RIGHT[,...]] [--fuzzy-distance DAMERAU_LEVENSHTEIN|HAMMING|JACCARD|COSINE|EUCLIDEAN] [--fuzzy-threshold N] [--normalize] [--project-key KEY]",
-		description: "Create a recipe with one or more inputs and a dataset or managed-folder output.",
+			"dss recipe create --type TYPE [--input DS[,DS2]] (--output DS | --output-folder FOLDER_ID) [--name NAME] [--output-connection CONN] [--zone ZONE|--zone-id ID] [--if-not-exists] [--dry-run] [--join-on COL|LEFT=RIGHT[,...]] [--join-type LEFT|INNER|RIGHT|FULL] [--fuzzy-on COL|LEFT=RIGHT[,...]] [--fuzzy-distance DAMERAU_LEVENSHTEIN|HAMMING|JACCARD|COSINE|EUCLIDEAN] [--fuzzy-threshold N] [--normalize] [--project-key KEY]",
+		description: "Create a recipe with optional inputs and a dataset or managed-folder output.",
 		examples: [
 			"dss recipe create --type python --input raw_orders,lookup --output orders_clean",
 			"dss recipe create --type python --input orders --input customers --output orders_clean --zone Experiments",

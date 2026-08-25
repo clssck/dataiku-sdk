@@ -263,7 +263,6 @@ describe("agent contract accuracy", () => {
 		],);
 		expect(createArgv?.allOf,).toEqual([
 			{ contains: { pattern: "^--(type)=[\\s\\S]+$", }, minContains: 1, },
-			{ contains: { pattern: "^--(input)=[\\s\\S]+$", }, minContains: 1, },
 			{
 				anyOf: [
 					{ contains: { pattern: "^--(output)=[\\s\\S]+$", }, minContains: 1, },

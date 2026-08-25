@@ -539,6 +539,44 @@ describe("RecipesResource", () => {
 		},);
 	});
 
+	it("creates input-free generator recipes with an empty input role", async () => {
+		let recipeCreateBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [{ name: "generated", type: "Filesystem", managed: true, },],);
+				return;
+			}
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				recipeCreateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { name: "generate_data", },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.create({
+				type: "python",
+				name: "generate_data",
+				outputDataset: "generated",
+				outputConnection: "filesystem_managed",
+			},);
+
+			expect(result.recipeName,).toBe("generate_data",);
+		},);
+
+		expect(recipeCreateBody,).toMatchObject({
+			recipePrototype: {
+				type: "python",
+				name: "generate_data",
+				inputs: { main: { items: [], }, },
+				outputs: { main: { items: [{ ref: "generated", appendMode: false, },], }, },
+			},
+		},);
+	});
+
 	it("pre-provisions filesystem outputs under a project path when output connection is explicit", async () => {
 		const requests: string[] = [];
 		let datasetCreateBody: Record<string, unknown> | undefined;

@@ -30,7 +30,7 @@ describe("CLI planned command coverage", () => {
 		expect(failure.stderr,).toBe("",);
 		expect(failure.stdout,).toContain("--output or --output-folder is required",);
 		expect(failure.stdout,).toContain(
-			"dss recipe create --type TYPE --input DS (--output DS | --output-folder FOLDER_ID)",
+			"dss recipe create --type TYPE [--input DS] (--output DS | --output-folder FOLDER_ID)",
 		);
 	});
 
@@ -173,6 +173,28 @@ describe("CLI planned command coverage", () => {
 			"--output",
 			"target_ds",
 			"--dry-run",
+		], {
+			env: cliEnv("http://127.0.0.1:1",),
+		},);
+
+		expect(stderr,).toBe("",);
+		const result = JSON.parse(stdout,) as { payload: { inputDatasets: string[]; }; };
+		expect(result.payload.inputDatasets,).toEqual(["source_a", "source_b", "source_c",],);
+	});
+
+	it("recipe create plan expands repeated and comma-separated inputs", async () => {
+		const { stdout, stderr, } = await dss([
+			"recipe",
+			"create",
+			"--type",
+			"python",
+			"--input",
+			"source_a",
+			"--input",
+			"source_b,source_c",
+			"--output",
+			"target_ds",
+			"--plan",
 		], {
 			env: cliEnv("http://127.0.0.1:1",),
 		},);

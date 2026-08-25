@@ -671,10 +671,10 @@ export class RecipesResource extends BaseResource {
 		let inputs: Record<string, unknown> | undefined = asRecord(opts.inputs,);
 		let outputs: Record<string, unknown> | undefined = asRecord(opts.outputs,);
 
-		if (!inputs && inputDatasets) {
+		if (!inputs) {
 			inputs = {
 				main: {
-					items: inputDatasets.map((ref,) => ({ ref, deps: [], })),
+					items: inputDatasets?.map((ref,) => ({ ref, deps: [], })) ?? [],
 				},
 			};
 		}
@@ -697,9 +697,9 @@ export class RecipesResource extends BaseResource {
 			};
 		}
 
-		if (!type || !name || !inputs || !outputs) {
+		if (!type || !name || !outputs) {
 			throw new Error(
-				"type and (inputDatasets + outputDataset/outputFolder) or (name + inputs + outputs) are required for create.",
+				"type and outputDataset/outputFolder or (name + outputs) are required for create.",
 			);
 		}
 
