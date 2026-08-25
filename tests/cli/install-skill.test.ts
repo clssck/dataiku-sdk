@@ -51,7 +51,8 @@ describe("CLI install-skill command", () => {
 			const failure = await dssFailure(["dataset", "frobnicate",], {
 				env: { PATH: process.env.PATH ?? "", DATAIKU_DISABLE_ENV: "1", DSS_CONFIG_DIR: tmpDir, },
 			},);
-			const real = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const real = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			for (const key of Object.keys(documented,)) {
 				expect(real, `skill envelope documents "${key}" but a real envelope omits it`,)
 					.toHaveProperty(key,);
@@ -128,26 +129,39 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain("dss commands run --fields dataset",);
 			expect(content,).toContain("dss commands run --fields dataset.create",);
 			expect(content,).toContain(
-				"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility --json",
+				"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility",
 			);
 			expect(content,).toContain(
-				"dss agent contract --fields commands.actions --json",
+				"dss agent contract --fields commands.actions",
 			);
 			expect(content,).toContain(
-				"dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples --json",
+				"dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples",
 			);
 			expect(content,).toContain(
 				"Prefer the four-field projection `usage,description,flags,examples`",
 			);
-			expect(content,).toContain("including `doctor`, `batch`, and `cleanup` failure reports",);
-			expect(content,).toContain("Dispatch/runtime failures write one JSONL error event to stderr",);
+			expect(content,).toContain(
+				"Command results write exactly one compact JSON value to stdout",
+			);
+			expect(content,).toContain(
+				"`doctor`, `batch`, and `cleanup` failure reports are their direct result objects on stdout",
+			);
+			expect(content,).toContain(
+				"Dispatch/runtime failures write one compact structured error object on stdout",
+			);
+			expect(content,).toContain("stderr carries JSONL diagnostics only",);
 			expect(content,).toContain("a failed long-running result or synchronous assertion",);
 			expect(content,).toContain(
-				"dss commands run --fields RESOURCE.ACTION --json",
+				"dss commands run --fields RESOURCE.ACTION",
 			);
 			expect(content,).toContain(
-				"the hundreds-of-thousands-token unscoped registry is compatibility-only",
+				"the compact resource/action summary",
 			);
+			expect(content,).toContain(
+				"is exported only via `--output PATH`",
+			);
+			expect(content,).toContain('`{"path":"PATH"}`',);
+			expect(content,).not.toContain("compatibility-only",);
 			expect(content,).not.toContain("Failure writes exactly one JSONL error event",);
 			expect(content,).not.toContain("dss doctor --fast",);
 			expect(content,).not.toContain("dss dataset preview orders",);
@@ -171,7 +185,7 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain("`inputContract`",);
 			expect(content,).toContain("`--data-file PATH` or `--stdin`",);
 			expect(content,).toContain("`--request-timeout MS` and `--retries N`",);
-			expect(content,).toContain("`dss fixtures --json`",);
+			expect(content,).toContain("`dss fixtures`",);
 			expect(content,).toContain("dss auth login --url",);
 			expect(content,).toContain("~/.config/dataiku/credentials.json",);
 			expect(content,).toContain("For disposable agent tests, set `DSS_CONFIG_DIR`",);
@@ -185,7 +199,7 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain('[{"projectKey":"MYPROJ","name":"My Project"}]',);
 			expect(content,).toContain('{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}',);
 			expect(content,).toContain(
-				"dss recipe get-payload compute_orders --raw --output code.py --project-key MYPROJ",
+				"dss recipe get-payload compute_orders --output code.py --project-key MYPROJ",
 			);
 			expect(content,).toContain(
 				"dss app create-instance APP_ID --data-file instance.json --wait --record-cleanup cleanup.jsonl",
@@ -224,7 +238,7 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain(
 				"legacy, mixed-server, mismatched-server, or unbound app cleanup entries",
 			);
-			expect(content,).toContain("stdout is the JSON string equal to `PATH`",);
+			expect(content,).toContain("stdout carries the JSON string equal to `PATH`",);
 			expect(content,).toContain("dataset_download_default_location",);
 			expect(content,).toContain("validate every `INSIGHT` tile before mutation",);
 			expect(content,).toContain("a `403` blocks the save",);
@@ -289,8 +303,11 @@ describe("CLI install-skill command", () => {
 
 	it("dss install-skill --agent unknown fails with UsageError", async () => {
 		const failure = await dssFailure(["install-skill", "--agent", "unknown",],);
-		expect(failure.stderr,).toContain("Unknown agent: unknown",);
 		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toBe("",);
+		expect(JSON.parse(failure.stdout,) as Record<string, unknown>,).toMatchObject({
+			error: "Unknown agent: unknown.",
+		},);
 	});
 
 	it("dss install-skill --target writes to specified directory", async () => {

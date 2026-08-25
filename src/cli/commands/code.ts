@@ -45,9 +45,9 @@ export const codeCommands: Record<string, CommandMeta> = {
 			const run = await c.scenarios.runScript(script, {
 				envName: f["env"] as string | undefined,
 				projectKey: f["project-key"] as string | undefined,
-				timeoutMs: num(f["timeout"],),
+				timeoutMs: num(f["timeout"], "--timeout",),
 				keepScenario: f["keep"] === true,
-				maxLogBytes: num(f["max-log-bytes"],),
+				maxLogBytes: num(f["max-log-bytes"], "--max-log-bytes",),
 			},);
 			const result: Record<string, unknown> = {
 				outcome: run.outcome,

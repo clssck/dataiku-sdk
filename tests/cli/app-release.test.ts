@@ -175,7 +175,8 @@ describe("app manifest-version and set-manifest-version", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(2,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				code: string;
 				category: string;
 				exitCode: number;
@@ -250,7 +251,8 @@ describe("app manifest-version and set-manifest-version", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("At least one of --manifest-version or --version-notes",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("At least one of --manifest-version or --version-notes",);
 		},);
 		expect(requestCount,).toBe(0,);
 	});
@@ -351,7 +353,8 @@ describe("app verify-instance API readiness", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				code: string;
 				details: {
 					result: {
@@ -364,8 +367,8 @@ describe("app verify-instance API readiness", () => {
 				entry.check === "manifest-version"
 			);
 			expect(versionCheck,).toMatchObject({ status: "failed", expected: "3.0.0", actual: "2.0.0", },);
-			expect(failure.stderr,).not.toContain("apiReady",);
-			expect(failure.stderr,).not.toContain('"ready":true',);
+			expect(failure.stdout,).not.toContain("apiReady",);
+			expect(failure.stdout,).not.toContain('"ready":true',);
 		},);
 	});
 
@@ -398,7 +401,8 @@ describe("app verify-instance API readiness", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				details: { result: { checks: Array<{ check: string; status: string; expected: unknown; }>; }; };
 			};
 			const versionCheck = report.details.result.checks.find((entry,) =>
@@ -529,7 +533,8 @@ describe("app verify-instance API readiness", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				details: {
 					result: {
 						templateVersion: string | null;
@@ -674,7 +679,7 @@ describe("app create-successor-instance", () => {
 
 	/** Extract the failed-wait result from the CLI error report on stderr. */
 	function failedResult(failure: { stderr: string; },): Record<string, unknown> {
-		return (JSON.parse(failure.stderr,) as { details: { result: Record<string, unknown>; }; }).details
+		return (JSON.parse(failure.stdout,) as { details: { result: Record<string, unknown>; }; }).details
 			.result;
 	}
 
@@ -754,7 +759,8 @@ describe("app create-successor-instance", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("different project keys",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("different project keys",);
 		},);
 		expect(requestCount,).toBe(0,);
 	});
@@ -784,7 +790,8 @@ describe("app create-successor-instance", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("not registered",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("not registered",);
 			expect(posts,).toBe(0,);
 		},);
 	});
@@ -822,7 +829,8 @@ describe("app create-successor-instance", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("already exists",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("already exists",);
 			expect(posts,).toBe(0,);
 		},);
 	});
@@ -868,7 +876,8 @@ describe("app create-successor-instance", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("no manifest version",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("no manifest version",);
 			expect(posts,).toBe(0,);
 		},);
 	});
@@ -1036,7 +1045,8 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
-				expect(failure.stderr,).toContain("UNTRACKABLE",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("UNTRACKABLE",);
 			},);
 			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as Record<string, unknown>;
 			expect(entry,).toMatchObject({
@@ -1101,7 +1111,8 @@ describe("app create-successor-instance", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(4,);
-			expect(failure.stderr,).toContain("FAILED",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("FAILED",);
 		},);
 	});
 
@@ -1156,7 +1167,8 @@ describe("app create-successor-instance", () => {
 					ledger,
 				], { env: cliEnv(url,), },);
 				expect(failure.code,).toBe(4,);
-				const result = JSON.parse(failure.stderr,) as {
+				expect(failure.stderr,).toBe("",);
+				const result = JSON.parse(failure.stdout,) as {
 					details?: { result?: Record<string, unknown>; };
 				};
 				expect(result.details?.result,).toMatchObject({
@@ -1244,7 +1256,8 @@ describe("app create-successor-instance", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(4,);
-			expect(failure.stderr,).toContain("VERIFICATION_FAILED",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("VERIFICATION_FAILED",);
 			expect(oldMutations,).toBe(0,);
 		},);
 	});
@@ -1273,6 +1286,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
+				expect(failure.stderr,).toBe("",);
 			},
 		);
 		expect(posts,).toBe(0,);
@@ -1300,6 +1314,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				expect(failedResult(failure,),).toMatchObject({
 					success: false,
 					state: "UNTRACKABLE",
@@ -1334,6 +1349,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				const result = failedResult(failure,);
 				expect(result,).toMatchObject({
 					success: false,
@@ -1373,6 +1389,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				expect(failedResult(failure,),).toMatchObject({
 					success: false,
 					state: "VERIFICATION_FAILED",
@@ -1413,6 +1430,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				expect(failedResult(failure,),).toMatchObject({
 					success: false,
 					state: "VERIFICATION_FAILED",
@@ -1475,6 +1493,7 @@ describe("app create-successor-instance", () => {
 						{ env: cliEnv(url,), },
 					);
 					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
 					expect(failedResult(failure,),).toMatchObject({
 						success: false,
 						state: "VERIFICATION_FAILED",
@@ -1550,6 +1569,7 @@ describe("app create-successor-instance", () => {
 						{ env: cliEnv(url,), },
 					);
 					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
 					expect(failedResult(failure,),).toMatchObject({
 						success: false,
 						state: "VERIFICATION_FAILED",
@@ -1611,6 +1631,7 @@ describe("app create-successor-instance", () => {
 						{ env: cliEnv(url,), },
 					);
 					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
 					expect(failedResult(failure,),).toMatchObject({
 						success: false,
 						state: "VERIFICATION_FAILED",
@@ -1706,6 +1727,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				const result = failedResult(failure,);
 				expect(result,).toMatchObject({
 					success: false,
@@ -1752,6 +1774,7 @@ describe("app create-successor-instance", () => {
 						{ env: cliEnv(url,), },
 					);
 					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
 					expect(failedResult(failure,),).toMatchObject({
 						success: false,
 						state: "CREATE_FAILED",
@@ -1795,6 +1818,7 @@ describe("app create-successor-instance", () => {
 						{ env: cliEnv(url,), },
 					);
 					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
 					expect(failedResult(failure,),).toMatchObject({
 						success: false,
 						state: "CREATE_FAILED",
@@ -1853,6 +1877,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				const result = failedResult(failure,);
 				expect(result.state,).toBe("PERMISSIONS_FAILED",);
 				expect(result.permissions,).toMatchObject({
@@ -1890,6 +1915,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				const result = failedResult(failure,);
 				expect(result.state,).toBe("PERMISSIONS_FAILED",);
 				expect(result.permissions,).toMatchObject({
@@ -1927,6 +1953,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				const result = failedResult(failure,);
 				expect(result.state,).toBe("PERMISSIONS_FAILED",);
 				const permissions = result.permissions as Record<string, unknown>;
@@ -1971,6 +1998,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				const result = failedResult(failure,);
 				expect(result.state,).toBe("PERMISSIONS_FAILED",);
 				expect(result.permissions,).toMatchObject({
@@ -2013,6 +2041,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				const result = failedResult(failure,);
 				expect(result.state,).toBe("PERMISSIONS_FAILED",);
 				expect(result.permissions,).toMatchObject({
@@ -2159,6 +2188,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				const result = failedResult(failure,);
 				expect(result.state,).toBe("PERMISSIONS_FAILED",);
 				expect(result.permissions,).toMatchObject({
@@ -2211,6 +2241,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				const result = failedResult(failure,);
 				expect(result.state,).toBe("PERMISSIONS_FAILED",);
 				expect(result.permissions,).toMatchObject({
@@ -2264,6 +2295,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				const result = failedResult(failure,);
 				expect(result,).toMatchObject({
 					state: "VERIFICATION_FAILED",
@@ -2324,6 +2356,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				const result = failedResult(failure,);
 				expect(result.state,).toBe("PERMISSIONS_FAILED",);
 				expect(result.permissions,).toMatchObject({
@@ -2376,6 +2409,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
+				expect(failure.stderr,).toBe("",);
 			},
 		);
 		expect(listGets,).toBe(1,);
@@ -2412,7 +2446,8 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("Could not confirm",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("Could not confirm",);
 			},
 		);
 		expect(posts,).toBe(0,);
@@ -2447,7 +2482,8 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("Could not confirm",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("Could not confirm",);
 			},
 		);
 		expect(posts,).toBe(0,);
@@ -2481,6 +2517,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(3,);
+				expect(failure.stderr,).toBe("",);
 			},
 		);
 		expect(posts,).toBe(0,);
@@ -2509,6 +2546,7 @@ describe("app create-successor-instance", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
 				expect(failedResult(failure,),).toMatchObject({
 					success: false,
 					state: "CREATE_FAILED",

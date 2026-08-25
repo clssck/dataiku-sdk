@@ -195,7 +195,8 @@ describe("CLI code-env management commands", () => {
 				env: cliEnv(url,),
 			},);
 			expect(failure.code,).toBe(2,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report.code,).toBe("not_found",);
 		},);
 
@@ -250,8 +251,8 @@ describe("CLI wait command exit codes", () => {
 				env: cliEnv(url,),
 			},);
 			expect(failure.code,).toBe(4,);
-			expect(failure.stdout,).toBe("",);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				ok: false,
 				code: "long_running_failure",

@@ -243,13 +243,15 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("targetProjectKey",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("targetProjectKey",);
 			const planFailure = await dssFailure(
 				["app", "create-instance", "MYAPP", "--data", "{}", "--plan",],
 				{ env: cliEnv(url,), },
 			);
 			expect(planFailure.code,).toBe(1,);
-			expect(planFailure.stderr,).toContain("targetProjectKey",);
+			expect(planFailure.stderr,).toBe("",);
+			expect(planFailure.stdout,).toContain("targetProjectKey",);
 		},);
 		expect(requestCount,).toBe(0,);
 	});
@@ -288,7 +290,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain(
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain(
 					mode === "existing" ? "already exists" : "Could not confirm",
 				);
 				expect(posts,).toBe(0,);
@@ -315,7 +318,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				code: string;
 				details: { result: { valid: boolean; errors: Array<{ code: string; }>; }; };
 			};
@@ -339,7 +343,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("--project-key",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("--project-key",);
 		},);
 		expect(requestCount,).toBe(0,);
 	});
@@ -373,8 +378,9 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
-				expect(failure.stderr,).toContain("UNTRACKABLE",);
-				expect(failure.stderr,).toContain("may still have been created",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("UNTRACKABLE",);
+				expect(failure.stdout,).toContain("may still have been created",);
 			},);
 			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as Record<string, unknown>;
 			expect(entry,).toMatchObject({
@@ -1024,6 +1030,7 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(2,);
+				expect(failure.stderr,).toBe("",);
 				const report = JSON.parse(failure.stdout,) as {
 					applied: boolean;
 					lifecycleError: Record<string, unknown>;
@@ -1133,7 +1140,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
-				const report = JSON.parse(failure.stderr,) as {
+				expect(failure.stderr,).toBe("",);
+				const report = JSON.parse(failure.stdout,) as {
 					details: { result: Record<string, unknown>; };
 				};
 				expect(report.details.result,).toMatchObject({
@@ -1178,7 +1186,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
-				const report = JSON.parse(failure.stderr,) as {
+				expect(failure.stderr,).toBe("",);
+				const report = JSON.parse(failure.stdout,) as {
 					details: { result: Record<string, unknown>; };
 				};
 				expect(report.details.result,).toMatchObject({
@@ -1235,8 +1244,9 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(4,);
-			expect(failure.stderr,).toContain("VERIFICATION_FAILED",);
-			const details = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("VERIFICATION_FAILED",);
+			const details = JSON.parse(failure.stdout,) as {
 				details: { result: Record<string, unknown>; };
 			};
 			expect(details.details.result,).toMatchObject({
@@ -1280,7 +1290,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
-				expect(failure.stderr,).toContain("CREATE_FAILED",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("CREATE_FAILED",);
 			},);
 			const entry = JSON.parse(readFileSync(indeterminateLedger, "utf-8",),) as Record<
 				string,
@@ -1325,7 +1336,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
-				expect(failure.stderr,).toContain("CREATE_FAILED",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("CREATE_FAILED",);
 			},);
 			expect(readFileExists(rejectedLedger,),).toBe(false,);
 		} finally {
@@ -1371,7 +1383,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(4,);
-			const details = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const details = JSON.parse(failure.stdout,) as {
 				details: { result: Record<string, unknown>; };
 			};
 			expect(details.details.result,).toMatchObject({
@@ -1483,8 +1496,9 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(4,);
-			expect(failure.stderr,).toContain("not the project incarnation authorized for deletion",);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("not the project incarnation authorized for deletion",);
+			const report = JSON.parse(failure.stdout,) as {
 				details: { result: Record<string, unknown>; };
 			};
 			expect(report.details.result,).toMatchObject({
@@ -1530,7 +1544,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(4,);
-				const report = JSON.parse(failure.stderr,) as {
+				expect(failure.stderr,).toBe("",);
+				const report = JSON.parse(failure.stdout,) as {
 					details: { result: Record<string, unknown>; };
 				};
 				expect(report.details.result,).toMatchObject({
@@ -1562,6 +1577,7 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
 			expect(futureRequests,).toBe(0,);
 		},);
 	});
@@ -1583,10 +1599,11 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain(
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain(
 				"Only classic Dataiku App instance projects can be deleted",
 			);
-			expect(failure.stderr,).toContain("use `dss project delete`",);
+			expect(failure.stdout,).toContain("use `dss project delete`",);
 			expect(futureRequests,).toBe(0,);
 		},);
 	});
@@ -1624,7 +1641,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(4,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				details: { result: Record<string, unknown>; };
 			};
 			expect(report.details.result,).toMatchObject({
@@ -1657,7 +1675,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(4,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				details: { result: Record<string, unknown>; };
 			};
 			expect(report.details.result,).toMatchObject({
@@ -1688,7 +1707,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(4,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				details: { result: Record<string, unknown>; };
 			};
 			expect(report.details.result,).toMatchObject({
@@ -1751,7 +1771,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(4,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				details: { result: Record<string, unknown>; };
 			};
 			expect(report.details.result,).toMatchObject({
@@ -1778,11 +1799,13 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(blankProject.code,).toBe(1,);
+			expect(blankProject.stderr,).toBe("",);
 			const blankFuture = await dssFailure(
 				["app", "delete-instance", "--project-key", "NEWPROJ", "--future-id", " ",],
 				{ env: cliEnv(url,), },
 			);
 			expect(blankFuture.code,).toBe(1,);
+			expect(blankFuture.stderr,).toBe("",);
 			expect(requests,).toBe(0,);
 		},);
 	});
@@ -1802,7 +1825,7 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				["future", "wait", "f-1", "--timeout", "300", "--poll-interval", "60000",],
 				{ env: cliEnv(url,), },
 			);
-			const details = JSON.parse(failure.stderr,) as {
+			const details = JSON.parse(failure.stdout,) as {
 				details: { result: Record<string, unknown>; };
 			};
 			expect(details.details.result,).toMatchObject({

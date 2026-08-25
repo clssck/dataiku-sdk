@@ -55,10 +55,10 @@ export function gitRevision(packageRoot: string | undefined,): string | undefine
 export const PACKAGE_ROOT = findPackageRoot();
 export const CLI_VERSION = packageVersion(PACKAGE_ROOT,);
 export const CLI_GIT_REVISION = gitRevision(PACKAGE_ROOT,);
-export const AGENT_CONTRACT_VERSION = 1;
+export const AGENT_CONTRACT_VERSION = 2;
 export const JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema";
 export const AGENT_CONTRACT_SCHEMA_ID =
-	"https://clssck.github.io/dataiku-sdk/schemas/agent-contract-v1.json";
+	"https://clssck.github.io/dataiku-sdk/schemas/agent-contract-v2.json";
 export function cliVersionResult(): { version: string; gitRevision: string | null; } {
 	return { version: CLI_VERSION, gitRevision: CLI_GIT_REVISION ?? null, };
 }

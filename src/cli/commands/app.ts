@@ -344,8 +344,8 @@ export const appCommands: Record<string, CommandMeta> = {
 			let waited: FutureWaitResult;
 			try {
 				waited = await c.futures.wait(jobId, {
-					pollIntervalMs: num(f["poll-interval"],),
-					timeoutMs: num(f["timeout"],),
+					pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
+					timeoutMs: num(f["timeout"], "--timeout",),
 				},);
 			} catch (error) {
 				return {
@@ -432,8 +432,8 @@ export const appCommands: Record<string, CommandMeta> = {
 				...(f["name"] !== undefined ? { name: f["name"] as string, } : {}),
 				copyPermissions: parseBooleanOption(f["copy-permissions"], "--copy-permissions",) ?? false,
 				dryRun: parseBooleanOption(f["dry-run"], "--dry-run",) ?? false,
-				timeoutMs: num(f["timeout"],),
-				pollIntervalMs: num(f["poll-interval"],),
+				timeoutMs: num(f["timeout"], "--timeout",),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
 			}, CREATE_SUCCESSOR_USAGE,);
 		},
 		usage: CREATE_SUCCESSOR_USAGE,
@@ -705,8 +705,8 @@ export const appCommands: Record<string, CommandMeta> = {
 			let waited: FutureWaitResult;
 			try {
 				waited = await c.futures.wait(futureId, {
-					pollIntervalMs: num(f["poll-interval"],),
-					timeoutMs: num(f["timeout"],),
+					pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
+					timeoutMs: num(f["timeout"], "--timeout",),
 				},);
 			} catch (error) {
 				const absent = error instanceof DataikuError && error.status === 404;

@@ -1,12 +1,14 @@
 import { describe, expect, it, } from "bun:test";
 import { execFile, } from "node:child_process";
-import { dirname, join, resolve, } from "node:path";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { fileURLToPath, } from "node:url";
 import { promisify, } from "node:util";
 
 const exec = promisify(execFile,);
-const SDK_ROOT = resolve(dirname(fileURLToPath(import.meta.url,),), "..",);
-const CLI_PATH = join(SDK_ROOT, "src/cli.ts",);
+const SDK_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url,),), "..",);
+const CLI_PATH = path.join(SDK_ROOT, "src/cli.ts",);
 const BUN = process.execPath;
 const CLI_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 
@@ -49,7 +51,14 @@ type CommandRegistryEntry = {
 		output: Record<string, unknown>;
 	};
 	cleanupCommand?: string;
-	exitCodes: { ok: 0; usage: 1; error: 2; transient: 3; longRunningFailure?: 4; };
+	exitCodes: {
+		ok: 0;
+		usage: 1;
+		error: 2;
+		transient: 3;
+		longRunningFailure?: 4;
+		assertionFailure?: 4;
+	};
 	cleanupHint?: string;
 	requiresAuth: boolean;
 	requiresProject: boolean;
@@ -358,14 +367,53 @@ function expectedCleanupCommand(deleteUsage: string,): string {
 	if (deleteUsage.includes("--if-exists",)) return `${base} --if-exists`;
 	return base;
 }
+/**
+ * Default discovery prints a compact resource -> action-name summary, so stdout is
+ * never the full registry.
+ */
+async function readActionSummary(): Promise<Record<string, string[]>> {
+	const { stdout, stderr, } = await dss(["commands", "run",],);
+	expect(stderr,).toBe("",);
+	return JSON.parse(stdout,) as Record<string, string[]>;
+}
+
+/**
+ * Exports the entire registry through `--output` (stdout only carries the written
+ * path) and removes the temporary directory even when an assertion throws.
+ */
+async function exportedCommandRegistry(): Promise<CommandRegistry> {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dss-commands-",),);
+	const outputPath = path.join(dir, "registry.json",);
+	try {
+		const { stdout, stderr, } = await dss(["commands", "run", "--output", outputPath,],);
+		expect(stderr,).toBe("",);
+		expect(JSON.parse(stdout,), "commands run --output echoes the written path",).toMatchObject({
+			path: outputPath,
+		},);
+		return JSON.parse(fs.readFileSync(outputPath, "utf-8",),) as CommandRegistry;
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true, },);
+	}
+}
+
+/**
+ * Scoped metadata for whole resources; resource-level selectors keep the nested
+ * `registry[resource][action]` shape.
+ */
+async function scopedCommandRegistry(resources: string[],): Promise<CommandRegistry> {
+	const { stdout, stderr, } = await dss(["commands", "run", "--fields", resources.join(",",),],);
+	expect(stderr,).toBe("",);
+	return JSON.parse(stdout,) as CommandRegistry;
+}
 
 describe("CLI command surface", () => {
 	it("exposes every supported resource/action in the machine-readable registry", async () => {
-		const { stdout, } = await dss(["commands", "run",],);
-		const registry = JSON.parse(stdout,) as CommandRegistry;
+		const summary = await readActionSummary();
+		const registry = await exportedCommandRegistry();
+		expect(Object.keys(summary,).sort(),).toEqual(Object.keys(EXPECTED_COMMANDS,).sort(),);
 		expect(Object.keys(registry,).sort(),).toEqual(Object.keys(EXPECTED_COMMANDS,).sort(),);
-
 		for (const [resource, actions,] of Object.entries(EXPECTED_COMMANDS,)) {
+			expect(summary[resource], `${resource} summary actions`,).toEqual(actions.slice().sort(),);
 			expect(Object.keys(registry[resource] ?? {},).sort(),).toEqual(actions.slice().sort(),);
 			for (const action of actions) {
 				const meta = registry[resource]?.[action];
@@ -404,7 +452,7 @@ describe("CLI command surface", () => {
 				expect(typeof meta?.dryRun, `${resource} ${action} dryRun`,).toBe("boolean",);
 				expect(Array.isArray(meta?.requiredFlags,), `${resource} ${action} requiredFlags`,).toBe(true,);
 				expect(Array.isArray(meta?.optionalFlags,), `${resource} ${action} optionalFlags`,).toBe(true,);
-				expect(meta?.agentContractVersion, `${resource} ${action} agentContractVersion`,).toBe(1,);
+				expect(meta?.agentContractVersion, `${resource} ${action} agentContractVersion`,).toBe(2,);
 				expect(Array.isArray(meta?.structuredExamples,), `${resource} ${action} structuredExamples`,)
 					.toBe(
 						true,
@@ -606,7 +654,6 @@ describe("CLI command surface", () => {
 			"agent",
 			"contract",
 			"--fields=protocol,agentContractVersion,cli,stdio,planning,compatibility",
-			"--json",
 		],);
 		expect(registry["install-skill"].run.sideEffect,).toBe("write",);
 		expect(registry["install-skill"].run.requiresAuth,).toBe(false,);
@@ -621,12 +668,13 @@ describe("CLI command surface", () => {
 		expect(registry.recipe["set-payload"].flags,).toContainEqual(
 			expect.objectContaining({ name: "no-backup", kind: "boolean", },),
 		);
-		expect(registry.recipe["get-payload"].flags,).toContainEqual(
-			expect.objectContaining({ name: "raw", kind: "boolean", },),
+		expect(registry.recipe["get-payload"].flags,).not.toContainEqual(
+			expect.objectContaining({ name: "raw", },),
 		);
-		expect(registry.recipe["get-payload"].unsafeOutputs,).toContainEqual(
-			expect.objectContaining({ kind: "raw-stdout", condition: "--raw without --output", },),
-		);
+		expect(registry.recipe["get-payload"].unsafeOutputs ?? [], "recipe get-payload unsafe outputs",)
+			.not.toContainEqual(
+				expect.objectContaining({ kind: "raw-stdout", },),
+			);
 		expect(registry.recipe.cat.outputShape,).toBe("string",);
 		expect(registry.dataset.clone.cleanupCommand,).toBe("dss dataset delete <name> --if-exists",);
 		expect(registry.recipe.clone.cleanupCommand,).toBe("dss recipe delete <name> --if-exists",);
@@ -720,21 +768,21 @@ describe("CLI command surface", () => {
 	});
 
 	it("does not advertise removed help or report-json flags", async () => {
-		const { stdout, } = await dss(["commands", "run",],);
-		const registry = JSON.parse(stdout,) as CommandRegistry;
+		const registry = await exportedCommandRegistry();
 
 		for (const [resource, actions,] of Object.entries(registry,)) {
 			for (const [action, meta,] of Object.entries(actions,)) {
 				const flagNames = meta.flags.map((flag,) => flag.name);
 				expect(flagNames, `${resource} ${action} flags`,).not.toContain("help",);
 				expect(flagNames, `${resource} ${action} flags`,).not.toContain("report-json",);
+				expect(flagNames, `${resource} ${action} flags`,).not.toContain("json",);
+				expect(flagNames, `${resource} ${action} flags`,).not.toContain("raw",);
 			}
 		}
 	});
 
 	it("advertises every long flag referenced in each command usage", async () => {
-		const { stdout, } = await dss(["commands", "run",],);
-		const registry = JSON.parse(stdout,) as CommandRegistry;
+		const registry = await exportedCommandRegistry();
 		// Parser aliases are accepted but normalized to a canonical name in the registry.
 		const aliasFlags = new Set([
 			"project",
@@ -761,8 +809,14 @@ describe("CLI command surface", () => {
 	});
 
 	it("classifies compound-name mutations and getters by side effect", async () => {
-		const { stdout, } = await dss(["commands", "run",],);
-		const registry = JSON.parse(stdout,) as CommandRegistry;
+		const registry = await scopedCommandRegistry([
+			"api-deployer",
+			"continuous-activity",
+			"flow-zone",
+			"metrics",
+			"project",
+			"project-deployer",
+		],);
 		const writes = [
 			["project", "permissions-set",],
 			["continuous-activity", "start",],
@@ -794,8 +848,7 @@ describe("CLI command surface", () => {
 	});
 
 	it("reports array output shape for list-style and timeline reads", async () => {
-		const { stdout, } = await dss(["commands", "run",],);
-		const registry = JSON.parse(stdout,) as CommandRegistry;
+		const registry = await exportedCommandRegistry();
 		for (const [resource, actions,] of Object.entries(registry,)) {
 			for (const [action, meta,] of Object.entries(actions,)) {
 				if (/^list(-|$)/.test(action,)) {

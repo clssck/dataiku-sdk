@@ -77,7 +77,7 @@ if (result.error) {
 			runningOnBun ? "Bun" : "Node"
 		} runtime for packaged dss CLI (${result.error.message}); falling back to the current runtime.`;
 	if (usesSourceCli) {
-		process.stderr.write(`${
+		process.stdout.write(`${
 			JSON.stringify({
 				type: "error",
 				ok: false,

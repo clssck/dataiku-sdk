@@ -70,7 +70,7 @@ export class UsageError extends Error {
 }
 
 export const COMMANDS_RUN_HINT =
-	"Use `dss commands run --fields RESOURCE.ACTION --json` for scoped, compact command discovery; omit --fields only when you need the full registry.";
+	"Use `dss commands run --fields RESOURCE.ACTION` for scoped command discovery; use `dss commands run` for the action summary or `--output PATH` to export the full registry.";
 
 export function unsupportedHelpFlag(): UsageError {
 	return new UsageError(

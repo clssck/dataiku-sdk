@@ -17,21 +17,15 @@ describe("machine contract: stdio streams and failure codes", () => {
 		const contract = buildAgentContract();
 		const stdio = contract.stdio as Record<string, Record<string, unknown>>;
 		expect(stdio.stdout,).toEqual({
+			format: "compact-json",
 			success: "single-json-value",
-			rawEscapeHatches: [
-				"recipe get-payload --raw without --output",
-				"recipe cat --raw without --output",
-			],
+			failure: "structured-error-object",
+			richFailureResults:
+				"doctor/batch/cleanup nonzero outcomes are their own compact result on stdout ({ok:false,...}) with the command's exit code; not re-wrapped.",
 		},);
 		expect(stdio.stderr,).toEqual({
 			format: "jsonl",
-			events: ["warning", "trace", "error",],
-			error: "single-final-error-event-on-nonzero-exit",
-			failureRouting: {
-				commandFailure: "doctor/batch/cleanup failures: single JSON stdout; empty stderr",
-				dispatchFailure:
-					"usage/unknown/transport/internal failures: empty stdout; single JSON error stderr",
-			},
+			events: ["warning", "trace",],
 		},);
 	});
 
@@ -74,7 +68,7 @@ describe("machine contract: stdio streams and failure codes", () => {
 		},);
 	});
 
-	it("exits 4 with assertion_failed on stderr when assert-unchanged detects drift", async () => {
+	it("exits 4 with assertion_failed on stdout when assert-unchanged detects drift", async () => {
 		const backupPath = join(tmpdir(), `dss-assert-backup-${Date.now()}.json`,);
 		writeFileSync(
 			backupPath,
@@ -103,8 +97,8 @@ describe("machine contract: stdio streams and failure codes", () => {
 					env: cliEnv(url,),
 				},);
 				expect(failure.code,).toBe(4,);
-				expect(failure.stdout,).toBe("",);
-				const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+				expect(failure.stderr,).toBe("",);
+				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 				expect(report,).toMatchObject({
 					type: "error",
 					ok: false,
@@ -220,13 +214,13 @@ describe("machine contract: stdio streams and failure codes", () => {
 		}
 	});
 
-	it("keeps dispatch failures as one JSON error on stderr with empty stdout", async () => {
+	it("keeps dispatch failures as one JSON error on stdout with empty stderr", async () => {
 		const failure = await dssFailure(["recipe", "assert-unchanged",], {
 			env: cliEnv("http://127.0.0.1:1",),
 		},);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stdout,).toBe("",);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			type: "error",
 			ok: false,
@@ -234,5 +228,23 @@ describe("machine contract: stdio streams and failure codes", () => {
 			category: "usage",
 			exitCode: 1,
 		},);
+	});
+	it("routes removed --json and --raw flags to stdout as unknown_flag dispatch errors", async () => {
+		for (const flag of ["--json", "--raw",]) {
+			const failure = await dssFailure(["commands", "run", flag,], {
+				env: cliEnv("http://127.0.0.1:1",),
+			},);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				type: "error",
+				ok: false,
+				error: `Unknown flag: ${flag}`,
+				code: "unknown_flag",
+				category: "usage",
+				exitCode: 1,
+			},);
+		}
 	});
 });

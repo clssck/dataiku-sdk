@@ -224,7 +224,8 @@ describe("app permissions snapshot", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("not the same project incarnation",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("not the same project incarnation",);
 				expect(fs.existsSync(out,),).toBe(false,);
 			},);
 			expect(detailReads,).toBe(2,);
@@ -507,8 +508,9 @@ describe("app permissions diff", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("failed its integrity check",);
-				expect(failure.stderr,).toContain("corrupted",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("failed its integrity check",);
+				expect(failure.stdout,).toContain("corrupted",);
 			},);
 			expect(gets,).toBe(0,);
 		} finally {
@@ -541,7 +543,8 @@ describe("app permissions diff", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("failed its integrity check",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("failed its integrity check",);
 			},);
 			expect(gets,).toBe(0,);
 		} finally {
@@ -574,7 +577,8 @@ describe("app permissions diff", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("failed its integrity check",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("failed its integrity check",);
 			},);
 			expect(gets,).toBe(0,);
 		} finally {
@@ -608,7 +612,8 @@ describe("app permissions diff", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("across DSS servers",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("across DSS servers",);
 			},);
 			expect(requests,).toBe(0,);
 		} finally {
@@ -645,8 +650,9 @@ describe("app permissions diff", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("unsupported snapshot version 2",);
-				expect(failure.stderr,).toContain("not bound",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("unsupported snapshot version 2",);
+				expect(failure.stdout,).toContain("not bound",);
 			},);
 			expect(requests,).toBe(0,);
 		} finally {
@@ -678,7 +684,8 @@ describe("app permissions diff", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("different incarnation of project TEST",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("different incarnation of project TEST",);
 			},);
 			expect(permissionRequests,).toBe(0,);
 		} finally {
@@ -725,7 +732,8 @@ describe("app permissions diff", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("not the same project incarnation",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("not the same project incarnation",);
 			},);
 			expect(detailReads,).toBe(2,);
 			expect(permissionReads,).toBe(1,);
@@ -758,7 +766,8 @@ describe("app permissions restore", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("Refusing to restore permissions across projects",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("Refusing to restore permissions across projects",);
 			},);
 			expect(calls,).toBe(0,);
 		} finally {
@@ -792,7 +801,8 @@ describe("app permissions restore", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("across DSS servers",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("across DSS servers",);
 			},);
 			expect(requests,).toBe(0,);
 		} finally {
@@ -824,7 +834,8 @@ describe("app permissions restore", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("different incarnation of project TEST",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("different incarnation of project TEST",);
 			},);
 			expect(permissionRequests,).toBe(0,);
 		} finally {
@@ -877,7 +888,8 @@ describe("app permissions restore", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("not the same project incarnation",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("not the same project incarnation",);
 			},);
 			expect(detailReads,).toBe(2,);
 			expect(permissionReads,).toBe(1,);
@@ -1055,13 +1067,14 @@ describe("app permissions restore", () => {
 					{ env: cliEnv(url,), },
 				);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("verification failed",);
-				expect(failure.stderr,).toContain(permissionsHash(LIVE_PERMISSIONS,),);
-				expect(failure.stderr,).toContain(permissionsHash(PARTIALLY_APPLIED_PERMISSIONS,),);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("verification failed",);
+				expect(failure.stdout,).toContain(permissionsHash(LIVE_PERMISSIONS,),);
+				expect(failure.stdout,).toContain(permissionsHash(PARTIALLY_APPLIED_PERMISSIONS,),);
 				// Never leak permission payload values or principals on stderr.
-				expect(failure.stderr,).not.toContain("alice",);
-				expect(failure.stderr,).not.toContain("PARTIAL",);
-				expect(failure.stderr,).not.toContain("u1",);
+				expect(failure.stdout,).not.toContain("alice",);
+				expect(failure.stdout,).not.toContain("PARTIAL",);
+				expect(failure.stdout,).not.toContain("u1",);
 			},);
 			expect(gets,).toBe(3,); // capture fetch + before-fetch + refetch after PUT
 		} finally {

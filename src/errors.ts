@@ -10,6 +10,8 @@ export type StableErrorCode =
 	| "unknown_flag"
 	| "missing_required_arg"
 	| "missing_required_flag"
+	| "invalid_flag_value"
+	| "conflicting_input_sources"
 	| "invalid_enum"
 	| "not_found"
 	| "permission_denied"

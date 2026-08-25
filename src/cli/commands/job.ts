@@ -83,7 +83,7 @@ function filteredJobList(
 		if (output && !text.includes(output,)) return false;
 		return true;
 	},);
-	const limit = flags["latest"] === true ? 1 : num(flags["limit"],);
+	const limit = flags["latest"] === true ? 1 : num(flags["limit"], "--limit",);
 	if (limit !== undefined) result = result.slice(0, Math.max(0, limit,),);
 	return result;
 }
@@ -293,9 +293,9 @@ export const jobCommands: Record<string, CommandMeta> = {
 			const options = {
 				buildMode: f["build-mode"] as BuildMode | undefined,
 				partition: f["partition"] as string | undefined,
-				pollIntervalMs: num(f["poll-interval"],),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
 				targetType: jobBuildTargetTypeFromFlags(f,),
-				timeoutMs: num(f["timeout"],),
+				timeoutMs: num(f["timeout"], "--timeout",),
 			};
 			if (f["dry-run"] === true) {
 				return {
@@ -332,8 +332,8 @@ export const jobCommands: Record<string, CommandMeta> = {
 				logFilter: jobLogFilterFromFlag(f["log-filter"],),
 				maxLogLines: maxLogLinesFromFlags(f,),
 				partition: f["partition"] as string | undefined,
-				pollIntervalMs: num(f["poll-interval"],),
-				timeoutMs: num(f["timeout"],),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
+				timeoutMs: num(f["timeout"], "--timeout",),
 				summary: f["summary"] === true,
 				targetType: jobBuildTargetTypeFromFlags(f,),
 			};
@@ -367,8 +367,8 @@ export const jobCommands: Record<string, CommandMeta> = {
 				includeLogs: f["include-logs"] === true,
 				logFilter: jobLogFilterFromFlag(f["log-filter"],),
 				maxLogLines: maxLogLinesFromFlags(f,),
-				pollIntervalMs: num(f["poll-interval"],),
-				timeoutMs: num(f["timeout"],),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
+				timeoutMs: num(f["timeout"], "--timeout",),
 				summary: f["summary"] === true,
 				projectKey: f["project-key"] as string | undefined,
 			},);
@@ -388,8 +388,8 @@ export const jobCommands: Record<string, CommandMeta> = {
 				includeLogs: f["include-logs"] === true,
 				logFilter: jobLogFilterFromFlag(f["log-filter"],),
 				maxLogLines: maxLogLinesFromFlags(f,),
-				pollIntervalMs: num(f["poll-interval"],),
-				timeoutMs: num(f["timeout"],),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
+				timeoutMs: num(f["timeout"], "--timeout",),
 				summary: f["summary"] !== false,
 				projectKey: f["project-key"] as string | undefined,
 			};
@@ -408,8 +408,8 @@ export const jobCommands: Record<string, CommandMeta> = {
 				includeLogs: f["include-logs"] === true,
 				logFilter: jobLogFilterFromFlag(f["log-filter"],),
 				maxLogLines: maxLogLinesFromFlags(f,),
-				pollIntervalMs: num(f["poll-interval"],),
-				timeoutMs: num(f["timeout"],),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
+				timeoutMs: num(f["timeout"], "--timeout",),
 				summary: true,
 				projectKey: f["project-key"] as string | undefined,
 			};

@@ -27,8 +27,8 @@ describe("CLI auth commands", () => {
 				},
 			},);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stdout,).toBe("",);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				code: "missing_required_flag",
 				category: "usage",
@@ -103,7 +103,8 @@ describe("CLI auth commands", () => {
 		for (const action of ["status", "logout",]) {
 			const failure = await dssFailure(["auth", action,],);
 			expect(failure.code,).toBe(1,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				code: "usage_error",
 				category: "usage",
@@ -214,8 +215,8 @@ describe("CLI auth commands", () => {
 					},
 				},);
 				expect(failure.code,).toBe(2,);
-				expect(failure.stdout,).toBe("",);
-				const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+				expect(failure.stderr,).toBe("",);
+				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 				expect(report,).toMatchObject({
 					category: "dss",
 					resource: "auth",

@@ -567,8 +567,9 @@ describe("CLI flow zone commands", () => {
 			], { env: cliEnv(url,), },);
 
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("Flow zone organize validation failed",);
-			expect(failure.stderr,).toContain("DATASET:missing_orders",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("Flow zone organize validation failed",);
+			expect(failure.stdout,).toContain("DATASET:missing_orders",);
 		},);
 
 		expect(requests.every((request,) => request.startsWith("GET ",)),).toBe(true,);
@@ -587,7 +588,8 @@ describe("CLI flow zone commands", () => {
 				"red",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("--color must be a hex color",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("--color must be a hex color",);
 		},);
 	});
 
@@ -597,14 +599,16 @@ describe("CLI flow zone commands", () => {
 		}, async (url,) => {
 			const failure = await dssFailure(["flow-zone", "get", "",], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("Flow zone id must not be empty",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("Flow zone id must not be empty",);
 		},);
 	});
 
 	it("rejects unknown long flags", async () => {
 		const failure = await dssFailure(["flow-zone", "list", "--wat", "yes",],);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("Unknown flag: --wat",);
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).toContain("Unknown flag: --wat",);
 	});
 
 	it("flow-zone delete accepts common dryrun alias", async () => {
@@ -646,7 +650,8 @@ describe("CLI flow zone commands", () => {
 		}, async (url,) => {
 			const failure = await dssFailure(["flow-zone", "move", "zone-1",], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("At least one object is required",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("At least one object is required",);
 		},);
 	});
 });

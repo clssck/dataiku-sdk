@@ -227,7 +227,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			const pk = f["project-key"] as string | undefined;
 			const options = {
 				cellId: f["cell-id"] as string | undefined,
-				numRunsToRetain: num(f["retain"],),
+				numRunsToRetain: num(f["retain"], "--retain",),
 				projectKey: pk,
 			};
 			if (f["dry-run"] === true) {

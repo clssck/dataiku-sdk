@@ -6,8 +6,8 @@ describe("CLI agent-only command surface", () => {
 	it("dss with no args emits a JSON usage envelope pointing at commands run", async () => {
 		const failure = await dssFailure([],);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stdout,).toBe("",);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			ok: false,
 			error: expect.any(String,),
@@ -15,7 +15,7 @@ describe("CLI agent-only command surface", () => {
 			category: "usage",
 			exitCode: 1,
 			hint:
-				"Use `dss commands run --fields RESOURCE.ACTION --json` for scoped, compact command discovery; omit --fields only when you need the full registry.",
+				"Use `dss commands run --fields RESOURCE.ACTION` for scoped command discovery; use `dss commands run` for the action summary or `--output PATH` to export the full registry.",
 		},);
 		expect((report.details as Record<string, unknown>).command,).toBe("dss commands run",);
 	});
@@ -24,8 +24,8 @@ describe("CLI agent-only command surface", () => {
 		for (const flag of ["--help", "-h",]) {
 			const failure = await dssFailure([flag,],);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stdout,).toBe("",);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				ok: false,
 				error: "Help screens are not supported.",
@@ -47,8 +47,10 @@ describe("CLI agent-only command surface", () => {
 		}
 	});
 
-	it("commands run prints the machine-readable registry", async () => {
-		const { stdout, stderr, } = await dss(["commands", "run",],);
+	it("commands run --fields prints scoped machine-readable registry metadata", async () => {
+		const { stdout, stderr, } = await dss(
+			["commands", "run", "--fields", "version,auth,dataset,agent,recipe",],
+		);
 		expect(stderr,).toBe("",);
 		const registry = JSON.parse(stdout,) as Record<string, Record<string, unknown>>;
 		expect(registry.version.run,).toMatchObject({
@@ -74,7 +76,7 @@ describe("CLI agent-only command surface", () => {
 			resource: "agent",
 			action: "contract",
 			requiresAuth: false,
-			agentContractVersion: 1,
+			agentContractVersion: 2,
 		},);
 		expect(registry.recipe["get-payload"],).toHaveProperty("unsafeOutputs",);
 	});
@@ -85,7 +87,7 @@ describe("CLI agent-only command surface", () => {
 		const contract = JSON.parse(stdout,) as Record<string, unknown>;
 		expect(contract,).toMatchObject({
 			protocol: "dataiku-sdk-agent",
-			agentContractVersion: 1,
+			agentContractVersion: 2,
 		},);
 		expect(contract,).toHaveProperty("commands.actions.agent",);
 		expect(contract,).toHaveProperty("schemas.agentContract",);
@@ -94,8 +96,8 @@ describe("CLI agent-only command surface", () => {
 	it("--report-json is rejected as an unknown flag", async () => {
 		const failure = await dssFailure(["commands", "run", "--report-json",],);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stdout,).toBe("",);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			ok: false,
 			error: "Unknown flag: --report-json",
@@ -130,8 +132,8 @@ describe("CLI agent-only command surface", () => {
 			},
 		},);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stdout,).toBe("",);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			ok: false,
 			code: "missing_required_flag",
@@ -144,7 +146,8 @@ describe("CLI agent-only command surface", () => {
 	it("unknown resource and action envelopes include valid options", async () => {
 		const unknownResource = await dssFailure(["not-a-resource",],);
 		expect(unknownResource.code,).toBe(1,);
-		const resourceReport = JSON.parse(unknownResource.stderr,) as Record<string, unknown>;
+		expect(unknownResource.stderr,).toBe("",);
+		const resourceReport = JSON.parse(unknownResource.stdout,) as Record<string, unknown>;
 		expect(resourceReport,).toMatchObject({
 			ok: false,
 			error: expect.any(String,),
@@ -159,7 +162,8 @@ describe("CLI agent-only command surface", () => {
 
 		const unknownAction = await dssFailure(["project", "not-an-action",],);
 		expect(unknownAction.code,).toBe(1,);
-		const actionReport = JSON.parse(unknownAction.stderr,) as Record<string, unknown>;
+		expect(unknownAction.stderr,).toBe("",);
+		const actionReport = JSON.parse(unknownAction.stdout,) as Record<string, unknown>;
 		expect(actionReport,).toMatchObject({
 			ok: false,
 			error: expect.any(String,),
@@ -175,7 +179,8 @@ describe("CLI agent-only command surface", () => {
 
 		const specialRunAction = await dssFailure(["version", "bogus",],);
 		expect(specialRunAction.code,).toBe(1,);
-		const specialReport = JSON.parse(specialRunAction.stderr,) as Record<string, unknown>;
+		expect(specialRunAction.stderr,).toBe("",);
+		const specialReport = JSON.parse(specialRunAction.stdout,) as Record<string, unknown>;
 		expect(specialReport,).toMatchObject({
 			ok: false,
 			error: expect.any(String,),
@@ -191,7 +196,9 @@ describe("CLI agent-only command surface", () => {
 
 describe("CLI command registry discovery", () => {
 	it("registry exposes flags and recipe actions instead of help text", async () => {
-		const { stdout, stderr, } = await dss(["commands", "run",],);
+		const { stdout, stderr, } = await dss(
+			["commands", "run", "--fields", "agent,project,recipe",],
+		);
 		expect(stderr,).toBe("",);
 		const registry = JSON.parse(stdout,) as Record<
 			string,
@@ -202,18 +209,20 @@ describe("CLI command registry discovery", () => {
 			}>
 		>;
 		const projectFlags = registry.project.list.flags?.map((flag,) => flag.name) ?? [];
-		expect(projectFlags,).toEqual(expect.arrayContaining(["json", "verbose", "url", "api-key",],),);
+		expect(projectFlags,).toEqual(expect.arrayContaining(["verbose", "url", "api-key",],),);
 		expect(projectFlags,).not.toContain("help",);
 		expect(projectFlags,).not.toContain("report-json",);
+		expect(projectFlags,).not.toContain("json",);
+		expect(projectFlags,).not.toContain("raw",);
 		expect(registry.recipe["get-payload"].action,).toBe("get-payload",);
 		expect(registry.recipe["set-payload"].action,).toBe("set-payload",);
-		expect(registry.agent.contract.agentContractVersion,).toBe(1,);
+		expect(registry.agent.contract.agentContractVersion,).toBe(2,);
 	});
 });
 
 describe("CLI command registry short flags", () => {
 	it("registry exposes supported short-alias-backed flags without help metadata", async () => {
-		const { stdout, stderr, } = await dss(["commands", "run",],);
+		const { stdout, stderr, } = await dss(["commands", "run", "--fields", "project",],);
 		expect(stderr,).toBe("",);
 		const registry = JSON.parse(stdout,) as Record<
 			string,
@@ -276,7 +285,6 @@ describe("CLI registry required-input usage accuracy", () => {
 			"run",
 			"--fields",
 			"dashboard.create.structuredExamples",
-			"--json",
 		],);
 		const registry = JSON.parse(stdout,) as {
 			"dashboard.create.structuredExamples"?: Array<{ payload?: Record<string, unknown>; }>;

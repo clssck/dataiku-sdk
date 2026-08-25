@@ -450,8 +450,8 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 	let accessibleProjects: unknown[] | undefined;
 
 	if (credentialsOk) {
-		const requestTimeoutMs = num(flags["request-timeout"],);
-		const retryMaxAttempts = num(flags["retries"],);
+		const requestTimeoutMs = num(flags["request-timeout"], "--request-timeout",);
+		const retryMaxAttempts = num(flags["retries"], "--retries",);
 		const client = new DataikuClient({
 			url,
 			apiKey,
@@ -506,8 +506,8 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 
 	const result: DoctorResult = { ok: checks.every((check,) => check.ok), checks, context, };
 	if (flags["capabilities"] === true && credentialsOk) {
-		const requestTimeoutMs = num(flags["request-timeout"],);
-		const retryMaxAttempts = num(flags["retries"],) ?? 1;
+		const requestTimeoutMs = num(flags["request-timeout"], "--request-timeout",);
+		const retryMaxAttempts = num(flags["retries"], "--retries",) ?? 1;
 		const client = new DataikuClient({
 			url,
 			apiKey,
@@ -548,8 +548,8 @@ export async function runFixtures(
 	}
 
 	currentCommandContext.projectKey = projectKey;
-	const requestTimeoutMs = num(flags["request-timeout"],);
-	const retryMaxAttempts = num(flags["retries"],) ?? 1;
+	const requestTimeoutMs = num(flags["request-timeout"], "--request-timeout",);
+	const retryMaxAttempts = num(flags["retries"], "--retries",) ?? 1;
 	const client = new DataikuClient({
 		url,
 		apiKey,

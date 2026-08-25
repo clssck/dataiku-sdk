@@ -37,8 +37,25 @@ describe("CLI batch command", () => {
 			env: hermetic,
 		},);
 		expect(bad.code,).toBe(1,);
+		expect(bad.stderr,).toBe("",);
 		const badReport = JSON.parse(bad.stdout,) as { steps: Array<{ runnable: boolean; }>; };
 		expect(badReport.steps[0]!.runnable,).toBe(false,);
+	});
+	it("preserves dotted command-registry projections in batch results", async () => {
+		const { stdout, stderr, } = await dss([
+			"batch",
+			"--data",
+			JSON.stringify([["commands", "run", "--fields", "dataset.create",],],),
+		], { env: hermetic, },);
+		expect(stderr,).toBe("",);
+		const report = JSON.parse(stdout,) as {
+			ok: boolean;
+			steps: Array<{
+				result: Record<string, { usage?: string; }>;
+			}>;
+		};
+		expect(report.ok,).toBe(true,);
+		expect(report.steps[0]?.result["dataset.create"]?.usage,).toContain("dss dataset create",);
 	});
 
 	it("dry-run honors allow-empty value flags and still rejects empty non-allow-empty ones", async () => {
@@ -66,6 +83,7 @@ describe("CLI batch command", () => {
 			"--dry-run",
 		], { env: hermetic, },);
 		expect(rejected.code,).toBe(1,);
+		expect(rejected.stderr,).toBe("",);
 		const rejectedReport = JSON.parse(rejected.stdout,) as {
 			steps: Array<{ runnable: boolean; }>;
 		};
@@ -113,7 +131,8 @@ describe("CLI batch command", () => {
 	it("rejects a non-array payload with a usage error", async () => {
 		const failure = await dssFailure(["batch", "--data", '{"not":"an array"}',], { env: hermetic, },);
 		expect(failure.code,).toBe(1,);
-		const report = JSON.parse(failure.stderr,) as { code: string; };
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as { code: string; };
 		expect(report.code,).toBe("validation_failed",);
 	});
 
@@ -133,6 +152,7 @@ describe("CLI batch command", () => {
 				'[["dataset","get","MISSING","--project-key","TEST"],["project","list"]]',
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(2,);
+			expect(failure.stderr,).toBe("",);
 			const report = JSON.parse(failure.stdout,) as {
 				ok: boolean;
 				completed: number;
@@ -164,6 +184,7 @@ describe("CLI batch command", () => {
 				'[["dataset","get","MISSING","--project-key","TEST"],["project","list","--fields","projectKey"]]',
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(2,);
+			expect(failure.stderr,).toBe("",);
 			const report = JSON.parse(failure.stdout,) as {
 				steps: Array<{ ok: boolean | null; result?: unknown; }>;
 			};
@@ -183,8 +204,9 @@ describe("CLI batch command", () => {
 				env: cliEnv(url,),
 			},);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("--dry-run is not supported for project delete",);
-			expect(JSON.parse(failure.stderr,),).toMatchObject({
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("--dry-run is not supported for project delete",);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
 				code: "unknown_flag",
 				category: "usage",
 				exitCode: 1,
@@ -224,7 +246,8 @@ describe("CLI batch command", () => {
 				'[["dataset","list","--plan"],["project","delete","OLD","--plan"]]',
 			], { env: cliEnv(url,), },);
 			expect(planFailure.code,).toBe(1,);
-			expect(planFailure.stderr,).toContain(
+			expect(planFailure.stderr,).toBe("",);
+			expect(planFailure.stdout,).toContain(
 				"Batch step 0 requests --plan, which is not supported for dataset list",
 			);
 
@@ -234,7 +257,8 @@ describe("CLI batch command", () => {
 				'[["project","delete","OLD","--dry-run"]]',
 			], { env: cliEnv(url,), },);
 			expect(dryRunFailure.code,).toBe(1,);
-			expect(dryRunFailure.stderr,).toContain(
+			expect(dryRunFailure.stderr,).toBe("",);
+			expect(dryRunFailure.stdout,).toContain(
 				"Batch step 0 requests --dry-run, which is not supported for project delete",
 			);
 		},);
@@ -489,6 +513,7 @@ describe("CLI batch cleanup ledger parity", () => {
 						{ env: cliEnv(url,), },
 					);
 					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
 					const report = JSON.parse(failure.stdout,) as {
 						ok: boolean;
 						steps: Array<{ ok: boolean | null; error?: { exitCode: number; }; }>;
@@ -531,6 +556,7 @@ describe("CLI batch cleanup ledger parity", () => {
 						{ env: cliEnv(url,), },
 					);
 					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
 					expect(failure.stdout,).toContain("CREATE_FAILED",);
 				},
 			);

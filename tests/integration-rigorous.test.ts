@@ -1,7 +1,7 @@
 import { afterAll, expect, it, } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile, } from "node:fs/promises";
-import { tmpdir, } from "node:os";
-import { join, } from "node:path";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { DataikuClient, } from "../src/client.js";
 import type { JupyterNotebookContent, SqlNotebookContent, } from "../src/schemas.js";
 import type { DssRawResult, } from "./integration-harness.js";
@@ -71,6 +71,18 @@ function parseCliJson(result: DssRawResult, label: string,): unknown {
 	expect(result.stdout.trim().length, `${label} stdout`,).toBeGreaterThan(0,);
 	return parseJsonOutput(result.stdout,);
 }
+async function exportedCommandRegistry<T,>(): Promise<T> {
+	const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dss-rigorous-registry-",),);
+	const outputPath = path.join(tempDir, "commands.json",);
+	try {
+		const exportResult = await dssRaw(["commands", "run", "--output", outputPath,],);
+		expect(exportResult.stderr, "commands run --output stderr",).toBe("",);
+		expect(parseCliJson(exportResult, "commands run --output",),).toEqual({ path: outputPath, },);
+		return JSON.parse(await fs.readFile(outputPath, "utf-8",),) as T;
+	} finally {
+		await fs.rm(tempDir, { recursive: true, force: true, },);
+	}
+}
 
 type RigorousFixtures = {
 	projectKey?: string;
@@ -97,7 +109,6 @@ async function rigorousFixtures(): Promise<RigorousFixtures> {
 	rigorousFixturesPromise ??= (async () => {
 		const result = await dssRaw([
 			"fixtures",
-			"--json",
 			"--project-key",
 			process.env.DATAIKU_PROJECT_KEY!,
 		],);
@@ -290,11 +301,12 @@ async function sdkValue(kind: SdkParityKind, client: DataikuClient,): Promise<un
 
 describeIntegration("Rigorous integration: CLI discoverability and local validation", () => {
 	it("prints a registry for every command without resolving DSS resources", async () => {
-		const registryResult = await dssRaw(["commands", "run",],);
-		const registry = parseCliJson(registryResult, "commands run",) as Record<
-			string,
-			Record<string, { flags?: Array<{ name: string; }>; }>
-		>;
+		const registry = await exportedCommandRegistry<
+			Record<
+				string,
+				Record<string, { flags?: Array<{ name: string; }>; }>
+			>
+		>();
 
 		for (const [resource, actions,] of Object.entries(registry,)) {
 			for (const [action, meta,] of Object.entries(actions,)) {
@@ -306,11 +318,12 @@ describeIntegration("Rigorous integration: CLI discoverability and local validat
 	}, 60_000,);
 
 	it("aligns read-only matrix expectations with registry metadata", async () => {
-		const registryResult = await dssRaw(["commands", "run",],);
-		const registry = parseCliJson(registryResult, "commands",) as Record<
-			string,
-			Record<string, Record<string, unknown>>
-		>;
+		const registry = await exportedCommandRegistry<
+			Record<
+				string,
+				Record<string, Record<string, unknown>>
+			>
+		>();
 
 		for (const entry of readOnlyCommandCases) {
 			const meta = registry[entry.resource]?.[entry.action];
@@ -332,7 +345,8 @@ describeIntegration("Rigorous integration: CLI discoverability and local validat
 		it(`locally rejects ${scenario.id}`, async () => {
 			const result = await dssRaw(scenario.args,);
 			expect(result.code, `${scenario.id} exit code`,).toBe(scenario.expectedCode,);
-			expect(`${result.stdout}${result.stderr}`, scenario.id,).toContain(scenario.expectedMessage,);
+			expect(result.stdout, scenario.id,).toContain(scenario.expectedMessage,);
+			expect(result.stderr, scenario.id,).toBe("",);
 		});
 	}
 },);
@@ -348,7 +362,7 @@ describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () 
 				category: "automation-risk",
 				status: "skipped",
 				severity: "medium",
-				command: "fixtures --json",
+				command: "fixtures",
 				observed: "dss fixtures did not discover a safeDataset candidate.",
 				expected:
 					"At least one Filesystem or Inline dataset is available for safe read-only live smoke tests.",
@@ -364,7 +378,7 @@ describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () 
 				category: "automation-risk",
 				status: "skipped",
 				severity: "low",
-				command: "fixtures --json",
+				command: "fixtures",
 				observed: "dss fixtures did not discover a non-underscore Jupyter notebook candidate.",
 				expected: "A non-system Jupyter notebook is available when notebook smoke tests need one.",
 			},);
@@ -428,7 +442,8 @@ describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () 
 			process.env.DATAIKU_PROJECT_KEY!,
 		],);
 		expect(result.code, "timeout should be transient failure",).toBe(3,);
-		const payload = parseJsonOutput<Record<string, unknown>>(result.stderr || result.stdout,);
+		const payload = parseJsonOutput<Record<string, unknown>>(result.stdout,);
+		expect(result.stderr, "timeout should keep stderr clean",).toBe("",);
 		expect(payload.code,).toBe("transient",);
 		expect(payload.retryable,).toBe(true,);
 		expect(String(payload.error ?? "",),).toContain("Retry attempts:",);
@@ -1463,11 +1478,11 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			return;
 		}
 
-		const tempDir = await mkdtemp(join(tmpdir(), "dss-rigorous-",),);
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dss-rigorous-",),);
 		const remotePath = `/${uniqueTestName("sdk_cli_it_file",)}.txt`;
-		const localPath = join(tempDir, "upload.txt",);
-		const downloadPath = join(tempDir, "download.txt",);
-		await writeFile(localPath, "hello rigorous integration\n", "utf-8",);
+		const localPath = path.join(tempDir, "upload.txt",);
+		const downloadPath = path.join(tempDir, "download.txt",);
+		await fs.writeFile(localPath, "hello rigorous integration\n", "utf-8",);
 
 		try {
 			await client.folders.upload(folderId!, remotePath, localPath,);
@@ -1475,13 +1490,13 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			expect(contents.some((item,) => item.path === remotePath || item.path === remotePath.slice(1,)),)
 				.toBe(true,);
 			await client.folders.download(folderId!, remotePath, { localPath: downloadPath, },);
-			expect(await readFile(downloadPath, "utf-8",),).toBe("hello rigorous integration\n",);
+			expect(await fs.readFile(downloadPath, "utf-8",),).toBe("hello rigorous integration\n",);
 		} finally {
 			if (folderId) {
 				await client.folders.deleteFile(folderId, remotePath,).catch(() => undefined);
 				await client.folders.delete(folderId,).catch(() => undefined);
 			}
-			await rm(tempDir, { recursive: true, force: true, },);
+			await fs.rm(tempDir, { recursive: true, force: true, },);
 		}
 	});
 },);

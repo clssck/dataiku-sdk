@@ -27,8 +27,9 @@ describe("CLI planned command coverage", () => {
 		},);
 
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("--output or --output-folder is required",);
-		expect(failure.stderr,).toContain(
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).toContain("--output or --output-folder is required",);
+		expect(failure.stdout,).toContain(
 			"dss recipe create --type TYPE --input DS (--output DS | --output-folder FOLDER_ID)",
 		);
 	});
@@ -263,7 +264,8 @@ describe("CLI planned command coverage", () => {
 			], { env: cliEnv(url,), },);
 
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("Cannot reuse --path or --metastore-table",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("Cannot reuse --path or --metastore-table",);
 		},);
 	});
 
@@ -378,7 +380,8 @@ describe("CLI planned command coverage", () => {
 				"--dry-run",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(2,);
-			expect(failure.stderr,).toContain("Refusing to clone managed dataset",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("Refusing to clone managed dataset",);
 		},);
 	});
 
@@ -543,9 +546,7 @@ describe("CLI planned command coverage", () => {
 			], { env: cliEnv(url,), },);
 
 			expect(stderr,).toBe("",);
-			expect(stdout,).toBe(
-				'{\n  "standard": {\n    "fresh": true\n  },\n  "local": {\n    "note": "set"\n  }\n}\n',
-			);
+			expect(stdout,).toBe('{"standard":{"fresh":true},"local":{"note":"set"}}\n',);
 		},);
 
 		expect(sawGet,).toBe(false,);
@@ -583,7 +584,7 @@ describe("CLI planned command coverage", () => {
 			], { env: cliEnv(url,), },);
 
 			expect(stderr,).toBe("",);
-			expect(stdout,).toContain('"path": "sub/file.txt"',);
+			expect(JSON.parse(stdout,),).toEqual([{ path: "sub/file.txt", size: 12, },],);
 		},);
 	});
 
@@ -613,7 +614,8 @@ describe("CLI planned command coverage", () => {
 				"1",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(3,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				requestId?: string;
 				details: { body: string; };
 			};
@@ -642,7 +644,8 @@ describe("CLI planned command coverage", () => {
 				"1",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(3,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				requestId?: string;
 				details: { body: string; };
 			};

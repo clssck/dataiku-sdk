@@ -2,11 +2,6 @@ import type { DataikuClient, } from "../client.js";
 import { DataikuError, type StableErrorCode, } from "../errors.js";
 
 let outputFieldProjection: string[] | undefined;
-let compactJsonOutput = false;
-
-export function setCompactJsonOutput(compact: boolean,): void {
-	compactJsonOutput = compact;
-}
 
 export function setOutputFieldProjection(fields: string[] | undefined,): void {
 	outputFieldProjection = fields;
@@ -24,7 +19,7 @@ export function enqueueCliWarning(warning: Record<string, unknown>,): void {
 }
 
 /** Emit queued warnings as one JSONL warning event on stderr. Idempotent. */
-function flushCliWarnings(): void {
+export function flushCliWarnings(): void {
 	if (pendingCliWarnings.length === 0) return;
 	const warnings = pendingCliWarnings;
 	pendingCliWarnings = [];
@@ -64,7 +59,7 @@ export function writeCommandResult(result: unknown,): void {
 		? projectResultFields(result, outputFieldProjection,)
 		: result;
 	process.stdout.write(
-		`${JSON.stringify(projected ?? { ok: true, }, null, compactJsonOutput ? undefined : 2,)}\n`,
+		`${JSON.stringify(projected ?? { ok: true, },)}\n`,
 	);
 }
 

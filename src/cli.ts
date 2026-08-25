@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import * as fs from "node:fs/promises";
 import { num, unknownJsonInput, } from "./cli/coerce.js";
 import { commands, } from "./cli/commands/index.js";
 import {
@@ -13,6 +14,7 @@ import {
 	buildCommandRegistry,
 	buildMutationPlan,
 	CLEANUP_USAGE,
+	commandActionSummary,
 	type CommandRegistryEntry,
 	COMMANDS_USAGE,
 	inferRequiresProject,
@@ -33,10 +35,10 @@ import {
 	commandFailureExitCode,
 	commandFailureMessage,
 	CommandResultFailure,
+	flushCliWarnings,
 	isFailedWaitResult,
 	planResult,
 	projectResultFields,
-	setCompactJsonOutput,
 	setOutputFieldProjection,
 	writeCommandResult,
 } from "./cli/output.js";
@@ -158,8 +160,8 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 			"missing_required_flag",
 		);
 	}
-	const requestTimeoutMs = num(flags["request-timeout"],);
-	const retryMaxAttempts = num(flags["retries"],);
+	const requestTimeoutMs = num(flags["request-timeout"], "--request-timeout",);
+	const retryMaxAttempts = num(flags["retries"], "--retries",);
 	const client = new DataikuClient({
 		url,
 		apiKey,
@@ -362,12 +364,12 @@ function supportedCommandFlags(entry: CommandRegistryEntry,): Record<string, tru
 }
 
 function scopedCommandDiscoveryHint(resource: string, action: string,): string {
-	return `Use \`dss commands run --fields ${resource}.${action} --json\` to list the flags this command supports.`;
+	return `Use \`dss commands run --fields ${resource}.${action}\` to list the flags this command supports.`;
 }
 
 /**
  * Resolve the registry field selectors for `commands run --fields`. Omitting the flag
- * selects the whole registry, but an explicitly supplied value carrying no selector is a
+ * selects the action summary; `--output` exports the full registry, but an explicitly supplied value carrying no selector is a
  * usage error: an agent that asked for a scoped subset must never be handed the full
  * registry instead.
  */
@@ -593,6 +595,7 @@ function validateMetaCommandInputs(
 	if (resource === "commands") {
 		if (!action) throw missingActionError("commands", ["run",], COMMANDS_USAGE,);
 		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
+		validateSupportedCommandFlags("commands", "run", flags,);
 		commandRegistrySelectors(flags,);
 		return action;
 	}
@@ -980,6 +983,7 @@ async function runMetaCommand(
 		if (!action) throw missingActionError("commands", ["run",], COMMANDS_USAGE,);
 		currentCommandContext.action = action;
 		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
+		validateSupportedCommandFlags("commands", "run", flags,);
 		const selectors = commandRegistrySelectors(flags,);
 		const registry = buildCommandRegistry();
 		for (const selector of selectors) {
@@ -1003,7 +1007,20 @@ async function runMetaCommand(
 				);
 			}
 		}
-		return { action, result: registry, exitCode: 0, };
+		const outputPath = flags["output"];
+		const selectedRegistry = selectors.length === 0
+			? registry
+			: projectResultFields(registry, selectors,);
+		if (typeof outputPath === "string") {
+			const exported = selectedRegistry;
+			await fs.writeFile(outputPath, `${JSON.stringify(exported,)}\n`, "utf-8",);
+			return { action, result: { path: outputPath, }, exitCode: 0, };
+		}
+		return {
+			action,
+			result: selectors.length === 0 ? commandActionSummary(registry,) : selectedRegistry,
+			exitCode: 0,
+		};
 	}
 	if (resource === "version") {
 		if (action !== undefined && action !== "run") {
@@ -1242,8 +1259,8 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 			apiKey,
 			projectKey,
 			verbose: flags["verbose"] === true,
-			requestTimeoutMs: num(flags["request-timeout"],),
-			retryMaxAttempts: num(flags["retries"],),
+			requestTimeoutMs: num(flags["request-timeout"], "--request-timeout",),
+			retryMaxAttempts: num(flags["retries"], "--retries",),
 			tlsRejectUnauthorized,
 			caCertPath,
 		},);
@@ -1329,7 +1346,9 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 			const stepFields = typeof stepFieldsFlag === "string"
 				? stepFieldsFlag.split(",",).map((field,) => field.trim()).filter((field,) => field.length > 0)
 				: [];
-			const stepResult = stepFields.length > 0 ? projectResultFields(result, stepFields,) : result;
+			const stepResult = stepFields.length > 0 && !(resource === "commands" && action === "run")
+				? projectResultFields(result, stepFields,)
+				: result;
 			results.push({
 				index,
 				args: redactArgv(argv,),
@@ -1563,9 +1582,9 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 		...context,
 	};
 }
-
 function writeErrorReport(err: unknown,): void {
-	process.stderr.write(`${JSON.stringify(buildErrorReport(err,),)}\n`,);
+	flushCliWarnings();
+	process.stdout.write(`${JSON.stringify(buildErrorReport(err,),)}\n`,);
 }
 
 // ---------------------------------------------------------------------------
@@ -1575,13 +1594,15 @@ function writeErrorReport(err: unknown,): void {
 async function main(): Promise<void> {
 	loadEnvFile();
 	const { positional, flags, } = parseArgs(process.argv.slice(2,),);
-	setCompactJsonOutput(flags["json"] === true,);
 	const fieldsFlag = flags["fields"];
 	if (typeof fieldsFlag === "string") {
 		const selected = fieldsFlag.split(",",).map((field,) => field.trim()).filter((field,) =>
 			field.length > 0
 		);
-		if (selected.length > 0) setOutputFieldProjection(selected,);
+		if (selected.length > 0) {
+			const commandsRunProjection = positional[0] === "commands" && positional[1] === "run";
+			if (!commandsRunProjection) setOutputFieldProjection(selected,);
+		}
 	}
 
 	if (flags["version"] === true) {
@@ -1654,8 +1675,8 @@ async function main(): Promise<void> {
 		);
 	}
 
-	const requestTimeoutMs = num(flags["request-timeout"],);
-	const retryMaxAttempts = num(flags["retries"],);
+	const requestTimeoutMs = num(flags["request-timeout"], "--request-timeout",);
+	const retryMaxAttempts = num(flags["retries"], "--retries",);
 
 	const client = new DataikuClient({
 		url,
@@ -1674,11 +1695,7 @@ async function main(): Promise<void> {
 	await recordCleanupLedgerEntry(client, resource, action, args, flags, result, projectKey,);
 	const failureExitCode = commandFailureExitCode(result,);
 	if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);
-	if (flags["raw"] === true && typeof result === "string" && typeof flags["output"] !== "string") {
-		process.stdout.write(result,);
-	} else {
-		writeCommandResult(result,);
-	}
+	writeCommandResult(result,);
 }
 
 main().catch((err: unknown,) => {

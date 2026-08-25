@@ -176,10 +176,10 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 		handler: (c, a, f,) => {
 			requireArgs(a, 1, "dss data-quality history <dataset>",);
 			return c.dataQuality.history(a[0], {
-				minTimestamp: num(f["min-timestamp"],),
-				maxTimestamp: num(f["max-timestamp"],),
-				resultsPerPage: num(f["results-per-page"],),
-				page: num(f["page"],),
+				minTimestamp: num(f["min-timestamp"], "--min-timestamp",),
+				maxTimestamp: num(f["max-timestamp"], "--max-timestamp",),
+				resultsPerPage: num(f["results-per-page"], "--results-per-page",),
+				page: num(f["page"], "--page",),
 				ruleId: f["rule-id"] as string | undefined,
 				projectKey: f["project-key"] as string | undefined,
 			},);
@@ -202,8 +202,8 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 	"project-timeline": {
 		handler: (c, _a, f,) =>
 			c.dataQuality.projectTimeline({
-				minTimestamp: num(f["min-timestamp"],),
-				maxTimestamp: num(f["max-timestamp"],),
+				minTimestamp: num(f["min-timestamp"], "--min-timestamp",),
+				maxTimestamp: num(f["max-timestamp"], "--max-timestamp",),
 				projectKey: f["project-key"] as string | undefined,
 			},),
 		usage:
@@ -217,10 +217,10 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 			const pk = f["project-key"] as string | undefined;
 			const options = {
 				partition: f["partition"] as string | undefined,
-				pollIntervalMs: num(f["poll-interval"],),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
 				ruleId: f["rule-id"] as string | undefined,
 				projectKey: pk,
-				timeoutMs: num(f["timeout"],),
+				timeoutMs: num(f["timeout"], "--timeout",),
 			};
 			if (f["dry-run"] === true) {
 				const params = new URLSearchParams();

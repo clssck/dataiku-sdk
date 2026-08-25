@@ -32,8 +32,8 @@ export const projectCommands: Record<string, CommandMeta> = {
 		handler: (c, _a, f,) =>
 			c.projects.map({
 				projectKey: f["project-key"] as string | undefined,
-				maxNodes: num(f["max-nodes"],),
-				maxEdges: num(f["max-edges"],),
+				maxNodes: num(f["max-nodes"], "--max-nodes",),
+				maxEdges: num(f["max-edges"], "--max-edges",),
 				includeRaw: f["include-raw"] === true,
 			},),
 		usage: "dss project map [--max-nodes N] [--max-edges N] [--include-raw] [--project-key KEY]",

@@ -4,7 +4,7 @@ description: >-
   Agent-only JSON CLI for Dataiku DSS. Use to inspect or mutate DSS projects,
   datasets, recipes, jobs, scenarios, folders, notebooks, SQL, variables,
   code envs, and connections. Discover scoped command metadata with
-  dss commands run --fields RESOURCE.ACTION --json.
+  dss commands run --fields RESOURCE.ACTION.
 license: MIT
 compatibility: >-
   Requires the dss CLI, network access to a Dataiku DSS instance, and configured
@@ -19,30 +19,32 @@ If the installed `dss` binary is unavailable but the repository checkout is the 
 
 ## Contract
 
-- Command results write exactly one JSON value to stdout, including `doctor`, `batch`, and `cleanup` failure reports; use the exit code and result fields.
-- Dispatch/runtime failures write one JSONL error event to stderr with `type:"error"`, `ok:false`, `error`, `code`, and `exitCode`, while stdout stays empty.
-- Non-fatal warnings and `--verbose` HTTP traces are JSONL stderr events (`type:"warning"` / `type:"trace"`), never prose.
+- Command results write exactly one compact JSON value to stdout; void success is `{ok:true}`. `doctor`, `batch`, and `cleanup` failure reports are their direct result objects on stdout with a nonzero exit code — use the exit code and result fields.
+- Dispatch/runtime failures write one compact structured error object on stdout (`type:"error"`, `ok:false`, `error`, `code`, `category`, `exitCode`) with a nonzero exit code; stderr carries JSONL diagnostics only.
+- Non-fatal warnings and `--verbose` HTTP traces are JSONL stderr events (`type:"warning"` / `type:"trace"`), flushed before both success and failure output, never prose.
 - No prompts, help screens, tables, banners, or prose output are part of the contract.
 - Exit codes: 0 success, 1 usage/configuration error, 2 DSS or internal error, 3 transient/retryable DSS error, 4 a failed long-running result or synchronous assertion.
-- Pass `--json` for compact single-line JSON on stdout; use it for agent discovery and other JSON results to minimize tokens. Without it, success JSON is pretty-printed.
-- `--raw` is the only stdout escape hatch: recipe payload commands emit raw bytes to stdout unless `--output PATH` is also set; with `--output`, stdout is the JSON string equal to `PATH` and the file receives exact raw bytes.
+- Every result is compact single-line JSON on stdout; output formatting is not configurable.
+- Recipe payload commands write the payload as a JSON string on stdout; with `--output PATH` the exact bytes go to a file and stdout carries the JSON string equal to `PATH`.
 - `--fields a,b,c` projects those fields from object or array-of-objects results; dotted paths (`a.b.c`) drill into nested objects, and missing fields become `null`; string and scalar results pass through unchanged.
 
 ## Discover commands
 
 ```text
-dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility --json
-dss commands run --fields dataset.create --json
-dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples --json
-dss commands run --fields dataset --json
-dss agent contract --fields commands.actions --json
+dss commands run
+dss commands run --fields dataset
+dss commands run --fields dataset.create
+dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples
+dss commands run --output commands.json
+dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility
+dss agent contract --fields commands.actions
 ```
 
-Bootstrap with the scoped `agent contract` call above: `protocol,agentContractVersion,cli,stdio,planning,compatibility` cover protocol/schema compatibility, stderr event semantics, preferred discovery commands, non-JSON escape hatches, planning rules, and compatibility guarantees in ~250 tokens. Request `schemas` (the JSON schemas) or `commands` (the contract's discovery section) only when you actually need them.
+`dss commands run` prints the compact resource/action summary — every resource keyed to its action names, about 1k tokens — and never dumps registry entries to stdout. Bootstrap with the scoped `agent contract` call above: `protocol,agentContractVersion,cli,stdio,planning,compatibility` cover protocol/schema compatibility, stdout/stderr stream semantics, preferred discovery commands, planning rules, and compatibility guarantees in ~250 tokens. Request `schemas` (the JSON schemas) or `commands` (the contract's discovery section) only when you actually need them.
 
-Before choosing command syntax, look the action up in the command registry: `--fields RESOURCE.ACTION` returns one complete entry, and appended `.FIELD` paths return only the metadata you need. Prefer the four-field projection `usage,description,flags,examples` by default — it is the smallest self-sufficient starting point for constructing an invocation. The registry entry is the canonical schema for flags, positional arguments, side effects, auth requirements, output shape, idempotency, dry-run support, structured examples, payload schemas, unsafe outputs, cleanup hints, and exit codes.
+Before choosing command syntax, look the action up in the command registry: `--fields RESOURCE.ACTION` returns one complete entry, `--fields RESOURCE` returns every action of one resource, and appended `.FIELD` paths return only the metadata you need. Prefer the four-field projection `usage,description,flags,examples` by default — it is the smallest self-sufficient starting point for constructing an invocation. The registry entry is the canonical schema for flags, positional arguments, side effects, auth requirements, output shape, idempotency, dry-run support, structured examples, payload schemas, unsafe outputs, cleanup hints, and exit codes.
 
-`--fields` takes a comma-separated list, so request several actions in one call. Each key is echoed exactly as requested (`--fields dataset.create` returns `{"dataset.create": {...}}`). Enumerate every resource and action with `dss agent contract --fields commands.actions --json` (~1k tokens); the hundreds-of-thousands-token unscoped registry is compatibility-only. An unknown resource or action exits with code 1 and a JSON error envelope on stderr containing the valid options.
+`--fields` takes a comma-separated list, so request several actions in one call. Each key is echoed exactly as requested (`--fields dataset.create` returns `{"dataset.create": {...}}`); an empty `--fields` is a usage error, never a silent full dump. The full registry (~220k tokens) is exported only via `--output PATH`: `dss commands run --output PATH` writes the registry, or the selected `--fields` subset, as compact JSON to `PATH`, and stdout carries the compact `{"path":"PATH"}` result — never the registry itself. An unknown resource or action exits with code 1 and a compact JSON error object on stdout containing the valid options.
 Credential lookup order is flags first, then `DATAIKU_*` environment variables, then saved credentials.
 Set `DATAIKU_DISABLE_ENV=1` when a test must ignore both `.env` files and `DATAIKU_*` environment variables.
 When `.env` loading is enabled, the CLI reads `.env` from the command's current working directory first and then the CLI build/root directory; the invocation directory wins on conflicting keys. Put test-specific `.env` files in the directory where you invoke `dss`.
@@ -55,7 +57,7 @@ For disposable agent tests, set `DSS_CONFIG_DIR` to a temporary directory so sav
 - When a create/upload action advertises `--record-cleanup`, pass `--record-cleanup cleanup.jsonl`. `dss cleanup --file cleanup.jsonl` previews the recorded cleanup steps in reverse order and does not mutate DSS; add `--apply` only after checking the preview.
 - For JSON payload actions, follow `inputContract`, `requiredFlags`, and `requiredOneOf`. Prefer `--data-file PATH` or `--stdin` when advertised instead of inline `--data`; this preserves exact JSON across shells and keeps large or sensitive payloads out of process arguments.
 - Authenticated actions advertise `--request-timeout MS` and `--retries N`; `--retries` applies to idempotent GET requests. Long-running actions separately advertise controls such as `--timeout MS`, `--poll-interval MS`, and log limits; use only the flags in that action's registry entry.
-- Before live mutation tests, use `dss fixtures --json` to discover compatible test resources instead of guessing project objects.
+- Before live mutation tests, use `dss fixtures` to discover compatible test resources instead of guessing project objects.
 
 ## Authentication
 
@@ -102,7 +104,7 @@ TLS flags: `--insecure` disables certificate verification; `--ca-cert PATH` adds
 dss version
 dss project list
 dss dataset list --project-key MYPROJ
-dss recipe get-payload compute_orders --raw --output code.py --project-key MYPROJ
+dss recipe get-payload compute_orders --output code.py --project-key MYPROJ
 dss recipe diff compute_orders --file code.py --project-key MYPROJ
 dss recipe set-payload compute_orders --file code.py --project-key MYPROJ
 dss job build-and-wait orders --include-logs --project-key MYPROJ
@@ -171,7 +173,7 @@ policy permits.
 
 ## Confirming mutations
 
-Mutations print a small JSON ack to stdout and exit 0 on success (e.g. `{"updated":"NAME","resource":"recipe"}`); on failure they print the error envelope to stderr and exit non-zero. The exit code is the source of truth.
+Mutations print a small JSON ack to stdout and exit 0 on success (e.g. `{"updated":"NAME","resource":"recipe"}`); on failure they print the error envelope to stdout and exit non-zero. The exit code is the source of truth.
 
 - For portable multi-step writes, prefer `dss batch` (payload: a JSON array of argv arrays). It runs fail-fast, returns one envelope with per-step `ok`/`result`/`error`, and exits non-zero if any step fails.
 - If separate processes are required, inspect each exit code and stop before launching the next step. Do not rely on shell chaining: syntax differs between POSIX shells, Windows PowerShell 5.1, PowerShell 7, and Command Prompt.
@@ -193,7 +195,7 @@ Mutations print a small JSON ack to stdout and exit 0 on success (e.g. `{"update
 
 ## Error envelope
 
-For dispatch/runtime failures, parse stderr as JSONL; the final line is an error event:
+For dispatch/runtime failures, stdout carries one compact error object:
 
 ```json
 {
@@ -208,6 +210,6 @@ For dispatch/runtime failures, parse stderr as JSONL; the final line is an error
 }
 ```
 
-`doctor`, `batch`, and `cleanup` report command-level failures on stdout and leave stderr empty. Use the exit code before choosing a stream.
+`doctor`, `batch`, and `cleanup` report command-level failures as their direct result object on stdout with a nonzero exit code; key off the exit code before interpreting the result.
 Use `code`, `category`, `exitCode`, `retryable`, `status`, and `details` for recovery logic. Do not scrape message text when a structured field is available.
 Treat `details.body` as sanitized metadata only: it contains at most `requestId`/`request_id`/`errorId`/`elapsedMs` plus locally trusted target/timing fields, not the arbitrary DSS response body. `details.statusText` is canonical text derived from the numeric status, not a remote reason phrase. Base recovery on top-level `code`, `category`, `status`, `retryable`, `requestId`, `hint`, and `details.dssCategory`; never parse or expose assumed server-body fields.

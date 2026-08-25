@@ -24,7 +24,7 @@ const GOLDEN_O200K_BASE = {
 	bpeRanksFnv1a: 4_089_887_228,
 	specialTokens: { "<|endoftext|>": 199_999, "<|endofprompt|>": 200_018, },
 	helloWorldIds: [24_912, 2_375,],
-	probeText: 'dss agent contract --fields protocol,cli --json {"ok":true,"tokens":[1,2,3]}\ndone.',
+	probeText: 'dss agent contract --fields protocol,cli {"ok":true,"tokens":[1,2,3]}\ndone.',
 	probeIds: [
 		67,
 		1_087,
@@ -35,8 +35,6 @@ const GOLDEN_O200K_BASE = {
 		16_689,
 		11,
 		48_644,
-		2_230,
-		4_108,
 		10_494,
 		525,
 		1_243,

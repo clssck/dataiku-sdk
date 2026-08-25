@@ -1174,7 +1174,8 @@ describe("CLI command behavioral smoke coverage", () => {
 				"HTML",
 			], { env: cliEnv(url,), },);
 			expect(invalidExport.code,).toBe(1,);
-			expect(invalidExport.stderr,).toContain("DSS dashboard export did not return a PDF.",);
+			expect(invalidExport.stderr,).toBe("",);
+			expect(invalidExport.stdout,).toContain("DSS dashboard export did not return a PDF.",);
 			expect(() => statSync(dashboardExportPath,)).toThrow();
 
 			const dashboardCreateDryRun = JSON.parse(
@@ -1213,7 +1214,8 @@ describe("CLI command behavioral smoke coverage", () => {
 				JSON.stringify({ name: "Broken insight dashboard", pages: missingInsightPages, },),
 			], { env: cliEnv(url,), },);
 			expect(missingInsightCreate.code,).toBe(1,);
-			expect(missingInsightCreate.stderr,).toContain(
+			expect(missingInsightCreate.stderr,).toBe("",);
+			expect(missingInsightCreate.stdout,).toContain(
 				"Dashboard references missing insight missing-insight.",
 			);
 			expect(dashboardCreateRequests,).toBe(0,);
@@ -1234,7 +1236,8 @@ describe("CLI command behavioral smoke coverage", () => {
 				JSON.stringify({ name: "Broken dataset dashboard", pages: missingDatasetPages, },),
 			], { env: cliEnv(url,), },);
 			expect(missingDatasetCreate.code,).toBe(1,);
-			expect(missingDatasetCreate.stderr,).toContain(
+			expect(missingDatasetCreate.stderr,).toBe("",);
+			expect(missingDatasetCreate.stdout,).toContain(
 				"Dashboard insight references missing dataset missing_dataset.",
 			);
 			expect(dashboardCreateRequests,).toBe(0,);
@@ -1264,7 +1267,8 @@ describe("CLI command behavioral smoke coverage", () => {
 				JSON.stringify({ pages: missingInsightPages, },),
 			], { env: cliEnv(url,), },);
 			expect(missingInsightUpdate.code,).toBe(1,);
-			expect(missingInsightUpdate.stderr,).toContain(
+			expect(missingInsightUpdate.stderr,).toBe("",);
+			expect(missingInsightUpdate.stdout,).toContain(
 				"Dashboard references missing insight missing-insight.",
 			);
 			expect(dashboardUpdateRequests,).toBe(0,);
@@ -1277,7 +1281,8 @@ describe("CLI command behavioral smoke coverage", () => {
 				JSON.stringify({ pages: missingDatasetPages, },),
 			], { env: cliEnv(url,), },);
 			expect(missingDatasetUpdate.code,).toBe(1,);
-			expect(missingDatasetUpdate.stderr,).toContain(
+			expect(missingDatasetUpdate.stderr,).toBe("",);
+			expect(missingDatasetUpdate.stdout,).toContain(
 				"Dashboard insight references missing dataset missing_dataset.",
 			);
 			expect(dashboardUpdateRequests,).toBe(0,);
@@ -1299,7 +1304,8 @@ describe("CLI command behavioral smoke coverage", () => {
 				JSON.stringify({ pages: mismatchedInsightPages, },),
 			], { env: cliEnv(url,), },);
 			expect(mismatchedInsightUpdate.code,).toBe(1,);
-			expect(mismatchedInsightUpdate.stderr,).toContain(
+			expect(mismatchedInsightUpdate.stderr,).toBe("",);
+			expect(mismatchedInsightUpdate.stdout,).toContain(
 				"has mismatched insightId and targetInsightId.",
 			);
 			expect(dashboardUpdateRequests,).toBe(0,);

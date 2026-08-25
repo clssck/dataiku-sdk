@@ -74,8 +74,8 @@ describe("CLI bin entrypoints", () => {
 		} catch (error: unknown) {
 			const failure = error as { code?: number; stdout?: string; stderr?: string; };
 			expect(failure.code,).toBe(2,);
-			expect(failure.stdout ?? "",).toBe("",);
-			const lines = (failure.stderr ?? "").trim().split(/\r?\n/,);
+			expect(failure.stderr ?? "",).toBe("",);
+			const lines = (failure.stdout ?? "").trim().split(/\r?\n/,);
 			expect(lines,).toHaveLength(1,);
 			expect(JSON.parse(lines[0]!,),).toMatchObject({
 				type: "error",
@@ -132,8 +132,8 @@ describe("CLI bin entrypoints", () => {
 		} catch (error: unknown) {
 			const failure = error as { code?: number; stdout?: string; stderr?: string; };
 			expect(failure.code,).toBe(1,);
-			expect(failure.stdout ?? "",).toBe("",);
-			const report = JSON.parse(failure.stderr ?? "",) as Record<string, unknown>;
+			expect(failure.stderr ?? "",).toBe("",);
+			const report = JSON.parse(failure.stdout ?? "",) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				ok: false,
 				error: "Missing Dataiku URL.",
@@ -152,7 +152,8 @@ describe("CLI short flags", () => {
 	it("-h fails with the unsupported help JSON envelope", async () => {
 		const failure = await dssFailure(["-h",],);
 		expect(failure.code,).toBe(1,);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			code: "usage_error",
 			error: "Help screens are not supported.",
@@ -163,7 +164,29 @@ describe("CLI short flags", () => {
 	it("-f is rejected after the JSON-only output cutover", async () => {
 		const failure = await dssFailure(["-f", "table",],);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("Unknown flag: -f",);
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			error: "Unknown flag: -f",
+			code: "unknown_flag",
+			category: "usage",
+			exitCode: 1,
+		},);
+	});
+
+	it("removed --json and --raw flags are rejected as unknown flags", async () => {
+		for (const flag of ["--json", "--raw",]) {
+			const failure = await dssFailure([flag,],);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				error: `Unknown flag: ${flag}`,
+				code: "unknown_flag",
+				category: "usage",
+				exitCode: 1,
+			},);
+		}
 	});
 });
 
@@ -180,7 +203,14 @@ describe("CLI flag value parsing", () => {
 	it("missing value for --target fails fast", async () => {
 		const failure = await dssFailure(["install-skill", "--target",],);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("Flag --target requires a value.",);
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			error: "Flag --target requires a value.",
+			code: "missing_required_flag",
+			category: "usage",
+			exitCode: 1,
+		},);
 	});
 
 	it("--max-lines -1 is consumed as an option value", async () => {

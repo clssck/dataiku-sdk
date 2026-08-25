@@ -1,7 +1,7 @@
 import { describe, expect, it, } from "bun:test";
 import { buildCommandRegistry, buildMutationPlan, } from "../../src/cli/contract.js";
 import { RESOURCE_NAMES, } from "../../src/cli/usage.js";
-import { dss, dssFailure, } from "./_harness.js";
+import { dss, dssFailure, join, mkdirSync, readFileSync, rmSync, tmpdir, } from "./_harness.js";
 
 type Schema = Record<string, unknown>;
 
@@ -73,7 +73,8 @@ describe("agent contract accuracy", () => {
 
 		const failure = await dssFailure(["not-a-resource",],);
 		expect(failure.code,).toBe(1,);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect((report.details as Record<string, unknown>).validResources,).toEqual(
 			expect.arrayContaining(["agent", "version", "batch",],),
 		);
@@ -87,7 +88,8 @@ describe("agent contract accuracy", () => {
 			"not-a-resource",
 		],);
 		expect(resourceFailure.code,).toBe(1,);
-		const resourceReport = JSON.parse(resourceFailure.stderr,) as Record<string, unknown>;
+		expect(resourceFailure.stderr,).toBe("",);
+		const resourceReport = JSON.parse(resourceFailure.stdout,) as Record<string, unknown>;
 		expect(resourceReport.error,).toBe("Unknown resource: not-a-resource.",);
 		expect((resourceReport.details as Record<string, unknown>).validResources,).toEqual(
 			expect.arrayContaining(["agent", "version", "batch",],),
@@ -100,7 +102,8 @@ describe("agent contract accuracy", () => {
 			"dataset.not-an-action",
 		],);
 		expect(actionFailure.code,).toBe(1,);
-		const actionReport = JSON.parse(actionFailure.stderr,) as Record<string, unknown>;
+		expect(actionFailure.stderr,).toBe("",);
+		const actionReport = JSON.parse(actionFailure.stdout,) as Record<string, unknown>;
 		expect(actionReport.error,).toBe("Unknown action: dataset not-an-action",);
 		expect((actionReport.details as Record<string, unknown>).validActions,).toContain("create",);
 	});
@@ -109,7 +112,8 @@ describe("agent contract accuracy", () => {
 		for (const selector of ["dataset.", "dataset..usage", ".dataset",]) {
 			const failure = await dssFailure(["commands", "run", "--fields", selector,],);
 			expect(failure.code,).toBe(1,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report.error,).toBe(
 				`Invalid --fields selector: ${selector}. Expected RESOURCE or RESOURCE.ACTION[.FIELD...].`,
 			);
@@ -119,10 +123,10 @@ describe("agent contract accuracy", () => {
 
 	it("rejects empty or comma-only --fields without emitting the registry", async () => {
 		for (const value of ["", ",,", " , ",]) {
-			const failure = await dssFailure(["commands", "run", "--fields", value, "--json",],);
+			const failure = await dssFailure(["commands", "run", "--fields", value,],);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stdout,).toBe("",);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				ok: false,
 				error:
@@ -131,7 +135,7 @@ describe("agent contract accuracy", () => {
 				category: "usage",
 				exitCode: 1,
 				hint:
-					"Use `dss commands run --fields RESOURCE.ACTION --json` for scoped, compact command discovery; omit --fields only when you need the full registry.",
+					"Use `dss commands run --fields RESOURCE.ACTION\` for scoped command discovery; use `dss commands run\` for the action summary or `--output PATH\` to export the full registry.",
 				details: { fields: value, },
 				resource: "commands",
 				action: "run",
@@ -139,25 +143,63 @@ describe("agent contract accuracy", () => {
 		}
 	});
 
-	it("omitted --fields still returns the full registry", async () => {
+	it("omitted --fields returns a compact per-resource action summary", async () => {
 		const { stdout, stderr, } = await dss(["commands", "run",],);
 		expect(stderr,).toBe("",);
-		const registry = JSON.parse(stdout,) as Record<string, unknown>;
-		expect(Object.keys(registry,),).toEqual(
+		const summary = JSON.parse(stdout,) as Record<string, string[]>;
+		expect(Object.keys(summary,),).toEqual(
 			expect.arrayContaining(["project", "recipe", "dataset", "commands",],),
 		);
+		for (const [resource, actions,] of Object.entries(summary,)) {
+			expect(Array.isArray(actions,), `${resource} must map to an action list`,).toBe(true,);
+			expect(actions.length, `${resource} must expose at least one action`,).toBeGreaterThan(0,);
+			expect(actions.every((action,) => typeof action === "string"),).toBe(true,);
+		}
+		// The heavy per-action metadata must never travel over the default path.
+		expect(stdout,).not.toContain('"usage"',);
+		expect(stdout,).not.toContain('"description"',);
+		expect(stdout,).not.toContain('"flags"',);
+	});
+
+	it("exports the full registry to --output and prints only the path", async () => {
+		const exportDir = join(tmpdir(), `dss-contract-registry-${Date.now()}`,);
+		mkdirSync(exportDir, { recursive: true, },);
+		const exportPath = join(exportDir, "registry.json",);
+		try {
+			const { stdout, stderr, } = await dss(["commands", "run", "--output", exportPath,],);
+			expect(stderr,).toBe("",);
+			// Compact envelope on stdout: only the file path, never the registry.
+			expect(JSON.parse(stdout,),).toEqual({ path: exportPath, },);
+			expect(stdout.trim(),).not.toContain("\n",);
+
+			const registry = JSON.parse(readFileSync(exportPath, "utf-8",),) as Record<
+				string,
+				Record<string, unknown>
+			>;
+			expect(Object.keys(registry,),).toEqual(
+				expect.arrayContaining(["project", "recipe", "dataset", "commands",],),
+			);
+			const datasetCreate = registry.dataset?.create as Record<string, unknown>;
+			expect(datasetCreate,).toMatchObject({
+				usage: expect.any(String,),
+				description: expect.any(String,),
+				examples: expect.any(Array,),
+				flags: expect.any(Array,),
+			},);
+		} finally {
+			rmSync(exportDir, { recursive: true, force: true, },);
+		}
 	});
 
 	it("unknown-flag recovery points at scoped compact discovery", async () => {
 		const failure = await dssFailure(["project", "list", "--name", "X",],);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stdout,).toBe("",);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			error: "Unknown flag --name for project list",
 			code: "unknown_flag",
-			hint:
-				"Use `dss commands run --fields project.list --json` to list the flags this command supports.",
+			hint: "Use `dss commands run --fields project.list\` to list the flags this command supports.",
 		},);
 	});
 
@@ -254,7 +296,7 @@ describe("agent contract accuracy", () => {
 			{ not: { pattern: "^-", }, },
 			{ const: "-", },
 			{ pattern: "^--$", },
-			{ pattern: "^--(stdin|json|verbose|insecure)$", },
+			{ pattern: "^--(stdin|verbose|insecure)$", },
 			{
 				pattern:
 					"^--(output)=[\\s\\S]+$|^--(data)=[\\s\\S]+$|^--(data-file)=[\\s\\S]+$|^--(fields)=[\\s\\S]+$|^--(url)=[\\s\\S]+$|^--(api-key)=[\\s\\S]+$|^--(request-timeout)=[\\s\\S]+$|^--(retries)=[\\s\\S]+$|^--(ca-cert)=[\\s\\S]+$",
@@ -311,17 +353,21 @@ describe("agent contract accuracy", () => {
 		const contract = JSON.parse(stdout,) as Record<string, Record<string, unknown>>;
 		const commands = contract.commands as Record<string, unknown>;
 		expect(commands.scopedDiscoveryCommand,).toBe(
-			"dss commands run --fields RESOURCE[.ACTION[.FIELD...]] --json",
+			"dss commands run --fields RESOURCE[.ACTION[.FIELD...]]",
 		);
-		expect(commands.compactOutputFlag,).toBe("--json",);
-		expect(commands.compactOutputHint,).toContain("reduce agent context usage",);
+		expect(commands,).not.toHaveProperty("compactOutputFlag",);
+		expect(commands,).not.toHaveProperty("compactOutputHint",);
 		expect(commands.scopedDiscoveryExamples,).toEqual(
-			expect.arrayContaining(["dss commands run --fields dataset.create --json",],),
+			expect.arrayContaining([
+				"dss commands run --fields dataset",
+				"dss commands run --fields dataset.create",
+			],),
 		);
 		expect(commands.scopedDiscoveryHint,).toContain("append .FIELD paths",);
+		expect(commands.fullRegistryExportCommand,).toBe("dss commands run --output PATH",);
 		expect(commands.discoveryCommand,).toBe("dss commands run",);
 		expect(commands.actionIndexCommand,).toBe(
-			"dss agent contract --fields commands.actions --json",
+			"dss agent contract --fields commands.actions",
 		);
 	});
 
@@ -330,17 +376,17 @@ describe("agent contract accuracy", () => {
 		const commandsRun = registry.commands?.run;
 		const agentContract = registry.agent?.contract;
 		expect(commandsRun?.usage,).toContain("[--fields PATHS]",);
-		expect(commandsRun?.usage,).toContain("[--json]",);
+		expect(commandsRun?.usage,).not.toContain("[--json]",);
 		expect(commandsRun?.examples,).toContain(
-			"dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples --json",
+			"dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples",
 		);
-		expect(commandsRun?.description,).toContain("RESOURCE.ACTION.FIELD",);
+		expect(commandsRun?.description,).toContain("--output PATH",);
 		expect(agentContract?.usage,).toContain("[--fields PATHS]",);
 		expect(agentContract?.examples,).toContain(
-			"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility --json",
+			"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility",
 		);
 		expect(agentContract?.examples,).toContain(
-			"dss agent contract --fields commands.actions --json",
+			"dss agent contract --fields commands.actions",
 		);
 		expect(agentContract?.description,).toContain("commands.actions",);
 		const { stdout, stderr, } = await dss(["agent", "contract", "--fields", "planning",],);
@@ -348,13 +394,13 @@ describe("agent contract accuracy", () => {
 		const contract = JSON.parse(stdout,) as Record<string, Record<string, unknown>>;
 		expect(contract.planning?.contractCommand,).toBe("dss agent contract",);
 		expect(contract.planning?.bootstrapCommand,).toContain(
-			"--fields protocol,agentContractVersion,cli,stdio,planning,compatibility --json",
+			"--fields protocol,agentContractVersion,cli,stdio,planning,compatibility",
 		);
 		expect(contract.planning?.preferredDiscoveryCommand,).toBe(
-			"dss commands run --fields RESOURCE.ACTION --json",
+			"dss commands run --fields RESOURCE.ACTION",
 		);
 		expect(contract.planning?.actionIndexCommand,).toBe(
-			"dss agent contract --fields commands.actions --json",
+			"dss agent contract --fields commands.actions",
 		);
 	});
 
@@ -364,7 +410,6 @@ describe("agent contract accuracy", () => {
 			"contract",
 			"--fields",
 			"protocol,agentContractVersion,cli,stdio,planning,compatibility",
-			"--json",
 		],);
 		expect(bootstrap.stderr,).toBe("",);
 		const contract = JSON.parse(bootstrap.stdout,) as Record<string, unknown>;
@@ -384,7 +429,6 @@ describe("agent contract accuracy", () => {
 			"run",
 			"--fields",
 			"dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples",
-			"--json",
 		],);
 		expect(projection.stderr,).toBe("",);
 		const entry = JSON.parse(projection.stdout,) as Record<string, unknown>;

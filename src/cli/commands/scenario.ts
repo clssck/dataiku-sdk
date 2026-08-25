@@ -26,8 +26,8 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, "dss scenario run <id>",);
 			const pk = f["project-key"] as string | undefined;
 			const options = {
-				pollIntervalMs: num(f["poll-interval"],),
-				timeoutMs: num(f["timeout"],),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
+				timeoutMs: num(f["timeout"], "--timeout",),
 			};
 			if (f["dry-run"] === true) {
 				return {
@@ -59,8 +59,8 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, "dss scenario run-and-wait <id>",);
 			const pk = f["project-key"] as string | undefined;
 			const options = {
-				pollIntervalMs: num(f["poll-interval"],),
-				timeoutMs: num(f["timeout"],),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
+				timeoutMs: num(f["timeout"], "--timeout",),
 			};
 			if (f["dry-run"] === true) {
 				return {

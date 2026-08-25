@@ -176,8 +176,9 @@ describe("code run command", () => {
 					env: cliEnv(url,),
 				},);
 				expect(failure.code,).toBe(4,);
-				expect(failure.stderr,).toContain("long_running_failure",);
-				expect(failure.stderr,).toContain("ValueError: boom",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("long_running_failure",);
+				expect(failure.stdout,).toContain("ValueError: boom",);
 			},);
 		} finally {
 			rmSync(scriptPath, { force: true, },);
@@ -218,7 +219,8 @@ describe("code run command", () => {
 	it("requires a Python source", async () => {
 		const failure = await dssFailure(["code", "run",], { env: cliEnv("http://127.0.0.1:1",), },);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("Python source is required",);
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).toContain("Python source is required",);
 	});
 
 	it("times out to exit 4 and still cleans up the scenario", async () => {
@@ -234,7 +236,8 @@ describe("code run command", () => {
 						{ env: cliEnv(url,), },
 					);
 					expect(failure.code,).toBe(4,);
-					expect(failure.stderr,).toContain("TIMEOUT",);
+					expect(failure.stderr,).toBe("",);
+					expect(failure.stdout,).toContain("TIMEOUT",);
 				},
 			);
 		} finally {
@@ -255,7 +258,9 @@ describe("code run command", () => {
 						env: cliEnv(url,),
 					},);
 					expect(failure.code,).not.toBe(0,);
+					expect(failure.stderr,).toBe("",);
 					expect(failure.code,).not.toBe(1,);
+					expect(failure.stderr,).toBe("",);
 				},
 			);
 		} finally {
@@ -290,11 +295,13 @@ describe("code run command", () => {
 			env: cliEnv("http://127.0.0.1:1",),
 		},);
 		expect(f1.code,).toBe(1,);
-		expect(f1.stderr,).toContain("no positional arguments",);
+		expect(f1.stderr,).toBe("",);
+		expect(f1.stdout,).toContain("no positional arguments",);
 		const f2 = await dssFailure(["code", "run", "--file", "x.py", "--stdin",], {
 			env: cliEnv("http://127.0.0.1:1",),
 		},);
 		expect(f2.code,).toBe(1,);
-		expect(f2.stderr,).toContain("exactly one",);
+		expect(f2.stderr,).toBe("",);
+		expect(f2.stdout,).toContain("exactly one",);
 	});
 });

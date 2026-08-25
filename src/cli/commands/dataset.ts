@@ -114,9 +114,9 @@ export const datasetCommands: Record<string, CommandMeta> = {
 		handler: (c, a, f,) => {
 			requireArgs(a, 1, "dss dataset preview <name>",);
 			return c.datasets.preview(a[0], {
-				maxRows: num(f["max-rows"],),
+				maxRows: num(f["max-rows"], "--max-rows",),
 				projectKey: f["project-key"] as string | undefined,
-				timeoutMs: num(f["timeout"],),
+				timeoutMs: num(f["timeout"], "--timeout",),
 			},);
 		},
 		usage: "dss dataset preview <name> [--max-rows N] [--rows N] [--project-key KEY] [--timeout MS]",
@@ -138,7 +138,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			const result = await c.datasets.download(a[0], {
 				outputPath: f["output"] as string | undefined,
 				projectKey: f["project-key"] as string | undefined,
-				limit: num(f["limit"],),
+				limit: num(f["limit"], "--limit",),
 			},);
 			if (result.truncated) {
 				enqueueCliWarning({

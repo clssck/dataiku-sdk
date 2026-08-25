@@ -149,6 +149,7 @@ describe("Visual ML CLI endpoints", () => {
 		], { env: cliEnv("http://127.0.0.1:1",), },);
 
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("--target is required for PREDICTION ML tasks.",);
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).toContain("--target is required for PREDICTION ML tasks.",);
 	});
 });

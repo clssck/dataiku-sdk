@@ -307,7 +307,8 @@ describe("CLI agent-readiness mutation contracts", () => {
 			},
 		},);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("--connection is required",);
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).toContain("--connection is required",);
 	});
 
 	it("dry-runs variable and notebook mutations with current and next state without mutating notebooks", async () => {
@@ -477,6 +478,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 					ledgerPath,
 				], { env: cliEnv(firstUrl,), },);
 				expect(firstFailure.code,).toBe(3,);
+				expect(firstFailure.stderr,).toBe("",);
 				const bindingPath = `${ledgerPath}.dss-url`;
 				expect(readFileSync(bindingPath, "utf-8",).trim(),).toBe(firstUrl,);
 				if (process.platform !== "win32") {
@@ -498,7 +500,8 @@ describe("CLI agent-readiness mutation contracts", () => {
 					ledgerPath,
 				], { env: cliEnv(secondUrl,), },);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain(
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain(
 					"Cleanup ledger is reserved for a different DSS server",
 				);
 			},);
@@ -557,7 +560,8 @@ describe("CLI agent-readiness mutation contracts", () => {
 					ledgerAsDirectory,
 				], { env: cliEnv(url,), },);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("Cleanup ledger path is a directory",);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("Cleanup ledger path is a directory",);
 			},);
 			expect(requests,).toEqual([],);
 		} finally {
@@ -595,8 +599,9 @@ describe("CLI agent-readiness mutation contracts", () => {
 					ledgerPath,
 				], { env: cliEnv(url,), },);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain("is not bound to the configured DSS server",);
-				expect(failure.stderr,).toContain('"reason":"mismatch"',);
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain("is not bound to the configured DSS server",);
+				expect(failure.stdout,).toContain('"reason":"mismatch"',);
 			},);
 			expect(requests,).toEqual([],);
 			expect(readFileSync(ledgerPath, "utf-8",),).toBe(original,);
@@ -638,6 +643,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 					],],),
 				], { env: cliEnv(url,), },);
 				expect(failure.code,).toBe(1,);
+				expect(failure.stderr,).toBe("",);
 				const report = JSON.parse(failure.stdout,) as {
 					steps: Array<{
 						ok: boolean;
@@ -684,6 +690,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 					],),
 				], { env: cliEnv(url,), },);
 				expect(failure.code,).toBe(1,);
+				expect(failure.stderr,).toBe("",);
 				const report = JSON.parse(failure.stdout,) as {
 					steps: Array<{ ok: boolean; error?: { error?: string; }; }>;
 				};
@@ -758,7 +765,8 @@ describe("CLI agent-readiness mutation contracts", () => {
 			env: { PATH: process.env.PATH, HOME: process.env.HOME, },
 		},);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("Could not read cleanup ledger",);
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).toContain("Could not read cleanup ledger",);
 	});
 
 	it("rejects malformed cleanup ledger entries", async () => {
@@ -771,7 +779,8 @@ describe("CLI agent-readiness mutation contracts", () => {
 				env: { PATH: process.env.PATH, HOME: process.env.HOME, },
 			},);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("Invalid cleanup ledger entry at line 1",);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("Invalid cleanup ledger entry at line 1",);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
@@ -803,6 +812,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 					env: cliEnv(url,),
 				},);
 				expect(failure.code,).toBe(2,);
+				expect(failure.stderr,).toBe("",);
 				expect(failure.stdout,).toContain('"failures"',);
 				expect(failure.stdout,).toContain("Invalid cleanup argv: folder upload f /r /tmp/local",);
 			},);
@@ -870,6 +880,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 					env: cliEnv(url,),
 				},);
 				expect(failure.code,).toBe(2,);
+				expect(failure.stderr,).toBe("",);
 				const report = JSON.parse(failure.stdout,) as {
 					applied?: boolean;
 					results?: unknown[];
@@ -974,6 +985,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 					env: cliEnv(url,),
 				},);
 				expect(failure.code,).toBe(2,);
+				expect(failure.stderr,).toBe("",);
 				const report = JSON.parse(failure.stdout,) as {
 					applied?: boolean;
 					bindingError?: { entryIndex?: number; reason?: string; foundDssUrl?: string; };
@@ -1019,6 +1031,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 					env: cliEnv(url,),
 				},);
 				expect(failure.code,).toBe(2,);
+				expect(failure.stderr,).toBe("",);
 				const report = JSON.parse(failure.stdout,) as {
 					applied?: boolean;
 					bindingError?: { entryIndex?: number; reason?: string; };
@@ -1074,6 +1087,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 					env: cliEnv(url,),
 				},);
 				expect(failure.code,).toBe(2,);
+				expect(failure.stderr,).toBe("",);
 				const report = JSON.parse(failure.stdout,) as {
 					applied?: boolean;
 					bindingError?: { entryIndex?: number; reason?: string; };

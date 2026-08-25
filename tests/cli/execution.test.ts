@@ -26,8 +26,7 @@ describe("CLI execution behavior", () => {
 			res.end();
 		}, async (url,) => {
 			const { stdout, stderr, } = await dss(["dataset", "delete", "sample",], { env: cliEnv(url,), },);
-			expect(stdout,).toContain('"deleted": "sample"',);
-			expect(stdout,).toContain('"resource": "dataset"',);
+			expect(JSON.parse(stdout,),).toEqual({ deleted: "sample", resource: "dataset", },);
 			expect(stderr,).toBe("",);
 		},);
 	});
@@ -135,7 +134,7 @@ describe("CLI execution behavior", () => {
 					["dataset", "update", "sample", "--data-file", tmpFile,],
 					{ env: cliEnv(url,), },
 				);
-				expect(stdout,).toContain('"updated": "sample"',);
+				expect(JSON.parse(stdout,),).toEqual({ updated: "sample", resource: "dataset", },);
 			},);
 			const nested = capturedBody?.nested as Record<string, unknown> | undefined;
 			expect(nested?.preserved,).toBe(true,);
@@ -211,8 +210,9 @@ describe("CLI execution behavior", () => {
 				JSON.stringify({ params: { steps: [{ type: "build_flowitem", },], }, },),
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(2,);
+			expect(failure.stderr,).toBe("",);
 			expect(capturedBody,).toHaveProperty("params.steps.0.type", "build_flowitem",);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				code: "validation_failed",
 				category: "dss",
@@ -246,7 +246,7 @@ describe("CLI execution behavior", () => {
 				JSON.stringify({ nested: { added: "from-stdin", }, },),
 				{ env: cliEnv(url,), },
 			);
-			expect(stdout,).toContain('"updated": "sample"',);
+			expect(JSON.parse(stdout,),).toEqual({ updated: "sample", resource: "dataset", },);
 		},);
 		const nested = capturedBody?.nested as Record<string, unknown> | undefined;
 		expect(nested?.preserved,).toBe(true,);
@@ -316,7 +316,8 @@ describe("CLI execution behavior", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(1,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				code: "validation_failed",
 				category: "usage",
@@ -346,7 +347,8 @@ describe("CLI execution behavior", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(2,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				code: "not_found",
 				category: "dss",
@@ -378,7 +380,8 @@ describe("CLI execution behavior", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(2,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				code: "permission_denied",
 				category: "dss",
@@ -567,8 +570,9 @@ describe("CLI execution behavior", () => {
 				"2",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(3,);
+			expect(failure.stderr,).toBe("",);
 			expect(startAttempts,).toBe(1,);
-			const report = JSON.parse(failure.stderr,) as {
+			const report = JSON.parse(failure.stdout,) as {
 				details?: { retry?: { enabled?: boolean; maxAttempts?: number; }; };
 			};
 			expect(report.details?.retry,).toMatchObject({ enabled: false, maxAttempts: 1, },);
@@ -636,7 +640,8 @@ describe("CLI execution behavior", () => {
 			"0",
 		], { env: cliEnv("http://127.0.0.1:1",), },);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("--start-retries must be a positive integer",);
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).toContain("--start-retries must be a positive integer",);
 	});
 
 	function sqlPreviewServer(queryId: string, rows: number[][],) {
@@ -752,7 +757,8 @@ describe("CLI execution behavior", () => {
 			"5",
 		], { env: cliEnv("http://127.0.0.1:1",), },);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("--preview requires --output",);
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).toContain("--preview requires --output",);
 	});
 
 	it("rejects a non-integer --preview value before querying", async () => {
@@ -769,7 +775,8 @@ describe("CLI execution behavior", () => {
 			"abc",
 		], { env: cliEnv("http://127.0.0.1:1",), },);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("non-negative integer",);
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).toContain("non-negative integer",);
 		// Validation runs before the query, so no output file is created.
 		expect(readFileExists(outputPath,),).toBe(false,);
 	});
@@ -788,7 +795,8 @@ describe("CLI execution behavior", () => {
 			"-1",
 		], { env: cliEnv("http://127.0.0.1:1",), },);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("non-negative integer",);
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).toContain("non-negative integer",);
 	});
 
 	it("supports SQL from stdin without losing double quotes", async () => {
@@ -870,10 +878,11 @@ describe("CLI execution behavior", () => {
 			env: cliEnv("http://127.0.0.1:1",),
 		},);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("Pass exactly one of --connection or --dataset",);
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).toContain("Pass exactly one of --connection or --dataset",);
 	});
 
-	it("pretty-prints JSON by default and emits compact JSON with explicit --json", async () => {
+	it("emits compact JSON by default and rejects the removed --json flag", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			expect(req.method,).toBe("GET",);
@@ -888,18 +897,27 @@ describe("CLI execution behavior", () => {
 				{ projectKey: "P1", name: "One", },
 				{ projectKey: "P2", name: "Two", },
 			],);
-			expect(implicitJson.stdout,).toContain("\n  {",);
+			expect(implicitJson.stdout,).toBe(
+				'[{"projectKey":"P1","name":"One"},{"projectKey":"P2","name":"Two"}]\n',
+			);
+			expect(implicitJson.stderr,).toBe("",);
 		},);
 
-		await withCliServer((req, res,) => {
-			const url = new URL(req.url ?? "/", "http://localhost",);
-			expect(req.method,).toBe("GET",);
-			expect(url.pathname,).toBe("/public/api/projects/",);
-			sendJson(res, [{ projectKey: "P1", name: "One", },],);
-		}, async (url,) => {
-			const explicitJson = await dss(["project", "list", "--json",], { env: cliEnv(url,), },);
-			expect(JSON.parse(explicitJson.stdout,),).toEqual([{ projectKey: "P1", name: "One", },],);
-			expect(explicitJson.stdout,).toBe('[{"projectKey":"P1","name":"One"}]\n',);
+		const failure = await dssFailure(
+			["project", "list", "--json",],
+			{ env: cliEnv("http://127.0.0.1:1",), },
+		);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			ok: false,
+			error: "Unknown flag: --json",
+			code: "unknown_flag",
+			category: "usage",
+			exitCode: 1,
+			resource: "project",
+			action: "list",
 		},);
 	});
 
@@ -948,11 +966,13 @@ describe("CLI execution behavior", () => {
 	it("rejects removed output format flags", async () => {
 		const longFailure = await dssFailure(["project", "list", "--format", "table",],);
 		expect(longFailure.code,).toBe(1,);
-		expect(longFailure.stderr,).toContain("Unknown flag: --format",);
+		expect(longFailure.stderr,).toBe("",);
+		expect(longFailure.stdout,).toContain("Unknown flag: --format",);
 
 		const shortFailure = await dssFailure(["-f", "table",],);
 		expect(shortFailure.code,).toBe(1,);
-		expect(shortFailure.stderr,).toContain("Unknown flag: -f",);
+		expect(shortFailure.stderr,).toBe("",);
+		expect(shortFailure.stdout,).toContain("Unknown flag: -f",);
 	});
 
 	it("doctor reports connectivity and default project access as JSON", async () => {
@@ -1197,7 +1217,7 @@ describe("CLI execution behavior", () => {
 			res.statusCode = 404;
 			res.end(`unexpected request ${url.pathname}`,);
 		}, async (url,) => {
-			const { stdout, stderr, } = await dss(["fixtures", "--json", "--project-key", "TEST",], {
+			const { stdout, stderr, } = await dss(["fixtures", "--project-key", "TEST",], {
 				env: cliEnv(url,),
 			},);
 			expect(stderr,).toBe("",);
@@ -1273,7 +1293,7 @@ describe("CLI execution behavior", () => {
 			res.end(`unexpected request ${url.pathname}`,);
 		}, async (url,) => {
 			const result = JSON.parse(
-				(await dss(["fixtures", "--json", "--project-key", "TEST", "--allow-types", "BigQuery",], {
+				(await dss(["fixtures", "--project-key", "TEST", "--allow-types", "BigQuery",], {
 					env: cliEnv(url,),
 				},)).stdout,
 			) as {
@@ -1323,7 +1343,7 @@ describe("CLI execution behavior", () => {
 			res.end(`unexpected request ${url.pathname}`,);
 		}, async (url,) => {
 			const result = JSON.parse(
-				(await dss(["fixtures", "--json", "--project-key", "TEST",], { env: cliEnv(url,), },)).stdout,
+				(await dss(["fixtures", "--project-key", "TEST",], { env: cliEnv(url,), },)).stdout,
 			) as {
 				safeDataset: unknown;
 				safeManagedFolder: unknown;
@@ -1377,13 +1397,15 @@ describe("CLI execution behavior", () => {
 		}, async (url,) => {
 			const apiError = await dssFailure(["dataset", "get", "missing",], { env: cliEnv(url,), },);
 			expect(apiError.code,).toBe(2,);
-			expect(apiError.stderr,).toContain('"code":"not_found"',);
+			expect(apiError.stderr,).toBe("",);
+			expect(apiError.stdout,).toContain('"code":"not_found"',);
 
 			const transientError = await dssFailure(["dataset", "delete", "transient",], {
 				env: cliEnv(url,),
 			},);
 			expect(transientError.code,).toBe(3,);
-			expect(transientError.stderr,).toContain('"code":"transient"',);
+			expect(transientError.stderr,).toBe("",);
+			expect(transientError.stdout,).toContain('"code":"transient"',);
 		},);
 	});
 
@@ -1398,7 +1420,8 @@ describe("CLI execution behavior", () => {
 		}, async (url,) => {
 			const failure = await dssFailure(["business-app", "list",], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(2,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report.code,).toBe("not_found",);
 			expect(report.resource,).toBe("business-app",);
 			expect(report.action,).toBe("list",);

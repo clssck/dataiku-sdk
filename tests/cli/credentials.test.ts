@@ -27,8 +27,8 @@ describe("CLI missing credentials", () => {
 				},
 			},);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stdout,).toBe("",);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				code: "missing_required_flag",
 				category: "usage",
@@ -52,7 +52,8 @@ describe("CLI missing credentials", () => {
 			},
 		},);
 		expect(failure.code,).toBe(1,);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			code: "unknown_flag",
 			category: "usage",
@@ -73,7 +74,8 @@ describe("CLI missing credentials", () => {
 			},
 		},);
 		expect(failure.code,).toBe(1,);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			code: "missing_required_arg",
 			category: "usage",
@@ -92,7 +94,8 @@ describe("CLI missing credentials", () => {
 				env: cliEnv(url,),
 			},);
 			expect(failure.code,).toBe(2,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				code: "permission_denied",
 				category: "dss",
@@ -118,7 +121,8 @@ describe("CLI missing credentials", () => {
 				env: cliEnv(url,),
 			},);
 			expect(failure.code,).toBe(3,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				ok: false,
 				code: "transient",
@@ -231,8 +235,8 @@ describe("CLI explicit empty credential errors", () => {
 				},
 			},);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stdout,).toBe("",);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				ok: false,
 				code: "missing_required_flag",
@@ -272,8 +276,8 @@ describe("CLI explicit empty credential errors", () => {
 				},
 			},);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stdout,).toBe("",);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				ok: false,
 				code: "missing_required_flag",

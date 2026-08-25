@@ -171,7 +171,7 @@ export interface CommandStructuredExample {
 
 export interface CommandUnsafeOutput {
 	condition: string;
-	kind: "raw-stdout" | "local-file";
+	kind: "local-file";
 	detail: string;
 	safeAlternative?: string;
 }
@@ -283,7 +283,7 @@ const PROJECT_SCOPED_RESOURCES = new Set([
 	"wiki",
 ],);
 
-const GLOBAL_AGENT_FLAGS = ["json", "verbose", "fields",];
+const GLOBAL_AGENT_FLAGS = ["verbose", "fields",];
 const AUTHENTICATED_AGENT_FLAGS = [
 	"url",
 	"api-key",
@@ -292,21 +292,23 @@ const AUTHENTICATED_AGENT_FLAGS = [
 	"insecure",
 	"ca-cert",
 ];
-export const COMMANDS_USAGE = "dss commands run [--fields PATHS] [--json]";
+export const COMMANDS_USAGE = "dss commands run [--fields PATHS] [--output PATH]";
 const COMMANDS_DESCRIPTION =
-	"Print the machine-readable command registry for agent planning; scope it with --fields RESOURCE, RESOURCE.ACTION, or RESOURCE.ACTION.FIELD instead of reading the whole registry.";
+	"Print a compact resource/action summary by default; use --fields for scoped command metadata or --output PATH to export the full registry without sending it through stdout.";
 const COMMANDS_EXAMPLES = [
-	"dss commands run --fields dataset --json",
-	"dss commands run --fields dataset.create --json",
-	"dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples --json",
+	"dss commands run",
+	"dss commands run --fields dataset",
+	"dss commands run --fields dataset.create",
+	"dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples",
+	"dss commands run --output commands.json",
 ];
 export const AGENT_CONTRACT_COMMAND = "dss agent contract";
-export const AGENT_CONTRACT_USAGE = "dss agent contract [--fields PATHS] [--json]";
+export const AGENT_CONTRACT_USAGE = "dss agent contract [--fields PATHS]";
 const AGENT_CONTRACT_DESCRIPTION =
 	"Print the versioned JSON agent contract; scope bootstrap fields, use commands.actions to enumerate the surface, and read schemas only when needed.";
 const AGENT_CONTRACT_EXAMPLES = [
-	"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility --json",
-	"dss agent contract --fields commands.actions --json",
+	"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility",
+	"dss agent contract --fields commands.actions",
 ];
 const VERSION_USAGE = "dss version";
 const VERSION_DESCRIPTION = "Print the CLI version and git revision as JSON.";
@@ -324,11 +326,11 @@ const CLEANUP_EXAMPLES = [
 	"dss cleanup --file cleanup.jsonl",
 	"dss cleanup --file cleanup.jsonl --apply",
 ];
-const FIXTURES_USAGE = "dss fixtures [--json] [--project-key KEY] [--allow-types CSV]";
+const FIXTURES_USAGE = "dss fixtures [--project-key KEY] [--allow-types CSV]";
 const FIXTURES_DESCRIPTION = "Discover safe live-test fixtures for agent workflows.";
 const FIXTURES_EXAMPLES = [
-	"dss fixtures --json",
-	"dss fixtures --json --allow-types Filesystem,Inline",
+	"dss fixtures",
+	"dss fixtures --allow-types Filesystem,Inline",
 ];
 
 const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
@@ -548,7 +550,7 @@ function shortFlagPattern(flags: CommandFlagMetadata[],): string | undefined {
  * between `dss` and the first positional. Synthetic single-action commands
  * whose usage omits their action token (e.g. `dss batch ...`, `dss version`)
  * use an actionless prefix, while real command paths that spell `run` in their
- * usage (e.g. `dss commands run [--json]`) keep the action token.
+ * usage (e.g. `dss commands run`) keep the action token.
  */
 function argvPrefix(resource: string, action: string, usage: string,): string[] {
 	const usageTokens = usage.split(/\s+/,).filter((token,) => token.length > 0);
@@ -646,20 +648,9 @@ function argvJsonSchema(
 function unsafeOutputs(
 	resource: string,
 	action: string,
-	flags: CommandFlagMetadata[],
 	producesLocalFile: boolean,
 ): CommandUnsafeOutput[] | undefined {
 	const outputs: CommandUnsafeOutput[] = [];
-	if (flags.some((flag,) => flag.name === "raw")) {
-		outputs.push({
-			condition: "--raw without --output",
-			kind: "raw-stdout",
-			detail: `${resource} ${action} can intentionally write raw payload bytes/text instead of JSON.`,
-			safeAlternative: flags.some((flag,) => flag.name === "output")
-				? "Pass --output PATH so stdout remains a JSON string containing the path."
-				: "Omit --raw when a JSON stdout value is required.",
-		},);
-	}
 	if (producesLocalFile) {
 		const sensitivePermissions = resource === "app" && action === "permissions-snapshot";
 		outputs.push({
@@ -1187,7 +1178,7 @@ function buildRegistryEntry(
 		|| meta.usage.includes("--output-file PATH",);
 	const uniqueRequiredFlags = uniqueStrings(requiredFlags,);
 	const uniqueOptionalFlags = uniqueStrings(optionalFlags,);
-	const unsafe = unsafeOutputs(resource, action, flagMetadata, producesLocalFile,);
+	const unsafe = unsafeOutputs(resource, action, producesLocalFile,);
 	return {
 		resource,
 		action,
@@ -1454,7 +1445,7 @@ export function agentContractJsonSchema(): Record<string, unknown> {
 	};
 }
 
-function commandActionSummary(
+export function commandActionSummary(
 	registry: Record<string, Record<string, CommandRegistryEntry>>,
 ): Record<string, string[]> {
 	const summary: Record<string, string[]> = {};
@@ -1472,17 +1463,15 @@ export function buildAgentContract(): Record<string, unknown> {
 		cli: cliVersionResult(),
 		commands: {
 			discoveryCommand: "dss commands run",
-			scopedDiscoveryCommand: "dss commands run --fields RESOURCE[.ACTION[.FIELD...]] --json",
-			actionIndexCommand: "dss agent contract --fields commands.actions --json",
-			compactOutputFlag: "--json",
-			compactOutputHint:
-				"Pass --json to emit compact single-line JSON and reduce agent context usage.",
+			fullRegistryExportCommand: "dss commands run --output PATH",
+			scopedDiscoveryCommand: "dss commands run --fields RESOURCE[.ACTION[.FIELD...]]",
+			actionIndexCommand: "dss agent contract --fields commands.actions",
 			scopedDiscoveryExamples: [
-				"dss commands run --fields dataset --json",
-				"dss commands run --fields dataset.create --json",
+				"dss commands run --fields dataset",
+				"dss commands run --fields dataset.create",
 			],
 			scopedDiscoveryHint:
-				"--fields RESOURCE returns every action of one resource; --fields RESOURCE.ACTION returns a single registry entry keyed by the dotted path; append .FIELD paths to project nested metadata. Comma-separate paths to select several.",
+				"`dss commands run` returns the resource/action summary. --fields RESOURCE returns every action of one resource; --fields RESOURCE.ACTION returns a single registry entry keyed by the dotted path; append .FIELD paths to project nested metadata. Comma-separate paths to select several. Use --output PATH to export the full registry.",
 			actions: commandActionSummary(registry,),
 		},
 		schemas: {
@@ -1495,30 +1484,24 @@ export function buildAgentContract(): Record<string, unknown> {
 		},
 		stdio: {
 			stdout: {
+				format: "compact-json",
 				success: "single-json-value",
-				rawEscapeHatches: [
-					"recipe get-payload --raw without --output",
-					"recipe cat --raw without --output",
-				],
+				failure: "structured-error-object",
+				richFailureResults:
+					"doctor/batch/cleanup nonzero outcomes are their own compact result on stdout ({ok:false,...}) with the command's exit code; not re-wrapped.",
 			},
 			stderr: {
 				format: "jsonl",
-				events: ["warning", "trace", "error",],
-				error: "single-final-error-event-on-nonzero-exit",
-				failureRouting: {
-					commandFailure: "doctor/batch/cleanup failures: single JSON stdout; empty stderr",
-					dispatchFailure:
-						"usage/unknown/transport/internal failures: empty stdout; single JSON error stderr",
-				},
+				events: ["warning", "trace",],
 			},
 		},
 		planning: {
 			discoveryCommand: "dss commands run",
 			contractCommand: AGENT_CONTRACT_COMMAND,
 			bootstrapCommand:
-				"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility --json",
-			preferredDiscoveryCommand: "dss commands run --fields RESOURCE.ACTION --json",
-			actionIndexCommand: "dss agent contract --fields commands.actions --json",
+				"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility",
+			preferredDiscoveryCommand: "dss commands run --fields RESOURCE.ACTION",
+			actionIndexCommand: "dss agent contract --fields commands.actions",
 			mutatingCommandsAdvertisePlan: true,
 		},
 		compatibility: {
@@ -3026,7 +3009,7 @@ export function commandPlanShape(
 				method: "PUT",
 				endpoint: projectEndpoint(`/sql-notebooks/${encodeURIComponent(id,)}/history`,),
 				identifiers: { id, cellId: flags["cell-id"] as string | undefined, },
-				payload: { retain: num(flags["retain"],), },
+				payload: { retain: num(flags["retain"], "--retain",), },
 			};
 		case "project.create": {
 			const settings = jsonInput(flags,) ?? null;

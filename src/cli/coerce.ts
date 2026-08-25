@@ -2,10 +2,52 @@ import { readFileSync, } from "node:fs";
 import type { JobBuildTargetType, JobLogFilter, } from "../resources/jobs.js";
 import { UsageError, } from "./usage.js";
 
-export function num(v: string | boolean | undefined,): number | undefined {
-	if (typeof v !== "string") return undefined;
+function safeValuePreview(value: string,): string {
+	return value.length <= 32 ? value : `${value.slice(0, 32,)}…`;
+}
+
+export function num(v: string | boolean | undefined, flagName?: string,): number | undefined {
+	if (v === undefined || v === false) return undefined;
+	if (typeof v !== "string") {
+		throw new UsageError(
+			`${flagName ?? "Numeric flag"} requires a value.`,
+			"invalid_flag_value",
+			undefined,
+			flagName ? { flag: flagName, } : {},
+		);
+	}
+	if (v.trim().length === 0) {
+		throw new UsageError(
+			`Invalid numeric value for ${flagName ?? "flag"}.`,
+			"invalid_flag_value",
+			undefined,
+			flagName ? { flag: flagName, } : {},
+		);
+	}
 	const n = Number(v,);
-	return Number.isFinite(n,) ? n : undefined;
+	if (!Number.isFinite(n,)) {
+		throw new UsageError(
+			`Invalid numeric value for ${flagName ?? "flag"}: ${safeValuePreview(v,)}.`,
+			"invalid_flag_value",
+			undefined,
+			{
+				...(flagName ? { flag: flagName, } : {}),
+				value: safeValuePreview(v,),
+			},
+		);
+	}
+	return n;
+}
+
+export function numFlag(
+	flags: Record<string, string | boolean>,
+	flagNames: string[],
+): number | undefined {
+	const flagName = flagNames.find(
+		(name,) => flags[name] !== undefined && flags[name] !== false,
+	);
+	if (flagName === undefined) return undefined;
+	return num(flags[flagName], `--${flagName}`,);
 }
 
 export function jobBuildTargetType(v: string | boolean | undefined,): JobBuildTargetType {
@@ -31,7 +73,7 @@ export function jobBuildTargetTypeFromFlags(
 }
 
 export function maxLogLinesFromFlags(flags: Record<string, string | boolean>,): number | undefined {
-	return num(flags["max-log-lines"] ?? flags["max-lines"],);
+	return numFlag(flags, ["max-log-lines", "max-lines",],);
 }
 
 export function jobLogFilterFromFlag(v: string | boolean | undefined,): JobLogFilter | undefined {
@@ -172,7 +214,10 @@ export function json(
 	v: string | boolean | undefined,
 	source = "JSON flag",
 ): Record<string, unknown> | undefined {
-	if (typeof v !== "string") return undefined;
+	if (v === undefined || v === false) return undefined;
+	if (typeof v !== "string" || v.trim().length === 0) {
+		throw new UsageError(`${source} requires a JSON value.`, "invalid_flag_value",);
+	}
 	return parseJsonObject(v, source,);
 }
 
@@ -180,24 +225,69 @@ export function readStdinText(): string {
 	return readFileSync(0, "utf-8",);
 }
 
+const JSON_SOURCE_FLAGS = ["stdin", "data-file", "data",] as const;
+const TEXT_SOURCE_FLAGS = ["content", "file",] as const;
+
+function selectSingleSource(
+	flags: Record<string, string | boolean>,
+	sourceFlags: readonly string[],
+): string | undefined {
+	const provided = sourceFlags.filter((name,) => {
+		const value = flags[name];
+		if (value === undefined || value === false) return false;
+		return name === "stdin" ? parseBooleanOption(value, "--stdin",) === true : true;
+	},);
+	if (provided.length > 1) {
+		throw new UsageError(
+			`Conflicting input sources: ${
+				provided.map((name,) => `--${name}`).join(" or ",)
+			}. Provide exactly one.`,
+			"conflicting_input_sources",
+			undefined,
+			{ sources: provided, },
+		);
+	}
+	return provided[0];
+}
+
+function resolveJsonSourceText(
+	flags: Record<string, string | boolean>,
+	kind: "object" | "any",
+): unknown {
+	const source = selectSingleSource(flags, JSON_SOURCE_FLAGS,);
+	if (source === undefined) return undefined;
+	if (source === "stdin") {
+		const jsonText = readStdinText();
+		return kind === "object"
+			? parseJsonObject(jsonText, "stdin",)
+			: parseJsonValue(jsonText, "stdin",);
+	}
+	if (source === "data-file") {
+		const fileValue = flags["data-file"];
+		if (typeof fileValue === "string") {
+			const jsonText = readFileSync(fileValue, "utf-8",);
+			return kind === "object"
+				? parseJsonObject(jsonText, fileValue,)
+				: parseJsonValue(jsonText, fileValue,);
+		}
+	}
+	const dataValue = flags["data"];
+	if (typeof dataValue === "string") {
+		return kind === "object"
+			? parseJsonObject(dataValue, "--data",)
+			: parseJsonValue(dataValue, "--data",);
+	}
+	throw new UsageError("JSON input source is present but has no value.", "invalid_flag_value",);
+}
+
 export function jsonInput(
 	flags: Record<string, string | boolean>,
 ): Record<string, unknown> | undefined {
-	if (flags["stdin"] === true) return parseJsonObject(readStdinText(), "stdin",);
-	if (typeof flags["data-file"] === "string") {
-		return parseJsonObject(readFileSync(flags["data-file"], "utf-8",), flags["data-file"],);
-	}
-	if (typeof flags["data"] === "string") return parseJsonObject(flags["data"], "--data",);
-	return undefined;
+	return resolveJsonSourceText(flags, "object",) as Record<string, unknown> | undefined;
 }
 
 export function unknownJsonInput(flags: Record<string, string | boolean>,): unknown {
-	if (flags["stdin"] === true) return parseJsonValue(readStdinText(), "stdin",);
-	if (typeof flags["data-file"] === "string") {
-		return parseJsonValue(readFileSync(flags["data-file"], "utf-8",), flags["data-file"],);
-	}
-	if (typeof flags["data"] === "string") return parseJsonValue(flags["data"], "--data",);
-	return undefined;
+	return resolveJsonSourceText(flags, "any",);
 }
 
 export function schemaColumnsInput(flags: Record<string, string | boolean>, usage: string,): Array<{
@@ -240,9 +330,15 @@ export function schemaColumnsInput(flags: Record<string, string | boolean>, usag
 }
 
 export function textInput(flags: Record<string, string | boolean>,): string | undefined {
-	if (typeof flags["content"] === "string") return flags["content"];
-	if (typeof flags["file"] === "string") return readFileSync(flags["file"], "utf-8",);
-	return undefined;
+	const source = selectSingleSource(flags, TEXT_SOURCE_FLAGS,);
+	if (source === undefined) return undefined;
+	if (source === "file") {
+		const fileValue = flags["file"];
+		if (typeof fileValue === "string") return readFileSync(fileValue, "utf-8",);
+	}
+	const contentValue = flags["content"];
+	if (typeof contentValue === "string") return contentValue;
+	throw new UsageError("Text input source is present but has no value.", "invalid_flag_value",);
 }
 
 export function requiredJsonInput(

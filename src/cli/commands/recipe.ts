@@ -114,9 +114,9 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				logFilter: jobLogFilterFromFlag(f["log-filter"],),
 				maxLogLines: maxLogLinesFromFlags(f,),
 				partition: f["partition"] as string | undefined,
-				pollIntervalMs: num(f["poll-interval"],),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
 				projectKey: pk,
-				timeoutMs: num(f["timeout"],),
+				timeoutMs: num(f["timeout"], "--timeout",),
 				summary: f["summary"] === true,
 				wait,
 			};
@@ -244,10 +244,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				}
 				fuzzyDistance = normalized;
 			}
-			const fuzzyThreshold = num(f["fuzzy-threshold"],);
-			if (typeof f["fuzzy-threshold"] === "string" && fuzzyThreshold === undefined) {
-				throw new UsageError("--fuzzy-threshold must be a finite number.", "validation_failed",);
-			}
+			const fuzzyThreshold = num(f["fuzzy-threshold"], "--fuzzy-threshold",);
 			const payload = {
 				type,
 				name,
@@ -592,23 +589,24 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			}
 			return payload;
 		},
-		usage: "dss recipe get-payload <name> [--raw] [--output PATH] [--project-key KEY]",
-		description: "Print the recipe code payload as JSON; use --raw for raw bytes, not JSON.",
+		usage: "dss recipe get-payload <name> [--output PATH] [--project-key KEY]",
+		description:
+			"Print the recipe code payload as a JSON string, or write it to a file with --output.",
 		examples: [
-			"dss recipe get-payload compute_orders --raw",
+			"dss recipe get-payload compute_orders",
 			"dss recipe get-payload compute_orders -o code.py",
 		],
 	},
 	cat: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe cat <name> [--raw]",);
+			requireArgs(a, 1, "dss recipe cat <name>",);
 			return c.recipes.getPayload(a[0], {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss recipe cat <name> [--raw] [--project-key KEY]",
-		description: "Print a recipe code payload as JSON; use --raw for raw bytes, not JSON.",
-		examples: ["dss recipe cat compute_orders --raw",],
+		usage: "dss recipe cat <name> [--project-key KEY]",
+		description: "Print the recipe code payload as a JSON string.",
+		examples: ["dss recipe cat compute_orders",],
 	},
 	"set-payload": {
 		handler: async (c, a, f,) => {

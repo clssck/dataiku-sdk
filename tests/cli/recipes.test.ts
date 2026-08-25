@@ -117,13 +117,45 @@ describe("recipe create join flags", () => {
 		},);
 
 		expect(failure.code,).toBe(1,);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			code: "invalid_enum",
 			resource: "recipe",
 			action: "create",
 		},);
 		expect(report.error,).toContain("DAMERAU_LEVENSHTEIN",);
+	});
+	it("rejects an invalid fuzzy threshold with its canonical flag name", async () => {
+		const failure = await dssFailure([
+			"recipe",
+			"create",
+			"--type",
+			"fuzzyjoin",
+			"--input",
+			"left_ds,right_ds",
+			"--output",
+			"joined_ds",
+			"--fuzzy-on",
+			"name",
+			"--fuzzy-threshold",
+			"not-a-number",
+			"--dry-run",
+		], {
+			env: cliEnv("http://127.0.0.1:1",),
+		},);
+
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toBe("",);
+		expect(JSON.parse(failure.stdout,),).toMatchObject({
+			code: "invalid_flag_value",
+			details: {
+				flag: "--fuzzy-threshold",
+				value: "not-a-number",
+			},
+			resource: "recipe",
+			action: "create",
+		},);
 	});
 });
 
@@ -177,8 +209,10 @@ describe("recipe input commands", () => {
 				env: cliEnv(url,),
 			},);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("is already a",);
-			expect(failure.stderr,).toContain("input of recipe",);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(String(report.error,),).toContain("is already a",);
+			expect(String(report.error,),).toContain("input of recipe",);
 		},);
 		expect(capture.puts,).toBe(0,);
 	});
@@ -239,8 +273,10 @@ describe("recipe input commands", () => {
 				env: cliEnv(url,),
 			},);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain("is not a",);
-			expect(failure.stderr,).toContain("input of recipe",);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(String(report.error,),).toContain("is not a",);
+			expect(String(report.error,),).toContain("input of recipe",);
 		},);
 		expect(capture.puts,).toBe(0,);
 	});
@@ -319,18 +355,18 @@ describe("CLI recipe get-payload and set-payload", () => {
 		},);
 	});
 
-	it("get-payload --raw preserves payload bytes on stdout", async () => {
+	it("get-payload returns payload bytes as a JSON-encoded string on stdout", async () => {
 		await withCliServer((_req, res,) => {
 			sendJson(res, {
 				recipe: { type: "python", },
 				payload: "print('hello')\r\nprint('bye')\n",
 			},);
 		}, async (url,) => {
-			const { stdout, stderr, } = await dss(["recipe", "get-payload", "my_recipe", "--raw",], {
+			const { stdout, stderr, } = await dss(["recipe", "get-payload", "my_recipe",], {
 				env: cliEnv(url,),
 			},);
 			expect(stderr,).toBe("",);
-			expect(stdout,).toBe("print('hello')\r\nprint('bye')\n",);
+			expect(JSON.parse(stdout,),).toBe("print('hello')\r\nprint('bye')\n",);
 		},);
 	});
 
@@ -356,6 +392,20 @@ describe("CLI recipe get-payload and set-payload", () => {
 		} finally {
 			rmSync(outPath, { force: true, },);
 		}
+	});
+	it("--raw is rejected as an unknown flag on get-payload", async () => {
+		const failure = await dssFailure(["recipe", "get-payload", "my_recipe", "--raw",], {
+			env: cliEnv("http://127.0.0.1:1",),
+		},);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+		expect(report,).toMatchObject({
+			error: "Unknown flag: --raw",
+			code: "unknown_flag",
+			category: "usage",
+			exitCode: 1,
+		},);
 	});
 
 	it("set-payload reads from --file and PUTs", async () => {
@@ -388,7 +438,8 @@ describe("CLI recipe get-payload and set-payload", () => {
 					filePath,
 					"--no-backup",
 				], { env: cliEnv(url,), },);
-				expect(stdout,).toContain('"updated": "my_recipe"',);
+				const result = JSON.parse(stdout,) as Record<string, unknown>;
+				expect(result.updated,).toBe("my_recipe",);
 				expect(putBody,).toBeDefined();
 				const parsed = JSON.parse(putBody!,);
 				expect(parsed.payload,).toBe("print('updated')\n",);
@@ -511,10 +562,12 @@ describe("CLI recipe get-payload and set-payload", () => {
 			env: cliEnv("http://localhost:1",),
 		},);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toContain("--file is required",);
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+		expect(String(report.error,),).toContain("--file is required",);
 	});
 
-	it("get-payload writes --raw payloads to --output and returns the path as JSON", async () => {
+	it("get-payload writes payloads to --output and returns the path as JSON", async () => {
 		let requests = 0;
 		const outputPath = join(tmpdir(), `dss-raw-output-${Date.now()}.py`,);
 		try {
@@ -532,7 +585,7 @@ describe("CLI recipe get-payload and set-payload", () => {
 					"recipe",
 					"get-payload",
 					"my_recipe",
-					"--raw",
+					"",
 					"--output",
 					outputPath,
 				], { env: cliEnv(url,), },);

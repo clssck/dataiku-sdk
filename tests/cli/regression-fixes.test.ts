@@ -108,7 +108,8 @@ describe("CLI regression fixes", () => {
 			) {
 				const failure = await dssFailure(argv, { env: cliEnv(url,), },);
 				expect(failure.code,).toBe(1,);
-				expect(failure.stderr,).toContain(
+				expect(failure.stderr,).toBe("",);
+				expect(failure.stdout,).toContain(
 					`Unknown flag --record-cleanup for project ${argv[1]}`,
 				);
 			}
@@ -453,8 +454,9 @@ describe("CLI regression fixes", () => {
 				{ env, },
 			);
 			expect(exportPlanFailure.code,).toBe(1,);
+			expect(exportPlanFailure.stderr,).toBe("",);
 			const exportPlanReport = JSON.parse(
-				exportPlanFailure.stderr,
+				exportPlanFailure.stdout,
 			) as Record<string, unknown>;
 			expect(exportPlanReport,).toMatchObject({
 				ok: false,
@@ -512,7 +514,8 @@ describe("CLI regression fixes", () => {
 	it("rejects unsupported known flags on project list while accepting global flags", async () => {
 		const failure = await dssFailure(["project", "list", "--name", "X",], { env: hermeticEnv, },);
 		expect(failure.code,).toBe(1,);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			code: "unknown_flag",
 			category: "usage",
@@ -533,7 +536,6 @@ describe("CLI regression fixes", () => {
 				"list",
 				"--timeout",
 				"5000",
-				"--json",
 				"--fields",
 				"projectKey,name",
 			], { env: cliEnv(url,), },);
@@ -567,9 +569,9 @@ describe("CLI regression fixes", () => {
 			}, 400,);
 		}, async (url,) => {
 			const failure = await dssFailure(["project", "list",], { env: cliEnv(url,), },);
-			const combined = `${failure.stdout}\n${failure.stderr}`;
+			const combined = failure.stdout;
 			for (const sentinel of sentinels) expect(combined,).not.toContain(sentinel,);
-			const report = JSON.parse(failure.stderr,) as {
+			const report = JSON.parse(failure.stdout,) as {
 				code?: string;
 				category?: string;
 				exitCode?: number;
@@ -658,7 +660,8 @@ describe("CLI regression fixes", () => {
 				"https://dss.example/dip/api/flow/jobs/cat-activity-log?projectKey=TEST&jobId=JOB",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(1,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				code: "usage_error",
 				category: "usage",
@@ -679,7 +682,8 @@ describe("CLI regression fixes", () => {
 			"EXTRA2",
 		], { env: cliEnv("http://127.0.0.1:9/",), },);
 		expect(failure.code,).toBe(1,);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			code: "usage_error",
 			category: "usage",
@@ -717,7 +721,8 @@ describe("CLI regression fixes", () => {
 				"INST",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(1,);
-			const events = failure.stderr
+			expect(failure.stderr,).toBe("",);
+			const events = failure.stdout
 				.split(/\r?\n/u,)
 				.filter((line,) => line.length > 0)
 				.map((line,) => JSON.parse(line,) as Record<string, unknown>);
@@ -853,7 +858,8 @@ describe("CLI regression fixes", () => {
 				{ env: cliEnv(url,), },
 			);
 			expect(failure.code,).toBe(2,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				code: "not_found",
 				category: "dss",
@@ -869,7 +875,10 @@ describe("CLI regression fixes", () => {
 	});
 
 	it("commands run exposes alias, usage, and cleanup hint regressions", async () => {
-		const { stdout, stderr, } = await dss(["commands", "run",], { env: hermeticEnv, },);
+		const { stdout, stderr, } = await dss(
+			["commands", "run", "--fields", "dataset,job,project-library",],
+			{ env: hermeticEnv, },
+		);
 		expect(stderr,).toBe("",);
 		const registry = JSON.parse(stdout,) as Record<
 			string,
@@ -966,7 +975,8 @@ describe("CLI regression fixes", () => {
 				"TEST",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(1,);
-			const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				code: "missing_required_flag",
 				category: "usage",
@@ -994,10 +1004,11 @@ describe("CLI regression fixes", () => {
 				"TEST",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toContain(
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain(
 				"dss recipe clone (source|--from SOURCE) (--name NAME|--to NAME)",
 			);
-			expect(failure.stderr,).not.toContain("[source|--from SOURCE]",);
+			expect(failure.stdout,).not.toContain("[source|--from SOURCE]",);
 		},);
 		expect(requests,).toBe(0,);
 	});
@@ -1019,8 +1030,8 @@ describe("CLI regression fixes", () => {
 			},
 		},);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stdout,).toBe("",);
-		const report = JSON.parse(failure.stderr,) as Record<string, unknown>;
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			code: "missing_required_flag",
 			category: "usage",
@@ -1042,9 +1053,9 @@ describe("CLI regression fixes", () => {
 			"test-key",
 		], { env: hermeticEnv, },);
 		expect(failure.code,).toBe(1,);
-		expect(failure.stdout,).toBe("",);
-		expect(failure.stderr,).not.toContain(secret,);
-		expect(JSON.parse(failure.stderr,),).toMatchObject({
+		expect(failure.stderr,).toBe("",);
+		expect(failure.stdout,).not.toContain(secret,);
+		expect(JSON.parse(failure.stdout,),).toMatchObject({
 			code: "validation_failed",
 			category: "usage",
 			exitCode: 1,
@@ -1069,7 +1080,8 @@ describe("CLI regression fixes", () => {
 				"TEST",
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(2,);
-			const report = JSON.parse(failure.stderr,) as {
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
 				code?: string;
 				error?: string;
 				details?: { body?: string; };
@@ -1078,5 +1090,59 @@ describe("CLI regression fixes", () => {
 			expect(report.error,).toContain("Not found: dataset get in project TEST",);
 			expect(report.details?.body,).toBe("{}",);
 		},);
+	});
+	it("rejects conflicting JSON payload sources as a usage error on stdout", async () => {
+		const failure = await dssFailure([
+			"recipe",
+			"update",
+			"compute_orders",
+			"--url",
+			"http://127.0.0.1:1",
+			"--api-key",
+			"k",
+			"--data",
+			'{"recipe":{"params":{}}}',
+			"--data-file",
+			"/tmp/does-not-matter.json",
+		], { env: hermeticEnv, },);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as {
+			code?: string;
+			category?: string;
+			error?: string;
+			details?: { sources?: string[]; };
+		};
+		expect(report.code,).toBe("conflicting_input_sources",);
+		expect(report.category,).toBe("usage",);
+		expect(report.error,).toContain("Provide exactly one",);
+		expect(report.details?.sources,).toEqual(expect.arrayContaining(["data", "data-file",],),);
+	});
+	it("rejects invalid numeric global flag values as a usage error on stdout", async () => {
+		const failure = await dssFailure(
+			[
+				"project",
+				"list",
+				"--url",
+				"http://127.0.0.1:1",
+				"--api-key",
+				"k",
+				"--request-timeout",
+				"abc",
+			],
+			{ env: hermeticEnv, },
+		);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toBe("",);
+		const report = JSON.parse(failure.stdout,) as {
+			code?: string;
+			category?: string;
+			error?: string;
+			details?: { value?: string; };
+		};
+		expect(report.code,).toBe("invalid_flag_value",);
+		expect(report.category,).toBe("usage",);
+		expect(report.error,).toContain("Invalid numeric value",);
+		expect(report.details?.value,).toBe("abc",);
 	});
 });

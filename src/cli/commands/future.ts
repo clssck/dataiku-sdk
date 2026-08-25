@@ -26,8 +26,8 @@ export const futureCommands: Record<string, CommandMeta> = {
 		handler: (c, a, f,) => {
 			requireArgs(a, 1, "dss future wait <id>",);
 			return c.futures.wait(a[0], {
-				pollIntervalMs: num(f["poll-interval"],),
-				timeoutMs: num(f["timeout"],),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
+				timeoutMs: num(f["timeout"], "--timeout",),
 			},);
 		},
 		usage: "dss future wait <id> [--timeout MS] [--poll-interval MS]",
