@@ -1,4 +1,6 @@
 import { describe, expect, it, } from "bun:test";
+import { commands, } from "../../src/cli/commands/index.js";
+import { buildMutationPlan, } from "../../src/cli/contract.js";
 import {
 	cliEnv,
 	dss,
@@ -1130,6 +1132,414 @@ describe("CLI agent-readiness mutation contracts", () => {
 			expect(requests,).toEqual([],);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+});
+describe("machine contract: project-git mutation plans", () => {
+	const git = commands["project-git"];
+	const plan = (
+		action: string,
+		args: string[],
+		flags: Record<string, string | boolean>,
+	): Record<string, unknown> => buildMutationPlan("project-git", action, git[action]!, args, flags,);
+
+	it("pins set-remote and remove-remote remotes with an origin default", () => {
+		const set = plan("set-remote", [], {
+			"project-key": "MY PROJ",
+			repository: "https://git.example.com/acme/repo.git",
+		},);
+		expect(set,).toMatchObject({
+			plan: true,
+			resource: "project-git",
+			action: "set-remote",
+			method: "POST",
+			endpoint: "/dip/publicapi/projects/MY%20PROJ/git/remotes/origin",
+			remote: "origin",
+			payload: { url: "https://git.example.com/acme/repo.git", },
+		},);
+		expect(set.endpoint,).not.toContain("/public/api",);
+
+		const named = plan("set-remote", [], {
+			"project-key": "P",
+			repository: "git@github.com:acme/repo.git",
+			name: "upstream",
+		},);
+		expect(named.endpoint,).toBe("/dip/publicapi/projects/P/git/remotes/upstream",);
+
+		const remove = plan("remove-remote", [], {
+			"project-key": "P",
+			name: "upstream",
+		},);
+		expect(remove,).toMatchObject({
+			method: "DELETE",
+			endpoint: "/dip/publicapi/projects/P/git/remotes/upstream",
+			remote: "upstream",
+		},);
+	});
+
+	it("rejects HTTP(S) repository URLs with embedded userinfo and allows SSH/scp URLs", () => {
+		const usage = git["set-remote"]!.usage;
+		expect(
+			() =>
+				plan("set-remote", [], {
+					"project-key": "P",
+					repository: "https://user:token@git.example.com/repo.git",
+				},),
+		).toThrow(/userinfo/,);
+		expect(
+			() =>
+				plan("set-remote", [], {
+					"project-key": "P",
+					repository: "https://token@git.example.com/repo.git",
+				},),
+		).toThrow(/userinfo/,);
+		expect(
+			() =>
+				plan("set-remote", [], {
+					"project-key": "P",
+					repository: "https://[invalid",
+				},),
+		).toThrow(/valid HTTP\(S\) URL/,);
+		expect(
+			() =>
+				plan("set-remote", [], {
+					"project-key": "P",
+					repository: "https:/user:token@git.example.com/repo.git",
+				},),
+		).toThrow(/valid HTTP\(S\) URL/,);
+		expect(
+			() =>
+				plan("set-remote", [], {
+					"project-key": "P",
+					repository: "https://git.example.com\\repo.git",
+				},),
+		).toThrow(/valid HTTP\(S\) URL/,);
+		expect(
+			() =>
+				plan("set-remote", [], {
+					"project-key": "P",
+					repository: "https://git.example.com/\trepo.git",
+				},),
+		).toThrow(/control characters/,);
+		// SSH and scp-style URLs stay valid.
+		expect(
+			plan("set-remote", [], {
+				"project-key": "P",
+				repository: "git@github.com:acme/repo.git",
+			},).payload,
+		).toEqual({ url: "git@github.com:acme/repo.git", },);
+		expect(
+			plan("set-remote", [], {
+				"project-key": "P",
+				repository: " ssh://git@git.example.com/acme/repo.git ",
+			},).payload,
+		).toEqual({ url: "ssh://git@git.example.com/acme/repo.git", },);
+		expect(usage,).toBeTruthy();
+	});
+
+	it("pins create-branch to the exact five-key body", () => {
+		const full = plan("create-branch", ["feature/x",], {
+			"project-key": "P",
+			commit: "abc123",
+			"duplicate-project": "true",
+			"target-project-key": "OTHER",
+			"target-project-folder-id": "f1",
+		},);
+		expect(full,).toMatchObject({
+			method: "POST",
+			endpoint: "/dip/publicapi/projects/P/git/branches/",
+			name: "feature/x",
+			payload: {
+				name: "feature/x",
+				commit: "abc123",
+				duplicateProject: true,
+				targetProjectKey: "OTHER",
+				targetProjectFolderId: "f1",
+			},
+		},);
+		const minimal = plan("create-branch", ["feature/x",], {
+			"project-key": "P",
+		},);
+		expect(minimal.payload,).toEqual({
+			name: "feature/x",
+			commit: null,
+			duplicateProject: false,
+			targetProjectKey: null,
+			targetProjectFolderId: null,
+		},);
+	});
+
+	it("pins delete-branch booleans and the switch/fetch/pull/push wire calls", () => {
+		const deleteFull = plan("delete-branch", ["topic",], {
+			"project-key": "P",
+			remote: true,
+			"delete-remotely": true,
+			"force-delete": true,
+		},);
+		expect(deleteFull,).toMatchObject({
+			method: "POST",
+			endpoint: "/dip/publicapi/projects/P/git/actions/deleteBranch",
+			payload: {
+				name: "topic",
+				remote: true,
+				deleteRemotely: true,
+				forceDelete: true,
+			},
+		},);
+		expect(plan("delete-branch", ["topic",], { "project-key": "P", },).payload,).toEqual({
+			name: "topic",
+			remote: false,
+			deleteRemotely: false,
+			forceDelete: false,
+		},);
+		expect(plan("switch", ["main",], { "project-key": "P", },).endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/actions/switchBranch?branchName=main",
+		);
+		expect(plan("fetch", [], { "project-key": "P", },).endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/actions/fetch",
+		);
+		expect(plan("pull", [], { "project-key": "P", },).endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/actions/pullRebase",
+		);
+		expect(plan("pull", [], { "project-key": "P", branch: "main", },).endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/actions/pullRebase?branchName=main",
+		);
+		expect(plan("push", [], { "project-key": "P", branch: "main", },).endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/actions/push?branchName=main",
+		);
+	});
+
+	it("pins tag, commit, revert, reset, and drop-and-rebuild wire calls", () => {
+		expect(plan("create-tag", ["v1",], { "project-key": "P", },).payload,).toEqual({
+			name: "v1",
+			reference: "HEAD",
+			message: "",
+		},);
+		expect(
+			plan("create-tag", ["v1",], {
+				"project-key": "P",
+				reference: "abc123",
+				message: "release",
+			},).payload,
+		).toEqual({ name: "v1", reference: "abc123", message: "release", },);
+		expect(plan("delete-tag", ["v1",], { "project-key": "P", },).payload,).toEqual({
+			name: "v1",
+		},);
+		expect(plan("commit", [], { "project-key": "P", message: "msg", },).payload,).toEqual({
+			message: "msg",
+		},);
+		expect(plan("revert-to-revision", ["abc",], { "project-key": "P", },).endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/actions/revertToRevision?commit=abc",
+		);
+		expect(plan("revert-commit", ["abc",], { "project-key": "P", },).endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/actions/revertCommit?commit=abc",
+		);
+		expect(plan("reset-to-head", [], { "project-key": "P", },).endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/actions/resetToLocalHeadState",
+		);
+		expect(plan("reset-to-upstream", [], { "project-key": "P", },).endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/actions/resetToRemoteHeadState",
+		);
+		expect(
+			() => plan("drop-and-rebuild", [], { "project-key": "P", },),
+		).toThrow(/i-know-what-i-am-doing|acknowledge/i,);
+		expect(
+			plan("drop-and-rebuild", [], {
+				"project-key": "P",
+				"i-know-what-i-am-doing": "true",
+			},).endpoint,
+		).toBe(
+			"/dip/publicapi/projects/P/git/actions/dropAndRebuild?iKnowWhatIAmDoing=true",
+		);
+	});
+
+	it("redacts the library password as *** without reading the environment", () => {
+		const previous = process.env.GIT_LIBRARY_SECRET;
+		process.env.GIT_LIBRARY_SECRET = "SUPERSECRET_42";
+		try {
+			const add = plan("add-library", ["lib/utils",], {
+				"project-key": "P",
+				repository: "git@github.com:acme/utils.git",
+				checkout: "main",
+				"path-in-repository": "src",
+				login: "alice",
+				"password-env": "GIT_LIBRARY_SECRET",
+				"no-add-to-python-path": "true",
+			},);
+			const serialized = JSON.stringify(add,);
+			expect(serialized,).not.toContain("SUPERSECRET_42",);
+			expect(serialized,).toContain('"password":"***"',);
+			expect(add.payload,).toHaveProperty("addToPythonPath", false,);
+			expect(add.payload,).toHaveProperty("localTargetPath", "lib/utils",);
+			expect(add.endpoint,).toBe("/dip/publicapi/projects/P/git/lib-git-refs/",);
+		} finally {
+			if (previous === undefined) delete process.env.GIT_LIBRARY_SECRET;
+			else process.env.GIT_LIBRARY_SECRET = previous;
+		}
+	});
+
+	it("pins add-library defaults and the exact five-key set-library body", () => {
+		const add = plan("add-library", ["lib/utils",], {
+			"project-key": "P",
+			repository: "git@github.com:acme/utils.git",
+			checkout: "main",
+		},);
+		expect(add.payload,).toEqual({
+			repository: "git@github.com:acme/utils.git",
+			login: null,
+			password: null,
+			pathInGitRepository: "",
+			localTargetPath: "lib/utils",
+			checkout: "main",
+			addToPythonPath: true,
+		},);
+
+		const set = plan("set-library", ["my lib/modules",], {
+			"project-key": "P",
+			repository: "git@github.com:acme/utils.git",
+			checkout: "v2",
+			"path-in-repository": "python",
+			login: "alice",
+			"password-env": "X",
+		},);
+		expect(set.endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/lib-git-refs/my%20lib/modules",
+		);
+		expect(set.payload,).toHaveProperty("checkout", "v2",);
+		expect(set.payload,).toHaveProperty("login", "alice",);
+		expect(set.payload,).toHaveProperty("password", "***",);
+		expect(set.payload,).toHaveProperty("pathInGitRepository", "python",);
+		expect(set.payload,).toHaveProperty("repository", "git@github.com:acme/utils.git",);
+		expect(set.payload,).not.toHaveProperty("localTargetPath",);
+		expect(set.payload,).not.toHaveProperty("addToPythonPath",);
+		const setDefaultPath = plan("set-library", ["my-lib",], {
+			"project-key": "P",
+			repository: "git@github.com:acme/utils.git",
+			checkout: "v2",
+		},);
+		expect(setDefaultPath.payload,).toHaveProperty("pathInGitRepository", "",);
+	});
+
+	it("pins remove/reset/push library calls including the deleteDirectory query", () => {
+		expect(
+			plan("remove-library", ["lib/utils",], {
+				"project-key": "P",
+				"delete-directory": "true",
+			},).endpoint,
+		).toBe(
+			"/dip/publicapi/projects/P/git/lib-git-refs/lib/utils?deleteDirectory=true",
+		);
+		expect(plan("remove-library", ["lib/utils",], { "project-key": "P", },).endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/lib-git-refs/lib/utils?deleteDirectory=false",
+		);
+		expect(plan("reset-library", ["lib/utils",], { "project-key": "P", },).payload,).toEqual({
+			gitRef: "lib/utils",
+		},);
+		expect(
+			plan("push-library", ["lib/utils",], {
+				"project-key": "P",
+				message: "m",
+			},).payload,
+		).toEqual({ gitRef: "lib/utils", commitMessage: "m", },);
+		expect(
+			plan("push-all-libraries", [], {
+				"project-key": "P",
+				message: "m",
+			},).endpoint,
+		).toBe(
+			"/dip/publicapi/projects/P/git/actions/git-refs/push-all",
+		);
+		expect(plan("reset-all-libraries", [], { "project-key": "P", },).endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/actions/git-refs/reset-all",
+		);
+	});
+
+	it("advertises the future wait for library calls and pins future-abort", () => {
+		const add = plan("add-library", ["lib/utils",], {
+			"project-key": "P",
+			repository: "ssh://git@git.example.com/acme/utils.git",
+			checkout: "main",
+		},);
+		expect(add.async,).toBe("future",);
+		expect(add.exitCodesOnFailure,).toMatchObject({ longRunningFailure: 4, },);
+		expect(add.wait,).toHaveProperty("endpoint", "/dip/publicapi/futures/{jobId}?peek=false",);
+		expect(plan("future-abort", ["job-1",], {},).endpoint,).toBe(
+			"/dip/publicapi/futures/job-1",
+		);
+		expect(plan("future-abort", ["job-1",], {},).jobId,).toBe("job-1",);
+	});
+
+	it("never falls back to repo-wide endpoints or /public/api for any mutating action", () => {
+		const positionalArgs: Record<string, string[]> = {
+			"create-branch": ["feature/x",],
+			"delete-branch": ["topic",],
+			"create-tag": ["v1",],
+			"delete-tag": ["v1",],
+			switch: ["main",],
+			"revert-to-revision": ["abc",],
+			"revert-commit": ["abc",],
+			"add-library": ["lib/utils",],
+			"set-library": ["lib/utils",],
+			"remove-library": ["lib/utils",],
+			"reset-library": ["lib/utils",],
+			"push-library": ["lib/utils",],
+			"future-abort": ["job-1",],
+		};
+		const requiredFlags: Record<string, Record<string, string | boolean>> = {
+			"set-remote": { repository: "https://git.example.com/repo.git", },
+			commit: { message: "m", },
+			"push-library": { message: "m", },
+			"push-all-libraries": { message: "m", },
+			"add-library": { repository: "git@github.com:a/b.git", checkout: "main", },
+			"set-library": {
+				repository: "git@github.com:a/b.git",
+				checkout: "main",
+				"path-in-repository": "src",
+			},
+			"drop-and-rebuild": { "i-know-what-i-am-doing": true, },
+		};
+		const mutators = [
+			"set-remote",
+			"remove-remote",
+			"create-branch",
+			"delete-branch",
+			"create-tag",
+			"delete-tag",
+			"switch",
+			"fetch",
+			"pull",
+			"push",
+			"commit",
+			"revert-to-revision",
+			"revert-commit",
+			"reset-to-head",
+			"reset-to-upstream",
+			"drop-and-rebuild",
+			"add-library",
+			"set-library",
+			"remove-library",
+			"reset-library",
+			"push-library",
+			"push-all-libraries",
+			"reset-all-libraries",
+			"future-abort",
+		];
+		for (const action of mutators) {
+			const isFuture = action === "future-abort";
+			const flags: Record<string, string | boolean> = {
+				...(isFuture ? {} : { "project-key": "P", }),
+				...requiredFlags[action],
+			};
+			const result = plan(action, positionalArgs[action] ?? [], flags,);
+			expect(String(result.endpoint,), `${action} endpoint`,).toMatch(
+				/^\/dip\/publicapi\//,
+			);
+			expect(String(result.endpoint,), `${action} no /public/api`,).not.toContain(
+				"/public/api",
+			);
+			expect(String(result.endpoint,), `${action} no fallback`,).not.toContain(
+				"/project-gits/",
+			);
 		}
 	});
 });

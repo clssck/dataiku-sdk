@@ -314,6 +314,36 @@ describe("CLI batch command", () => {
 		expect(report.steps[2]!.args,).toEqual(["dataset", "get", "orders", "--api-key", "***",],);
 		expect(report.steps[3]!.args,).toEqual(["dataset", "get", "orders", "--api-key", "***",],);
 	});
+	it("redacts Project Git repository values from batch output", async () => {
+		const secret = "https://user:SUPERSECRET_REMOTE@git.example.com/repo.git";
+		const payload = JSON.stringify([
+			[
+				"project-git",
+				"set-remote",
+				"--project-key",
+				"P",
+				"--repository",
+				secret,
+			],
+			[
+				"project-git",
+				"add-library",
+				"lib",
+				"--project-key",
+				"P",
+				`--repository=${secret}`,
+				"--checkout",
+				"main",
+			],
+		],);
+		const { stdout, } = await dss(["batch", "--data", payload, "--dry-run",], {
+			env: hermetic,
+		},);
+		expect(stdout,).not.toContain("SUPERSECRET_REMOTE",);
+		const report = JSON.parse(stdout,) as { steps: Array<{ args: string[]; }>; };
+		expect(report.steps[0]!.args,).toContain("***",);
+		expect(report.steps[1]!.args,).toContain("--repository=***",);
+	});
 
 	it("redacts --api-key values from batch --plan output and executed step results", async () => {
 		const secret = "SUPERSECRET_KEY_67890";

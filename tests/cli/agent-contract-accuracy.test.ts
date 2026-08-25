@@ -1,5 +1,10 @@
 import { describe, expect, it, } from "bun:test";
-import { buildCommandRegistry, buildMutationPlan, } from "../../src/cli/contract.js";
+import { commands, } from "../../src/cli/commands/index.js";
+import {
+	buildAgentContract,
+	buildCommandRegistry,
+	buildMutationPlan,
+} from "../../src/cli/contract.js";
 import { RESOURCE_NAMES, } from "../../src/cli/usage.js";
 import { dss, dssFailure, join, mkdirSync, readFileSync, rmSync, tmpdir, } from "./_harness.js";
 
@@ -765,5 +770,81 @@ describe("agent contract accuracy", () => {
 			targetProjectKey: "TOKEY",
 			targetProjectName: "TOKEY",
 		},);
+	});
+});
+describe("agent contract accuracy: project-git surface", () => {
+	it("exposes the exact project-git action list through the agent contract", () => {
+		const registry = buildCommandRegistry();
+		const gitActions = Object.keys(registry["project-git"] ?? {},).sort();
+		expect(gitActions,).toEqual(
+			[
+				"add-library",
+				"branches",
+				"commit",
+				"create-branch",
+				"create-tag",
+				"current-branch",
+				"delete-branch",
+				"delete-tag",
+				"diff",
+				"drop-and-rebuild",
+				"fetch",
+				"future-abort",
+				"future-status",
+				"future-wait",
+				"get-remote",
+				"list-libraries",
+				"log",
+				"pull",
+				"push",
+				"push-all-libraries",
+				"push-library",
+				"remove-library",
+				"remove-remote",
+				"reset-all-libraries",
+				"reset-library",
+				"reset-to-head",
+				"reset-to-upstream",
+				"revert-commit",
+				"revert-to-revision",
+				"set-library",
+				"set-remote",
+				"status",
+				"switch",
+				"tags",
+			].sort(),
+		);
+		const contract = buildAgentContract();
+		expect(contract.commands,).toHaveProperty(["actions", "project-git",], gitActions,);
+	});
+
+	it("exposes project-git acknowledgements and password flags safely", () => {
+		const registry = buildCommandRegistry();
+		const drop = registry["project-git"]?.["drop-and-rebuild"];
+		expect(drop?.requiredFlags,).toContain("i-know-what-i-am-doing",);
+		expect(drop?.destructive,).toBe("destructive",);
+
+		const add = registry["project-git"]?.["add-library"];
+		expect(add?.flags,).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ name: "password-env", kind: "value", },),
+				expect.objectContaining({
+					name: "no-add-to-python-path",
+					kind: "boolean",
+				},),
+			],),
+		);
+		// The plan never resolves the named environment variable; only the flag.
+		expect(add?.requiredFlags,).not.toContain("password-env",);
+	});
+
+	it("refuses planning for project-git reads like status and log", () => {
+		const git = commands["project-git"];
+		expect(
+			() => buildMutationPlan("project-git", "status", git.status!, [], { "project-key": "P", },),
+		).toThrow(/only supported for mutating|mutating commands/i,);
+		expect(
+			() => buildMutationPlan("project-git", "log", git.log!, [], { "project-key": "P", },),
+		).toThrow(/only supported for mutating|mutating commands/i,);
 	});
 });

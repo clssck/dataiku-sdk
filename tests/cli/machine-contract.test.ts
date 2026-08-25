@@ -248,3 +248,152 @@ describe("machine contract: stdio streams and failure codes", () => {
 		}
 	});
 });
+describe("machine contract: project-git classification", () => {
+	const registry = buildCommandRegistry();
+	const git = registry["project-git"];
+
+	const READS = [
+		"status",
+		"get-remote",
+		"branches",
+		"current-branch",
+		"tags",
+		"log",
+		"diff",
+		"list-libraries",
+		"future-status",
+		"future-wait",
+	];
+	const MUTATIONS = [
+		"set-remote",
+		"remove-remote",
+		"create-branch",
+		"delete-branch",
+		"create-tag",
+		"delete-tag",
+		"switch",
+		"fetch",
+		"pull",
+		"push",
+		"commit",
+		"revert-to-revision",
+		"revert-commit",
+		"reset-to-head",
+		"reset-to-upstream",
+		"drop-and-rebuild",
+		"add-library",
+		"set-library",
+		"remove-library",
+		"reset-library",
+		"push-library",
+		"push-all-libraries",
+		"reset-all-libraries",
+		"future-abort",
+	];
+	const DESTRUCTIVE = [
+		"delete-branch",
+		"delete-tag",
+		"drop-and-rebuild",
+		"future-abort",
+		"remove-library",
+		"reset-all-libraries",
+		"reset-library",
+		"reset-to-head",
+		"reset-to-upstream",
+		"revert-commit",
+		"revert-to-revision",
+	];
+	const FUTURES = [
+		"add-library",
+		"reset-library",
+		"push-library",
+		"push-all-libraries",
+		"reset-all-libraries",
+		"future-status",
+		"future-wait",
+		"future-abort",
+	];
+
+	it("discovers every project-git action in the registry", () => {
+		expect(git,).toBeDefined();
+		expect(Object.keys(git ?? {},).sort(),).toEqual(
+			[...READS, ...MUTATIONS,].sort(),
+		);
+	});
+
+	it("classifies every Git network or state mutation as write, never in a read", () => {
+		for (const action of MUTATIONS) {
+			expect(git?.[action]?.sideEffect, `${action} sideEffect`,).toBe("write",);
+			expect(git?.[action]?.mutatesDss, `${action} mutatesDss`,).toBe(true,);
+		}
+	});
+
+	it("classifies the observing actions as reads even when their verb reads like a write", () => {
+		for (const action of READS) {
+			expect(git?.[action]?.sideEffect, `${action} sideEffect`,).toBe("read",);
+			expect(git?.[action]?.mutatesDss, `${action} mutatesDss`,).toBe(false,);
+		}
+	});
+
+	it("marks history-, remote-, and directory-destructive Git mutations", () => {
+		for (const action of DESTRUCTIVE) {
+			expect(git?.[action]?.destructive, `${action} destructive`,).toBe("destructive",);
+		}
+		for (const action of MUTATIONS.filter((item,) => !DESTRUCTIVE.includes(item,))) {
+			expect(git?.[action]?.destructive, `${action} destructive`,).toBe("reversible",);
+		}
+	});
+
+	it("marks the library calls and future lifecycle as async futures with exit 4", () => {
+		for (const action of FUTURES) {
+			expect(git?.[action]?.async, `${action} async`,).toBe("future",);
+			expect(git?.[action]?.exitCodes?.longRunningFailure, `${action} exit`,).toBe(4,);
+		}
+		for (const action of MUTATIONS.filter((item,) => !FUTURES.includes(item,))) {
+			expect(git?.[action]?.async, `${action} async`,).toBe("none",);
+		}
+	});
+
+	it("requires --project-key on every action except the three future lifecycle calls", () => {
+		for (const action of Object.keys(git ?? {},)) {
+			expect(
+				git?.[action]?.requiresProject,
+				`${action} requiresProject`,
+			).toBe(!action.startsWith("future-",),);
+		}
+	});
+
+	it("advertises branch and tag lists as arrays and log/diff as objects", () => {
+		expect(git?.branches?.outputShape,).toBe("array",);
+		expect(git?.tags?.outputShape,).toBe("array",);
+		expect(git?.log?.outputShape,).toBe("object",);
+		expect(git?.diff?.outputShape,).toBe("object",);
+		expect(git?.["get-remote"]?.outputShape,).toBe("object",);
+	});
+
+	it("keeps Git mutations out of the cleanup ledger", () => {
+		for (const action of ["create-branch", "create-tag", "add-library", "set-library",]) {
+			expect(git?.[action]?.cleanupCommand, `${action} cleanupCommand`,).toBeUndefined();
+			expect(git?.[action]?.cleanupHint, `${action} cleanupHint`,).toBeUndefined();
+			expect(git?.[action]?.optionalFlags, `${action} record-cleanup`,).not.toContain(
+				"record-cleanup",
+			);
+		}
+	});
+
+	it("labels reusable fetch/reset mutations convergent and one-shot commits idempotency none", () => {
+		for (
+			const action of [
+				"fetch",
+				"reset-to-head",
+				"reset-to-upstream",
+				"reset-library",
+				"reset-all-libraries",
+			]
+		) {
+			expect(git?.[action]?.idempotency, `${action} idempotency`,).toBe("convergent",);
+		}
+		expect(git?.commit?.idempotency,).toBe("none",);
+		expect(git?.["create-branch"]?.idempotency,).toBe("none",);
+	});
+});

@@ -25,6 +25,7 @@ import { mlTaskCommands, } from "./ml-task.js";
 import { modelEvaluationStoreCommands, } from "./model-evaluation-store.js";
 import { notebookCommands, } from "./notebook.js";
 import { projectDeployerCommands, } from "./project-deployer.js";
+import { projectGitCommands, } from "./project-git.js";
 import { projectLibraryCommands, } from "./project-library.js";
 import { projectCommands, } from "./project.js";
 import { recipeCommands, } from "./recipe.js";
@@ -51,6 +52,7 @@ export const commands: Record<string, Record<string, CommandMeta>> = {
 	"api-deployer": apiDeployerCommands,
 	bundle: bundleCommands,
 	"project-deployer": projectDeployerCommands,
+	"project-git": projectGitCommands,
 	"project-library": projectLibraryCommands,
 	"streaming-endpoint": streamingEndpointCommands,
 	"continuous-activity": continuousActivityCommands,

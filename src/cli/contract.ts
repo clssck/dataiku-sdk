@@ -283,6 +283,66 @@ const PROJECT_SCOPED_RESOURCES = new Set([
 	"saved-model",
 	"wiki",
 ],);
+/**
+ * Project Git actions that only observe repository state. Everything else in the
+ * `project-git` resource is a mutation: the verb-shaped names (`fetch`, `pull`,
+ * `switch`, `commit`, `reset-*`, `revert-*`, `drop-and-rebuild`, `future-abort`)
+ * match none of the mutating-verb patterns and would otherwise fall through to
+ * the read default, advertising network and history writes as safe reads.
+ */
+const PROJECT_GIT_READ_ACTIONS: Record<string, true> = {
+	branches: true,
+	"current-branch": true,
+	diff: true,
+	"future-status": true,
+	"future-wait": true,
+	"get-remote": true,
+	"list-libraries": true,
+	log: true,
+	status: true,
+	tags: true,
+};
+
+/**
+ * Git mutations that destroy work rather than add to it: `drop-and-rebuild`
+ * discards the repository and rebuilds it from DSS, the resets and reverts throw
+ * away local commits or working state, `remove-library` can delete the checked
+ * out directory, and the branch/tag deletions can remove remote refs.
+ */
+const PROJECT_GIT_DESTRUCTIVE_ACTIONS: Record<string, true> = {
+	"delete-branch": true,
+	"delete-tag": true,
+	"drop-and-rebuild": true,
+	"future-abort": true,
+	"remove-library": true,
+	"reset-all-libraries": true,
+	"reset-library": true,
+	"reset-to-head": true,
+	"reset-to-upstream": true,
+	"revert-commit": true,
+	"revert-to-revision": true,
+};
+
+/** Project Git actions that hand back a DSS future (`{jobId}`) instead of a result. */
+const PROJECT_GIT_FUTURE_ACTIONS: Record<string, true> = {
+	"add-library": true,
+	"future-abort": true,
+	"future-status": true,
+	"future-wait": true,
+	"push-all-libraries": true,
+	"push-library": true,
+	"reset-all-libraries": true,
+	"reset-library": true,
+};
+
+/** Git mutations that converge: replaying them lands on the same repository state. */
+const PROJECT_GIT_CONVERGENT_ACTIONS: Record<string, true> = {
+	fetch: true,
+	"reset-all-libraries": true,
+	"reset-library": true,
+	"reset-to-head": true,
+	"reset-to-upstream": true,
+};
 
 const GLOBAL_AGENT_FLAGS = ["verbose", "fields",];
 const AUTHENTICATED_AGENT_FLAGS = [
@@ -761,6 +821,13 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	// locally; the DSS-side resource is untouched.
 	if ((resource === "project" || resource === "dashboard") && action === "export") return "read";
 	if (resource === "data-quality" && action === "compute") return "write";
+	// Project Git is classified from the explicit read table, not by verb shape:
+	// `switch`, `fetch`, `pull`, `push`, `commit`, the `reset-*`/`revert-*`
+	// families, `drop-and-rebuild`, and `future-abort` all mutate repository or
+	// future state yet match none of the mutating-verb patterns.
+	if (resource === "project-git") {
+		return PROJECT_GIT_READ_ACTIONS[action] === true ? "read" : "write";
+	}
 	if (READ_ACTIONS.has(action,)) return "read";
 	if (
 		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove|publish|activate|deploy|import|export|preload|upgrade|start|stop|restart|duplicate|put|rename|reply|compute|organize)/
@@ -781,7 +848,7 @@ function inferRequiresAuth(resource: string,): boolean {
 		&& resource !== "version";
 }
 
-export function inferRequiresProject(resource: string, _action: string, usage: string,): boolean {
+export function inferRequiresProject(resource: string, action: string, usage: string,): boolean {
 	if (
 		resource === "agent" || resource === "auth" || resource === "doctor" || resource === "commands"
 		|| resource === "install-skill" || resource === "version"
@@ -789,6 +856,7 @@ export function inferRequiresProject(resource: string, _action: string, usage: s
 		return false;
 	}
 	if (PROJECT_SCOPED_RESOURCES.has(resource,)) return true;
+	if (resource === "project-git") return !action.startsWith("future-",);
 	return usage.includes("--project-key",);
 }
 
@@ -818,6 +886,11 @@ const STRING_OUTPUT_ACTIONS = new Set([
 ],);
 
 function inferOutputShape(resource: string, action: string,): CommandOutputShape {
+	if (resource === "project-git") {
+		if (action === "branches" || action === "tags" || action === "list-libraries") return "array";
+		if (action === "set-library") return "string";
+		return "object";
+	}
 	if (
 		resource === "agent" || resource === "auth" || resource === "commands"
 		|| resource === "install-skill"
@@ -1021,10 +1094,14 @@ export function supportsCleanupLedger(resource: string, action: string,): boolea
 }
 
 function inferDestructiveLevel(
+	resource: string,
 	sideEffect: CommandSideEffect,
 	action: string,
 ): CommandDestructiveLevel {
 	if (sideEffect !== "write") return "none";
+	if (resource === "project-git") {
+		return PROJECT_GIT_DESTRUCTIVE_ACTIONS[action] === true ? "destructive" : "reversible";
+	}
 	if (/^(delete|abort|clear|unload|logout)/.test(action,)) return "destructive";
 	return "reversible";
 }
@@ -1041,6 +1118,9 @@ function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
 		return "future";
 	}
 	if (resource === "data-quality" && action === "compute") return "future";
+	// Project Git mutation results carry a future job id only for the library
+	// calls and the future lifecycle itself; plain Git actions settle inline.
+	if (resource === "project-git" && PROJECT_GIT_FUTURE_ACTIONS[action] === true) return "future";
 	if (resource === "code" && action === "run") return "future";
 	if (
 		resource === "app"
@@ -1065,6 +1145,11 @@ function inferIdempotency(
 	// target project is reported as an already-absent success instead of an
 	// error, so replaying the delete cannot fail on absence alone.
 	if (`${resource}.${action}` === "app.delete-instance") return "convergent";
+	// Git fetch and the repository resets converge: replaying them lands on the
+	// same repository state instead of failing on an already-applied change.
+	if (resource === "project-git" && PROJECT_GIT_CONVERGENT_ACTIONS[action] === true) {
+		return "convergent";
+	}
 	if (/^(clear|refresh|set|save)/.test(action,)) return "convergent";
 	return "none";
 }
@@ -1085,6 +1170,9 @@ const LEDGER_ONLY_CLEANUP_HINT =
 	"Pass `--record-cleanup PATH` when creating, then recover with `dss cleanup --file PATH --apply`. Do not issue direct instance deletion as cleanup: it bypasses the creation-future gate and can delete the project while DSS is still creating it.";
 
 export function inferCleanupHint(resource: string, action: string,): string | undefined {
+	// Git mutations are not cleanup-ledger operations: no project-git branch or
+	// tag create has a generic `delete` command to close it out.
+	if (resource === "project-git") return undefined;
 	if (!(action.startsWith("create",) || action === "clone")) return undefined;
 	if (LEDGER_ONLY_CLEANUP_KEYS[`${resource}.${action}`] === true) {
 		return LEDGER_ONLY_CLEANUP_HINT;
@@ -1113,7 +1201,7 @@ function buildRegistryEntry(
 	const requiresAuth = inferRequiresAuth(resource,);
 	const requiresProject = inferRequiresProject(resource, action, meta.usage,);
 	const sideEffect = inferSideEffect(resource, action,);
-	const destructive = inferDestructiveLevel(sideEffect, action,);
+	const destructive = inferDestructiveLevel(resource, sideEffect, action,);
 	const asyncKind = inferAsyncKind(resource, action,);
 	const mutatesDss = sideEffect === "write" && resource !== "auth" && resource !== "install-skill";
 	const supportsPlan = mutatesDss || sideEffect === "write";
@@ -1618,6 +1706,77 @@ function querySuffix(params: Record<string, string | number | boolean | undefine
 	}
 	const raw = search.toString();
 	return raw ? `?${raw}` : "";
+}
+/**
+ * Git and future API mount. The official Python client mounts these routes on
+ * `/dip/publicapi`, which is also what the project-git resource uses; do not
+ * normalize them to the repo-wide `/public/api`.
+ */
+const PROJECT_GIT_API_ROOT = "/dip/publicapi";
+
+function projectGitEndpoint(projectKey: string | undefined, suffix: string,): string {
+	if (!projectKey) throw new UsageError("--project-key is required for project-git mutations.",);
+	return `${PROJECT_GIT_API_ROOT}/projects/${encodeURIComponent(projectKey,)}/git${suffix}`;
+}
+
+function projectGitFutureEndpoint(jobId: string,): string {
+	return `${PROJECT_GIT_API_ROOT}/futures/${encodeURIComponent(jobId,)}`;
+}
+
+/** Encode a library reference path per segment, mirroring the resource helper. */
+function encodeGitReferencePath(pathValue: string,): string {
+	const normalized = pathValue.replace(/^\/+/, "",).replace(/\/+$/, "",);
+	return normalized.split("/",).map((segment,) => encodeURIComponent(segment,)).join("/",);
+}
+
+/**
+ * `--plan` bypasses the SDK boundary guard, so HTTP(S) URLs with embedded
+ * userinfo are rejected here before any plan is printed. SSH/scp-style URLs
+ * (`git@host:org/repo.git`, `ssh://...`) remain valid.
+ */
+function validatedPlanRepositoryUrl(url: string, flag: string, usage: string,): string {
+	const candidate = url.trim();
+	if (/[\u0000-\u001f\u007f]/u.test(candidate,)) {
+		throw new UsageError(`--${flag} must not contain control characters. Usage: ${usage}`,);
+	}
+	if (/^https?:/i.test(candidate,)) {
+		if (candidate.includes("\\",)) {
+			throw new UsageError(`--${flag} must be a valid HTTP(S) URL. Usage: ${usage}`,);
+		}
+		if (!/^https?:\/\//i.test(candidate,)) {
+			throw new UsageError(`--${flag} must be a valid HTTP(S) URL. Usage: ${usage}`,);
+		}
+		let parsed: URL;
+		try {
+			parsed = new URL(candidate,);
+		} catch {
+			throw new UsageError(`--${flag} must be a valid HTTP(S) URL. Usage: ${usage}`,);
+		}
+		if (parsed.username !== "" || parsed.password !== "") {
+			throw new UsageError(
+				`--${flag} must not contain embedded credentials (userinfo). Usage: ${usage}`,
+			);
+		}
+	}
+	return candidate;
+}
+
+function requiredPlanRepositoryUrl(
+	flags: Record<string, string | boolean>,
+	flag: string,
+	usage: string,
+): string {
+	const url = requiredPlanFlag(flags, flag, usage,);
+	return validatedPlanRepositoryUrl(url, flag, usage,);
+}
+
+/** Wait procedure advertised for the library calls that return a job id. */
+function projectGitFutureWait(): Record<string, unknown> {
+	return {
+		when: "after-dispatch",
+		endpoint: `${PROJECT_GIT_API_ROOT}/futures/{jobId}?peek=false`,
+		description: "Poll the returned job id until the future reports a result; never abort it.",
+	};
 }
 
 function jobBuildPayload(
@@ -3116,6 +3275,281 @@ export function commandPlanShape(
 				method: "POST",
 				endpoint: projectEndpoint("/flow/zones",),
 				payload: jsonInput(flags,),
+			};
+		/* ---- project-git: mutations only; reads are never planned ---- */
+		case "project-git.set-remote": {
+			const remote = (flags["name"] as string | undefined) ?? "origin";
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(
+					projectKey,
+					`/remotes/${encodeURIComponent(remote,)}`,
+				),
+				identifiers: { remote, },
+				payload: { url: requiredPlanRepositoryUrl(flags, "repository", entry.usage,), },
+			};
+		}
+		case "project-git.remove-remote": {
+			const remote = (flags["name"] as string | undefined) ?? "origin";
+			return {
+				method: "DELETE",
+				endpoint: projectGitEndpoint(
+					projectKey,
+					`/remotes/${encodeURIComponent(remote,)}`,
+				),
+				identifiers: { remote, },
+			};
+		}
+		case "project-git.create-branch":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/branches/",),
+				identifiers: { name: id, },
+				payload: {
+					name: id,
+					commit: (flags["commit"] as string | undefined) ?? null,
+					duplicateProject: parseBooleanOption(
+						flags["duplicate-project"],
+						"--duplicate-project",
+					) ?? false,
+					targetProjectKey: (flags["target-project-key"] as string | undefined) ?? null,
+					targetProjectFolderId: (flags["target-project-folder-id"] as string | undefined) ?? null,
+				},
+			};
+		case "project-git.delete-branch": {
+			const remote = parseBooleanOption(flags["remote"], "--remote",) ?? false;
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/actions/deleteBranch",),
+				identifiers: { name: id, remote, },
+				payload: {
+					name: id,
+					remote,
+					deleteRemotely: parseBooleanOption(
+						flags["delete-remotely"],
+						"--delete-remotely",
+					) ?? false,
+					forceDelete: parseBooleanOption(flags["force-delete"], "--force-delete",) ?? false,
+				},
+			};
+		}
+		case "project-git.switch":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(
+					projectKey,
+					`/actions/switchBranch${querySuffix({ branchName: id, },)}`,
+				),
+				identifiers: { branch: id, },
+			};
+		case "project-git.create-tag":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/tags/",),
+				identifiers: { name: id, },
+				payload: {
+					name: id,
+					reference: (flags["reference"] as string | undefined) ?? "HEAD",
+					message: (flags["message"] as string | undefined) ?? "",
+				},
+			};
+		case "project-git.delete-tag":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/actions/deleteTag",),
+				identifiers: { name: id, },
+				payload: { name: id, },
+			};
+		case "project-git.fetch":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/actions/fetch",),
+			};
+		case "project-git.pull":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(
+					projectKey,
+					`/actions/pullRebase${
+						querySuffix({
+							branchName: flags["branch"] as string | undefined,
+						},)
+					}`,
+				),
+				...((flags["branch"] as string | undefined) !== undefined
+					? { identifiers: { branch: flags["branch"], }, }
+					: {}),
+			};
+		case "project-git.push":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(
+					projectKey,
+					`/actions/push${
+						querySuffix({
+							branchName: flags["branch"] as string | undefined,
+						},)
+					}`,
+				),
+				...((flags["branch"] as string | undefined) !== undefined
+					? { identifiers: { branch: flags["branch"], }, }
+					: {}),
+			};
+		case "project-git.commit": {
+			const message = requiredPlanFlag(flags, "message", entry.usage,);
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/actions/commit",),
+				identifiers: { message, },
+				payload: { message, },
+			};
+		}
+		case "project-git.revert-to-revision":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(
+					projectKey,
+					`/actions/revertToRevision${querySuffix({ commit: id, },)}`,
+				),
+				identifiers: { commit: id, },
+			};
+		case "project-git.revert-commit":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(
+					projectKey,
+					`/actions/revertCommit${querySuffix({ commit: id, },)}`,
+				),
+				identifiers: { commit: id, },
+			};
+		case "project-git.reset-to-head":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/actions/resetToLocalHeadState",),
+			};
+		case "project-git.reset-to-upstream":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/actions/resetToRemoteHeadState",),
+			};
+		case "project-git.drop-and-rebuild": {
+			if (
+				parseBooleanOption(
+					flags["i-know-what-i-am-doing"],
+					"--i-know-what-i-am-doing",
+				) !== true
+			) {
+				throw new UsageError(
+					`--i-know-what-i-am-doing is required to acknowledge the irreversible Git history loss. Usage: ${entry.usage}`,
+				);
+			}
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(
+					projectKey,
+					`/actions/dropAndRebuild${querySuffix({ iKnowWhatIAmDoing: true, },)}`,
+				),
+			};
+		}
+		case "project-git.add-library": {
+			const targetPath = id;
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/lib-git-refs/",),
+				identifiers: { localTargetPath: targetPath, },
+				payload: {
+					repository: requiredPlanRepositoryUrl(flags, "repository", entry.usage,),
+					login: (flags["login"] as string | undefined) ?? null,
+					password: flags["password-env"] !== undefined ? "***" : null,
+					pathInGitRepository: (flags["path-in-repository"] as string | undefined) ?? "",
+					localTargetPath: targetPath,
+					checkout: requiredPlanFlag(flags, "checkout", entry.usage,),
+					addToPythonPath: parseBooleanOption(
+						flags["no-add-to-python-path"],
+						"--no-add-to-python-path",
+					) !== true,
+				},
+				wait: projectGitFutureWait(),
+			};
+		}
+		case "project-git.set-library": {
+			const targetPath = id;
+			return {
+				method: "PUT",
+				endpoint: projectGitEndpoint(
+					projectKey,
+					`/lib-git-refs/${encodeGitReferencePath(targetPath,)}`,
+				),
+				identifiers: { library: targetPath, },
+				payload: {
+					repository: requiredPlanRepositoryUrl(flags, "repository", entry.usage,),
+					login: (flags["login"] as string | undefined) ?? null,
+					password: flags["password-env"] !== undefined ? "***" : null,
+					pathInGitRepository: (flags["path-in-repository"] as string | undefined) ?? "",
+					checkout: requiredPlanFlag(flags, "checkout", entry.usage,),
+				},
+			};
+		}
+		case "project-git.remove-library": {
+			const targetPath = id;
+			return {
+				method: "DELETE",
+				endpoint: projectGitEndpoint(
+					projectKey,
+					`/lib-git-refs/${encodeGitReferencePath(targetPath,)}${
+						querySuffix({
+							deleteDirectory: parseBooleanOption(
+								flags["delete-directory"],
+								"--delete-directory",
+							) ?? false,
+						},)
+					}`,
+				),
+				identifiers: { library: targetPath, },
+			};
+		}
+		case "project-git.reset-library": {
+			const targetPath = id;
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/lib-git-refs/action/reset",),
+				identifiers: { library: targetPath, },
+				payload: { gitRef: targetPath, },
+				wait: projectGitFutureWait(),
+			};
+		}
+		case "project-git.push-library": {
+			const targetPath = id;
+			const message = requiredPlanFlag(flags, "message", entry.usage,);
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/lib-git-refs/action/push",),
+				identifiers: { library: targetPath, message, },
+				payload: { gitRef: targetPath, commitMessage: message, },
+				wait: projectGitFutureWait(),
+			};
+		}
+		case "project-git.push-all-libraries": {
+			const message = requiredPlanFlag(flags, "message", entry.usage,);
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/actions/git-refs/push-all",),
+				identifiers: { message, },
+				payload: { commitMessage: message, },
+				wait: projectGitFutureWait(),
+			};
+		}
+		case "project-git.reset-all-libraries":
+			return {
+				method: "POST",
+				endpoint: projectGitEndpoint(projectKey, "/actions/git-refs/reset-all",),
+				wait: projectGitFutureWait(),
+			};
+		case "project-git.future-abort":
+			return {
+				method: "DELETE",
+				endpoint: projectGitFutureEndpoint(id,),
+				identifiers: { jobId: id, },
 			};
 		default:
 			return {

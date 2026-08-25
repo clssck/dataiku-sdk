@@ -695,9 +695,10 @@ function batchStepCommandContext(argv: string[],): { resource?: string; action?:
 	return { resource: positionals[0], action: positionals[1], };
 }
 
-const SENSITIVE_ARGV_VALUE_FLAGS: ReadonlySet<string> = new Set([
-	"api-key",
-],);
+const SENSITIVE_ARGV_VALUE_FLAGS: Record<string, true> = {
+	"api-key": true,
+	repository: true,
+};
 
 function redactArgv(argv: string[],): string[] {
 	const redacted: string[] = [];
@@ -711,7 +712,7 @@ function redactArgv(argv: string[],): string[] {
 			const eqIdx = arg.indexOf("=",);
 			const rawFlagName = eqIdx === -1 ? arg.slice(2,) : arg.slice(2, eqIdx,);
 			const flagName = FLAG_ALIASES[rawFlagName] ?? rawFlagName;
-			if (SENSITIVE_ARGV_VALUE_FLAGS.has(flagName,)) {
+			if (SENSITIVE_ARGV_VALUE_FLAGS[flagName] === true) {
 				if (eqIdx !== -1) {
 					redacted.push(`${arg.slice(0, eqIdx + 1,)}***`,);
 				} else {

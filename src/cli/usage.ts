@@ -10,6 +10,7 @@ export const RESOURCE_NAMES = [
 	"api-deployer",
 	"bundle",
 	"project-deployer",
+	"project-git",
 	"project-library",
 	"streaming-endpoint",
 	"continuous-activity",
