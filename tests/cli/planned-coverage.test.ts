@@ -384,6 +384,30 @@ describe("CLI planned command coverage", () => {
 			},);
 		},);
 	});
+	it("dataset source reports UploadedFiles upload storage", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/datasets/uploads",);
+			sendJson(res, {
+				name: "uploads",
+				type: "UploadedFiles",
+				projectKey: "TEST",
+				managed: false,
+				params: { uploadConnection: "dataiku-managed-storage", },
+			},);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss(["dataset", "source", "uploads",], {
+				env: cliEnv(url,),
+			},);
+			expect(stderr,).toBe("",);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				resource: "dataset",
+				name: "uploads",
+				connection: "dataiku-managed-storage",
+			},);
+		},);
+	});
 
 	it("dataset clone refuses to reuse managed storage paths by default", async () => {
 		await withCliServer((_req, res,) => {

@@ -3,7 +3,7 @@ import * as nodePath from "node:path";
 import { Readable, Transform, } from "node:stream";
 import { pipeline, } from "node:stream/promises";
 import { createGzip, } from "node:zlib";
-import { DataikuError, } from "../errors.js";
+import { ClientValidationError, DataikuError, } from "../errors.js";
 import {
 	DatasetDetailsSchema,
 	DatasetSchemaSchema,
@@ -12,6 +12,7 @@ import {
 import { deepMerge, } from "../utils/deep-merge.js";
 import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
+import { resolveAdminManagedStorageConnection, } from "./connections.js";
 
 import type {
 	DatasetCreateOptions,
@@ -355,11 +356,19 @@ function shouldRetryWithConnectionInferredType(error: unknown,): error is Dataik
 		|| detail.includes("illegal argument",)
 	);
 }
+function isMissingUploadedFilesTargetConnection(error: unknown,): error is DataikuError {
+	if (!(error instanceof DataikuError)) return false;
+	const detail = error.body.toLowerCase();
+	return (
+		detail.includes("without a target connection",)
+		|| detail.includes("target connection is required",)
+	);
+}
 
 function buildDatasetCreateBody(opts: {
 	projectKey: string;
 	datasetName: string;
-	connection: string;
+	connection?: string;
 	dsType: string;
 	table?: string;
 	dbSchema?: string;
@@ -373,8 +382,11 @@ function buildDatasetCreateBody(opts: {
 			projectKey: opts.projectKey,
 			name: opts.datasetName,
 			type: opts.dsType,
-			params: { uploadConnection: opts.connection, },
+			params: opts.connection ? { uploadConnection: opts.connection, } : {},
 		};
+	}
+	if (!opts.connection) {
+		throw new ClientValidationError("connection is required unless dsType is UploadedFiles.",);
 	}
 	if (opts.table) {
 		const params: Record<string, unknown> = {
@@ -668,6 +680,49 @@ export class DatasetsResource extends BaseResource {
 				body,
 			);
 		} catch (error) {
+			if (
+				explicitType?.toLowerCase() === "uploadedfiles"
+				&& !opts.connection
+				&& isMissingUploadedFilesTargetConnection(error,)
+			) {
+				let uploadConnection = await resolveAdminManagedStorageConnection(
+					this.client,
+					"allowManagedDatasets",
+					"filesystem_managed",
+				);
+				if (!uploadConnection) {
+					const existing = await this.list(pk,);
+					uploadConnection = [
+						...new Set(
+							existing
+								.filter((dataset,) => dataset.managed === true)
+								.map((dataset,) => dataset.params?.connection)
+								.filter((connection,): connection is string =>
+									typeof connection === "string" && connection.length > 0
+								),
+						),
+					].sort()[0];
+				}
+				if (!uploadConnection) throw error;
+
+				body = buildDatasetCreateBody({
+					projectKey: pk,
+					datasetName: opts.datasetName,
+					connection: uploadConnection,
+					dsType,
+					table: opts.table,
+					dbSchema: opts.dbSchema,
+					catalog: opts.catalog,
+					formatType: opts.formatType,
+					formatParams: opts.formatParams,
+					managed: opts.managed,
+				},);
+				return this.client.post<Record<string, unknown>>(
+					`/public/api/projects/${enc}/datasets/`,
+					body,
+				);
+			}
+
 			if (explicitType || !shouldRetryWithConnectionInferredType(error,)) {
 				throw error;
 			}

@@ -35,7 +35,54 @@ describe("CLI managed folder commands", () => {
 			type: "S3",
 			params: {
 				connection: "s3_conn",
-				path: "/dataiku/TEST/exports",
+				path: "/${projectKey}/${odbId}",
+			},
+		},);
+	});
+	it("folder create resolves managed storage when only name is supplied", async () => {
+		let requestBody: Record<string, unknown> | undefined;
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/admin/connections/") {
+				sendJson(res, {
+					filesystem_folders: {
+						allowWrite: true,
+						allowManagedFolders: false,
+					},
+					"dataiku-managed-storage": {
+						allowWrite: true,
+						allowManagedFolders: true,
+					},
+				},);
+				return;
+			}
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				requestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { id: "folder-id", name: "exports", },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"folder",
+				"create",
+				"--name",
+				"exports",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				created: "folder-id",
+				resource: "folder",
+			},);
+		},);
+
+		expect(requestBody,).toEqual({
+			name: "exports",
+			projectKey: "TEST",
+			type: null,
+			params: {
+				connection: "dataiku-managed-storage",
+				path: "/${projectKey}/${odbId}",
 			},
 		},);
 	});
@@ -148,10 +195,14 @@ describe("CLI managed folder commands", () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			expect(req.method,).toBe("GET",);
-			expect(url.pathname,).toBe("/public/api/projects/OTHER/datasets/",);
-			sendJson(res, [
-				{ type: "Filesystem", managed: true, params: { connection: "filesystem_managed", }, },
-			],);
+			if (url.pathname === "/public/api/projects/OTHER/datasets/") {
+				sendJson(res, [
+					{ type: "Filesystem", managed: true, params: { connection: "filesystem_managed", }, },
+				],);
+				return;
+			}
+			expect(url.pathname,).toBe("/public/api/projects/OTHER/managedfolders/",);
+			sendJson(res, [],);
 		}, async (url,) => {
 			const result = JSON.parse(
 				(await dss(["connection", "infer", "--mode", "rich", "--project-key", "OTHER",], {

@@ -8,7 +8,7 @@ export function datasetSourceSummary(details: DatasetDetails,): Record<string, u
 		projectKey: details.projectKey,
 		type: details.type,
 		managed: details.managed,
-		connection: params.connection,
+		connection: params.connection ?? params.uploadConnection,
 		catalog: params.catalog,
 		schema: params.schema,
 		table: params.table,

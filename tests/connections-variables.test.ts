@@ -77,6 +77,25 @@ describe("ConnectionsResource.list", () => {
 
 		expect(requests,).toEqual(["GET /public/api/connections/get-names/?type=Filesystem",],);
 	});
+	it("uses the official all type when no filter is supplied", async () => {
+		await withTestServer((req, res,) => {
+			expect(req.method,).toBe("GET",);
+			expect(req.url,).toBe("/public/api/connections/get-names/?type=all",);
+			res.setHeader("Content-Type", "application/json",);
+			res.end(JSON.stringify(["dataiku-managed-storage", "filesystem_managed",],),);
+		}, async (url,) => {
+			const client = new DataikuClient({
+				url,
+				apiKey: "test-key",
+				projectKey: "TEST",
+			},);
+
+			await expect(client.connections.list(),).resolves.toEqual([
+				"dataiku-managed-storage",
+				"filesystem_managed",
+			],);
+		},);
+	});
 });
 
 describe("ConnectionsResource.infer", () => {
@@ -86,7 +105,7 @@ describe("ConnectionsResource.infer", () => {
 		await withTestServer(async (req, res,) => {
 			requests.push(`${req.method ?? "UNKNOWN"} ${req.url ?? ""}`,);
 
-			if (req.method === "GET" && req.url === "/public/api/connections/get-names/") {
+			if (req.method === "GET" && req.url === "/public/api/connections/get-names/?type=all") {
 				res.setHeader("Content-Type", "application/json",);
 				res.end("[]",);
 				return;
@@ -115,7 +134,31 @@ describe("ConnectionsResource.infer", () => {
 						managed: false,
 						params: {},
 					},
+					{
+						type: "UploadedFiles",
+						managed: false,
+						params: { uploadConnection: "upload_store", },
+					},
 				],),);
+				return;
+			}
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/managedfolders/") {
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify([{ id: "folder-id", name: "Exports", type: "EC2", },],),);
+				return;
+			}
+
+			if (
+				req.method === "GET"
+				&& req.url === "/public/api/projects/TEST/managedfolders/folder-id"
+			) {
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify({
+					id: "folder-id",
+					name: "Exports",
+					type: "EC2",
+					params: { connection: "folder_store", },
+				},),);
 				return;
 			}
 
@@ -130,13 +173,17 @@ describe("ConnectionsResource.infer", () => {
 
 			await expect(client.connections.infer({ mode: "fast", },),).resolves.toEqual([
 				{ name: "archive", types: ["Filesystem",], managed: false, dbSchemas: [], },
+				{ name: "folder_store", types: ["EC2",], managed: true, dbSchemas: [], },
+				{ name: "upload_store", types: ["UploadedFiles",], managed: false, dbSchemas: [], },
 				{ name: "warehouse", types: ["Snowflake",], managed: true, dbSchemas: ["analytics", "raw",], },
 			],);
 		},);
 
 		expect(requests,).toEqual([
-			"GET /public/api/connections/get-names/",
+			"GET /public/api/connections/get-names/?type=all",
 			"GET /public/api/projects/TEST/datasets/",
+			"GET /public/api/projects/TEST/managedfolders/",
+			"GET /public/api/projects/TEST/managedfolders/folder-id",
 		],);
 	});
 
@@ -146,11 +193,15 @@ describe("ConnectionsResource.infer", () => {
 		await withTestServer((req, res,) => {
 			requests.push(`${req.method ?? "UNKNOWN"} ${req.url ?? ""}`,);
 			expect(req.method,).toBe("GET",);
-			expect(req.url,).toBe("/public/api/projects/OTHER/datasets/",);
 			res.setHeader("Content-Type", "application/json",);
-			res.end(JSON.stringify([
-				{ type: "Filesystem", managed: true, params: { connection: "filesystem_managed", }, },
-			],),);
+			if (req.url === "/public/api/projects/OTHER/datasets/") {
+				res.end(JSON.stringify([
+					{ type: "Filesystem", managed: true, params: { connection: "filesystem_managed", }, },
+				],),);
+				return;
+			}
+			expect(req.url,).toBe("/public/api/projects/OTHER/managedfolders/",);
+			res.end("[]",);
 		}, async (url,) => {
 			const client = new DataikuClient({
 				url,
@@ -164,7 +215,10 @@ describe("ConnectionsResource.infer", () => {
 				],);
 		},);
 
-		expect(requests,).toEqual(["GET /public/api/projects/OTHER/datasets/",],);
+		expect(requests,).toEqual([
+			"GET /public/api/projects/OTHER/datasets/",
+			"GET /public/api/projects/OTHER/managedfolders/",
+		],);
 	});
 });
 

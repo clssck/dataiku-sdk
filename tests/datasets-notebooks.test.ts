@@ -344,6 +344,96 @@ describe("DatasetsResource.create", () => {
 			params: { uploadConnection: "Default (in DSS data dir.)", },
 		},);
 	});
+	it("uses the server default when an uploaded-files connection is omitted", async () => {
+		let createBody: Record<string, unknown> | undefined;
+
+		await withTestServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				createBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify({ name: "uploaded_input", },),);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await client.datasets.create({
+				datasetName: "uploaded_input",
+				dsType: "UploadedFiles",
+			},);
+		},);
+
+		expect(createBody,).toEqual({
+			projectKey: "TEST",
+			name: "uploaded_input",
+			type: "UploadedFiles",
+			params: {},
+		},);
+	});
+	it("resolves managed storage when DSS has no default upload target", async () => {
+		const createBodies: Record<string, unknown>[] = [];
+
+		await withTestServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				createBodies.push(JSON.parse(await readRequestBody(req,),) as Record<string, unknown>,);
+				res.setHeader("Content-Type", "application/json",);
+				if (createBodies.length === 1) {
+					res.statusCode = 500;
+					res.end(JSON.stringify({
+						message: "Cannot create dataset TEST.uploaded_input without a target connection",
+					},),);
+					return;
+				}
+				res.statusCode = 200;
+				res.end(JSON.stringify({ name: "uploaded_input", },),);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/admin/connections/") {
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify({
+					"archive": {
+						allowWrite: true,
+						allowManagedDatasets: false,
+					},
+					"dataiku-managed-storage": {
+						allowWrite: true,
+						allowManagedDatasets: true,
+					},
+				},),);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await client.datasets.create({
+				datasetName: "uploaded_input",
+				dsType: "UploadedFiles",
+			},);
+		},);
+
+		expect(createBodies,).toEqual([
+			{
+				projectKey: "TEST",
+				name: "uploaded_input",
+				type: "UploadedFiles",
+				params: {},
+			},
+			{
+				projectKey: "TEST",
+				name: "uploaded_input",
+				type: "UploadedFiles",
+				params: { uploadConnection: "dataiku-managed-storage", },
+			},
+		],);
+	});
 });
 
 describe("buildDatasetCloneSettings", () => {

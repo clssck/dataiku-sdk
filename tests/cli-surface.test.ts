@@ -542,7 +542,7 @@ describe("CLI command surface", () => {
 		expect(registry.dataset.create.flags,).toContainEqual(
 			expect.objectContaining({ name: "if-not-exists", kind: "boolean", },),
 		);
-		expect(registry.dataset.create.requiredFlags,).toEqual(["name", "connection", "type",],);
+		expect(registry.dataset.create.requiredFlags,).toEqual(["name", "type",],);
 		expect(registry.dataset.create.optionalFlags,).toContain("dry-run",);
 		expect(registry.dataset.create.cleanupCommand,).toBe("dss dataset delete <name> --if-exists",);
 		expect(registry.dataset.create.idempotency,).toBe("if-not-exists",);

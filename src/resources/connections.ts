@@ -12,6 +12,29 @@ function normalizeConnectionNames(value: unknown,): string[] {
 		.filter((v,): v is string => typeof v === "string" && v.length > 0)
 		.sort();
 }
+export async function resolveAdminManagedStorageConnection(
+	client: DataikuClient,
+	capability: "allowManagedDatasets" | "allowManagedFolders",
+	preferredName?: string,
+): Promise<string | undefined> {
+	try {
+		const raw = await client.get<unknown>("/public/api/admin/connections/",);
+		if (!raw || typeof raw !== "object" || Array.isArray(raw,)) return undefined;
+
+		const candidates: string[] = [];
+		for (const [name, value,] of Object.entries(raw,)) {
+			if (!value || typeof value !== "object" || Array.isArray(value,)) continue;
+			const details = value as Record<string, unknown>;
+			if (details["allowWrite"] === true && details[capability] === true) {
+				candidates.push(name,);
+			}
+		}
+		candidates.sort();
+		return preferredName && candidates.includes(preferredName,) ? preferredName : candidates[0];
+	} catch {
+		return undefined;
+	}
+}
 
 export interface ConnectionSchemaListOptions {
 	connection: string;
@@ -23,32 +46,81 @@ export interface ConnectionTableListOptions extends ConnectionSchemaListOptions 
 	schema?: string;
 }
 
-async function inferRichConnectionsFromDatasets(
+async function inferRichConnections(
 	client: DataikuClient,
 	projectEnc: string,
 ): Promise<ConnectionSummary[]> {
-	const datasets = await client.get<unknown[]>(`/public/api/projects/${projectEnc}/datasets/`,);
-
+	const datasetsRaw = await client.get<unknown>(`/public/api/projects/${projectEnc}/datasets/`,);
+	const datasets = Array.isArray(datasetsRaw,) ? datasetsRaw : [];
 	const map = new Map<string, { types: Set<string>; managed: boolean; dbSchemas: Set<string>; }>();
 
-	for (const ds of datasets) {
-		const d = ds as Record<string, unknown>;
-		const params = d["params"] as Record<string, unknown> | undefined;
-		const connection = params?.["connection"];
-		if (typeof connection !== "string" || connection.length === 0) continue;
-
-		if (!map.has(connection,)) {
-			map.set(connection, { types: new Set(), managed: false, dbSchemas: new Set(), },);
+	const recordConnection = (
+		connection: unknown,
+		type: unknown,
+		managed: boolean,
+		schema?: unknown,
+	): void => {
+		if (typeof connection !== "string" || connection.length === 0) return;
+		let entry = map.get(connection,);
+		if (!entry) {
+			entry = { types: new Set(), managed: false, dbSchemas: new Set(), };
+			map.set(connection, entry,);
 		}
-		const entry = map.get(connection,)!;
-
-		const dsType = d["type"];
-		if (typeof dsType === "string" && dsType.length > 0) entry.types.add(dsType,);
-
-		if (d["managed"] === true) entry.managed = true;
-
-		const schema = params?.["schema"];
+		if (typeof type === "string" && type.length > 0) entry.types.add(type,);
+		if (managed) entry.managed = true;
 		if (typeof schema === "string" && schema.length > 0) entry.dbSchemas.add(schema,);
+	};
+
+	for (const dataset of datasets) {
+		if (!dataset || typeof dataset !== "object" || Array.isArray(dataset,)) continue;
+		const details = dataset as Record<string, unknown>;
+		const params = details["params"];
+		if (!params || typeof params !== "object" || Array.isArray(params,)) continue;
+		const datasetParams = params as Record<string, unknown>;
+		recordConnection(
+			datasetParams["connection"],
+			details["type"],
+			details["managed"] === true,
+			datasetParams["schema"],
+		);
+		recordConnection(datasetParams["uploadConnection"], details["type"], false,);
+	}
+
+	try {
+		const foldersRaw = await client.get<unknown>(
+			`/public/api/projects/${projectEnc}/managedfolders/`,
+		);
+		const folders = Array.isArray(foldersRaw,) ? foldersRaw : [];
+		const folderDetails = await Promise.all(
+			folders.map(async (folder,) => {
+				if (!folder || typeof folder !== "object" || Array.isArray(folder,)) return folder;
+				const summary = folder as Record<string, unknown>;
+				const params = summary["params"];
+				if (params && typeof params === "object" && !Array.isArray(params,)) return summary;
+				const id = summary["id"];
+				if (typeof id !== "string" || id.length === 0) return summary;
+				try {
+					return await client.get<unknown>(
+						`/public/api/projects/${projectEnc}/managedfolders/${encodeURIComponent(id,)}`,
+					);
+				} catch {
+					return summary;
+				}
+			},),
+		);
+		for (const folder of folderDetails) {
+			if (!folder || typeof folder !== "object" || Array.isArray(folder,)) continue;
+			const details = folder as Record<string, unknown>;
+			const params = details["params"];
+			if (!params || typeof params !== "object" || Array.isArray(params,)) continue;
+			recordConnection(
+				(params as Record<string, unknown>)["connection"],
+				details["type"],
+				true,
+			);
+		}
+	} catch {
+		// Dataset-derived inference remains useful when managed folders are inaccessible.
 	}
 
 	return [...map.entries(),]
@@ -70,9 +142,10 @@ export class ConnectionsResource extends BaseResource {
 	 * Returns sorted list of all connection names visible to the current user.
 	 */
 	async list(opts?: { type?: string; },): Promise<string[]> {
-		const type = opts?.type?.trim();
-		const query = type ? `?type=${encodeURIComponent(type,)}` : "";
-		const raw = await this.client.get<unknown>(`/public/api/connections/get-names/${query}`,);
+		const type = opts?.type?.trim() || "all";
+		const raw = await this.client.get<unknown>(
+			`/public/api/connections/get-names/?type=${encodeURIComponent(type,)}`,
+		);
 		return normalizeConnectionNames(raw,);
 	}
 
@@ -81,7 +154,7 @@ export class ConnectionsResource extends BaseResource {
 	 *
 	 * - fast (default): fetches the connection name list and maps to ConnectionSummary.
 	 *   Falls back to rich mode on any failure or empty result set.
-	 * - rich: inspects project datasets to derive connection metadata
+	 * - rich: inspects project datasets and managed folders to derive connection metadata
 	 *   (types, managed flag, db schemas).
 	 */
 	async infer(opts?: {
@@ -92,7 +165,7 @@ export class ConnectionsResource extends BaseResource {
 		const projectEnc = this.enc(opts?.projectKey,);
 
 		if (mode === "rich") {
-			return inferRichConnectionsFromDatasets(this.client, projectEnc,);
+			return inferRichConnections(this.client, projectEnc,);
 		}
 
 		// fast — attempt name list, fall back to rich on any error or empty result
@@ -105,7 +178,7 @@ export class ConnectionsResource extends BaseResource {
 			// Fall through to rich inference.
 		}
 
-		return inferRichConnectionsFromDatasets(this.client, projectEnc,);
+		return inferRichConnections(this.client, projectEnc,);
 	}
 
 	async schemas(opts: ConnectionSchemaListOptions,): Promise<string[]> {

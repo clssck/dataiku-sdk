@@ -11,6 +11,7 @@ import {
 import { deepMerge, } from "../utils/deep-merge.js";
 import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
+import { resolveAdminManagedStorageConnection, } from "./connections.js";
 
 function normalizeRemotePath(path: string,): string {
 	return path.replace(/\\/g, "/",);
@@ -29,16 +30,23 @@ function inferDownloadFileName(remotePath: string,): string {
 export class FoldersResource extends BaseResource {
 	async create(opts: FolderCreateOptions,): Promise<FolderDetails> {
 		const pk = this.resolveProjectKey(opts.projectKey,);
-		const path = opts.path?.trim() || `/dataiku/${pk}/${opts.name}`;
+		const path = opts.path?.trim() || "/${projectKey}/${odbId}";
+		const connection = opts.connection
+			?? await resolveAdminManagedStorageConnection(
+				this.client,
+				"allowManagedFolders",
+				"filesystem_folders",
+			)
+			?? "filesystem_folders";
 		const raw = await this.client.post<unknown>(
 			`/public/api/projects/${encodeURIComponent(pk,)}/managedfolders/`,
 			{
 				name: opts.name,
 				projectKey: pk,
-				type: opts.type,
+				type: opts.type ?? null,
 				params: {
 					...opts.params,
-					connection: opts.connection,
+					connection: connection,
 					path,
 				},
 			},

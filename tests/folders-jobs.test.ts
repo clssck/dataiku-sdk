@@ -84,7 +84,7 @@ describe("FoldersResource.resolveId", () => {
 });
 
 describe("FoldersResource.create", () => {
-	it("posts managed folder creation payload with trailing slash and default project path", async () => {
+	it("posts managed folder creation payload with trailing slash and the official project and folder template path", async () => {
 		let createBody: Record<string, unknown> | undefined;
 
 		await withDataikuServer(async (req, res,) => {
@@ -108,7 +108,43 @@ describe("FoldersResource.create", () => {
 			type: "S3",
 			params: {
 				connection: "s3_conn",
-				path: "/dataiku/TEST/exports",
+				path: "/${projectKey}/${odbId}",
+			},
+		},);
+	});
+	it("selects writable managed-folder storage when connection and type are omitted", async () => {
+		let createBody: Record<string, unknown> | undefined;
+
+		await withDataikuServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/admin/connections/") {
+				sendJson(res, {
+					filesystem_folders: {
+						allowWrite: true,
+						allowManagedFolders: false,
+					},
+					"dataiku-managed-storage": {
+						allowWrite: true,
+						allowManagedFolders: true,
+					},
+				},);
+				return;
+			}
+			expect(req.method,).toBe("POST",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/managedfolders/",);
+			createBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
+			sendJson(res, { id: "folder-id", name: "exports", },);
+		}, async (client,) => {
+			await client.folders.create({ name: "exports", },);
+		},);
+
+		expect(createBody,).toEqual({
+			name: "exports",
+			projectKey: "TEST",
+			type: null,
+			params: {
+				connection: "dataiku-managed-storage",
+				path: "/${projectKey}/${odbId}",
 			},
 		},);
 	});

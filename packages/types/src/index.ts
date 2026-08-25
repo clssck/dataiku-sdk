@@ -149,6 +149,7 @@ export const DatasetSummarySchema = Type.Object({
 	managed: Type.Optional(Type.Boolean(),),
 	params: Type.Optional(Type.Object({
 		connection: Type.Optional(Type.String(),),
+		uploadConnection: Type.Optional(Type.String(),),
 		schema: Type.Optional(Type.String(),),
 		catalog: Type.Optional(Type.String(),),
 	}, { additionalProperties: true, },),),
@@ -171,6 +172,7 @@ export const DatasetDetailsSchema = Type.Object({
 	managed: Type.Optional(Type.Boolean(),),
 	params: Type.Optional(Type.Object({
 		connection: Type.Optional(Type.String(),),
+		uploadConnection: Type.Optional(Type.String(),),
 		path: Type.Optional(Type.String(),),
 		table: Type.Optional(Type.String(),),
 		schema: Type.Optional(Type.String(),),
@@ -191,7 +193,7 @@ export type DatasetDetails = Static<typeof DatasetDetailsSchema>;
 
 export const DatasetCreateOptionsSchema = Type.Object({
 	datasetName: Type.String(),
-	connection: Type.String(),
+	connection: Type.Optional(Type.String(),),
 	dsType: Type.Optional(Type.String(),),
 	table: Type.Optional(Type.String(),),
 	dbSchema: Type.Optional(Type.String(),),
@@ -473,8 +475,8 @@ export type FlowZoneUpdateOptions = Static<typeof FlowZoneUpdateOptionsSchema>;
 
 export const FolderCreateOptionsSchema = Type.Object({
 	name: Type.String(),
-	type: Type.String(),
-	connection: Type.String(),
+	type: Type.Optional(Type.String(),),
+	connection: Type.Optional(Type.String(),),
 	path: Type.Optional(Type.String(),),
 	params: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
 	projectKey: Type.Optional(Type.String(),),

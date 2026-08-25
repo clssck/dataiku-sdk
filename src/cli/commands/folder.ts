@@ -31,9 +31,9 @@ export const folderCommands: Record<string, CommandMeta> = {
 			const type = f["type"] as string | undefined;
 			const connection = f["connection"] as string | undefined;
 			const pk = f["project-key"] as string | undefined;
-			if (!name || !type || !connection) {
+			if (!name) {
 				throw new UsageError(
-					"--name, --type, and --connection are required. Usage: dss folder create --name NAME --type TYPE --connection CONN [--path PATH]",
+					"--name is required. Usage: dss folder create --name NAME [--type TYPE] [--connection CONN] [--path PATH]",
 				);
 			}
 			const payload = {
@@ -64,9 +64,11 @@ export const folderCommands: Record<string, CommandMeta> = {
 			return { created: created.id ?? name, resource: "folder", ...created, };
 		},
 		usage:
-			"dss folder create --name NAME --type TYPE --connection CONN [--path PATH] [--if-not-exists] [--dry-run] [--project-key KEY]",
-		description: "Create a managed folder.",
+			"dss folder create --name NAME [--type TYPE] [--connection CONN] [--path PATH] [--if-not-exists] [--dry-run] [--project-key KEY]",
+		description:
+			"Create a managed folder; when omitted, the connection is selected from writable managed-folder storage and DSS infers the folder type.",
 		examples: [
+			"dss folder create --name exports",
 			"dss folder create --name exports --type S3 --connection s3_connection",
 			"dss folder create --name exports --type S3 --connection s3_connection --path /dataiku/MYPROJ/exports --dry-run",
 		],

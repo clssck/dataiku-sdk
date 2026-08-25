@@ -177,10 +177,13 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			const name = f["name"] as string | undefined;
 			const connection = f["connection"] as string | undefined;
 			const dsType = f["type"] as string | undefined;
-			if (!name || !connection || !dsType) {
+			if (!name || !dsType) {
 				throw new UsageError(
-					"--name, --connection, and --type are required. Usage: dss dataset create --name NAME --connection CONN --type TYPE",
+					"--name and --type are required. Usage: dss dataset create --name NAME --type TYPE [--connection CONN]",
 				);
+			}
+			if (!connection && dsType.toLowerCase() !== "uploadedfiles") {
+				throw new UsageError("--connection is required unless --type is UploadedFiles.",);
 			}
 			const payload = {
 				datasetName: name,
@@ -217,9 +220,11 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			return { created: name, resource: "dataset", ...moved, };
 		},
 		usage:
-			"dss dataset create --name NAME --connection CONN --type TYPE [--zone ZONE|--zone-id ID] [--if-not-exists] [--dry-run] [--project-key KEY]",
-		description: "Create a new dataset.",
+			"dss dataset create --name NAME --type TYPE [--connection CONN] [--zone ZONE|--zone-id ID] [--if-not-exists] [--dry-run] [--project-key KEY]",
+		description:
+			"Create a new dataset. UploadedFiles uses the server's default upload connection when omitted.",
 		examples: [
+			"dss dataset create --name uploads --type UploadedFiles",
 			"dss dataset create --name orders --connection filesystem --type Filesystem",
 			"dss dataset create --name orders --connection filesystem --type Filesystem --zone Experiments --dry-run",
 		],

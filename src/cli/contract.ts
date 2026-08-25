@@ -1883,8 +1883,11 @@ export function commandPlanShape(
 			};
 		case "dataset.create": {
 			const name = requiredPlanFlag(flags, "name", entry.usage,);
-			const connection = requiredPlanFlag(flags, "connection", entry.usage,);
+			const connection = flags["connection"] as string | undefined;
 			const dsType = requiredPlanFlag(flags, "type", entry.usage,);
+			if (!connection && dsType.toLowerCase() !== "uploadedfiles") {
+				throw new UsageError("--connection is required unless --type is UploadedFiles.",);
+			}
 			return {
 				method: "POST",
 				endpoint: projectEndpoint("/datasets/",),
@@ -2123,8 +2126,8 @@ export function commandPlanShape(
 			};
 		case "folder.create": {
 			const name = requiredPlanFlag(flags, "name", entry.usage,);
-			const type = requiredPlanFlag(flags, "type", entry.usage,);
-			const connection = requiredPlanFlag(flags, "connection", entry.usage,);
+			const type = flags["type"] as string | undefined;
+			const connection = flags["connection"] as string | undefined;
 			return {
 				method: "POST",
 				endpoint: projectEndpoint("/managedfolders/",),

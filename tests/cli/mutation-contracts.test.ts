@@ -310,6 +310,36 @@ describe("CLI agent-readiness mutation contracts", () => {
 		expect(failure.stderr,).toBe("",);
 		expect(failure.stdout,).toContain("--connection is required",);
 	});
+	it("plans UploadedFiles creation without an explicit connection", async () => {
+		const { stdout, stderr, } = await dss([
+			"dataset",
+			"create",
+			"--name",
+			"uploads",
+			"--type",
+			"UploadedFiles",
+			"--plan",
+			"--project-key",
+			"TEST",
+		], {
+			env: {
+				PATH: process.env.PATH,
+				HOME: process.env.HOME,
+				DATAIKU_PROJECT_KEY: "TEST",
+			},
+		},);
+
+		expect(stderr,).toBe("",);
+		expect(JSON.parse(stdout,),).toMatchObject({
+			plan: true,
+			resource: "dataset",
+			action: "create",
+			payload: {
+				datasetName: "uploads",
+				dsType: "UploadedFiles",
+			},
+		},);
+	});
 
 	it("dry-runs variable and notebook mutations with current and next state without mutating notebooks", async () => {
 		let mutationRequests = 0;
