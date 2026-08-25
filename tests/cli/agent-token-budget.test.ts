@@ -179,7 +179,13 @@ describe("agent-facing token budgets", () => {
 			const { stdout, stderr, } = await dss(["commands", "run", "--output", exportPath,],);
 			expect(stderr,).toBe("",);
 			expect(JSON.parse(stdout,),).toEqual({ path: exportPath, },);
-			expectWithinBudget("--output export stdout", stdout, TOKEN_BUDGETS.registryExportStdout,);
+			// Temporary directory paths have platform-specific, unbounded prefixes; budget the JSON envelope.
+			const normalizedStdout = stdout.replace(exportPath, "registry.json",);
+			expectWithinBudget(
+				"--output export stdout",
+				normalizedStdout,
+				TOKEN_BUDGETS.registryExportStdout,
+			);
 
 			const fileText = readFileSync(exportPath, "utf-8",);
 			const fileTokens = measureAgentText(fileText,).tokens;
