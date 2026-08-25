@@ -89,8 +89,8 @@ try {
 		stdio: ["ignore", "pipe", "pipe",],
 	},);
 	assert(failure.status === 1, `packaged CLI returned unexpected error status: ${failure.status}`,);
-	assert(failure.stdout === "", "packaged CLI wrote error output to stdout",);
-	const errorLines = failure.stderr.trim().split("\n",);
+	assert(failure.stderr === "", "packaged CLI wrote error output to stderr",);
+	const errorLines = failure.stdout.trim().split("\n",);
 	assert(
 		errorLines.length === 1,
 		"packaged CLI error output was truncated or was not one JSONL event",
