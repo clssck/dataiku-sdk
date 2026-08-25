@@ -231,4 +231,49 @@ never marks that external check complete. The public DSS APIs used by this SDK d
 supported app-template publish/recreate/rename workflow, recipient-level app sharing setter, or
 UI-click smoke test. The CLI does not guess private endpoints for those operations.
 
+## Project Git source-control safety
+
+Project Git commands require DSS 12.4.2 or newer plus read and write access to the project
+content. Inspect state before changing it:
+The DSS project Git API exposes status, remotes, branches, tags, branch switching, fetch,
+rebase-based pull, push, log, diff, commit, revert/reset/rebuild, external-library, and future
+operations. It does not expose a separate checkout operation; use `switch`.
+
+```bash
+dss project-git status --project-key MYPROJ
+dss project-git branches --remote --project-key MYPROJ
+dss project-git log --count 20 --project-key MYPROJ
+```
+
+Creating a branch in a duplicate project is the safe UAT path; creating it in place switches the
+source project to the new branch:
+
+```bash
+dss project-git create-branch feature/orders \
+  --duplicate-project \
+  --target-project-key MYPROJ_ORDERS_UAT \
+  --project-key MYPROJ \
+  --plan
+dss project-git create-branch feature/orders \
+  --duplicate-project \
+  --target-project-key MYPROJ_ORDERS_UAT \
+  --project-key MYPROJ
+```
+
+`pull` rebases rather than merging. `reset-to-head`, `reset-to-upstream`, reverts, forced or
+remote branch deletion, library-directory deletion, and `drop-and-rebuild` are destructive;
+inspect their local `--plan` result first. `drop-and-rebuild` additionally requires
+`--i-know-what-i-am-doing` and destroys all Git history. Repository URLs containing embedded
+HTTP credentials are rejected. External-library credentials must come from
+`--password-env ENV_NAME`; the value is never included in plans or command output. Library
+operations that return a `jobId` can be observed with `project-git future-status` or completed
+with `project-git future-wait`.
+Project Git requests use `/dip/publicapi/projects/{projectKey}/git/*`; they do not configure
+remote authentication. DSS documents administrator Git group rules plus either per-user SSH keys
+under **Profile > Credentials > SSH** or non-interactive system-level credentials for the DSS
+server account. Configure these before private-remote fetch, pull, or push. `--password-env`
+applies only to external project-library operations and does not persist a remote credential.
+The `project-git` resource does not manage these settings, so public/auth-less and
+already-configured remotes are the supported automation paths.
+
 For fake-DSS smoke tests, return project lists as JSON arrays such as `[{ "projectKey": "MYPROJ", "name": "My Project" }]` from `/public/api/projects/`; recipe payload commands read `/public/api/projects/<PROJECT>/recipes/<NAME>?includePayload=true` and expect a JSON object shaped like `{ "recipe": { "name": "<NAME>", "type": "python" }, "payload": "..." }`.

@@ -171,6 +171,11 @@ narrow and detect key-reuse races but cannot serialize the final check with the 
 contain access-control identities; keep them mode `0600` and commit them only when repository
 policy permits.
 
+## Project Git
+
+UAT=`create-branch --duplicate-project`; pull=rebase; checkout=switch. Remotes: DSS Git rules and
+SSH/server credentials. `--password-env`; `future-wait`.
+
 ## Confirming mutations
 
 Mutations print a small JSON ack to stdout and exit 0 on success (e.g. `{"updated":"NAME","resource":"recipe"}`); on failure they print the error envelope to stdout and exit non-zero. The exit code is the source of truth.
