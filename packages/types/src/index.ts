@@ -815,6 +815,129 @@ export const FlowMapOptionsSchema = Type.Object({
 	includeRaw: Type.Optional(Type.Boolean(),),
 },);
 export type FlowMapOptions = Static<typeof FlowMapOptionsSchema>;
+// ---------------------------------------------------------------------------
+// Project Git
+// ---------------------------------------------------------------------------
+
+/**
+ * Git working-copy status of a project. Stable fields are documented in the
+ * DSS 14.7.3 source; DSS additionally returns extension fields, which are
+ * preserved by `additionalProperties: true`.
+ */
+export const ProjectGitStatusSchema = Type.Object({
+	currentBranch: Type.Optional(Type.String(),),
+	remotes: Type.Optional(Type.Array(Type.Object({
+		name: Type.Optional(Type.String(),),
+		url: Type.Optional(Type.String(),),
+	}, { additionalProperties: true, },),),),
+	trackingCount: Type.Optional(Type.Object({
+		ahead: Type.Optional(Type.Number(),),
+		behind: Type.Optional(Type.Number(),),
+	}, { additionalProperties: true, },),),
+	clean: Type.Optional(Type.Boolean(),),
+	hasUncommittedChanges: Type.Optional(Type.Boolean(),),
+	added: Type.Optional(Type.Array(Type.String(),),),
+	changed: Type.Optional(Type.Array(Type.String(),),),
+	removed: Type.Optional(Type.Array(Type.String(),),),
+	missing: Type.Optional(Type.Array(Type.String(),),),
+	modified: Type.Optional(Type.Array(Type.String(),),),
+	conflicting: Type.Optional(Type.Array(Type.String(),),),
+	untracked: Type.Optional(Type.Array(Type.String(),),),
+	untrackedFolders: Type.Optional(Type.Array(Type.String(),),),
+	originProjectKey: Type.Optional(Type.String(),),
+	trackingCountWithOriginProject: Type.Optional(Type.Object({
+		ahead: Type.Optional(Type.Number(),),
+		behind: Type.Optional(Type.Number(),),
+	}, { additionalProperties: true, },),),
+}, { additionalProperties: true, },);
+export type ProjectGitStatus = Static<typeof ProjectGitStatusSchema>;
+
+export const ProjectGitRemoteSchema = Type.Object({
+	url: Type.Optional(Type.String(),),
+}, { additionalProperties: true, },);
+export type ProjectGitRemote = Static<typeof ProjectGitRemoteSchema>;
+
+/**
+ * Result of a Git mutation. DSS answers with HTTP 200 even for failures, so
+ * `success` is the field callers must inspect before trusting the operation.
+ */
+export const ProjectGitActionResultSchema = Type.Object({
+	success: Type.Optional(Type.Boolean(),),
+	output: Type.Optional(Type.Unknown(),),
+	logs: Type.Optional(Type.Unknown(),),
+	messages: Type.Optional(Type.Unknown(),),
+}, { additionalProperties: true, },);
+export type ProjectGitActionResult = Static<typeof ProjectGitActionResultSchema>;
+
+export const ProjectGitTagSchema = Type.Object({
+	name: Type.Optional(Type.String(),),
+	shortName: Type.Optional(Type.String(),),
+	commit: Type.Optional(Type.Unknown(),),
+	annotations: Type.Optional(Type.Unknown(),),
+	readOnly: Type.Optional(Type.Boolean(),),
+}, { additionalProperties: true, },);
+export type ProjectGitTag = Static<typeof ProjectGitTagSchema>;
+
+export const ProjectGitTagsSchema = Type.Array(ProjectGitTagSchema,);
+export type ProjectGitTags = Static<typeof ProjectGitTagsSchema>;
+
+/**
+ * Paginated commit log. `nextCommit` is the cursor DSS expects back to fetch
+ * the following page; entries stay unpinned because commit payloads vary.
+ */
+export const ProjectGitLogResultSchema = Type.Object({
+	entries: Type.Array(Type.Unknown(),),
+	nextCommit: Type.Optional(Type.String(),),
+}, { additionalProperties: true, },);
+export type ProjectGitLogResult = Static<typeof ProjectGitLogResultSchema>;
+
+/**
+ * Diff between two revisions. Stable fields are documented in the DSS 14.7.3
+ * source; DSS additionally returns extension fields, which are preserved by
+ * `additionalProperties: true`.
+ */
+export const ProjectGitDiffResultSchema = Type.Object({
+	commitFrom: Type.Optional(Type.Unknown(),),
+	commitTo: Type.Optional(Type.Unknown(),),
+	addedLines: Type.Optional(Type.Number(),),
+	removedLines: Type.Optional(Type.Number(),),
+	changedFiles: Type.Optional(Type.Number(),),
+	entries: Type.Optional(Type.Array(Type.Unknown(),),),
+}, { additionalProperties: true, },);
+export type ProjectGitDiffResult = Static<typeof ProjectGitDiffResultSchema>;
+
+export const ProjectGitLibrarySchema = Type.Object({
+	repository: Type.Optional(Type.String(),),
+	login: Type.Optional(Type.String(),),
+	pathInGitRepository: Type.Optional(Type.String(),),
+	localTargetPath: Type.Optional(Type.String(),),
+	checkout: Type.Optional(Type.String(),),
+	addToPythonPath: Type.Optional(Type.Boolean(),),
+}, { additionalProperties: true, },);
+export type ProjectGitLibrary = Static<typeof ProjectGitLibrarySchema>;
+
+export const ProjectGitLibrariesSchema = Type.Array(ProjectGitLibrarySchema,);
+export type ProjectGitLibraries = Static<typeof ProjectGitLibrariesSchema>;
+
+/** Handle returned by Git operations that run asynchronously as a DSS future. */
+export const ProjectGitFutureResponseSchema = Type.Object({
+	jobId: Type.String(),
+}, { additionalProperties: true, },);
+export type ProjectGitFutureResponse = Static<typeof ProjectGitFutureResponseSchema>;
+
+export const ProjectGitFutureStateSchema = Type.Object({
+	jobId: Type.Optional(Type.String(),),
+	hasResult: Type.Optional(Type.Boolean(),),
+	result: Type.Optional(Type.Unknown(),),
+	alive: Type.Optional(Type.Boolean(),),
+	aborted: Type.Optional(Type.Boolean(),),
+	abortable: Type.Optional(Type.Boolean(),),
+	unknown: Type.Optional(Type.Boolean(),),
+	startTime: Type.Optional(Type.Number(),),
+	runningTime: Type.Optional(Type.Number(),),
+	error: Type.Optional(Type.Unknown(),),
+}, { additionalProperties: true, },);
+export type ProjectGitFutureState = Static<typeof ProjectGitFutureStateSchema>;
 
 // ---------------------------------------------------------------------------
 // Array wrappers (for runtime validation of list() responses)

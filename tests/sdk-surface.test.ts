@@ -16,6 +16,18 @@ import {
 	MlTasksResource,
 	ModelEvaluationStoresResource,
 	NotebooksResource,
+	ProjectGitActionResultSchema,
+	ProjectGitDiffResultSchema,
+	ProjectGitFutureResponseSchema,
+	ProjectGitFutureStateSchema,
+	ProjectGitLibrariesSchema,
+	ProjectGitLibrarySchema,
+	ProjectGitLogResultSchema,
+	ProjectGitRemoteSchema,
+	ProjectGitResource,
+	ProjectGitStatusSchema,
+	ProjectGitTagSchema,
+	ProjectGitTagsSchema,
 	ProjectsResource,
 	RecipesResource,
 	SavedModelsResource,
@@ -29,6 +41,46 @@ const SDK_SURFACE: Array<
 	{ key: keyof DataikuClient; ctor: new(...args: never[]) => unknown; methods: string[]; }
 > = [
 	{ key: "projects", ctor: ProjectsResource, methods: ["list", "get", "metadata", "flow", "map",], },
+	{
+		key: "projectGit",
+		ctor: ProjectGitResource,
+		methods: [
+			"status",
+			"getRemote",
+			"setRemote",
+			"removeRemote",
+			"listBranches",
+			"createBranch",
+			"deleteBranch",
+			"currentBranch",
+			"listTags",
+			"createTag",
+			"deleteTag",
+			"switchBranch",
+			"fetch",
+			"pull",
+			"push",
+			"log",
+			"diff",
+			"commit",
+			"revertToRevision",
+			"revertCommit",
+			"resetToHead",
+			"resetToUpstream",
+			"dropAndRebuild",
+			"listLibraries",
+			"addLibrary",
+			"setLibrary",
+			"removeLibrary",
+			"resetLibrary",
+			"pushLibrary",
+			"pushAllLibraries",
+			"resetAllLibraries",
+			"getFutureState",
+			"waitForFuture",
+			"abortFuture",
+		],
+	},
 	{ key: "futures", ctor: FuturesResource, methods: ["get", "peek", "state", "abort", "wait",], },
 	{
 		key: "flowZones",
@@ -233,6 +285,26 @@ describe("SDK public surface", () => {
 					"function",
 				);
 			}
+		}
+	});
+
+	it("exposes the project git schemas from the barrel", () => {
+		const schemas = [
+			ProjectGitStatusSchema,
+			ProjectGitRemoteSchema,
+			ProjectGitActionResultSchema,
+			ProjectGitTagSchema,
+			ProjectGitTagsSchema,
+			ProjectGitLogResultSchema,
+			ProjectGitDiffResultSchema,
+			ProjectGitLibrarySchema,
+			ProjectGitLibrariesSchema,
+			ProjectGitFutureResponseSchema,
+			ProjectGitFutureStateSchema,
+		];
+
+		for (const schema of schemas) {
+			expect(typeof (schema as { type?: unknown; }).type,).toBe("string",);
 		}
 	});
 });

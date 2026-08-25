@@ -72,6 +72,7 @@ export { MetricsResource, } from "./resources/metrics.js";
 export * from "./resources/ml-tasks.js";
 export * from "./resources/model-evaluation-stores.js";
 export { NotebooksResource, } from "./resources/notebooks.js";
+export * from "./resources/project-git.js";
 export { ProjectLibraryResource, } from "./resources/project-library.js";
 export { type FlowMapResult, ProjectsResource, } from "./resources/projects.js";
 export {
@@ -168,6 +169,17 @@ export {
 	NotebookSessionSchema,
 	parseSchema,
 	ProjectDetailsSchema,
+	ProjectGitActionResultSchema,
+	ProjectGitDiffResultSchema,
+	ProjectGitFutureResponseSchema,
+	ProjectGitFutureStateSchema,
+	ProjectGitLibrariesSchema,
+	ProjectGitLibrarySchema,
+	ProjectGitLogResultSchema,
+	ProjectGitRemoteSchema,
+	ProjectGitStatusSchema,
+	ProjectGitTagSchema,
+	ProjectGitTagsSchema,
 	ProjectMetadataSchema,
 	ProjectSummaryArraySchema,
 	ProjectSummarySchema,
@@ -250,6 +262,17 @@ export type {
 	JupyterNotebookSummary,
 	NotebookSession,
 	ProjectDetails,
+	ProjectGitActionResult,
+	ProjectGitDiffResult,
+	ProjectGitFutureResponse,
+	ProjectGitFutureState,
+	ProjectGitLibraries,
+	ProjectGitLibrary,
+	ProjectGitLogResult,
+	ProjectGitRemote,
+	ProjectGitStatus,
+	ProjectGitTag,
+	ProjectGitTags,
 	ProjectMetadata,
 	ProjectSummary,
 	ProjectVariables,

@@ -34,6 +34,7 @@ import { MetricsResource, } from "./resources/metrics.js";
 import { MlTasksResource, } from "./resources/ml-tasks.js";
 import { ModelEvaluationStoresResource, } from "./resources/model-evaluation-stores.js";
 import { NotebooksResource, } from "./resources/notebooks.js";
+import { ProjectGitResource, } from "./resources/project-git.js";
 import { ProjectLibraryResource, } from "./resources/project-library.js";
 import { ProjectsResource, } from "./resources/projects.js";
 import { RecipesResource, } from "./resources/recipes.js";
@@ -263,6 +264,7 @@ export class DataikuClient {
 	private bundlesResource?: BundlesResource;
 	private projectDeployerResource?: ProjectDeployerResource;
 	private projectLibraryResource?: ProjectLibraryResource;
+	private projectGitResource?: ProjectGitResource;
 	private streamingEndpointsResource?: StreamingEndpointsResource;
 	private continuousActivitiesResource?: ContinuousActivitiesResource;
 	private statisticsResource?: StatisticsResource;
@@ -346,6 +348,9 @@ export class DataikuClient {
 	}
 	get projectLibrary(): ProjectLibraryResource {
 		return (this.projectLibraryResource ??= new ProjectLibraryResource(this,));
+	}
+	get projectGit(): ProjectGitResource {
+		return (this.projectGitResource ??= new ProjectGitResource(this,));
 	}
 	get streamingEndpoints(): StreamingEndpointsResource {
 		return (this.streamingEndpointsResource ??= new StreamingEndpointsResource(this,));
