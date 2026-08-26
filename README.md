@@ -119,7 +119,10 @@ The command saves credentials and returns `{ "saved": true, "path": "..." }`.
 dss version
 dss doctor --fast
 dss project list
+dss project import ./project.zip --target-project-key IMPORTED_PROJECT
 dss dataset list --project-key MYPROJ
+dss dataset files uploaded_input --project-key MYPROJ
+dss dataset upload-file uploaded_input ./new.csv --file-name new.csv --project-key MYPROJ
 dss recipe get-payload compute_orders --project-key MYPROJ
 dss recipe get-payload compute_orders --output code.py --project-key MYPROJ
 dss install-skill --dry-run
@@ -136,6 +139,12 @@ dss app permissions-restore --project-key MYAPP_INSTANCE --file permissions.json
 dss cleanup --file cleanup.jsonl
 dss cleanup --file cleanup.jsonl --apply
 ```
+`project import` performs both public API stages: archive upload, then import processing. It
+exits nonzero when DSS returns `success:false` even if both HTTP requests succeeded.
+`dataset upload-file` only adds a filename that is not already present and verifies its byte
+length afterward. DSS 14.7 exposes no public UploadedFiles delete or replacement endpoint;
+the command refuses an existing filename before POST instead of triggering DSS's opaque 500.
+For replacement, import a successor project archive containing the desired upload.
 
 ### Application release safety
 

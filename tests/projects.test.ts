@@ -195,38 +195,98 @@ describe("ProjectsResource lifecycle", () => {
 		expect(observedBody,).toEqual({ exportUploads: true, },);
 	});
 
-	it("uploads project import archives as multipart form data", async () => {
+	it("uploads and processes project import archives", async () => {
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-",),);
 		const archivePath = path.join(tempDir, "source-name.zip",);
 		await fs.writeFile(archivePath, "import zip contents",);
-		let observedMethod = "";
-		let observedPath = "";
-		let observedContentType = "";
-		let observedBody = "";
+		let uploadContentType = "";
+		let uploadBody = "";
+		let processBody: unknown;
+		const requests: string[] = [];
 
 		try {
 			await withServer(async (req, res,) => {
-				observedMethod = req.method ?? "";
-				observedPath = req.url ?? "";
-				observedContentType = req.headers["content-type"] ?? "";
-				observedBody = await readBody(req,);
-				sendJson(res, { id: "tmp-import-1", },);
+				requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+				if (req.url === "/public/api/projects/import/upload") {
+					uploadContentType = req.headers["content-type"] ?? "";
+					uploadBody = await readBody(req,);
+					sendJson(res, { id: "tmp-import-1", },);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					processBody = JSON.parse(await readBody(req,),);
+					sendJson(res, {
+						success: true,
+						usedProjectKey: "TARGET",
+						messages: [],
+					},);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
 			}, async (url,) => {
 				const resource = new ProjectsResource(createClient(url,),);
-				await expect(resource.importProjectFromArchive(archivePath,),).resolves.toEqual({
-					id: "tmp-import-1",
+				await expect(
+					resource.importProjectFromArchive(archivePath, { targetProjectKey: "TARGET", },),
+				).resolves.toEqual({
+					success: true,
+					usedProjectKey: "TARGET",
+					messages: [],
+					importId: "tmp-import-1",
 				},);
 			},);
 		} finally {
 			await fs.rm(tempDir, { recursive: true, force: true, },);
 		}
 
-		expect(observedMethod,).toBe("POST",);
-		expect(observedPath,).toBe("/public/api/projects/import/upload",);
-		expect(observedContentType.startsWith("multipart/form-data; boundary=",),).toBe(true,);
-		expect(observedBody,).toContain('name="file"',);
-		expect(observedBody,).toContain('filename="tmp-import.zip"',);
-		expect(observedBody,).toContain("import zip contents",);
+		expect(requests,).toEqual([
+			"POST /public/api/projects/import/upload",
+			"POST /public/api/projects/import/tmp-import-1/process",
+		],);
+		expect(uploadContentType.startsWith("multipart/form-data; boundary=",),).toBe(true,);
+		expect(uploadBody,).toContain('name="file"',);
+		expect(uploadBody,).toContain('filename="tmp-import.zip"',);
+		expect(uploadBody,).toContain("import zip contents",);
+		expect(processBody,).toEqual({ targetProjectKey: "TARGET", },);
+	});
+
+	it("uses the DSS sentinel payload for default project import settings", async () => {
+		let body: unknown;
+		await withServer(async (req, res,) => {
+			body = JSON.parse(await readBody(req,),);
+			sendJson(res, { success: true, usedProjectKey: "ARCHIVE_KEY", },);
+		}, async (url,) => {
+			const resource = new ProjectsResource(createClient(url,),);
+			await expect(resource.processProjectImport("tmp/import",),).resolves.toEqual({
+				success: true,
+				usedProjectKey: "ARCHIVE_KEY",
+			},);
+		},);
+
+		expect(body,).toEqual({ _: "_", },);
+	});
+	it("refuses to process an upload response without a temporary import id", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-empty-",),);
+		const archivePath = path.join(tempDir, "project.zip",);
+		await fs.writeFile(archivePath, "archive",);
+		let requests = 0;
+
+		try {
+			await withServer(async (_req, res,) => {
+				requests++;
+				res.statusCode = 204;
+				res.end();
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				await expect(resource.importProjectFromArchive(archivePath,),).rejects.toMatchObject({
+					code: "ambiguous_outcome",
+				},);
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+
+		expect(requests,).toBe(1,);
 	});
 
 	it("gets and sets project permissions and settings", async () => {

@@ -56,6 +56,27 @@ export interface DatasetCloneResult {
 	created: Record<string, unknown>;
 	settings: Record<string, unknown>;
 }
+export interface UploadedFileMetadata {
+	filename: string;
+	path?: string;
+	length?: number;
+	mime?: string;
+	weird?: boolean;
+	[key: string]: unknown;
+}
+
+export interface UploadDatasetFileOptions {
+	projectKey?: string;
+	fileName: string;
+}
+
+export interface UploadDatasetFileResult {
+	datasetName: string;
+	projectKey: string;
+	fileName: string;
+	bytes: number;
+	after: UploadedFileMetadata;
+}
 // ---------------------------------------------------------------------------
 // Helpers: TSV → CSV streaming conversion
 // ---------------------------------------------------------------------------
@@ -453,6 +474,31 @@ function cloneDatasetParams(params: DatasetDetails["params"],): Record<string, u
 	}
 	return cloned;
 }
+function parseUploadedFiles(raw: unknown, datasetName: string,): UploadedFileMetadata[] {
+	if (!Array.isArray(raw,)) {
+		throw new ClientValidationError(
+			`DSS returned an invalid uploaded-files list for dataset ${datasetName}.`,
+			"validation_failed",
+			"Expected an array from the UploadedFiles dataset file endpoint.",
+		);
+	}
+	return raw.map((item, index,) => {
+		if (
+			!item
+			|| typeof item !== "object"
+			|| Array.isArray(item,)
+			|| typeof (item as Record<string, unknown>).filename !== "string"
+			|| (item as Record<string, unknown>).filename === ""
+		) {
+			throw new ClientValidationError(
+				`DSS returned invalid metadata for uploaded file ${String(index,)} in dataset ${datasetName}.`,
+				"validation_failed",
+				"Expected every uploaded file to include a non-empty filename.",
+			);
+		}
+		return item as UploadedFileMetadata;
+	},);
+}
 
 export function buildDatasetCloneSettings(
 	source: DatasetDetails,
@@ -777,6 +823,7 @@ export class DatasetsResource extends BaseResource {
 			? params.table
 			: null;
 		const normalizedType = (type ?? "").toLowerCase();
+		const uploadedFiles = normalizedType.includes("uploaded",);
 		const fileBacked = !table
 			&& (normalizedType.includes("filesystem",)
 				|| normalizedType.includes("uploaded",)
@@ -785,7 +832,7 @@ export class DatasetsResource extends BaseResource {
 		const formatType = details.formatType ?? null;
 		const warnings: string[] = [];
 
-		if (fileBacked && !path) {
+		if (fileBacked && !uploadedFiles && !path) {
 			warnings.push("File-backed dataset has no writable storage path configured.",);
 		}
 		if (fileBacked && !formatType) {
@@ -804,6 +851,86 @@ export class DatasetsResource extends BaseResource {
 			materializationChecked: false,
 			note:
 				"Validates build configuration only; it does not verify storage file existence or materialized data.",
+		};
+	}
+	/** List files stored by an UploadedFiles dataset. */
+	async listUploadedFiles(
+		datasetName: string,
+		projectKey?: string,
+	): Promise<UploadedFileMetadata[]> {
+		const raw = await this.client.get<unknown>(
+			`/public/api/projects/${this.enc(projectKey,)}/datasets/${
+				encodeURIComponent(datasetName,)
+			}/uploaded/files`,
+		);
+		return parseUploadedFiles(raw, datasetName,);
+	}
+
+	/** Add a new file to an UploadedFiles dataset and verify its byte length. */
+	async uploadDatasetFile(
+		datasetName: string,
+		localPath: string,
+		opts: UploadDatasetFileOptions,
+	): Promise<UploadDatasetFileResult> {
+		const fileName = opts.fileName.trim();
+		if (fileName === "") {
+			throw new ClientValidationError("fileName must be a non-empty uploaded filename.",);
+		}
+		const localFile = await fs.promises.stat(localPath,);
+		if (!localFile.isFile()) {
+			throw new ClientValidationError(`${localPath} is not a regular file.`,);
+		}
+
+		const projectKey = this.resolveProjectKey(opts.projectKey,);
+		const details = await this.get(datasetName, projectKey,);
+		if (details.type?.toLowerCase() !== "uploadedfiles") {
+			throw new ClientValidationError(
+				`Dataset ${datasetName} is ${details.type ?? "an unknown type"}, not UploadedFiles.`,
+				"validation_failed",
+				"Use dataset upload-file only with an UploadedFiles dataset.",
+			);
+		}
+
+		const existing = (await this.listUploadedFiles(datasetName, projectKey,))
+			.filter((file,) => file.filename === fileName);
+		if (existing.length !== 0) {
+			throw new ClientValidationError(
+				`Uploaded file ${fileName} already exists in dataset ${datasetName}.`,
+				"validation_failed",
+				"DSS 14.7's public API can add uploaded files but cannot replace or delete them. Use a new filename or import a successor project archive containing the replacement.",
+			);
+		}
+
+		const endpoint = `/public/api/projects/${encodeURIComponent(projectKey,)}/datasets/${
+			encodeURIComponent(datasetName,)
+		}/uploaded/files`;
+		await this.client.upload(endpoint, localPath, fileName,);
+
+		const afterMatches = (await this.listUploadedFiles(datasetName, projectKey,))
+			.filter((file,) => file.filename === fileName);
+		const after = afterMatches[0];
+		if (
+			afterMatches.length !== 1
+			|| after === undefined
+			|| after.length !== localFile.size
+		) {
+			throw new ClientValidationError(
+				`DSS did not verify upload of ${fileName} to dataset ${datasetName}.`,
+				"ambiguous_outcome",
+				"The upload returned successfully, but the uploaded-files listing did not show exactly one target with the local byte length. Inspect the dataset before retrying.",
+				{
+					expectedBytes: localFile.size,
+					matchingFiles: afterMatches,
+				},
+			);
+		}
+
+		return {
+			datasetName,
+			projectKey,
+			fileName,
+			bytes: localFile.size,
+			after,
 		};
 	}
 

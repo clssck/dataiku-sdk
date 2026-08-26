@@ -143,6 +143,8 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"get",
 		"schema",
 		"source",
+		"files",
+		"upload-file",
 		"validate-build",
 		"refresh-schema",
 		"preview",

@@ -307,6 +307,7 @@ describe("CLI registry required-input usage accuracy", () => {
 			"project create",
 			"project duplicate",
 			"project export",
+			"project import",
 			"streaming-endpoint create",
 			"continuous-activity start",
 			"meaning create",

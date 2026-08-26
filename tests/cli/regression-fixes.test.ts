@@ -1,4 +1,7 @@
 import { describe, expect, it, } from "bun:test";
+import { rmSync, } from "node:fs";
+import { tmpdir, } from "node:os";
+import { join, } from "node:path";
 import { buildCommandRegistry, } from "../../src/cli/contract.js";
 import { cleanupLedgerEntry, } from "../../src/cli/helpers/cleanup.js";
 import {
@@ -486,6 +489,26 @@ describe("CLI regression fixes", () => {
 					filePath: "archive.zip",
 				},
 			},);
+			expect(importPlan.requests,).toEqual([
+				{
+					sequence: 1,
+					method: "POST",
+					endpoint: "/public/api/projects/import/upload",
+					payload: {
+						contentType: "multipart/form-data",
+						fileField: "file",
+						filePath: "archive.zip",
+						fileName: "tmp-import.zip",
+					},
+				},
+				{
+					sequence: 2,
+					method: "POST",
+					endpoint: "/public/api/projects/import/{importId}/process",
+					pathBindings: { importId: "requests[0].response.id", },
+					payload: { _: "_", },
+				},
+			],);
 
 			const settingsPayload = { settings: { showInitialTour: false, }, };
 			const settingsPlan = JSON.parse(
@@ -509,6 +532,58 @@ describe("CLI regression fixes", () => {
 			},);
 		},);
 		expect(requestCount,).toBe(0,);
+	});
+
+	it("fails project import when DSS reports an unsuccessful process result", async () => {
+		const archivePath = join(tmpdir(), `dss-project-import-${String(Date.now(),)}.zip`,);
+		await Bun.write(archivePath, "archive",);
+		try {
+			await withCliServer(async (req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (req.method === "POST" && url.pathname === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					sendJson(res, { id: "tmp-import-failure", },);
+					return;
+				}
+				if (
+					req.method === "POST"
+					&& url.pathname === "/public/api/projects/import/tmp-import-failure/process"
+				) {
+					sendJson(res, {
+						success: false,
+						messages: [{ severity: "ERROR", message: "target project already exists", },],
+					},);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"project",
+					"import",
+					archivePath,
+					"--target-project-key",
+					"EXISTING",
+				], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(2,);
+				const result = JSON.parse(failure.stdout,) as Record<string, unknown>;
+				expect(result,).toMatchObject({
+					ok: false,
+					code: "command_result_failure",
+					resource: "project",
+					action: "import",
+					details: {
+						result: {
+							success: false,
+							importId: "tmp-import-failure",
+							stage: "process",
+						},
+					},
+				},);
+			},);
+		} finally {
+			rmSync(archivePath, { force: true, },);
+		}
 	});
 
 	it("rejects unsupported known flags on project list while accepting global flags", async () => {

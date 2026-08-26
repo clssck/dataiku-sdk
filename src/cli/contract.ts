@@ -863,6 +863,7 @@ export function inferRequiresProject(resource: string, action: string, usage: st
 const ARRAY_OUTPUT_ACTIONS = new Set([
 	"history",
 	"find",
+	"files",
 	"infer",
 	"last-results",
 	"list",
@@ -1827,6 +1828,7 @@ export function commandPlanShape(
 	payload?: unknown;
 	localWrites?: unknown;
 	wait?: unknown;
+	requests?: unknown;
 } {
 	const projectEndpoint = (suffix: string,) => {
 		if (!projectKey) throw new UsageError(`Missing project key for ${resource} ${action}.`,);
@@ -2079,6 +2081,38 @@ export function commandPlanShape(
 				identifiers: { oldName: args[0], newName: args[1], },
 				payload: { oldName: args[0], newName: args[1], },
 			};
+		case "dataset.upload-file": {
+			const fileName = requiredPlanFlag(flags, "file-name", entry.usage,);
+			const datasetEndpoint = projectEndpoint(`/datasets/${encodeURIComponent(args[0],)}`,);
+			const filesEndpoint = `${datasetEndpoint}/uploaded/files`;
+			const upload = {
+				method: "POST",
+				endpoint: filesEndpoint,
+				payload: { ...uploadPayload(args[1],), fileName, },
+			};
+			return {
+				...upload,
+				identifiers: {
+					datasetName: args[0],
+					localPath: args[1],
+					fileName,
+				},
+				requests: [
+					{ sequence: 1, method: "GET", endpoint: datasetEndpoint, },
+					{ sequence: 2, method: "GET", endpoint: filesEndpoint, },
+					{ sequence: 3, ...upload, },
+					{
+						sequence: 4,
+						method: "GET",
+						endpoint: filesEndpoint,
+						assert: {
+							filename: fileName,
+							length: "local file byte length",
+						},
+					},
+				],
+			};
+		}
 		case "dataset.delete":
 			return {
 				method: "DELETE",
@@ -3225,11 +3259,42 @@ export function commandPlanShape(
 				},
 			};
 		}
-		case "project.import":
-			return {
+		case "project.import": {
+			const settings = jsonInput(flags,) ?? {};
+			const rawTarget = flags["target-project-key"] as string | undefined;
+			const targetProjectKey = rawTarget?.trim();
+			if (rawTarget !== undefined && targetProjectKey === "") {
+				throw new UsageError(
+					`--target-project-key must not be empty. Usage: ${entry.usage}`,
+				);
+			}
+			const settingsTarget = settings.targetProjectKey;
+			if (
+				settingsTarget !== undefined
+				&& (typeof settingsTarget !== "string" || settingsTarget.trim() === "")
+			) {
+				throw new UsageError(
+					`targetProjectKey in import settings must be a non-empty string. Usage: ${entry.usage}`,
+				);
+			}
+			if (
+				targetProjectKey !== undefined
+				&& settingsTarget !== undefined
+				&& targetProjectKey !== settingsTarget.trim()
+			) {
+				throw new UsageError(
+					`--target-project-key conflicts with targetProjectKey in import settings. Usage: ${entry.usage}`,
+				);
+			}
+			const processPayload = targetProjectKey === undefined
+				? settings
+				: { ...settings, targetProjectKey, };
+			const finalizedPayload = Object.keys(processPayload,).length === 0
+				? { _: "_", }
+				: processPayload;
+			const upload = {
 				method: "POST",
 				endpoint: "/public/api/projects/import/upload",
-				identifiers: { filePath: id, },
 				payload: {
 					contentType: "multipart/form-data",
 					fileField: "file",
@@ -3237,6 +3302,24 @@ export function commandPlanShape(
 					fileName: "tmp-import.zip",
 				},
 			};
+			return {
+				...upload,
+				identifiers: {
+					filePath: id,
+					...(targetProjectKey ? { targetProjectKey, } : {}),
+				},
+				requests: [
+					{ sequence: 1, ...upload, },
+					{
+						sequence: 2,
+						method: "POST",
+						endpoint: "/public/api/projects/import/{importId}/process",
+						pathBindings: { importId: "requests[0].response.id", },
+						payload: finalizedPayload,
+					},
+				],
+			};
+		}
 		case "project.settings-set":
 			return {
 				method: "PUT",

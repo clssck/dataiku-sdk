@@ -1,4 +1,5 @@
-import { readFileSync, } from "node:fs";
+import { openAsBlob, readFileSync, } from "node:fs";
+import { basename, } from "node:path";
 import { getCACertificates, } from "node:tls";
 
 import { type Static, type TSchema, } from "@sinclair/typebox";
@@ -573,21 +574,29 @@ export class DataikuClient {
 		},);
 	}
 
-	async upload(path: string, filePath: string,): Promise<void> {
-		const { openAsBlob, } = await import("node:fs");
-		const { basename, } = await import("node:path");
-
+	private async uploadResponse(
+		path: string,
+		filePath: string,
+		fileName?: string,
+	): Promise<Response> {
 		const fileBlob = await openAsBlob(filePath,);
-		const fileName = basename(filePath,);
-
 		const formData = new FormData();
-		formData.append("file", fileBlob, fileName,);
+		formData.append("file", fileBlob, fileName ?? basename(filePath,),);
 
-		await this.fetchWithRetry(`${this.baseUrl}${path}`, {
+		return this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "POST",
 			headers: { Authorization: `Bearer ${this.apiKey}`, },
 			body: formData,
 		},);
+	}
+
+	async upload(path: string, filePath: string, fileName?: string,): Promise<void> {
+		await this.uploadResponse(path, filePath, fileName,);
+	}
+
+	async uploadJson<T,>(path: string, filePath: string, fileName?: string,): Promise<T> {
+		const response = await this.uploadResponse(path, filePath, fileName,);
+		return this.parseJsonResponse<T>(response,);
 	}
 
 	async stream(path: string,): Promise<Response> {

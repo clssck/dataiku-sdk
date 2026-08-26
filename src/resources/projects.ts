@@ -1,5 +1,6 @@
-import { createWriteStream, openAsBlob, } from "node:fs";
+import { createWriteStream, } from "node:fs";
 import { Writable, } from "node:stream";
+import { ClientValidationError, } from "../errors.js";
 
 import {
 	ProjectDetailsSchema,
@@ -230,6 +231,20 @@ export interface ProjectImportUploadResult {
 	id: string;
 	[key: string]: unknown;
 }
+export interface ProjectImportSettings {
+	targetProjectKey?: string;
+	remapping?: Record<string, unknown>;
+	[key: string]: unknown;
+}
+
+export interface ProjectImportProcessResult {
+	success: boolean;
+	[key: string]: unknown;
+}
+
+export interface ProjectImportResult extends ProjectImportProcessResult {
+	importId: string;
+}
 
 // ---------------------------------------------------------------------------
 // Resource
@@ -255,20 +270,6 @@ export class ProjectsResource extends BaseResource {
 			},
 			body: JSON.stringify(body,),
 		},);
-	}
-
-	private async uploadJson<T,>(path: string, filePath: string, fileName: string,): Promise<T> {
-		const http = this.httpInternals();
-		const fileBlob = await openAsBlob(filePath,);
-		const formData = new FormData();
-		formData.append("file", fileBlob, fileName,);
-
-		const res = await http.fetchWithRetry(`${http.baseUrl}${path}`, {
-			method: "POST",
-			headers: { Authorization: `Bearer ${http.apiKey}`, },
-			body: formData,
-		},);
-		return res.json() as Promise<T>;
 	}
 
 	/** Create a new project. */
@@ -346,13 +347,43 @@ export class ProjectsResource extends BaseResource {
 		}
 	}
 
-	/** Upload a project archive and return the temporary import id. */
-	async importProjectFromArchive(filePath: string,): Promise<ProjectImportUploadResult> {
-		return this.uploadJson<ProjectImportUploadResult>(
+	/** Upload a project archive and return its temporary import handle. */
+	async prepareProjectImport(filePath: string,): Promise<ProjectImportUploadResult> {
+		const upload = await this.client.uploadJson<ProjectImportUploadResult>(
 			"/public/api/projects/import/upload",
 			filePath,
 			"tmp-import.zip",
 		);
+		if (!upload || typeof upload.id !== "string" || upload.id.trim() === "") {
+			throw new ClientValidationError(
+				"DSS accepted the project archive upload but did not return a temporary import id.",
+				"ambiguous_outcome",
+				"The archive may remain in temporary DSS storage, but no project import was started. Inspect DSS before retrying.",
+			);
+		}
+		return upload;
+	}
+
+	/** Process an uploaded archive into a DSS project. */
+	async processProjectImport(
+		importId: string,
+		settings: ProjectImportSettings = {},
+	): Promise<ProjectImportProcessResult> {
+		const body = Object.keys(settings,).length === 0 ? { _: "_", } : settings;
+		return this.client.post<ProjectImportProcessResult>(
+			`/public/api/projects/import/${encodeURIComponent(importId,)}/process`,
+			body,
+		);
+	}
+
+	/** Upload and process a project archive. */
+	async importProjectFromArchive(
+		filePath: string,
+		settings: ProjectImportSettings = {},
+	): Promise<ProjectImportResult> {
+		const upload = await this.prepareProjectImport(filePath,);
+		const result = await this.processProjectImport(upload.id, settings,);
+		return { ...result, importId: upload.id, };
 	}
 
 	/** Get project permissions. */

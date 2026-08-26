@@ -219,6 +219,7 @@ export function planResult(
 		payload?: unknown;
 		localWrites?: unknown;
 		plannedAndDryRun?: boolean;
+		requests?: unknown;
 		wait?: unknown;
 	},
 ): Record<string, unknown> {
@@ -232,6 +233,7 @@ export function planResult(
 		...(options.endpoint ? { endpoint: options.endpoint, } : {}),
 		...(options.payload !== undefined ? { payload: options.payload, } : {}),
 		...(options.localWrites !== undefined ? { localWrites: options.localWrites, } : {}),
+		...(options.requests !== undefined ? { requests: options.requests, } : {}),
 		...(options.wait !== undefined ? { wait: options.wait, } : {}),
 		idempotency: options.idempotency,
 		async: options.asyncKind,

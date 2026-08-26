@@ -49,6 +49,9 @@ export {
 	type DatasetCloneResult,
 	type DatasetSchemaColumnInput,
 	DatasetsResource,
+	type UploadDatasetFileOptions,
+	type UploadDatasetFileResult,
+	type UploadedFileMetadata,
 } from "./resources/datasets.js";
 export { DiscussionsResource, } from "./resources/discussions.js";
 export { type FlowZoneItemInput, FlowZonesResource, } from "./resources/flow-zones.js";
@@ -74,7 +77,14 @@ export * from "./resources/model-evaluation-stores.js";
 export { NotebooksResource, } from "./resources/notebooks.js";
 export * from "./resources/project-git.js";
 export { ProjectLibraryResource, } from "./resources/project-library.js";
-export { type FlowMapResult, ProjectsResource, } from "./resources/projects.js";
+export {
+	type FlowMapResult,
+	type ProjectImportProcessResult,
+	type ProjectImportResult,
+	type ProjectImportSettings,
+	type ProjectImportUploadResult,
+	ProjectsResource,
+} from "./resources/projects.js";
 export {
 	type RecipeCloneOptions,
 	type RecipeCloneResult,

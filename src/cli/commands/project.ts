@@ -1,5 +1,6 @@
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { jsonInput, num, requiredJsonInput, } from "../coerce.js";
+import { CommandResultFailure, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -99,13 +100,53 @@ export const projectCommands: Record<string, CommandMeta> = {
 		examples: ["dss project export MY_PROJ --output ./my_proj.zip",],
 	},
 	import: {
-		handler: async (c, a,) => {
-			requireArgs(a, 1, "dss project import <filePath>",);
-			return c.projects.importProjectFromArchive(a[0],);
+		handler: async (c, a, f,) => {
+			const usage =
+				"dss project import <filePath> [--target-project-key KEY] [--data JSON|--data-file PATH|--stdin]";
+			requireArgs(a, 1, usage,);
+			const settings = jsonInput(f,) ?? {};
+			const rawTarget = f["target-project-key"] as string | undefined;
+			const targetProjectKey = rawTarget?.trim();
+			if (rawTarget !== undefined && targetProjectKey === "") {
+				throw new UsageError(`--target-project-key must not be empty. Usage: ${usage}`,);
+			}
+			const settingsTarget = settings.targetProjectKey;
+			if (
+				settingsTarget !== undefined
+				&& (typeof settingsTarget !== "string" || settingsTarget.trim() === "")
+			) {
+				throw new UsageError(
+					`targetProjectKey in import settings must be a non-empty string. Usage: ${usage}`,
+				);
+			}
+			if (
+				targetProjectKey !== undefined
+				&& settingsTarget !== undefined
+				&& targetProjectKey !== settingsTarget.trim()
+			) {
+				throw new UsageError(
+					`--target-project-key conflicts with targetProjectKey in import settings. Usage: ${usage}`,
+				);
+			}
+			const result = await c.projects.importProjectFromArchive(
+				a[0],
+				targetProjectKey === undefined ? settings : { ...settings, targetProjectKey, },
+			);
+			if (result.success !== true) {
+				throw new CommandResultFailure(
+					{ ...result, resource: "project", action: "import", stage: "process", },
+					2,
+				);
+			}
+			return result;
 		},
-		usage: "dss project import <filePath>",
-		description: "Upload a project archive to prepare an import (returns a temporary import id).",
-		examples: ["dss project import ./my_proj.zip",],
+		usage:
+			"dss project import <filePath> [--target-project-key KEY] [--data JSON|--data-file PATH|--stdin]",
+		description: "Upload and process a project archive, optionally overriding its project key.",
+		examples: [
+			"dss project import ./my_proj.zip",
+			"dss project import ./my_proj.zip --target-project-key MY_PROJ",
+		],
 	},
 	"permissions-get": {
 		handler: (c, _a, f,) => c.projects.getPermissions(f["project-key"] as string | undefined,),

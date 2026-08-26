@@ -105,6 +105,7 @@ export const VALUE_FLAGS = new Set([
 	"database",
 	"dataset",
 	"file",
+	"file-name",
 	"file-type",
 	"env",
 	"install-core-packages",

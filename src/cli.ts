@@ -1495,6 +1495,7 @@ const MISSING_PROJECT_KEY_ERROR_PREFIX = "projectKey is required";
 
 function errorExitCode(err: unknown,): number {
 	if (err instanceof CommandResultFailure) return err.exitCode;
+	if (err instanceof ClientValidationError && err.code === "ambiguous_outcome") return 2;
 	if (err instanceof UsageError || err instanceof ClientValidationError) return 1;
 	if (err instanceof DataikuError) return err.category === "transient" ? 3 : 2;
 	if (err instanceof Error && err.message.startsWith(MISSING_PROJECT_KEY_ERROR_PREFIX,)) return 1;
@@ -1504,6 +1505,19 @@ function errorExitCode(err: unknown,): number {
 function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 	const context = rawCommandContext();
 	const exitCode = errorExitCode(err,);
+	if (err instanceof ClientValidationError && err.code === "ambiguous_outcome") {
+		return {
+			type: "error",
+			ok: false,
+			error: err.message,
+			code: err.code,
+			category: "dss",
+			exitCode,
+			...(err.hint ? { hint: err.hint, } : {}),
+			...(err.details ? { details: err.details, } : {}),
+			...context,
+		};
+	}
 	if (err instanceof UsageError || err instanceof ClientValidationError) {
 		return {
 			type: "error",

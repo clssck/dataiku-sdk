@@ -73,6 +73,34 @@ export const datasetCommands: Record<string, CommandMeta> = {
 		description: "Show backing connection, catalog/schema/table, path, and format for a dataset.",
 		examples: ["dss dataset source orders",],
 	},
+	files: {
+		handler: (c, a, f,) => {
+			requireArgs(a, 1, "dss dataset files <name> [--project-key KEY]",);
+			return c.datasets.listUploadedFiles(a[0], f["project-key"] as string | undefined,);
+		},
+		usage: "dss dataset files <name> [--project-key KEY]",
+		description: "List files stored by an UploadedFiles dataset.",
+		examples: ["dss dataset files uploaded_input",],
+	},
+	"upload-file": {
+		handler: (c, a, f,) => {
+			const usage = "dss dataset upload-file <name> <localPath> --file-name NAME [--project-key KEY]";
+			requireArgs(a, 2, usage,);
+			const fileName = f["file-name"] as string | undefined;
+			if (!fileName || fileName.trim() === "") {
+				throw new UsageError(`--file-name is required. Usage: ${usage}`,);
+			}
+			return c.datasets.uploadDatasetFile(a[0], a[1], {
+				fileName,
+				projectKey: f["project-key"] as string | undefined,
+			},);
+		},
+		usage: "dss dataset upload-file <name> <localPath> --file-name NAME [--project-key KEY]",
+		description: "Add one new file to an UploadedFiles dataset and verify the stored byte length.",
+		examples: [
+			"dss dataset upload-file uploaded_input ./input.csv --file-name input.csv",
+		],
+	},
 	"refresh-schema": {
 		handler: async (c, a, f,) => {
 			const usage =
