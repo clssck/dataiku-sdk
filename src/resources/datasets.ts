@@ -277,13 +277,17 @@ async function collectPreviewRows(
 	const startedAt = Date.now();
 	const reader = body.getReader();
 
+	let columnCount = 0;
 	const handleRow = (row: string[],): void => {
-		if (done || isBlankRow(row,)) return;
+		if (done) return;
 		if (columns === undefined) {
+			if (isBlankRow(row,)) return;
 			columns = row;
+			columnCount = row.length;
 			onHeader?.(row,);
 			return;
 		}
+		if (isBlankRow(row,) && columnCount !== 1) return;
 		if (rows.length >= maxDataRows) {
 			truncated = true;
 			done = true;
@@ -331,12 +335,21 @@ async function collectTsvRowCount(
 	const startedAt = Date.now();
 	const reader = body.getReader();
 
+	let columnCount = 0;
 	const handleRow = (row: string[],): void => {
-		if (bounded || isBlankRow(row,)) return;
+		if (bounded) return;
 		if (!headerSeen) {
+			if (isBlankRow(row,)) return;
 			headerSeen = true;
+			columnCount = row.length;
 			return;
 		}
+		// An empty line is structurally invalid in a multi-column TSV (blank
+		// rows are tolerated and skipped), but for single-column datasets an
+		// empty line is a real data row carrying an empty string value and
+		// must be counted. The stream parser only emits rows for real line
+		// terminators, so the synthetic trailing newline never produces one.
+		if (isBlankRow(row,) && columnCount !== 1) return;
 		count += 1;
 		if (count >= stopAfter) bounded = true;
 	};
@@ -379,14 +392,18 @@ function tsvToCsvTransform(
 	let headerSeen = false;
 	let done = false;
 
+	let columnCount = 0;
 	const handleRow = (row: string[], push: (line: string,) => void,): void => {
-		if (done || isBlankRow(row,)) return;
+		if (done) return;
 		if (!headerSeen) {
+			if (isBlankRow(row,)) return;
 			headerSeen = true;
+			columnCount = row.length;
 			onHeader?.(row,);
 			push(`${rowToCsv(row,)}\n`,);
 			return;
 		}
+		if (isBlankRow(row,) && columnCount !== 1) return;
 		if (stats.rows >= maxRows) {
 			stats.truncated = true;
 			done = true;

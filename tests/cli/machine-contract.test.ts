@@ -397,3 +397,28 @@ describe("machine contract: project-git classification", () => {
 		expect(git?.["create-branch"]?.idempotency,).toBe("none",);
 	});
 });
+
+describe("machine contract: dataset upload-file classification", () => {
+	const registry = buildCommandRegistry();
+	const upload = registry.dataset?.["upload-file"];
+
+	it("classifies dataset upload-file as a permanent write with no cleanup path", () => {
+		expect(upload,).toBeDefined();
+		expect(upload?.sideEffect,).toBe("write",);
+		expect(upload?.mutatesDss,).toBe(true,);
+		expect(upload?.destructive,).toBe("destructive",);
+		expect(upload?.cleanupCommand,).toBeUndefined();
+		expect(upload?.cleanupHint,).toBeUndefined();
+		expect(upload?.flags.some((flag,) => flag.name === "record-cleanup"),).toBe(false,);
+	});
+
+	it("keeps other upload and write actions reversible", () => {
+		expect(registry["project-deployer"]?.["upload-bundle"]?.sideEffect,).toBe("write",);
+		expect(registry["project-deployer"]?.["upload-bundle"]?.destructive,).toBe("reversible",);
+		expect(registry.folder?.upload?.sideEffect,).toBe("write",);
+		expect(registry.folder?.upload?.destructive,).toBe("reversible",);
+		expect(
+			registry.folder?.upload?.flags.some((flag,) => flag.name === "record-cleanup"),
+		).toBe(true,);
+	});
+});

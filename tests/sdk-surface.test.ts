@@ -2,6 +2,7 @@ import { describe, expect, it, } from "bun:test";
 import {
 	AnalysesResource,
 	ApiServicesResource,
+	assertImportableProjectArchive,
 	CodeEnvsResource,
 	ConnectionsResource,
 	DashboardsResource,
@@ -12,6 +13,7 @@ import {
 	FoldersResource,
 	FuturesResource,
 	InsightsResource,
+	inspectProjectArchive,
 	JobsResource,
 	MlTasksResource,
 	ModelEvaluationStoresResource,
@@ -35,6 +37,11 @@ import {
 	SqlResource,
 	VariablesResource,
 	WikiResource,
+} from "../src/index.js";
+import type {
+	ProjectArchiveInspection,
+	ProjectArchiveIssue,
+	ProjectArchiveIssueSeverity,
 } from "../src/index.js";
 
 const SDK_SURFACE: Array<
@@ -306,5 +313,24 @@ describe("SDK public surface", () => {
 		for (const schema of schemas) {
 			expect(typeof (schema as { type?: unknown; }).type,).toBe("string",);
 		}
+	});
+
+	it("exposes the project archive inspection API from the barrel", () => {
+		expect(typeof inspectProjectArchive,).toBe("function",);
+		expect(typeof assertImportableProjectArchive,).toBe("function",);
+		const issue: ProjectArchiveIssue = {
+			severity: "error",
+			code: "barrel_type_surface",
+			message: "barrel type surface",
+		};
+		const severities: ProjectArchiveIssueSeverity[] = ["error", "warning",];
+		const inspection: ProjectArchiveInspection = {
+			filePath: "",
+			sizeBytes: 0,
+			memberCount: 0,
+			valid: false,
+			issues: [issue,],
+		};
+		expect(severities,).toContain(inspection.issues[0]?.severity,);
 	});
 });

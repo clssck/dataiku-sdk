@@ -39,24 +39,96 @@ export function gitDirectory(packageRoot: string,): string {
 }
 
 /**
- * Full checkout HEAD revision (40-hex) — the basis for staleness comparison.
- * The short display revision is available via `gitRevision`.
+ * A full lowercase hexadecimal revision is the only provenance claim trusted.
+ * Git is never invoked from runtime version reporting; revisions are resolved
+ * directly from the filesystem layouts Git documents.
  */
-export function gitFullRevision(packageRoot: string | undefined,): string | undefined {
-	if (!packageRoot) return undefined;
+const FULL_REVISION_PATTERN = /^[0-9a-f]{40}$/;
+
+export function isFullRevision(value: unknown,): boolean {
+	return typeof value === "string" && FULL_REVISION_PATTERN.test(value,);
+}
+
+function readGitFile(base: string, relative: string,): string | undefined {
 	try {
-		const gitDir = gitDirectory(packageRoot,);
-		const head = readFileSync(resolve(gitDir, "HEAD",), "utf-8",).trim();
-		if (!head.startsWith("ref:",)) return head;
-		const ref = head.slice("ref:".length,).trim();
-		return readFileSync(resolve(gitDir, ref,), "utf-8",).trim();
+		return readFileSync(resolve(base, relative,), "utf-8",).trim();
 	} catch {
 		return undefined;
 	}
 }
 
+function isSafeRefName(ref: string,): boolean {
+	return (
+		ref.length > 0
+		&& !ref.startsWith("/",)
+		&& !ref.endsWith("/",)
+		&& !ref.includes("\\",)
+		&& !ref.split("/",).includes("..",)
+	);
+}
+
+/** Resolve an entry from packed-refs; peeled `^` lines never match a ref. */
+function packedRefFile(base: string, ref: string,): string | undefined {
+	let contents: string;
+	try {
+		contents = readFileSync(resolve(base, "packed-refs",), "utf-8",);
+	} catch {
+		return undefined;
+	}
+	for (const line of contents.split("\n",)) {
+		const trimmed = line.trim();
+		if (trimmed.length === 0 || trimmed.startsWith("#",) || trimmed.startsWith("^",)) continue;
+		const splitAt = trimmed.indexOf(" ",);
+		if (splitAt <= 0) continue;
+		const hash = trimmed.slice(0, splitAt,);
+		if (isFullRevision(hash,) && trimmed.slice(splitAt + 1,).trim() === ref) return hash;
+	}
+	return undefined;
+}
+
+/**
+ * The shared git dir behind a linked worktree or submodule checkout: the
+ * `commondir` file inside the worktree's git dir, resolved relative to that
+ * dir. Normal checkouts (no `commondir` file) share their own git dir.
+ */
+function gitCommonDirectory(gitDir: string,): string | undefined {
+	try {
+		const commondir = readFileSync(resolve(gitDir, "commondir",), "utf-8",).trim();
+		return commondir.length > 0 ? resolve(gitDir, commondir,) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Full checkout HEAD revision (40-lowercase-hex) — the basis for staleness
+ * comparison. Resolution follows Git's own layouts: a detached revision, then
+ * loose refs in the worktree git dir, then the shared store reached through
+ * `commondir`, then packed-refs in each. Anything that is not a full
+ * lowercase hexadecimal revision is rejected.
+ */
+export function gitFullRevision(packageRoot: string | undefined,): string | undefined {
+	if (!packageRoot) return undefined;
+	const gitDir = gitDirectory(packageRoot,);
+	const head = readGitFile(gitDir, "HEAD",);
+	if (!head) return undefined;
+	if (isFullRevision(head,)) return head;
+	if (!head.startsWith("ref:",)) return undefined;
+	const ref = head.slice("ref:".length,).trim();
+	if (!isSafeRefName(ref,)) return undefined;
+	for (const base of [gitDir, gitCommonDirectory(gitDir,),]) {
+		if (!base) continue;
+		const loose = readGitFile(base, ref,);
+		if (loose && isFullRevision(loose,)) return loose;
+		const packed = packedRefFile(base, ref,);
+		if (packed) return packed;
+	}
+	return undefined;
+}
+
 export function gitRevision(packageRoot: string | undefined,): string | undefined {
-	return gitFullRevision(packageRoot,)?.slice(0, 7,);
+	const full = gitFullRevision(packageRoot,);
+	return full ? full.slice(0, 7,) : undefined;
 }
 
 export type CliLoadSource = "source" | "dist";
@@ -73,7 +145,7 @@ export function buildMetadataRevision(packageRoot: string | undefined,): string 
 			readFileSync(resolve(packageRoot, "dist", "build-metadata.json",), "utf-8",),
 		) as { buildRevision?: unknown; };
 		return typeof metadata.buildRevision === "string"
-				&& /^[0-9a-f]{40,}$/.test(metadata.buildRevision,)
+				&& isFullRevision(metadata.buildRevision,)
 			? metadata.buildRevision
 			: undefined;
 	} catch {
@@ -172,13 +244,15 @@ export const AGENT_CONTRACT_SCHEMA_ID =
 
 export function cliVersionResult(): CliVersionPayload {
 	const loadSource = process.env["DSS_LOAD_SOURCE"] ?? detectLoadSource();
+	const envBuildRevision = process.env["DSS_BUILD_REVISION"];
 	return buildVersionPayload({
 		packageVersion: CLI_VERSION,
 		checkoutRevision: CLI_GIT_REVISION,
 		checkoutFullRevision: gitFullRevision(PACKAGE_ROOT,),
 		loadSource,
-		buildRevision: process.env["DSS_BUILD_REVISION"]
-			?? (loadSource === "dist" ? buildMetadataRevision(PACKAGE_ROOT,) : undefined),
+		buildRevision: isFullRevision(envBuildRevision,)
+			? envBuildRevision
+			: (loadSource === "dist" ? buildMetadataRevision(PACKAGE_ROOT,) : undefined),
 		sourceNewerThanBuild: loadSource === "dist"
 			? sourceTreeNewerThanBuild(PACKAGE_ROOT,)
 			: false,

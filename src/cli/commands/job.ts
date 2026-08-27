@@ -61,7 +61,7 @@ function aggregateJobWaitResults<
 		elapsedMs: jobs.reduce((maximum, job,) => Math.max(maximum, job.elapsedMs,), 0,),
 		jobs,
 		pollCount: jobs.reduce((total, job,) => total + job.pollCount, 0,),
-		state: failed?.state ?? "SUCCEEDED",
+		state: failed?.state ?? "DONE",
 		success: failed === undefined,
 		until,
 	};

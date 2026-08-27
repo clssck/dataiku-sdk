@@ -617,6 +617,81 @@ describe("Project import hardening", () => {
 		}
 	});
 
+	it("classifies an empty process 2xx response as ambiguous with the import id", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-emptybody-",),);
+		const archivePath = path.join(tempDir, "project.zip",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
+
+		try {
+			await withServer(async (req, res,) => {
+				if (req.url === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					sendJson(res, { id: "tmp-import-1", },);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					res.statusCode = 200;
+					res.end();
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				try {
+					await resource.importProjectFromArchive(archivePath, { targetProjectKey: "TARGET", },);
+					expect.unreachable("empty 2xx process response must reject",);
+				} catch (error) {
+					expect(error,).toBeInstanceOf(ClientValidationError,);
+					expect(error,).toMatchObject({
+						code: "ambiguous_outcome",
+						details: { importId: "tmp-import-1", targetProjectKey: "TARGET", },
+					},);
+				}
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("classifies a non-JSON 2xx process response as ambiguous with the import id", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-nonjson-",),);
+		const archivePath = path.join(tempDir, "project.zip",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
+
+		try {
+			await withServer(async (req, res,) => {
+				if (req.url === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					sendJson(res, { id: "tmp-import-1", },);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					res.statusCode = 200;
+					res.setHeader("Content-Type", "text/html",);
+					res.end("<html>maintenance window</html>",);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				try {
+					await resource.importProjectFromArchive(archivePath, { targetProjectKey: "TARGET", },);
+					expect.unreachable("non-JSON 2xx process response must reject",);
+				} catch (error) {
+					expect(error,).toBeInstanceOf(ClientValidationError,);
+					expect(error,).toMatchObject({
+						code: "ambiguous_outcome",
+						details: { importId: "tmp-import-1", targetProjectKey: "TARGET", },
+					},);
+				}
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+	});
+
 	it("reports explicit remapping when the used key differs from the requested key", async () => {
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-remap-",),);
 		const archivePath = path.join(tempDir, "project.zip",);

@@ -9,6 +9,30 @@ const DATASETS_ROOT = "project_config/datasets";
 const RECIPES_ROOT = "project_config/recipes";
 const BUNDLED_DATA_ROOT = "any_datasets_data";
 const UPLOADS_ROOT = "uploads";
+/**
+ * Definition roots for the non-dataset flow objects a recipe channel can
+ * reference. Their names live in the same flat namespace as dataset names, so
+ * an untyped reference resolving here is not a dangling dataset reference.
+ */
+const NON_DATASET_OBJECT_ROOTS = [
+	"project_config/managed_folders",
+	"project_config/saved_models",
+	"project_config/streaming_endpoints",
+	"project_config/model_evaluation_stores",
+];
+/**
+ * Reference `type` values that designate a non-dataset flow object. Refs
+ * carrying one of these are validated against their own definition
+ * namespace, never against the dataset definitions.
+ */
+const NON_DATASET_REFERENCE_TYPES: Record<string, true> = {
+	MANAGED_FOLDER: true,
+	FOLDER: true,
+	SAVED_MODEL: true,
+	MODEL: true,
+	STREAMING_ENDPOINT: true,
+	MODEL_EVALUATION_STORE: true,
+};
 /** Upper bound for parsed JSON members (manifest, recipes). */
 const MAX_JSON_MEMBER_BYTES = 16 * 1024 * 1024;
 /** Upper bound for residue text scanning of individual members. */
@@ -41,7 +65,8 @@ interface StreamedMember {
 	bytes: number;
 	crc: number;
 	content: Buffer[] | undefined;
-	error?: unknown;
+	/** True when accumulation stopped because the byte cap was reached. */
+	truncated: boolean;
 }
 
 function plainRecord(value: unknown,): Record<string, unknown> | undefined {
@@ -116,11 +141,17 @@ function isUnsafeMemberPath(name: string,): boolean {
  * Stream one member through a bounded-memory CRC-32/size check. The library's
  * own verification is bypassed for data-descriptor records (bit 3 set), so the
  * manual `node:zlib.crc32` computation covers every record uniformly.
+ *
+ * When `accumulate` is set, buffered content never exceeds `maxBytes`: the
+ * buffer is dropped as soon as the cap is reached while the member is still
+ * streamed in full, so CRC/size verification stays complete and the size
+ * mismatch (if the declared size lied) is still reported.
  */
 function streamMember(
 	zip: StreamZip,
 	entry: StreamZip.ZipEntry,
 	accumulate: boolean,
+	maxBytes = Number.POSITIVE_INFINITY,
 ): Promise<StreamedMember> {
 	const { promise, resolve, reject, } = Promise.withResolvers<StreamedMember>();
 	zip.stream(entry, (err, stm,) => {
@@ -133,15 +164,27 @@ function streamMember(
 		const stream = stm as Readable;
 		let bytes = 0;
 		let crc = 0;
+		let truncated = false;
 		const content: Buffer[] | undefined = accumulate ? [] : undefined;
 		stream.on("data", (chunk: Buffer | string,) => {
 			const buffer = typeof chunk === "string" ? Buffer.from(chunk,) : chunk;
 			bytes += buffer.length;
 			crc = crc32(buffer, crc,) >>> 0;
-			content?.push(buffer,);
+			if (!content || truncated) return;
+			if (bytes > maxBytes) {
+				truncated = true;
+				content.length = 0;
+				return;
+			}
+			content.push(buffer,);
 		},);
 		stream.on("end", () => {
-			resolve({ bytes, crc, content, },);
+			resolve({
+				bytes,
+				crc,
+				content: truncated ? undefined : content,
+				truncated,
+			},);
 		},);
 		stream.on("error", (streamErr,) => {
 			reject(streamErr,);
@@ -150,9 +193,9 @@ function streamMember(
 	return promise;
 }
 
-function datasetDefinitionNames(records: StreamZip.ZipEntry[],): Set<string> {
+function definitionNames(records: StreamZip.ZipEntry[], root: string,): Set<string> {
 	const names = new Set<string>();
-	const prefix = `${DATASETS_ROOT}/`;
+	const prefix = `${root}/`;
 	for (const entry of records) {
 		const name = entry.name;
 		if (!entry.isDirectory && name.startsWith(prefix,) && name.endsWith(".json",)) {
@@ -162,25 +205,26 @@ function datasetDefinitionNames(records: StreamZip.ZipEntry[],): Set<string> {
 	return names;
 }
 
+function datasetDefinitionNames(records: StreamZip.ZipEntry[],): Set<string> {
+	return definitionNames(records, DATASETS_ROOT,);
+}
+
 function recipeDefinitionNames(records: StreamZip.ZipEntry[],): Set<string> {
-	const names = new Set<string>();
-	const prefix = `${RECIPES_ROOT}/`;
-	for (const entry of records) {
-		const name = entry.name;
-		if (!entry.isDirectory && name.startsWith(prefix,) && name.endsWith(".json",)) {
-			names.add(name.slice(prefix.length, -5,),);
-		}
-	}
-	return names;
+	return definitionNames(records, RECIPES_ROOT,);
 }
 
 /**
  * Check dangling dataset references in recipe definitions: every `ref` under
- * `inputs`/`outputs` channel items must name a defined dataset.
+ * `inputs`/`outputs` channel items that provably names a local dataset must
+ * name a defined dataset. Refs to managed folders, saved models, streaming
+ * endpoints or model evaluation stores, and project-qualified (`project.key`)
+ * refs are not provable against the local dataset definitions and are never
+ * treated as dangling datasets.
  */
 function checkRecipeReferences(
 	recipes: Map<string, unknown>,
 	datasetNames: Set<string>,
+	nonDatasetNames: Set<string>,
 	issues: ProjectArchiveIssue[],
 ): void {
 	for (const recipeName of [...recipes.keys(),].sort()) {
@@ -194,18 +238,30 @@ function checkRecipeReferences(
 				if (!channel) continue;
 				const items = channel["items"];
 				if (!Array.isArray(items,)) continue;
+				const channelType = stringField(channel, "type",);
 				for (const itemValue of items) {
-					const item = plainRecord(itemValue,);
-					const ref = stringField(item ?? {}, "ref",);
-					if (ref && !datasetNames.has(ref,)) {
-						issues.push({
-							severity: "error",
-							code: "dataset_reference_unresolved",
-							message:
-								`recipe ${recipeName} has dangling dataset reference ${direction}.${channelName}.${ref}`,
-							member: `${RECIPES_ROOT}/${recipeName}.json`,
-						},);
+					const item = plainRecord(itemValue,) ?? {};
+					const ref = stringField(item, "ref",);
+					if (!ref) continue;
+					// Project-qualified refs point at the source project's own
+					// objects and cannot be proven or disproven locally.
+					if (ref.includes(".",)) continue;
+					const declaredType = stringField(item, "type",)
+						?? stringField(item, "objectType",)
+						?? stringField(item, "kind",)
+						?? channelType;
+					if (declaredType !== undefined) {
+						const normalized = declaredType.trim().toUpperCase();
+						if (NON_DATASET_REFERENCE_TYPES[normalized] === true) continue;
 					}
+					if (datasetNames.has(ref,) || nonDatasetNames.has(ref,)) continue;
+					issues.push({
+						severity: "error",
+						code: "dataset_reference_unresolved",
+						message:
+							`recipe ${recipeName} has dangling dataset reference ${direction}.${channelName}.${ref}`,
+						member: `${RECIPES_ROOT}/${recipeName}.json`,
+					},);
 				}
 			}
 		}
@@ -432,7 +488,19 @@ export async function inspectProjectArchive(
 				&& entry.size <= MAX_RESIDUE_SCAN_BYTES;
 			let streamed: StreamedMember | undefined;
 			try {
-				streamed = await streamMember(zip, entry, parseCandidate || scanCandidate,);
+				// The buffering cap applies to actual streamed bytes, not the
+				// declared size: a member can declare a small size and still
+				// inflate arbitrarily, which must not be buffered unbounded.
+				streamed = await streamMember(
+					zip,
+					entry,
+					parseCandidate || scanCandidate,
+					parseCandidate
+						? MAX_JSON_MEMBER_BYTES
+						: scanCandidate
+						? MAX_RESIDUE_SCAN_BYTES
+						: Number.POSITIVE_INFINITY,
+				);
 			} catch (streamErr) {
 				streamed = undefined;
 				const prefix = `member ${name}: `;
@@ -473,6 +541,15 @@ export async function inspectProjectArchive(
 					severity: "error",
 					code: "member_crc_mismatch",
 					message: `member ${name}: data CRC-32 does not match its central-directory record`,
+					member: name,
+				},);
+			}
+			if (streamed.truncated) {
+				issues.push({
+					severity: isManifest ? "error" : "warning",
+					code: "member_size_limit_exceeded",
+					message:
+						`member ${name}: data exceeds the inspection byte limit and was not buffered for parsing`,
 					member: name,
 				},);
 			}
@@ -550,12 +627,18 @@ export async function inspectProjectArchive(
 		}
 
 		const datasetNames = datasetDefinitionNames(records,);
+		const nonDatasetNames = new Set<string>();
+		for (const root of NON_DATASET_OBJECT_ROOTS) {
+			for (const name of definitionNames(records, root,)) {
+				nonDatasetNames.add(name,);
+			}
+		}
 		const anchored = new Set(datasetNames,);
 		for (const name of manifestDatasetNames ?? []) {
 			anchored.add(name,);
 		}
 		const recipeNames = recipeDefinitionNames(records,);
-		checkRecipeReferences(recipes, datasetNames, issues,);
+		checkRecipeReferences(recipes, datasetNames, nonDatasetNames, issues,);
 		checkOrphanMembers(records, recipeNames, anchored, issues,);
 
 		issues.sort((a, b,) => {

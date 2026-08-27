@@ -61,14 +61,17 @@ const usesSourceCli = cliPath === sourceCliPath;
 
 // Published dist carries dist/build-metadata.json with the revision it was
 // built from. Forward it to the CLI so provenance can report dist source and
-// its build revision; the source CLI gets nothing and never claims a revision.
+// its build revision; only a full lowercase hexadecimal revision is accepted,
+// so an inherited or corrupt variable never stands in for packaged metadata.
 const distMetadataPath = path.resolve(here, "../dist/build-metadata.json",);
 if (!usesSourceCli) {
 	env.DSS_LOAD_SOURCE = "dist";
+	delete env.DSS_BUILD_REVISION;
 	try {
 		const metadata = JSON.parse(fs.readFileSync(distMetadataPath, "utf-8",),);
-		if (typeof metadata.buildRevision === "string" && metadata.buildRevision.length > 0) {
-			env.DSS_BUILD_REVISION = metadata.buildRevision;
+		const revision = metadata.buildRevision;
+		if (typeof revision === "string" && /^[0-9a-f]{40}$/.test(revision,)) {
+			env.DSS_BUILD_REVISION = revision;
 		}
 	} catch {
 		// Dist without build metadata: provenance still reports dist source.

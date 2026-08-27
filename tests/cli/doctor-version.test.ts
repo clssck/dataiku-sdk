@@ -4,15 +4,26 @@ import { tmpdir, } from "node:os";
 import { join, } from "node:path";
 import { doctorEnvironment, type DoctorVersionInfo, } from "../../src/cli/doctor.js";
 import {
+	buildMetadataRevision,
 	buildVersionPayload,
 	cliVersionResult,
 	detectRuntime,
 	gitFullRevision,
+	gitRevision,
 	PACKAGE_ROOT,
 	sourceTreeNewerThanBuild,
 } from "../../src/cli/version.js";
 import { DataikuClient, } from "../../src/client.js";
-import { cliEnv, dss, SDK_ROOT, withCliServer, } from "./_harness.js";
+import {
+	BUN,
+	cliEnv,
+	dss,
+	dssFailure,
+	exec,
+	readFileSync,
+	SDK_ROOT,
+	withCliServer,
+} from "./_harness.js";
 
 const FORTY_A = "a".repeat(40,);
 const FORTY_B = "b".repeat(40,);
@@ -179,6 +190,63 @@ describe("doctor environment version provenance", () => {
 		expect(none.instanceTime,).toBeUndefined();
 	});
 });
+/* ------------------------------------------------------------------ */
+/*  Doctor: malformed project-list payloads                            */
+/* ------------------------------------------------------------------ */
+
+async function runMalformedDoctor(body: string,): Promise<{
+	code: number | null;
+	stdout: string;
+	stderr: string;
+}> {
+	let failure: { code: number | null; stdout: string; stderr: string; } | undefined;
+	await withCliServer((req, res,) => {
+		const url = new URL(req.url ?? "/", "http://localhost",);
+		res.sendDate = false;
+		res.setHeader("Content-Type", "application/json",);
+		res.setHeader("DSS-Version", "12.4.3",);
+		if (url.pathname === "/public/api/projects/") {
+			res.setHeader("DSS-API-Version", "14.7.3",);
+			res.end(body,);
+			return;
+		}
+		if (url.pathname === "/public/api/connections/get-names/") {
+			res.end("[]",);
+			return;
+		}
+		res.statusCode = 404;
+		res.end(`unexpected request ${url.pathname}`,);
+	}, async (url,) => {
+		const env = cliEnv(url,);
+		delete env.DATAIKU_PROJECT_KEY;
+		failure = await dssFailure(["doctor", "--capabilities", "--fast",], { env, },);
+	},);
+	return failure as { code: number | null; stdout: string; stderr: string; };
+}
+
+describe("doctor malformed project-list payloads", () => {
+	it("never reports connectivity success and never crashes on a non-array body", async () => {
+		for (const body of ['{"not":"an array"}', "null", '"projects"', "17",]) {
+			const failure = await runMalformedDoctor(body,);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.code,).toBe(2,);
+			const parsed = JSON.parse(failure.stdout,) as {
+				ok: boolean;
+				checks: Array<{ name: string; ok: boolean; details?: Record<string, unknown>; }>;
+				environment?: Record<string, unknown>;
+			};
+			expect(parsed.ok,).toBe(false,);
+			const connectivity = parsed.checks.find((check,) => check.name === "connectivity");
+			expect(connectivity?.ok,).toBe(false,);
+			expect(connectivity?.details?.["reason"],).toBe("invalid_project_list",);
+			expect(connectivity?.details?.["errorCount"],).toBeGreaterThan(0,);
+			// The documented headers on the same response still populate the
+			// environment, independent of body shape.
+			expect(parsed.environment?.dssVersion,).toBe("12.4.3",);
+			expect(parsed.environment?.dssApiVersion,).toBe("14.7.3",);
+		}
+	});
+});
 
 /* ------------------------------------------------------------------ */
 /*  Version provenance payload                                         */
@@ -301,6 +369,131 @@ describe("buildVersionPayload provenance", () => {
 		expect(payload.gitRevision,).toEqual(gitFullRevision(PACKAGE_ROOT,)?.slice(0, 7,) ?? null,);
 	});
 });
+/* ------------------------------------------------------------------ */
+/*  Git revision resolution: packed refs, worktrees, validation        */
+/* ------------------------------------------------------------------ */
+
+describe("git revision resolution", () => {
+	const FORTY_41 = "a".repeat(41,);
+
+	function gitRoot(): string {
+		return mkdtempSync(join(tmpdir(), "dss-git-",),);
+	}
+
+	it("resolves a detached HEAD revision as-is", () => {
+		const root = gitRoot();
+		try {
+			mkdirSync(join(root, ".git",), { recursive: true, },);
+			writeFileSync(join(root, ".git", "HEAD",), `${FORTY_A}\n`,);
+			expect(gitFullRevision(root,),).toBe(FORTY_A,);
+			expect(gitRevision(root,),).toBe(FORTY_A.slice(0, 7,),);
+		} finally {
+			rmSync(root, { recursive: true, force: true, },);
+		}
+	});
+
+	it("resolves revisions from packed-refs, skipping comments and peeled lines", () => {
+		const root = gitRoot();
+		try {
+			const gitDir = join(root, ".git",);
+			mkdirSync(join(gitDir, "refs", "heads",), { recursive: true, },);
+			writeFileSync(join(gitDir, "HEAD",), "ref: refs/heads/main\n",);
+			writeFileSync(join(gitDir, "refs", "heads", "other",), `${FORTY_B}\n`,);
+			writeFileSync(
+				join(gitDir, "packed-refs",),
+				[
+					"# pack-refs with: peeled fully-peeled sorted",
+					`${FORTY_B} refs/heads/other`,
+					`${FORTY_B} refs/heads/tagged`,
+					`^${FORTY_A}`,
+					`${FORTY_A} refs/heads/main`,
+				].join("\n",) + "\n",
+			);
+			expect(gitFullRevision(root,),).toBe(FORTY_A,);
+			expect(gitRevision(root,),).toBe(FORTY_A.slice(0, 7,),);
+		} finally {
+			rmSync(root, { recursive: true, force: true, },);
+		}
+	});
+
+	it("resolves revisions through a linked worktree commondir", () => {
+		const root = gitRoot();
+		try {
+			const mainGit = join(root, ".git",);
+			const worktreeGit = join(mainGit, "worktrees", "wt",);
+			const checkout = join(root, "wt",);
+			mkdirSync(join(mainGit, "refs", "heads",), { recursive: true, },);
+			mkdirSync(worktreeGit, { recursive: true, },);
+			mkdirSync(checkout, { recursive: true, },);
+			writeFileSync(join(checkout, ".git",), `gitdir: ${worktreeGit}\n`,);
+			writeFileSync(join(worktreeGit, "HEAD",), "ref: refs/heads/feature\n",);
+			writeFileSync(join(worktreeGit, "commondir",), "../..\n",);
+			writeFileSync(join(mainGit, "refs", "heads", "feature",), `${FORTY_B}\n`,);
+			expect(gitFullRevision(checkout,),).toBe(FORTY_B,);
+
+			// The shared store works through packed-refs as well.
+			rmSync(join(mainGit, "refs", "heads", "feature",),);
+			writeFileSync(join(mainGit, "packed-refs",), `${FORTY_A} refs/heads/feature\n`,);
+			expect(gitFullRevision(checkout,),).toBe(FORTY_A,);
+		} finally {
+			rmSync(root, { recursive: true, force: true, },);
+		}
+	});
+
+	it("rejects revisions that are not full lowercase hexadecimal", () => {
+		const root = gitRoot();
+		try {
+			const gitDir = join(root, ".git",);
+			mkdirSync(join(gitDir, "refs", "heads",), { recursive: true, },);
+			writeFileSync(join(gitDir, "refs", "heads", "evil",), `${FORTY_B}\n`,);
+			const headPath = join(gitDir, "HEAD",);
+			const cases: Array<[string, string | undefined,]> = [
+				[`${FORTY_A.toUpperCase()}\n`, undefined,],
+				[`${FORTY_A.slice(0, 39,)}\n`, undefined,],
+				[`${FORTY_41}\n`, undefined,],
+				["garbage\n", undefined,],
+				["\n", undefined,],
+				["ref: refs/heads/missing\n", undefined,],
+				["ref: ../outside\n", undefined,],
+				["ref: refs/heads/evil\n", FORTY_B,],
+			];
+			for (const [head, expected,] of cases) {
+				writeFileSync(headPath, head,);
+				expect(gitFullRevision(root,),).toBe(expected,);
+				expect(gitRevision(root,),).toBe(expected?.slice(0, 7,),);
+			}
+		} finally {
+			rmSync(root, { recursive: true, force: true, },);
+		}
+	});
+
+	it("buildMetadataRevision accepts only a full lowercase hex revision", () => {
+		const root = gitRoot();
+		try {
+			const metadataPath = join(root, "dist", "build-metadata.json",);
+			mkdirSync(join(root, "dist",), { recursive: true, },);
+			writeFileSync(metadataPath, JSON.stringify({ buildRevision: FORTY_A, },),);
+			expect(buildMetadataRevision(root,),).toBe(FORTY_A,);
+			for (
+				const invalid of [
+					FORTY_A.toUpperCase(),
+					FORTY_41,
+					FORTY_A.slice(0, 39,),
+					"not a revision",
+					"",
+					42,
+				]
+			) {
+				writeFileSync(metadataPath, JSON.stringify({ buildRevision: invalid, },),);
+				expect(buildMetadataRevision(root,),).toBeUndefined();
+			}
+			writeFileSync(metadataPath, "not json",);
+			expect(buildMetadataRevision(root,),).toBeUndefined();
+		} finally {
+			rmSync(root, { recursive: true, force: true, },);
+		}
+	});
+});
 
 /* ------------------------------------------------------------------ */
 /*  dss version subprocess: provenance in the actual CLI               */
@@ -339,5 +532,88 @@ describe("dss version provenance", () => {
 		expect(payload.source,).toBe("dist",);
 		expect(payload.buildRevision,).toBe(fakeBuild,);
 		expect(payload.staleBuild,).toBe(true,);
+	});
+});
+/* ------------------------------------------------------------------ */
+/*  dss version provenance: corrupt or inherited build revisions       */
+/* ------------------------------------------------------------------ */
+
+describe("dss version provenance rejects corrupt revisions", () => {
+	it("never claims a corrupt or inherited revision as build provenance", async () => {
+		for (const corrupt of ["garbage", "A".repeat(40,), "a".repeat(41,), "0".repeat(39,),]) {
+			const { stdout, } = await dss(["version",], {
+				env: {
+					...process.env,
+					DSS_LOAD_SOURCE: "dist",
+					DSS_BUILD_REVISION: corrupt,
+				},
+			},);
+			const payload = JSON.parse(stdout,) as Record<string, string | boolean | null>;
+			expect(payload.source,).toBe("dist",);
+			expect(payload.buildRevision,).toBeNull();
+			expect(payload.staleBuild,).toBe(false,);
+		}
+	});
+});
+
+/* ------------------------------------------------------------------ */
+/*  bin/dss.js: build revision forwarding                              */
+/* ------------------------------------------------------------------ */
+
+describe("bin/dss.js build revision forwarding", () => {
+	async function runLauncher(
+		metadata: string | null,
+		inherited: string | undefined,
+	): Promise<{ revision: string | null; source: string | null; }> {
+		const root = mkdtempSync(join(tmpdir(), "dss-bin-",),);
+		try {
+			mkdirSync(join(root, "bin",), { recursive: true, },);
+			mkdirSync(join(root, "dist", "src",), { recursive: true, },);
+			writeFileSync(
+				join(root, "bin", "dss.js",),
+				readFileSync(join(SDK_ROOT, "bin", "dss.js",), "utf-8",),
+			);
+			writeFileSync(
+				join(root, "dist", "src", "cli.js",),
+				"process.stdout.write(JSON.stringify({revision: process.env.DSS_BUILD_REVISION ?? null, source: process.env.DSS_LOAD_SOURCE ?? null}));",
+			);
+			if (metadata !== null) {
+				writeFileSync(join(root, "dist", "build-metadata.json",), metadata,);
+			}
+			const env: NodeJS.ProcessEnv = { ...process.env, };
+			delete env.DSS_BUILD_REVISION;
+			if (inherited !== undefined) env.DSS_BUILD_REVISION = inherited;
+			const { stdout, } = await exec(BUN, [join(root, "bin", "dss.js",), "version",], {
+				cwd: root,
+				env,
+			},);
+			return JSON.parse(stdout,) as { revision: string | null; source: string | null; };
+		} finally {
+			rmSync(root, { recursive: true, force: true, },);
+		}
+	}
+
+	it("forwards a full lowercase hexadecimal metadata revision", async () => {
+		const child = await runLauncher(
+			JSON.stringify({ buildRevision: FORTY_A, },),
+			"inherited-garbage",
+		);
+		expect(child.source,).toBe("dist",);
+		expect(child.revision,).toBe(FORTY_A,);
+	});
+
+	it("rejects corrupt metadata revisions instead of forwarding them", async () => {
+		const child = await runLauncher(
+			JSON.stringify({ buildRevision: "a".repeat(41,), },),
+			"inherited-garbage",
+		);
+		expect(child.source,).toBe("dist",);
+		expect(child.revision,).toBeNull();
+	});
+
+	it("clears inherited revisions when dist metadata is absent", async () => {
+		const child = await runLauncher(null, "inherited-garbage",);
+		expect(child.source,).toBe("dist",);
+		expect(child.revision,).toBeNull();
 	});
 });

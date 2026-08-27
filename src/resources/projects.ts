@@ -384,17 +384,44 @@ export class ProjectsResource extends BaseResource {
 	): Promise<ProjectImportProcessResult> {
 		const body = Object.keys(settings,).length === 0 ? { _: "_", } : settings;
 		try {
-			return await this.client.post<ProjectImportProcessResult>(
+			const response = await this.client.post<ProjectImportProcessResult>(
 				`/public/api/projects/import/${encodeURIComponent(importId,)}/process`,
 				body,
 			);
+			// An empty or null 2xx body carries no definitive outcome: DSS may
+			// have created the project, partially processed it, or done nothing.
+			if (!response) {
+				throw new ClientValidationError(
+					"DSS accepted the import process request but returned no response body: the project may or may not have been created.",
+					"ambiguous_outcome",
+					PROJECT_IMPORT_AMBIGUOUS_REMEDIATION,
+					{
+						importId,
+						...(typeof settings.targetProjectKey === "string"
+								&& settings.targetProjectKey.trim() !== ""
+							? { targetProjectKey: settings.targetProjectKey, }
+							: {}),
+					},
+				);
+			}
+			return response;
 		} catch (error) {
 			// A transport timeout or server-side 5xx leaves the import outcome
 			// unknowable: the project may or may not exist. Surface that as an
-			// ambiguous outcome — never as a definitive failure.
-			if (error instanceof DataikuError && (error.status === 0 || error.status >= 500)) {
+			// ambiguous outcome — never as a definitive failure. A 2xx
+			// response that carried a non-JSON body has the same property.
+			if (
+				error instanceof DataikuError
+				&& (
+					error.status === 0
+					|| error.status >= 500
+					|| (error.status >= 200 && error.status < 300)
+				)
+			) {
 				throw new ClientValidationError(
-					"DSS returned no definitive import result: the project may or may not have been created.",
+					error.status >= 200 && error.status < 300
+						? "DSS returned a non-JSON process response: the import outcome is indeterminate and the project may or may not have been created."
+						: "DSS returned no definitive import result: the project may or may not have been created.",
 					"ambiguous_outcome",
 					PROJECT_IMPORT_AMBIGUOUS_REMEDIATION,
 					{

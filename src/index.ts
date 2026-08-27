@@ -315,6 +315,7 @@ export {
 	type NormalizedFlowNode,
 	normalizeFlowGraph,
 } from "./utils/flow-map.js";
+export * from "./utils/project-archive.js";
 export { sanitizeFileName, } from "./utils/sanitize.js";
 
 // Stream validation

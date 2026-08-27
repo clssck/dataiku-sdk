@@ -1102,12 +1102,23 @@ export function supportsCleanupLedger(resource: string, action: string,): boolea
 		|| `${resource}.${action}` === "folder.upload";
 }
 
+/**
+ * Write actions that no public DSS route can undo. `dataset upload-file` adds a
+ * file to the dataset's uploaded-files set, and DSS exposes no endpoint to
+ * replace or delete an individual uploaded file, so the write is permanent and
+ * no cleanup-ledger entry can recover the previous file set.
+ */
+const EXPLICIT_DESTRUCTIVE_KEYS: Record<string, true> = {
+	"dataset.upload-file": true,
+};
+
 function inferDestructiveLevel(
 	resource: string,
 	sideEffect: CommandSideEffect,
 	action: string,
 ): CommandDestructiveLevel {
 	if (sideEffect !== "write") return "none";
+	if (EXPLICIT_DESTRUCTIVE_KEYS[`${resource}.${action}`] === true) return "destructive";
 	if (resource === "project-git") {
 		return PROJECT_GIT_DESTRUCTIVE_ACTIONS[action] === true ? "destructive" : "reversible";
 	}

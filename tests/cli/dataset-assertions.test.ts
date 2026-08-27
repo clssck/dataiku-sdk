@@ -130,6 +130,66 @@ describe("dataset assertions", () => {
 		});
 	});
 
+	it("rejects --max-rows above the public maximum before contacting DSS", async () => {
+		for (const value of ["501", "1000",]) {
+			const failure = await dssFailure([
+				"dataset",
+				"preview",
+				"orders",
+				"--max-rows",
+				value,
+			], { env: cliEnv("http://127.0.0.1:1",), },);
+			expect(failure.code,).toBe(1,);
+			const report = JSON.parse(failure.stdout,) as { code: string; error: string; };
+			expect(report.code,).toBe("validation_failed",);
+			expect(report.error,).toContain("--max-rows must be a positive integer no greater than 500",);
+			expect(report.error,).toContain(value,);
+		}
+	});
+
+	it("gives actionable guidance when a preview is truncated below the cap", async () => {
+		let requestedLimit = "";
+		await withCliServer((req, res,) => {
+			requestedLimit = new URL(req.url ?? "/", "http://localhost",).searchParams.get("limit",) ?? "";
+			tsvResponse(res, ["name\tcity", "Alice\tParis", "Bob\tBerlin", "Carole\tLyon",],);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss([
+				"dataset",
+				"preview",
+				"orders",
+				"--max-rows",
+				"2",
+			], { env: cliEnv(url,), },);
+			expect(requestedLimit,).toBe("3",);
+			expect(JSON.parse(stdout,),).toMatchObject({ rowCount: 2, truncated: true, limit: 2, },);
+			const warning = JSON.parse(stderr.trim(),) as { warnings: Array<{ message: string; }>; };
+			expect(warning.warnings,).toHaveLength(1,);
+			expect(warning.warnings[0].message,).toContain("Re-run with --max-rows N",);
+		},);
+	});
+
+	it("points at dataset download when the public maximum is reached", async () => {
+		let requestedLimit = "";
+		await withCliServer((req, res,) => {
+			requestedLimit = new URL(req.url ?? "/", "http://localhost",).searchParams.get("limit",) ?? "";
+			const rows = Array.from({ length: 500, }, (_, i,) => `row${i}\tx${i}`,);
+			tsvResponse(res, ["name\tcity", ...rows, "extra\trow",],);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss([
+				"dataset",
+				"preview",
+				"orders",
+				"--max-rows",
+				"500",
+			], { env: cliEnv(url,), },);
+			expect(requestedLimit,).toBe("501",);
+			expect(JSON.parse(stdout,),).toMatchObject({ rowCount: 500, truncated: true, limit: 500, },);
+			const warning = JSON.parse(stderr.trim(),) as { warnings: Array<{ message: string; }>; };
+			expect(warning.warnings,).toHaveLength(1,);
+			expect(warning.warnings[0].message,).toContain("dss dataset download",);
+		},);
+	});
+
 	describe("dataset assert-count", () => {
 		it("satisfies on an exact count", async () => {
 			let requestedLimit = "";
@@ -238,6 +298,74 @@ describe("dataset assertions", () => {
 				expect(report.error,).toContain("--expected must be a non-negative integer",);
 			}
 		});
+	});
+
+	it("counts interior blank single-column rows exactly", async () => {
+		let requestedLimit = "";
+		await withCliServer((req, res,) => {
+			requestedLimit = new URL(req.url ?? "/", "http://localhost",).searchParams.get("limit",) ?? "";
+			tsvResponse(res, ["name", "r1", "", "r2",],);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss([
+				"dataset",
+				"assert-count",
+				"orders",
+				"--expected",
+				"3",
+			], { env: cliEnv(url,), },);
+			expect(requestedLimit,).toBe("4",);
+			expect(stderr,).toBe("",);
+			expect(JSON.parse(stdout,),).toEqual({
+				expected: 3,
+				count: 3,
+				exact: true,
+				satisfied: true,
+				dataset: "orders",
+			},);
+		},);
+	});
+
+	it("counts consecutive interior and trailing blank single-column rows exactly", async () => {
+		await withCliServer((req, res,) => {
+			tsvResponse(res, ["name", "", "", "r1", "", "",],);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"dataset",
+				"assert-count",
+				"orders",
+				"--expected",
+				"4",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				count: 4,
+				exact: true,
+				satisfied: true,
+			},);
+		},);
+	});
+
+	it("keeps the bounded probe behavior with blank single-column rows", async () => {
+		await withCliServer((req, res,) => {
+			tsvResponse(res, ["name", "r1", "", "r2",],);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"dataset",
+				"assert-count",
+				"orders",
+				"--expected",
+				"1",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(4,);
+			const report = JSON.parse(failure.stdout,) as {
+				details: { result: Record<string, unknown>; };
+			};
+			expect(report.details.result,).toMatchObject({
+				expected: 1,
+				count: 2,
+				exact: false,
+				satisfied: false,
+			},);
+		},);
 	});
 
 	describe("dataset assert-schema", () => {
@@ -515,6 +643,51 @@ describe("dataset assertions", () => {
 					failed: [],
 				},);
 			},);
+		});
+
+		it("fails when a result supplies no outcome or status", async () => {
+			await withCliServer(resultsServer([{ id: "r1", name: "No verdict", },],), async (url,) => {
+				const failure = await dssFailure([
+					"data-quality",
+					"assert-results",
+					"orders",
+				], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(4,);
+				const report = JSON.parse(failure.stdout,) as {
+					details: {
+						result: {
+							failed: Array<{ ruleId: string; outcome: string | null; status: string | null; }>;
+						};
+					};
+				};
+				expect(report.details.result.failed,).toEqual([
+					{ ruleId: "r1", outcome: null, status: null, },
+				],);
+			},);
+		});
+
+		it("fails when a result carries conflicting outcome and status", async () => {
+			await withCliServer(
+				resultsServer([{ id: "r1", outcome: "OK", status: "ERROR", },],),
+				async (url,) => {
+					const failure = await dssFailure([
+						"data-quality",
+						"assert-results",
+						"orders",
+					], { env: cliEnv(url,), },);
+					expect(failure.code,).toBe(4,);
+					const report = JSON.parse(failure.stdout,) as {
+						details: {
+							result: {
+								failed: Array<{ ruleId: string; outcome: string | null; status: string | null; }>;
+							};
+						};
+					};
+					expect(report.details.result.failed,).toEqual([
+						{ ruleId: "r1", outcome: "OK", status: "ERROR", },
+					],);
+				},
+			);
 		});
 	});
 

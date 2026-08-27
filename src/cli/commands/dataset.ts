@@ -279,9 +279,11 @@ export const datasetCommands: Record<string, CommandMeta> = {
 				"dss dataset preview <name> [--max-rows N] [--rows N] [--project-key KEY] [--timeout MS]";
 			requireArgs(a, 1, previewUsage,);
 			const maxRows = num(f["max-rows"], "--max-rows",);
-			if (maxRows !== undefined && (!Number.isSafeInteger(maxRows,) || maxRows <= 0)) {
+			if (
+				maxRows !== undefined && (!Number.isSafeInteger(maxRows,) || maxRows <= 0 || maxRows > 500)
+			) {
 				throw new UsageError(
-					`--max-rows must be a positive integer (got "${String(f["max-rows"],)}"). `
+					`--max-rows must be a positive integer no greater than 500 (got "${String(f["max-rows"],)}"). `
 						+ `Usage: ${previewUsage}`,
 					"validation_failed",
 				);
@@ -294,9 +296,13 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			if (result.truncated) {
 				enqueueCliWarning({
 					code: "dataset_preview_truncated",
-					message:
-						`Preview of '${a[0]}' stopped at the ${result.limit}-row cap; the dataset has more rows. `
-						+ "Re-run with --max-rows N for more (public maximum 500).",
+					message: `Preview of '${
+						a[0]
+					}' stopped at the ${result.limit}-row cap; the dataset has more rows. ${
+						result.limit >= 500
+							? "The preview cap of 500 rows is the public maximum; use `dss dataset download` for more rows."
+							: "Re-run with --max-rows N (up to 500) for more rows."
+					}`,
 					dataset: a[0],
 					rows: result.rowCount,
 					limit: result.limit,

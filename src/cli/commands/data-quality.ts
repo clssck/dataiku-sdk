@@ -3,6 +3,18 @@ import { num, parseBooleanOption, requiredJsonInput, } from "../coerce.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
+/**
+ * A data quality result counts as passing only when it actually carries a
+ * verdict and every verdict it carries reports OK. A result with no outcome
+ * and no status has proven nothing, and a result whose fields disagree
+ * (outcome ERROR alongside status OK) is a failure — never a pass.
+ */
+function resultReportsOk(result: { outcome?: string; status?: string; },): boolean {
+	const verdicts = [result.outcome, result.status,]
+		.filter((value,): value is string => typeof value === "string" && value.trim().length > 0)
+		.map((value,) => value.trim().toUpperCase());
+	return verdicts.length > 0 && verdicts.every((value,) => value === "OK");
+}
 
 export const dataQualityCommands: Record<string, CommandMeta> = {
 	rules: {
@@ -182,7 +194,7 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 				ruleId === undefined || result.id === ruleId || result.ruleId === ruleId
 			);
 			const failed = selected
-				.filter((result,) => result.outcome !== "OK" && result.status !== "OK")
+				.filter((result,) => !resultReportsOk(result,))
 				.map((result,) => ({
 					ruleId: result.id ?? result.ruleId ?? result.name ?? null,
 					outcome: result.outcome ?? null,

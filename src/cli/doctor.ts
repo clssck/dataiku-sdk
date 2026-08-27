@@ -1,5 +1,6 @@
 import { DataikuClient, } from "../client.js";
 import { DataikuError, } from "../errors.js";
+import { ProjectSummaryArraySchema, safeParseSchema, } from "../schemas.js";
 import { num, splitCsvFlag, stringField, } from "./coerce.js";
 import { currentCommandContext, resolveCredentials, } from "./runtime.js";
 import { UsageError, } from "./usage.js";
@@ -482,21 +483,39 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 		},);
 
 		try {
-			const projects = await client.getWithMetadata<unknown[]>("/public/api/projects/",);
-			accessibleProjects = projects.data;
+			const projects = await client.getWithMetadata<unknown>("/public/api/projects/",);
 			// Documented headers on the public project-list call populate the
-			// optional environment fields; absent headers stay absent.
+			// optional environment fields; absent headers stay absent. Header
+			// provenance is independent of the body being well-formed.
 			environmentVersion = {
 				dssVersion: projects.meta.dssVersion,
 				dssApiVersion: projects.meta.dssApiVersion,
 				instanceTime: projects.meta.date,
 			};
-			checks.push({
-				name: "connectivity",
-				ok: true,
-				message: "Connected to DSS and listed accessible projects.",
-				details: { projectCount: projects.data.length, },
-			},);
+			// A reachable endpoint that answers with something other than a
+			// project list is not working connectivity: the body never becomes
+			// capability input, so probes cannot iterate a non-array.
+			const parsed = safeParseSchema(ProjectSummaryArraySchema, projects.data,);
+			if (parsed.success) {
+				accessibleProjects = parsed.data;
+				checks.push({
+					name: "connectivity",
+					ok: true,
+					message: "Connected to DSS and listed accessible projects.",
+					details: { projectCount: parsed.data.length, },
+				},);
+			} else {
+				checks.push({
+					name: "connectivity",
+					ok: false,
+					message: "Connected to DSS but the project list response was not a project list.",
+					details: {
+						reason: "invalid_project_list",
+						errorCount: parsed.errors.length,
+						errors: parsed.errors.slice(0, 5,),
+					},
+				},);
+			}
 		} catch (error) {
 			checks.push({
 				name: "connectivity",

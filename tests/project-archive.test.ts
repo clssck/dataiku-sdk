@@ -356,6 +356,132 @@ describe("inspectProjectArchive", () => {
 		expect(refIssue?.message,).toContain("vanished",);
 	});
 
+	it("does not treat managed-folder, model or streaming refs as dangling datasets", async () => {
+		const filePath = await writeZip([
+			{ name: "export-manifest.json", data: manifestJson(), },
+			{
+				name: "project_config/recipes/flow.json",
+				data: encodeUtf8(
+					JSON.stringify({
+						inputs: {
+							main: {
+								items: [
+									{ type: "MANAGED_FOLDER", ref: "folder_one", },
+									{ objectType: "SAVED_MODEL", ref: "model_one", },
+									{ kind: "STREAMING_ENDPOINT", ref: "stream_one", },
+									{ type: "MODEL_EVALUATION_STORE", ref: "eval_one", },
+								],
+							},
+							folders: {
+								type: "MANAGED_FOLDER",
+								items: [{ ref: "channel_folder", },],
+							},
+						},
+						outputs: {
+							main: {
+								items: [{ type: "MANAGED_FOLDER", ref: "folder_out", },],
+							},
+						},
+					},),
+				),
+			},
+		],);
+		const report = await inspectProjectArchive(filePath,);
+
+		expect(report.valid,).toBe(true,);
+		expect(report.issues,).toEqual([],);
+		await expect(assertImportableProjectArchive(filePath,),).resolves.toMatchObject({
+			valid: true,
+		},);
+	});
+
+	it("does not treat project-qualified refs as dangling datasets", async () => {
+		const filePath = await writeZip([
+			{ name: "export-manifest.json", data: manifestJson(), },
+			{
+				name: "project_config/recipes/port.json",
+				data: encodeUtf8(
+					JSON.stringify({
+						inputs: {
+							main: {
+								items: [{ ref: "OTHER_PROJECT.ds_missing", },],
+							},
+						},
+						outputs: {
+							main: {
+								items: [{ ref: "TEST_PROJECT.ds_present", },],
+							},
+						},
+					},),
+				),
+			},
+		],);
+		const report = await inspectProjectArchive(filePath,);
+
+		expect(report.valid,).toBe(true,);
+		expect(issueCodes(report,),).not.toContain("dataset_reference_unresolved",);
+	});
+
+	it("accepts untyped refs resolved by a local non-dataset definition", async () => {
+		const filePath = await writeZip([
+			{ name: "export-manifest.json", data: manifestJson(), },
+			{ name: "project_config/managed_folders/folder_one.json", data: encodeUtf8("{}",), },
+			{
+				name: "project_config/recipes/flow.json",
+				data: encodeUtf8(
+					JSON.stringify({
+						inputs: {
+							main: {
+								items: [{ ref: "folder_one", },],
+							},
+						},
+					},),
+				),
+			},
+		],);
+		const report = await inspectProjectArchive(filePath,);
+
+		expect(report.valid,).toBe(true,);
+		expect(issueCodes(report,),).not.toContain("dataset_reference_unresolved",);
+	});
+
+	it("stops buffering members whose declared size hides unlimited actual bytes", async () => {
+		const filePath = await writeZip([
+			{ name: "export-manifest.json", data: manifestJson(), },
+			{
+				name: "project_config/tags.json",
+				data: new Uint8Array(2 * 1024 * 1024,).fill(0x61,),
+				size: 10,
+			},
+		],);
+		const report = await inspectProjectArchive(filePath,);
+
+		expect(report.valid,).toBe(false,);
+		expect(issueCodes(report,),).toContain("member_size_limit_exceeded",);
+		expect(issueCodes(report,),).toContain("member_size_mismatch",);
+		expect(issueCodes(report,),).not.toContain("member_crc_mismatch",);
+		const overflow = report.issues.find(
+			(issue,) => issue.code === "member_size_limit_exceeded",
+		);
+		expect(overflow?.member,).toBe("project_config/tags.json",);
+	});
+
+	it("reports runtime overflow even when the manifest declares a small size", async () => {
+		const filePath = await writeZip([
+			{
+				name: "export-manifest.json",
+				data: concatBytes(manifestJson(), new Uint8Array(17 * 1024 * 1024,),),
+				size: 100,
+			},
+		],);
+		const report = await inspectProjectArchive(filePath,);
+
+		expect(report.valid,).toBe(false,);
+		expect(issueCodes(report,),).toContain("member_size_limit_exceeded",);
+		expect(issueCodes(report,),).toContain("member_size_mismatch",);
+		expect(issueCodes(report,),).not.toContain("manifest_too_large",);
+	});
+
 	it("flags orphaned bundled-data roots and recipe payloads", async () => {
 		const filePath = await writeZip([
 			{ name: "export-manifest.json", data: manifestJson(), },
