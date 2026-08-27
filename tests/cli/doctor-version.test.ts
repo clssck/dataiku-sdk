@@ -106,6 +106,11 @@ async function runDoctorCapabilities(headers: Record<string, string> | undefined
 		if (headers) {
 			for (const [name, value,] of Object.entries(headers,)) res.setHeader(name, value,);
 		}
+		// Bun 1.3 still synthesizes Date despite sendDate=false. An explicit
+		// empty value keeps semantic absence deterministic across runtimes.
+		if (!Object.keys(headers ?? {},).some((name,) => name.toLowerCase() === "date")) {
+			res.setHeader("Date", "",);
+		}
 		if (url.pathname === "/public/api/projects/") {
 			res.end("[]",);
 			return;
