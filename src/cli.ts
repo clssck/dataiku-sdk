@@ -99,17 +99,30 @@ import { canonicalDssUrl, } from "./utils/dss-url.js";
 // Auth commands (run before client creation)
 // ---------------------------------------------------------------------------
 
-function findUnboundAppCleanup(
+function findUnboundLifecycleCleanup(
 	entries: CleanupLedgerEntry[],
-): { index: number; reason: "missing" | "invalid"; } | undefined {
+): {
+	index: number;
+	resource: string;
+	action: string;
+	reason: "missing" | "invalid";
+} | undefined {
 	for (const [index, entry,] of entries.entries()) {
 		const parsed = parseArgs(entry.cleanup.argv,);
 		const [resource, action,] = parsed.positional;
-		if (resource !== "app" || action !== "delete-instance") continue;
-		if (parsed.flags["unconfirmed-creation"] === true) continue;
-		const expected = parsed.flags["expect-project-incarnation"];
-		if (typeof expected !== "string") return { index, reason: "missing", };
-		if (!/^[0-9a-f]{64}$/.test(expected,)) return { index, reason: "invalid", };
+		if (resource === "app" && action === "delete-instance") {
+			if (parsed.flags["unconfirmed-creation"] === true) continue;
+			const expected = parsed.flags["expect-project-incarnation"];
+			if (typeof expected !== "string") return { index, resource, action, reason: "missing", };
+			if (!/^[0-9a-f]{64}$/.test(expected,)) return { index, resource, action, reason: "invalid", };
+			continue;
+		}
+		if (resource === "project" && action === "delete") {
+			const expected = parsed.flags["expect-project-incarnation"];
+			if (typeof expected !== "string") return { index, resource, action, reason: "missing", };
+			if (!/^[0-9a-f]{64}$/.test(expected,)) return { index, resource, action, reason: "invalid", };
+			continue;
+		}
 	}
 	return undefined;
 }
@@ -197,9 +210,10 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 	}
 
 	// Lifecycle binding is as load-bearing as server binding. Validate the whole
-	// reversed plan before step one so a later legacy app entry cannot leave an
-	// earlier cleanup applied and then fail on project-key reuse protection.
-	const lifecycleViolation = findUnboundAppCleanup(ordered,);
+	// reversed plan before step one so a later legacy app or project entry
+	// cannot leave an earlier cleanup applied and then fail on project-key
+	// reuse protection.
+	const lifecycleViolation = findUnboundLifecycleCleanup(ordered,);
 	if (lifecycleViolation) {
 		return {
 			result: {
@@ -207,8 +221,8 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 				steps,
 				lifecycleError: {
 					entryIndex: lifecycleViolation.index,
-					resource: "app",
-					action: "delete-instance",
+					resource: lifecycleViolation.resource,
+					action: lifecycleViolation.action,
 					reason: lifecycleViolation.reason,
 				},
 			},
@@ -227,6 +241,17 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 				|| !commands[resource]?.[action]
 			) {
 				throw new UsageError(`Invalid cleanup argv: ${entry.cleanup.argv.join(" ",)}`,);
+			}
+			if (
+				resource === "project"
+				&& action === "delete"
+				&& typeof parsed.flags["expect-project-incarnation"] !== "string"
+			) {
+				throw new UsageError(
+					"Project cleanup entry is not bound to a project incarnation. Refusing deletion after possible project-key reuse.",
+					"validation_failed",
+					"Capture a new cleanup entry from the current CLI. Legacy entries cannot safely delete projects.",
+				);
 			}
 			if (
 				resource === "app"
@@ -1667,6 +1692,13 @@ async function main(): Promise<void> {
 	if (flags["plan"] === true) {
 		const plan = buildMutationPlan(resource, action, actionMeta, args, flags,);
 		writeCommandResult(plan,);
+		return;
+	}
+	if (actionMeta.localHandler) {
+		const result = await actionMeta.localHandler(args, flags,);
+		const failureExitCode = commandFailureExitCode(result,);
+		if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);
+		writeCommandResult(result,);
 		return;
 	}
 

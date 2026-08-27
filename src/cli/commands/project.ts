@@ -1,8 +1,20 @@
+import { ClientValidationError, DataikuError, } from "../../errors.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
-import { jsonInput, num, requiredJsonInput, } from "../coerce.js";
+import { inspectProjectArchive, } from "../../utils/project-archive.js";
+import type { ProjectArchiveInspection, } from "../../utils/project-archive.js";
+import { projectIncarnationHash, } from "../../utils/project-incarnation.js";
+import { jsonInput, num, requiredJsonInput, requiredStringFlag, } from "../coerce.js";
 import { CommandResultFailure, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
+
+const INSPECT_ARCHIVE_USAGE = "dss project inspect-archive <file>";
+
+/** Local, DSS-free archive inspection shared by the local handler and the command handler. */
+function inspectArchiveCommand(args: string[],): Promise<ProjectArchiveInspection> {
+	requireArgs(args, 1, INSPECT_ARCHIVE_USAGE,);
+	return inspectProjectArchive(args[0]!,);
+}
 
 export const projectCommands: Record<string, CommandMeta> = {
 	list: {
@@ -61,12 +73,92 @@ export const projectCommands: Record<string, CommandMeta> = {
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss project delete <projectKey> [--drop-data]",);
-			await c.projects.deleteProject(a[0], f["drop-data"] === true,);
-			return { deleted: a[0], };
+			const usage =
+				"dss project delete <projectKey> [--drop-data] [--if-exists] [--dry-run] [--expect-project-incarnation HASH]";
+			requireArgs(a, 1, usage,);
+			const projectKey = a[0];
+			const expectedIncarnation = f["expect-project-incarnation"] === undefined
+				? undefined
+				: requiredStringFlag(f, "expect-project-incarnation", usage,);
+			if (
+				expectedIncarnation !== undefined
+				&& !/^[0-9a-f]{64}$/.test(expectedIncarnation,)
+			) {
+				throw new UsageError(
+					"--expect-project-incarnation must be a 64-character lowercase SHA-256 hash.",
+					"validation_failed",
+				);
+			}
+			const guarded = f["if-exists"] === true
+				|| f["dry-run"] === true
+				|| expectedIncarnation !== undefined;
+			if (!guarded) {
+				// Purely user-requested delete without any guard flag: keep the
+				// historical direct DELETE, with no preflight probe.
+				await c.projects.deleteProject(projectKey, f["drop-data"] === true,);
+				return { deleted: projectKey, };
+			}
+
+			// Guarded path: existence and identity must be verified before any
+			// DELETE. A missing creationTag or an incarnation mismatch refuses
+			// before the DELETE under possible project-key reuse.
+			let currentIncarnation: string | undefined;
+			try {
+				const details = await c.projects.get(projectKey,);
+				if (expectedIncarnation !== undefined) {
+					currentIncarnation = projectIncarnationHash(projectKey, details,);
+					if (currentIncarnation === undefined) {
+						throw new ClientValidationError(
+							`DSS did not return creationTag identity for project ${projectKey}. Refusing to delete without project-incarnation verification.`,
+							"validation_failed",
+							"Project-key reuse cannot be excluded. Refusing the DELETE; re-read the project and retry with a hash captured from that incarnation.",
+							{ projectKey, },
+						);
+					}
+					if (currentIncarnation !== expectedIncarnation) {
+						throw new ClientValidationError(
+							`Project ${projectKey} is not the same project incarnation recorded for this operation. Refusing to delete after project-key reuse.`,
+							"validation_failed",
+							"Re-read the current project and retry only with an artifact captured from that incarnation.",
+							{
+								projectKey,
+								expectedProjectIncarnationHash: expectedIncarnation,
+								currentProjectIncarnationHash: currentIncarnation,
+							},
+						);
+					}
+				}
+			} catch (error) {
+				if (error instanceof DataikuError && error.status === 404) {
+					// Already absent: converge only when the caller asked for it.
+					if (f["if-exists"] !== true) throw error;
+					return { deleted: false, alreadyAbsent: true, projectKey, };
+				}
+				throw error;
+			}
+			if (f["dry-run"] === true) {
+				return {
+					deleted: false,
+					dryRun: true,
+					projectKey,
+					...(currentIncarnation !== undefined
+						? { projectIncarnationHash: currentIncarnation, }
+						: {}),
+				};
+			}
+			await c.projects.deleteProject(projectKey, f["drop-data"] === true,);
+			return {
+				deleted: true,
+				projectKey,
+				...(currentIncarnation !== undefined
+					? { projectIncarnationHash: currentIncarnation, }
+					: {}),
+			};
 		},
-		usage: "dss project delete <projectKey> [--drop-data]",
-		description: "Delete a project (destructive). --drop-data also clears managed datasets.",
+		usage:
+			"dss project delete <projectKey> [--drop-data] [--if-exists] [--dry-run] [--expect-project-incarnation HASH]",
+		description:
+			"Delete a project (destructive). --drop-data also clears managed datasets; --if-exists treats an absent project as already deleted; --dry-run verifies without deleting; --expect-project-incarnation HASH refuses deletion unless the project still matches the recorded incarnation.",
 		examples: ["dss project delete MY_PROJ",],
 	},
 	duplicate: {
@@ -142,11 +234,20 @@ export const projectCommands: Record<string, CommandMeta> = {
 		},
 		usage:
 			"dss project import <filePath> [--target-project-key KEY] [--data JSON|--data-file PATH|--stdin]",
-		description: "Upload and process a project archive, optionally overriding its project key.",
+		description:
+			"Upload and process a project archive, optionally overriding its project key. The archive is validated locally before upload; verified success reports the used project key, explicit request/actual remapping, and the landed incarnation hash.",
 		examples: [
 			"dss project import ./my_proj.zip",
 			"dss project import ./my_proj.zip --target-project-key MY_PROJ",
 		],
+	},
+	"inspect-archive": {
+		handler: async (_c, a,) => inspectArchiveCommand(a,),
+		localHandler: inspectArchiveCommand,
+		usage: INSPECT_ARCHIVE_USAGE,
+		description:
+			"Read-only local inspection of a project export archive: member names, sizes, manifest validity, archive issues, and the source project key. Never contacts DSS.",
+		examples: ["dss project inspect-archive ./my_proj.zip",],
 	},
 	"permissions-get": {
 		handler: (c, _a, f,) => c.projects.getPermissions(f["project-key"] as string | undefined,),

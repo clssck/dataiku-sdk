@@ -22,7 +22,7 @@ const TOKEN_BUDGETS = {
 	agentContract: { baseline: 2_705, maxTokens: 2_900, },
 	commandsRunDefault: { baseline: 1_037, maxTokens: 1_200, },
 	registryExportStdout: { baseline: 17, maxTokens: 40, },
-	datasetResource: { baseline: 11_353, maxTokens: 13_000, },
+	datasetResource: { baseline: 14_057, maxTokens: 15_250, },
 	datasetCreate: { baseline: 1_035, maxTokens: 1_200, },
 	datasetCreateUsage: { baseline: 50, maxTokens: 70, },
 	datasetCreateDescription: { baseline: 11, maxTokens: 24, },

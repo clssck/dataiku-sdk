@@ -4,6 +4,7 @@ import { tmpdir, } from "node:os";
 import { join, } from "node:path";
 import { buildCommandRegistry, } from "../../src/cli/contract.js";
 import { cleanupLedgerEntry, } from "../../src/cli/helpers/cleanup.js";
+import { writeProjectArchive, } from "./_archive-fixtures.js";
 import {
 	cliEnv,
 	dss,
@@ -536,7 +537,7 @@ describe("CLI regression fixes", () => {
 
 	it("fails project import when DSS reports an unsuccessful process result", async () => {
 		const archivePath = join(tmpdir(), `dss-project-import-${String(Date.now(),)}.zip`,);
-		await Bun.write(archivePath, "archive",);
+		await writeProjectArchive(archivePath, "EXISTING",);
 		try {
 			await withCliServer(async (req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);

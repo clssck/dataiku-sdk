@@ -1,11 +1,146 @@
 import { buildDatasetCloneSettings, } from "../../resources/datasets.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
-import { jsonInput, num, schemaColumnsInput, } from "../coerce.js";
+import { compareStrings, stableHash, } from "../../utils/stable-hash.js";
+import { jsonInput, num, schemaColumnsInput, unknownJsonInput, } from "../coerce.js";
 import { datasetSourceSummary, } from "../helpers/dataset.js";
 import { moveCreatedItemsToZone, resolveFlowZoneIdFromFlags, } from "../helpers/flow-zone.js";
 import { enqueueCliWarning, readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
+
+// ---------------------------------------------------------------------------
+// Assertions: deterministic schema comparison
+// ---------------------------------------------------------------------------
+
+export interface DatasetSchemaDifference {
+	/** Path from the schema root in dot/bracket notation, e.g. `columns[2].type`. */
+	path: string;
+	kind: "added" | "removed" | "changed";
+	/** SHA-256 of the deterministic JSON rendering of the expected subtree. */
+	expectedHash?: string;
+	/** SHA-256 of the deterministic JSON rendering of the actual subtree. */
+	actualHash?: string;
+}
+
+export interface DatasetSchemaComparison {
+	equal: boolean;
+	expectedHash: string;
+	actualHash: string;
+	differences: DatasetSchemaDifference[];
+	totalDifferences: number;
+	differencesTruncated: boolean;
+}
+
+const MAX_SCHEMA_DIFFERENCES = 50;
+
+function isPlainObject(value: unknown,): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value,);
+}
+
+function appendSchemaPath(parent: string, key: string,): string {
+	return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key,)
+		? (parent ? `${parent}.${key}` : key)
+		: `${parent}[${JSON.stringify(key,)}]`;
+}
+
+function collectSchemaDifferences(
+	expected: unknown,
+	actual: unknown,
+	path: string,
+	acc: { items: DatasetSchemaDifference[]; total: number; },
+): void {
+	// Hash equality is the deterministic equivalence test: structurally equal
+	// subtrees (any key order) match exactly and are never descended into.
+	if (stableHash(expected,) === stableHash(actual,)) return;
+
+	if (isPlainObject(expected,) && isPlainObject(actual,)) {
+		const keys = [...new Set([...Object.keys(expected,), ...Object.keys(actual,),],),].sort(
+			compareStrings,
+		);
+		for (const key of keys) {
+			const nextPath = appendSchemaPath(path, key,);
+			const hasExpected = key in expected;
+			const hasActual = key in actual;
+			if (hasExpected && hasActual) {
+				collectSchemaDifferences(expected[key], actual[key], nextPath, acc,);
+				continue;
+			}
+			acc.total += 1;
+			if (acc.items.length < MAX_SCHEMA_DIFFERENCES) {
+				acc.items.push({
+					path: nextPath,
+					kind: hasActual ? "added" : "removed",
+					...(hasActual
+						? { actualHash: stableHash(actual[key],), }
+						: { expectedHash: stableHash(expected[key],), }),
+				},);
+			}
+		}
+		return;
+	}
+
+	if (Array.isArray(expected,) && Array.isArray(actual,)) {
+		const shared = Math.min(expected.length, actual.length,);
+		for (let i = 0; i < shared; i++) {
+			collectSchemaDifferences(expected[i], actual[i], `${path}[${i}]`, acc,);
+		}
+		for (let i = shared; i < expected.length; i++) {
+			acc.total += 1;
+			if (acc.items.length < MAX_SCHEMA_DIFFERENCES) {
+				acc.items.push({
+					path: `${path}[${i}]`,
+					kind: "removed",
+					expectedHash: stableHash(expected[i],),
+				},);
+			}
+		}
+		for (let i = shared; i < actual.length; i++) {
+			acc.total += 1;
+			if (acc.items.length < MAX_SCHEMA_DIFFERENCES) {
+				acc.items.push({
+					path: `${path}[${i}]`,
+					kind: "added",
+					actualHash: stableHash(actual[i],),
+				},);
+			}
+		}
+		return;
+	}
+
+	acc.total += 1;
+	if (acc.items.length < MAX_SCHEMA_DIFFERENCES) {
+		acc.items.push({
+			path: path || "$",
+			kind: "changed",
+			expectedHash: stableHash(expected,),
+			actualHash: stableHash(actual,),
+		},);
+	}
+}
+
+/**
+ * Compare two schema values deterministically — object key order never matters
+ * — and report each structural difference as a concise per-path entry carrying
+ * subtree hashes instead of subtree values.
+ */
+export function compareDatasetSchemas(
+	expected: unknown,
+	actual: unknown,
+): DatasetSchemaComparison {
+	const acc = { items: [], total: 0, } as {
+		items: DatasetSchemaDifference[];
+		total: number;
+	};
+	collectSchemaDifferences(expected, actual, "", acc,);
+	return {
+		equal: acc.items.length === 0,
+		expectedHash: stableHash(expected,),
+		actualHash: stableHash(actual,),
+		differences: acc.items,
+		totalDifferences: acc.total,
+		differencesTruncated: acc.items.length < acc.total,
+	};
+}
 
 export const datasetCommands: Record<string, CommandMeta> = {
 	list: {
@@ -139,17 +274,99 @@ export const datasetCommands: Record<string, CommandMeta> = {
 		examples: ["dss dataset validate-build orders",],
 	},
 	preview: {
-		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset preview <name>",);
-			return c.datasets.preview(a[0], {
-				maxRows: num(f["max-rows"], "--max-rows",),
+		handler: async (c, a, f,) => {
+			const previewUsage =
+				"dss dataset preview <name> [--max-rows N] [--rows N] [--project-key KEY] [--timeout MS]";
+			requireArgs(a, 1, previewUsage,);
+			const maxRows = num(f["max-rows"], "--max-rows",);
+			if (maxRows !== undefined && (!Number.isSafeInteger(maxRows,) || maxRows <= 0)) {
+				throw new UsageError(
+					`--max-rows must be a positive integer (got "${String(f["max-rows"],)}"). `
+						+ `Usage: ${previewUsage}`,
+					"validation_failed",
+				);
+			}
+			const result = await c.datasets.preview(a[0], {
+				maxRows,
 				projectKey: f["project-key"] as string | undefined,
 				timeoutMs: num(f["timeout"], "--timeout",),
 			},);
+			if (result.truncated) {
+				enqueueCliWarning({
+					code: "dataset_preview_truncated",
+					message:
+						`Preview of '${a[0]}' stopped at the ${result.limit}-row cap; the dataset has more rows. `
+						+ "Re-run with --max-rows N for more (public maximum 500).",
+					dataset: a[0],
+					rows: result.rowCount,
+					limit: result.limit,
+				},);
+			}
+			return result;
 		},
 		usage: "dss dataset preview <name> [--max-rows N] [--rows N] [--project-key KEY] [--timeout MS]",
-		description: "Preview dataset rows (--rows is an alias for --max-rows).",
+		description:
+			"Preview dataset rows (--rows is an alias for --max-rows). Returns { columns, rows, rowCount, truncated, limit }; when the dataset has more rows than the cap, truncated is true and a dataset_preview_truncated warning is written to stderr.",
 		examples: ["dss dataset preview orders", "dss dataset preview orders --rows 5",],
+	},
+	"assert-count": {
+		handler: async (c, a, f,) => {
+			const assertUsage = "dss dataset assert-count <dataset> --expected N [--project-key KEY]";
+			requireArgs(a, 1, assertUsage,);
+			const expected = num(f["expected"], "--expected",);
+			if (expected === undefined || !Number.isSafeInteger(expected,) || expected < 0) {
+				throw new UsageError(
+					`--expected must be a non-negative integer (got "${String(f["expected"],)}"). `
+						+ `Usage: ${assertUsage}`,
+					"validation_failed",
+				);
+			}
+			const result = await c.datasets.assertRowCount(
+				a[0],
+				expected,
+				f["project-key"] as string | undefined,
+			);
+			return { ...result, dataset: a[0], };
+		},
+		usage: "dss dataset assert-count <dataset> --expected N [--project-key KEY]",
+		description:
+			"Stream the dataset and assert it holds exactly --expected rows, probing at most N+1 rows. Returns { satisfied, expected, count, exact }; a mismatch exits 4 with assertion_failed.",
+		examples: ["dss dataset assert-count orders --expected 1000",],
+	},
+	"assert-schema": {
+		handler: async (c, a, f,) => {
+			const assertUsage =
+				"dss dataset assert-schema <dataset> (--data JSON | --data-file PATH | --stdin) [--project-key KEY]";
+			requireArgs(a, 1, assertUsage,);
+			const expected = unknownJsonInput(f,);
+			if (expected === undefined) {
+				throw new UsageError(
+					`--data, --data-file, or --stdin is required. Usage: ${assertUsage}`,
+				);
+			}
+			const actual = await c.datasets.getSchemaObject(
+				a[0],
+				f["project-key"] as string | undefined,
+			);
+			const comparison = compareDatasetSchemas(expected, actual,);
+			return {
+				satisfied: comparison.equal,
+				dataset: a[0],
+				expectedHash: comparison.expectedHash,
+				actualHash: comparison.actualHash,
+				totalDifferences: comparison.totalDifferences,
+				...(comparison.differencesTruncated ? { differencesTruncated: true, } : {}),
+				differences: comparison.differences,
+			};
+		},
+		usage:
+			"dss dataset assert-schema <dataset> (--data JSON | --data-file PATH | --stdin) [--project-key KEY]",
+		description:
+			"Assert the dataset's full schema equals the expected schema object; reports concise per-path differences with sha256 subtree hashes. A mismatch exits 4 with assertion_failed.",
+		examples: [
+			`dss dataset assert-schema orders --data-file expected-schema.json`,
+			`dss dataset assert-schema orders --data '{"columns":[]}'`,
+		],
 	},
 	metadata: {
 		handler: (c, a, f,) => {

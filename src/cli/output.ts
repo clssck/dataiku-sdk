@@ -111,10 +111,9 @@ export function isFailedWaitResult(result: unknown,): boolean {
 }
 
 export function isAssertionFailureResult(result: unknown,): boolean {
-	return result !== null
-		&& typeof result === "object"
-		&& !Array.isArray(result,)
-		&& (result as Record<string, unknown>).unchanged === false;
+	if (result === null || typeof result !== "object" || Array.isArray(result,)) return false;
+	const record = result as Record<string, unknown>;
+	return record.unchanged === false || record.satisfied === false;
 }
 
 function isNestedAssertionFailureResult(result: unknown,): boolean {
@@ -143,7 +142,8 @@ export function commandFailureExitCode(result: unknown,): number | undefined {
  * Stable error code for a command-level failure report. A failed synchronous
  * assertion (exit 4) is a distinct outcome from a failed long-running remote
  * operation (also exit 4), so agents must never see `long_running_failure`
- * for a result that finished synchronously with `unchanged: false`.
+ * for a result that finished synchronously with `unchanged: false` or
+ * `satisfied: false`.
  */
 export function commandFailureCode(result: unknown, exitCode: number,): StableErrorCode {
 	if (isAssertionFailureResult(result,) || isNestedAssertionFailureResult(result,)) {
@@ -174,7 +174,10 @@ export function commandFailureMessage(result: unknown,): string {
 		return `Command completed with failed long-running result${state ? `: ${state}` : ""}.`;
 	}
 	if (isAssertionFailureResult(result,)) {
-		return "Command completed with failed assertion result.";
+		const record = result as Record<string, unknown>;
+		return record.unchanged === false
+			? "Command completed with failed assertion result."
+			: "Command completed with unsatisfied assertion result.";
 	}
 	if (isNestedAssertionFailureResult(result,)) {
 		return "Command completed with nested failed assertion result.";

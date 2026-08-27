@@ -1,6 +1,6 @@
 import { createWriteStream, } from "node:fs";
 import { Writable, } from "node:stream";
-import { ClientValidationError, } from "../errors.js";
+import { ClientValidationError, DataikuError, } from "../errors.js";
 
 import {
 	ProjectDetailsSchema,
@@ -19,6 +19,8 @@ import type {
 	NormalizedFlowNode,
 } from "../utils/flow-map.js";
 import { normalizeFlowGraph, } from "../utils/flow-map.js";
+import { assertImportableProjectArchive, } from "../utils/project-archive.js";
+import { projectIncarnationHash, } from "../utils/project-incarnation.js";
 import { BaseResource, } from "./base.js";
 
 // ---------------------------------------------------------------------------
@@ -238,12 +240,21 @@ export interface ProjectImportSettings {
 }
 
 export interface ProjectImportProcessResult {
-	success: boolean;
+	/** Present on definitive responses; a missing or non-boolean value makes the outcome indeterminate. */
+	success?: boolean;
+	/** Project key DSS actually created (after remapping). Definitive success includes it. */
+	usedProjectKey?: string;
 	[key: string]: unknown;
 }
 
 export interface ProjectImportResult extends ProjectImportProcessResult {
 	importId: string;
+	/** Key the import was bound to: the explicit settings target, else the archive manifest's key. Known on success. */
+	requestedProjectKey?: string;
+	/** True when usedProjectKey differs from requestedProjectKey (set only when both are known). */
+	remapped?: boolean;
+	/** SHA-256 fingerprint of the landed project's creationTag. Present on verified success. */
+	projectIncarnationHash?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -253,6 +264,8 @@ export interface ProjectImportResult extends ProjectImportProcessResult {
 const DEFAULT_MAX_NODES = 300;
 const DEFAULT_MAX_EDGES = 600;
 const DEFAULT_METADATA_TIMEOUT_MS = 1_500;
+const PROJECT_IMPORT_AMBIGUOUS_REMEDIATION =
+	"Import processing left DSS state indeterminate. Inspect the archive with `dss project inspect-archive <file>` and the live projects with `dss project list` before retrying the import.";
 
 export class ProjectsResource extends BaseResource {
 	private httpInternals(): DataikuClientHttpInternals {
@@ -370,20 +383,136 @@ export class ProjectsResource extends BaseResource {
 		settings: ProjectImportSettings = {},
 	): Promise<ProjectImportProcessResult> {
 		const body = Object.keys(settings,).length === 0 ? { _: "_", } : settings;
-		return this.client.post<ProjectImportProcessResult>(
-			`/public/api/projects/import/${encodeURIComponent(importId,)}/process`,
-			body,
-		);
+		try {
+			return await this.client.post<ProjectImportProcessResult>(
+				`/public/api/projects/import/${encodeURIComponent(importId,)}/process`,
+				body,
+			);
+		} catch (error) {
+			// A transport timeout or server-side 5xx leaves the import outcome
+			// unknowable: the project may or may not exist. Surface that as an
+			// ambiguous outcome — never as a definitive failure.
+			if (error instanceof DataikuError && (error.status === 0 || error.status >= 500)) {
+				throw new ClientValidationError(
+					"DSS returned no definitive import result: the project may or may not have been created.",
+					"ambiguous_outcome",
+					PROJECT_IMPORT_AMBIGUOUS_REMEDIATION,
+					{
+						importId,
+						...(typeof settings.targetProjectKey === "string"
+								&& settings.targetProjectKey.trim() !== ""
+							? { targetProjectKey: settings.targetProjectKey, }
+							: {}),
+					},
+				);
+			}
+			throw error;
+		}
 	}
 
-	/** Upload and process a project archive. */
+	/**
+	 * Upload and process a project archive.
+	 *
+	 * The archive is validated locally before anything is uploaded. Definitive
+	 * failures surface the process response verbatim (with `importId`); every
+	 * indeterminate path throws ClientValidationError(`ambiguous_outcome`).
+	 * Verified success carries the actually-used project key, the requested
+	 * key when known (with explicit `remapped` reporting), and the landed
+	 * project's incarnation hash for identity-bound cleanup and guarded deletes.
+	 */
 	async importProjectFromArchive(
 		filePath: string,
 		settings: ProjectImportSettings = {},
 	): Promise<ProjectImportResult> {
+		// Fatal archive problems abort before any DSS call or upload.
+		const inspection = await assertImportableProjectArchive(filePath,);
+		const requestedProjectKey = typeof settings.targetProjectKey === "string"
+				&& settings.targetProjectKey.trim() !== ""
+			? settings.targetProjectKey
+			: inspection.sourceProjectKey;
+
 		const upload = await this.prepareProjectImport(filePath,);
 		const result = await this.processProjectImport(upload.id, settings,);
-		return { ...result, importId: upload.id, };
+		const importId = upload.id;
+
+		if (typeof result.success !== "boolean") {
+			throw new ClientValidationError(
+				"DSS returned a process response without a boolean success field: the import outcome is indeterminate.",
+				"ambiguous_outcome",
+				PROJECT_IMPORT_AMBIGUOUS_REMEDIATION,
+				{
+					importId,
+					...(requestedProjectKey !== undefined
+						? { targetProjectKey: requestedProjectKey, }
+						: {}),
+				},
+			);
+		}
+		if (result.success === false) {
+			// Definitive DSS-side failure: keep the response authoritative and
+			// let the command layer report it as a plain command failure.
+			return { ...result, success: false, importId, };
+		}
+
+		const usedProjectKey = typeof result.usedProjectKey === "string"
+				&& result.usedProjectKey.trim() !== ""
+			? result.usedProjectKey
+			: undefined;
+		if (usedProjectKey === undefined) {
+			throw new ClientValidationError(
+				"DSS reported import success but did not name the project that was created.",
+				"ambiguous_outcome",
+				PROJECT_IMPORT_AMBIGUOUS_REMEDIATION,
+				{
+					importId,
+					...(requestedProjectKey !== undefined
+						? { targetProjectKey: requestedProjectKey, }
+						: {}),
+				},
+			);
+		}
+
+		// Verify the claimed landing and capture identity for cleanup binding.
+		let details: ProjectDetails;
+		try {
+			details = await this.get(usedProjectKey,);
+		} catch (error) {
+			if (
+				error instanceof DataikuError
+				&& (error.status === 404 || error.status === 0 || error.status >= 500)
+			) {
+				throw new ClientValidationError(
+					`DSS reported import success for project ${usedProjectKey}, but the project could not be re-read for verification.`,
+					"ambiguous_outcome",
+					PROJECT_IMPORT_AMBIGUOUS_REMEDIATION,
+					{ importId, usedProjectKey, },
+				);
+			}
+			throw error;
+		}
+		const incarnation = projectIncarnationHash(usedProjectKey, details,);
+		if (incarnation === undefined) {
+			throw new ClientValidationError(
+				`DSS imported project ${usedProjectKey}, but returned no creationTag identity.`,
+				"ambiguous_outcome",
+				"Refusing to claim identity-bound success without a project-incarnation hash. Verify the project identity before any cleanup or guarded delete.",
+				{ importId, usedProjectKey, },
+			);
+		}
+
+		return {
+			...result,
+			success: true,
+			importId,
+			usedProjectKey,
+			projectIncarnationHash: incarnation,
+			...(requestedProjectKey === undefined
+				? {}
+				: {
+					requestedProjectKey,
+					remapped: requestedProjectKey !== usedProjectKey,
+				}),
+		};
 	}
 
 	/** Get project permissions. */

@@ -15,7 +15,7 @@ export function cleanupLedgerEntry(
 ): CleanupLedgerEntry | undefined {
 	if (
 		!(action.startsWith("create",) || action === "clone" || action === "duplicate"
-			|| action === "upload")
+			|| action === "import" || action === "upload")
 	) return undefined;
 	const record = resultRecord(result,);
 	if (record.skipped !== undefined) return undefined;
@@ -187,6 +187,34 @@ export function cleanupLedgerEntry(
 				path: args[1],
 				cleanup: { argv: ["folder", "delete-file", args[0], args[1], ...withProject,], },
 			};
+		case "project.import": {
+			const usedProjectKey = stringField(record, ["usedProjectKey",],);
+			const recordedIncarnation = stringField(record, ["projectIncarnationHash",],);
+			const boundIncarnation = recordedIncarnation
+					&& /^[0-9a-f]{64}$/.test(recordedIncarnation,)
+				? recordedIncarnation
+				: undefined;
+			// Only a verified success may produce a cleanup entry, and it must
+			// bind the concrete landed project incarnation: replaying an
+			// unbound delete could remove a replacement project that reused the
+			// key. Never emit legacy/unbound project entries.
+			if (!usedProjectKey || !boundIncarnation) return undefined;
+			return {
+				...base,
+				projectKey: usedProjectKey,
+				name: usedProjectKey,
+				cleanup: {
+					argv: [
+						"project",
+						"delete",
+						usedProjectKey,
+						"--if-exists",
+						"--expect-project-incarnation",
+						boundIncarnation,
+					],
+				},
+			};
+		}
 		case "app.create-instance":
 		case "app.create-successor-instance": {
 			const targetKey = stringField(record, ["projectKey", "targetProjectKey",],);

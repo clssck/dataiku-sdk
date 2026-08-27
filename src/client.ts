@@ -75,6 +75,22 @@ export interface DataikuClientTraceEvent {
 	detail?: string;
 }
 
+/**
+ * Selected response metadata captured alongside a public API response body.
+ * A fixed whitelist of non-sensitive headers: authorization data is never
+ * returned. Null means the header was absent.
+ */
+export interface DataikuClientResponseMeta {
+	/** `DSS-Version` — version of the DSS backend answering the request. */
+	dssVersion: string | null;
+	/** `DSS-API-Version` — version of the API server handling the request. */
+	dssApiVersion: string | null;
+	/** `Date` — origin server timestamp, when present. */
+	date: string | null;
+	/** Server-provided request id, when present. */
+	requestId: string | null;
+}
+
 export interface DataikuClientConfig {
 	/** DSS base URL (e.g. https://dss.example.com) */
 	url: string;
@@ -452,6 +468,21 @@ export class DataikuClient {
 		},);
 		return this.parseJsonResponse<T>(res,);
 	}
+	/**
+	 * GET returning the parsed JSON body plus selected response metadata
+	 * (documented DSS version headers, server date, request id). Authorization
+	 * headers are never included.
+	 */
+	async getWithMetadata<T = unknown,>(
+		path: string,
+	): Promise<{ data: T; meta: DataikuClientResponseMeta; }> {
+		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
+			method: "GET",
+			headers: this.getHeaders(),
+		},);
+		const data = await this.parseJsonResponse<T>(res,);
+		return { data, meta: this.responseMeta(res.headers,), };
+	}
 
 	async getText(path: string,): Promise<string> {
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
@@ -620,6 +651,15 @@ export class DataikuClient {
 		return {
 			Authorization: `Bearer ${this.apiKey}`,
 			Accept: "*/*",
+		};
+	}
+	private responseMeta(headers: Headers,): DataikuClientResponseMeta {
+		// Fixed non-sensitive whitelist. `Headers.get` is case-insensitive.
+		return {
+			dssVersion: headers.get("dss-version",),
+			dssApiVersion: headers.get("dss-api-version",),
+			date: headers.get("date",),
+			requestId: this.requestIdFromHeaders(headers,) ?? null,
 		};
 	}
 

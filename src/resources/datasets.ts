@@ -229,11 +229,11 @@ export function validateStreamColumns(
 	return warnings;
 }
 
-function buildPreviewTimeoutError(timeoutMs: number,): DataikuError {
+function buildStreamTimeoutError(timeoutMs: number, action: string,): DataikuError {
 	return new DataikuError(
 		0,
 		"Request Timeout",
-		`Dataset preview timed out after ${timeoutMs}ms while waiting for rows.`,
+		`Dataset ${action} timed out after ${timeoutMs}ms while waiting for rows.`,
 	);
 }
 
@@ -241,23 +241,26 @@ async function readChunkWithTimeout(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
 	remainingMs: number,
 	timeoutMs: number,
-): Promise<Awaited<ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]>>> {
-	return new Promise((resolveChunk, rejectChunk,) => {
-		const timer = setTimeout(() => {
-			void reader.cancel(buildPreviewTimeoutError(timeoutMs,),).catch(() => {},);
-			rejectChunk(buildPreviewTimeoutError(timeoutMs,),);
-		}, remainingMs,);
-		reader.read().then(
-			(result,) => {
-				clearTimeout(timer,);
-				resolveChunk(result,);
-			},
-			(error,) => {
-				clearTimeout(timer,);
-				rejectChunk(error,);
-			},
-		);
-	},);
+	action: string,
+): Promise<Bun.ReadableStreamDefaultReadResult<Uint8Array>> {
+	const { promise, resolve, reject, } = Promise.withResolvers<
+		Bun.ReadableStreamDefaultReadResult<Uint8Array>
+	>();
+	const timer = setTimeout(() => {
+		void reader.cancel(buildStreamTimeoutError(timeoutMs, action,),).catch(() => {},);
+		reject(buildStreamTimeoutError(timeoutMs, action,),);
+	}, remainingMs,);
+	reader.read().then(
+		(result,) => {
+			clearTimeout(timer,);
+			resolve(result,);
+		},
+		(error,) => {
+			clearTimeout(timer,);
+			reject(error,);
+		},
+	);
+	return promise;
 }
 
 async function collectPreviewRows(
@@ -265,11 +268,12 @@ async function collectPreviewRows(
 	maxDataRows: number,
 	timeoutMs: number,
 	onHeader?: (headerRow: string[],) => void,
-): Promise<{ columns: string[]; rows: string[][]; }> {
+): Promise<{ columns: string[]; rows: string[][]; truncated: boolean; }> {
 	const state = createTsvStreamState();
 	let columns: string[] | undefined;
 	const rows: string[][] = [];
 	let done = false;
+	let truncated = false;
 	const startedAt = Date.now();
 	const reader = body.getReader();
 
@@ -281,11 +285,11 @@ async function collectPreviewRows(
 			return;
 		}
 		if (rows.length >= maxDataRows) {
+			truncated = true;
 			done = true;
 			return;
 		}
 		rows.push(row,);
-		if (rows.length >= maxDataRows) done = true;
 	};
 
 	try {
@@ -295,15 +299,71 @@ async function collectPreviewRows(
 				break;
 			}
 			const remainingMs = timeoutMs - (Date.now() - startedAt);
-			if (remainingMs <= 0) throw buildPreviewTimeoutError(timeoutMs,);
-			const result = await readChunkWithTimeout(reader, remainingMs, timeoutMs,);
+			if (remainingMs <= 0) throw buildStreamTimeoutError(timeoutMs, "preview",);
+			const result = await readChunkWithTimeout(reader, remainingMs, timeoutMs, "preview",);
 			if (result.done) break;
 			consumeTsvChunk(Buffer.from(result.value,).toString("utf-8",), state, handleRow,);
 		}
 
 		if (!done) flushTsvStream(state, handleRow,);
 
-		return { columns: columns ?? [], rows, };
+		return { columns: columns ?? [], rows, truncated, };
+	} finally {
+		reader.releaseLock();
+	}
+}
+
+/**
+ * Count data rows in a streamed TSV response (header row excluded), stopping
+ * as soon as `stopAfter` rows have been seen so a mismatched dataset is never
+ * fully scanned. Returns the exact count when the stream ends before the cap,
+ * or `stopAfter` — a lower bound — once the cap is reached.
+ */
+async function collectTsvRowCount(
+	body: ReadableStream<Uint8Array>,
+	stopAfter: number,
+	timeoutMs: number,
+): Promise<{ count: number; bounded: boolean; }> {
+	const state = createTsvStreamState();
+	let headerSeen = false;
+	let count = 0;
+	let bounded = false;
+	const startedAt = Date.now();
+	const reader = body.getReader();
+
+	const handleRow = (row: string[],): void => {
+		if (bounded || isBlankRow(row,)) return;
+		if (!headerSeen) {
+			headerSeen = true;
+			return;
+		}
+		count += 1;
+		if (count >= stopAfter) bounded = true;
+	};
+
+	try {
+		while (true) {
+			if (bounded) {
+				void reader.cancel().catch(() => {},);
+				break;
+			}
+			const remainingMs = timeoutMs - (Date.now() - startedAt);
+			if (remainingMs <= 0) {
+				throw buildStreamTimeoutError(timeoutMs, "row count assertion",);
+			}
+			const result = await readChunkWithTimeout(
+				reader,
+				remainingMs,
+				timeoutMs,
+				"row count assertion",
+			);
+			if (result.done) break;
+			consumeTsvChunk(Buffer.from(result.value,).toString("utf-8",), state, handleRow,);
+		}
+
+		if (!bounded) flushTsvStream(state, handleRow,);
+
+		return { count, bounded, };
 	} finally {
 		reader.releaseLock();
 	}
@@ -588,6 +648,17 @@ export class DatasetsResource extends BaseResource {
 	}
 
 	/**
+	 * Get the raw dataset schema object exactly as the DSS schema endpoint
+	 * returns it, without schema validation — used for deterministic comparison.
+	 */
+	async getSchemaObject(datasetName: string, projectKey?: string,): Promise<unknown> {
+		const dsEnc = encodeURIComponent(datasetName,);
+		return this.client.get<unknown>(
+			`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}/schema`,
+		);
+	}
+
+	/**
 	 * Preview dataset rows as structured data: column names plus row arrays,
 	 * mirroring the sql query shape ({ columns, rows, rowCount }). Streams TSV
 	 * from the API and returns up to `maxRows` data rows.
@@ -603,14 +674,22 @@ export class DatasetsResource extends BaseResource {
 			validateColumns?: { name: string; }[];
 			timeoutMs?: number;
 		},
-	): Promise<{ columns: Array<{ name: string; }>; rows: string[][]; rowCount: number; }> {
+	): Promise<{
+		columns: Array<{ name: string; }>;
+		rows: string[][];
+		rowCount: number;
+		truncated: boolean;
+		limit: number;
+	}> {
 		const maxRows = Math.max(1, Math.min(opts?.maxRows ?? 50, 500,),);
 		const timeoutMs = Math.max(1, opts?.timeoutMs ?? this.client.getRequestTimeoutMs(),);
 		const dsEnc = encodeURIComponent(datasetName,);
+		// Probe one row past the cap so callers learn whether the dataset holds
+		// more rows than requested without materializing the full dataset.
 		const res = await this.client.stream(
 			`/public/api/projects/${
 				this.enc(opts?.projectKey,)
-			}/datasets/${dsEnc}/data/?format=tsv-excel-header&limit=${maxRows}`,
+			}/datasets/${dsEnc}/data/?format=tsv-excel-header&limit=${maxRows + 1}`,
 		);
 		const onHeader = opts?.validateColumns
 			? (headerRow: string[],) => {
@@ -620,14 +699,60 @@ export class DatasetsResource extends BaseResource {
 				}
 			}
 			: undefined;
-		if (!res.body) return { columns: [], rows: [], rowCount: 0, };
-		const { columns, rows, } = await collectPreviewRows(
+		if (!res.body) {
+			return { columns: [], rows: [], rowCount: 0, truncated: false, limit: maxRows, };
+		}
+		const { columns, rows, truncated, } = await collectPreviewRows(
 			res.body as ReadableStream<Uint8Array>,
 			maxRows,
 			timeoutMs,
 			onHeader,
 		);
-		return { columns: columns.map((name,) => ({ name, })), rows, rowCount: rows.length, };
+		return {
+			columns: columns.map((name,) => ({ name, })),
+			rows,
+			rowCount: rows.length,
+			truncated,
+			limit: maxRows,
+		};
+	}
+
+	/**
+	 * Count dataset rows by streaming the TSV data endpoint and stopping as soon
+	 * as `expected + 1` rows have been seen, so a mismatched dataset is never
+	 * fully scanned. Returns the observed count together with `exact` (false when
+	 * the probe cap was reached, i.e. the count is a lower bound) and whether the
+	 * count satisfies the assertion.
+	 */
+	async assertRowCount(
+		datasetName: string,
+		expected: number,
+		projectKey?: string,
+	): Promise<{ expected: number; count: number; exact: boolean; satisfied: boolean; }> {
+		if (!Number.isSafeInteger(expected,) || expected < 0) {
+			throw new ClientValidationError(
+				"expected row count must be a non-negative safe integer",
+				"validation_failed",
+			);
+		}
+		const target = expected;
+		const probe = target + 1;
+		const timeoutMs = Math.max(1, this.client.getRequestTimeoutMs(),);
+		const dsEnc = encodeURIComponent(datasetName,);
+		const res = await this.client.stream(
+			`/public/api/projects/${
+				this.enc(projectKey,)
+			}/datasets/${dsEnc}/data/?format=tsv-excel-header&limit=${probe}`,
+		);
+		if (!res.body) {
+			return { expected: target, count: 0, exact: true, satisfied: target === 0, };
+		}
+		const { count, bounded, } = await collectTsvRowCount(
+			res.body as ReadableStream<Uint8Array>,
+			probe,
+			timeoutMs,
+		);
+		return { expected: target, count, exact: !bounded, satisfied: !bounded && count === target, };
 	}
 
 	/** Get dataset metadata (tags, custom fields, checklists). */

@@ -6,6 +6,11 @@ export type CommandHandler = (
 	flags: Record<string, string | boolean>,
 ) => Promise<unknown>;
 
+export type LocalCommandHandler = (
+	args: string[],
+	flags: Record<string, string | boolean>,
+) => Promise<unknown>;
+
 export interface CommandPayloadSchema {
 	stdin?: boolean;
 	dataFlag?: boolean;
@@ -28,6 +33,7 @@ export interface CommandRegistryOverride {
 
 export interface CommandMeta extends CommandRegistryOverride {
 	handler: CommandHandler;
+	localHandler?: LocalCommandHandler;
 	usage: string;
 	description?: string;
 	examples?: string[];

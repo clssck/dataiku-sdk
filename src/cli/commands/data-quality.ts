@@ -172,6 +172,39 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 		description: "Get latest data quality rule results for a dataset.",
 		examples: ["dss data-quality last-results orders",],
 	},
+	"assert-results": {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 1, "dss data-quality assert-results <dataset>",);
+			const ruleId = f["rule-id"] as string | undefined;
+			const pk = f["project-key"] as string | undefined;
+			const results = await c.dataQuality.lastResults(a[0], { ruleId, projectKey: pk, },);
+			const selected = results.filter((result,) =>
+				ruleId === undefined || result.id === ruleId || result.ruleId === ruleId
+			);
+			const failed = selected
+				.filter((result,) => result.outcome !== "OK" && result.status !== "OK")
+				.map((result,) => ({
+					ruleId: result.id ?? result.ruleId ?? result.name ?? null,
+					outcome: result.outcome ?? null,
+					status: result.status ?? null,
+				}));
+			return {
+				satisfied: selected.length > 0 && failed.length === 0,
+				dataset: a[0],
+				...(ruleId !== undefined ? { ruleId, } : {}),
+				checked: selected.length,
+				failed,
+				...(selected.length === 0 ? { reason: "no_results", } : {}),
+			};
+		},
+		usage: "dss data-quality assert-results <dataset> [--rule-id ID] [--project-key KEY]",
+		description:
+			"Assert the latest data quality results: at least one selected rule must exist and every selected result must report OK. Returns { satisfied, checked, failed } with failed rule ids/outcomes only; a failed assertion exits 4 with assertion_failed.",
+		examples: [
+			"dss data-quality assert-results orders",
+			"dss data-quality assert-results orders --rule-id RULE_ID",
+		],
+	},
 	history: {
 		handler: (c, a, f,) => {
 			requireArgs(a, 1, "dss data-quality history <dataset>",);

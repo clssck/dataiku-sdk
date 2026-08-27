@@ -129,7 +129,13 @@ describe("CLI command behavioral smoke coverage", () => {
 					(await dss(["dataset", "preview", "orders", "--max-rows", "1",], {
 						env: cliEnv(url,),
 					},)).stdout,
-				),).toEqual({ columns: [{ name: "order_id", },], rows: [["A1",],], rowCount: 1, },);
+				),).toEqual({
+					columns: [{ name: "order_id", },],
+					rows: [["A1",],],
+					rowCount: 1,
+					truncated: false,
+					limit: 1,
+				},);
 				expect(
 					JSON.parse((await dss(["dataset", "metadata", "orders",], { env: cliEnv(url,), },)).stdout,),
 				)

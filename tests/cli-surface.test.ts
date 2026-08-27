@@ -80,6 +80,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"duplicate",
 		"export",
 		"import",
+		"inspect-archive",
 		"permissions-get",
 		"permissions-set",
 		"settings-get",
@@ -132,6 +133,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"delete-rule",
 		"status-by-partition",
 		"last-results",
+		"assert-results",
 		"history",
 		"project-status",
 		"project-timeline",
@@ -148,6 +150,8 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"validate-build",
 		"refresh-schema",
 		"preview",
+		"assert-count",
+		"assert-schema",
 		"metadata",
 		"download",
 		"create",
@@ -548,6 +552,9 @@ describe("CLI command surface", () => {
 						? { longRunningFailure: 4, }
 						: {}),
 					...((resource === "recipe" && action === "assert-unchanged")
+							|| (resource === "dataset" && action === "assert-count")
+							|| (resource === "dataset" && action === "assert-schema")
+							|| (resource === "data-quality" && action === "assert-results")
 							|| (resource === "batch" && action === "run")
 						? { assertionFailure: 4, }
 						: {}),

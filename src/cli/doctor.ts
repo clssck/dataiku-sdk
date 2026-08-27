@@ -61,6 +61,7 @@ export interface FixtureDiscoveryResult {
 export interface DoctorEnvironment {
 	projectKey?: string;
 	dssVersion?: string;
+	dssApiVersion?: string;
 	instanceTime?: string;
 	integrationFlags: {
 		mutating: boolean;
@@ -70,6 +71,15 @@ export interface DoctorEnvironment {
 		bundles: boolean;
 		apiServices: boolean;
 	};
+}
+/**
+ * Server provenance captured from documented response headers on the public
+ * project-list connectivity call. Null entries mean the header was absent.
+ */
+export interface DoctorVersionInfo {
+	dssVersion: string | null;
+	dssApiVersion: string | null;
+	instanceTime: string | null;
 }
 
 export interface DoctorResult {
@@ -117,9 +127,15 @@ export function integrationFlag(name: string,): boolean {
 	return value === "1" || value?.toLowerCase() === "true";
 }
 
-export function doctorEnvironment(projectKey?: string,): DoctorEnvironment {
+export function doctorEnvironment(
+	projectKey?: string,
+	versionInfo?: DoctorVersionInfo,
+): DoctorEnvironment {
 	return {
 		...(projectKey ? { projectKey, } : {}),
+		...(versionInfo?.dssVersion ? { dssVersion: versionInfo.dssVersion, } : {}),
+		...(versionInfo?.dssApiVersion ? { dssApiVersion: versionInfo.dssApiVersion, } : {}),
+		...(versionInfo?.instanceTime ? { instanceTime: versionInfo.instanceTime, } : {}),
 		integrationFlags: {
 			mutating: integrationFlag("RUN_DATAIKU_INTEGRATION_MUTATING",),
 			adminMutating: integrationFlag("RUN_DATAIKU_ADMIN_MUTATING",),
@@ -331,6 +347,7 @@ export async function doctorCapabilities(
 	projectKey: string | undefined,
 	accessibleProjects: unknown[] | undefined,
 	flags: Record<string, string | boolean>,
+	versionInfo?: DoctorVersionInfo,
 ): Promise<Pick<DoctorResult, "permissions" | "permissionDetails" | "fixtures" | "environment">> {
 	const probeProjectKey = projectKey ?? firstStringField(accessibleProjects, ["projectKey",],)
 		?? undefined;
@@ -396,7 +413,7 @@ export async function doctorCapabilities(
 	> = {
 		permissions,
 		...(Object.keys(permissionDetails,).length > 0 ? { permissionDetails, } : {}),
-		environment: doctorEnvironment(projectKey,),
+		environment: doctorEnvironment(projectKey, versionInfo,),
 	};
 
 	if (flags["fast"] !== true && probeProjectKey) {
@@ -448,6 +465,7 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 	},);
 
 	let accessibleProjects: unknown[] | undefined;
+	let environmentVersion: DoctorVersionInfo | undefined;
 
 	if (credentialsOk) {
 		const requestTimeoutMs = num(flags["request-timeout"], "--request-timeout",);
@@ -464,13 +482,20 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 		},);
 
 		try {
-			const projects = await client.projects.list();
-			accessibleProjects = projects;
+			const projects = await client.getWithMetadata<unknown[]>("/public/api/projects/",);
+			accessibleProjects = projects.data;
+			// Documented headers on the public project-list call populate the
+			// optional environment fields; absent headers stay absent.
+			environmentVersion = {
+				dssVersion: projects.meta.dssVersion,
+				dssApiVersion: projects.meta.dssApiVersion,
+				instanceTime: projects.meta.date,
+			};
 			checks.push({
 				name: "connectivity",
 				ok: true,
 				message: "Connected to DSS and listed accessible projects.",
-				details: { projectCount: projects.length, },
+				details: { projectCount: projects.data.length, },
 			},);
 		} catch (error) {
 			checks.push({
@@ -518,8 +543,17 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 			tlsRejectUnauthorized,
 			caCertPath,
 		},);
-		result.environment = doctorEnvironment(projectKey,);
-		Object.assign(result, await doctorCapabilities(client, projectKey, accessibleProjects, flags,),);
+		result.environment = doctorEnvironment(projectKey, environmentVersion,);
+		Object.assign(
+			result,
+			await doctorCapabilities(
+				client,
+				projectKey,
+				accessibleProjects,
+				flags,
+				environmentVersion,
+			),
+		);
 	}
 	return { result, exitCode: result.ok ? 0 : 2, };
 }

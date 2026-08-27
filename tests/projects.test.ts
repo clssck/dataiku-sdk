@@ -6,7 +6,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { projectCommands, } from "../src/cli/commands/project.js";
 import { DataikuClient, } from "../src/client.js";
+import { ClientValidationError, DataikuError, } from "../src/errors.js";
 import { ProjectsResource, } from "../src/resources/projects.js";
+import { projectIncarnationHash, } from "../src/utils/project-incarnation.js";
+import { writeProjectArchive, } from "./cli/_archive-fixtures.js";
 
 async function readBody(req: IncomingMessage,): Promise<string> {
 	let body = "";
@@ -198,11 +201,17 @@ describe("ProjectsResource lifecycle", () => {
 	it("uploads and processes project import archives", async () => {
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-",),);
 		const archivePath = path.join(tempDir, "source-name.zip",);
-		await fs.writeFile(archivePath, "import zip contents",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
 		let uploadContentType = "";
 		let uploadBody = "";
 		let processBody: unknown;
 		const requests: string[] = [];
+		const landedDetails = {
+			projectKey: "TARGET",
+			name: "Target Project",
+			creationTag: { lastModifiedOn: 1234567, },
+		};
+		const landedHash = projectIncarnationHash("TARGET", landedDetails,);
 
 		try {
 			await withServer(async (req, res,) => {
@@ -222,6 +231,10 @@ describe("ProjectsResource lifecycle", () => {
 					},);
 					return;
 				}
+				if (req.method === "GET" && req.url === "/public/api/projects/TARGET/") {
+					sendJson(res, landedDetails,);
+					return;
+				}
 				res.statusCode = 404;
 				res.end("unexpected request",);
 			}, async (url,) => {
@@ -233,6 +246,9 @@ describe("ProjectsResource lifecycle", () => {
 					usedProjectKey: "TARGET",
 					messages: [],
 					importId: "tmp-import-1",
+					requestedProjectKey: "TARGET",
+					remapped: false,
+					projectIncarnationHash: landedHash,
 				},);
 			},);
 		} finally {
@@ -242,11 +258,12 @@ describe("ProjectsResource lifecycle", () => {
 		expect(requests,).toEqual([
 			"POST /public/api/projects/import/upload",
 			"POST /public/api/projects/import/tmp-import-1/process",
+			"GET /public/api/projects/TARGET/",
 		],);
 		expect(uploadContentType.startsWith("multipart/form-data; boundary=",),).toBe(true,);
 		expect(uploadBody,).toContain('name="file"',);
 		expect(uploadBody,).toContain('filename="tmp-import.zip"',);
-		expect(uploadBody,).toContain("import zip contents",);
+		expect(uploadBody,).toContain("export-manifest.json",);
 		expect(processBody,).toEqual({ targetProjectKey: "TARGET", },);
 	});
 
@@ -268,7 +285,7 @@ describe("ProjectsResource lifecycle", () => {
 	it("refuses to process an upload response without a temporary import id", async () => {
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-empty-",),);
 		const archivePath = path.join(tempDir, "project.zip",);
-		await fs.writeFile(archivePath, "archive",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
 		let requests = 0;
 
 		try {
@@ -392,6 +409,569 @@ describe("ProjectsResource lifecycle", () => {
 					permissions: { owner: "owner-login", },
 				},
 			},
+		],);
+	});
+});
+
+describe("Project import hardening", () => {
+	it("rejects provably unusable archives before any upload", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-invalid-",),);
+		const archivePath = path.join(tempDir, "broken.zip",);
+		await fs.writeFile(archivePath, "this is not a zip archive",);
+		let requests = 0;
+
+		try {
+			await withServer(async (_req, _res,) => {
+				requests++;
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				await expect(resource.importProjectFromArchive(archivePath,),).rejects.toMatchObject({
+					code: "validation_failed",
+				},);
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+
+		expect(requests,).toBe(0,);
+	});
+
+	it("treats a process response without a boolean success field as ambiguous", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-msgs-",),);
+		const archivePath = path.join(tempDir, "project.zip",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
+		const requests: string[] = [];
+
+		try {
+			await withServer(async (req, res,) => {
+				requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+				if (req.url === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					sendJson(res, { id: "tmp-import-1", },);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					sendJson(res, { messages: [], },);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				await expect(
+					resource.importProjectFromArchive(archivePath, { targetProjectKey: "TARGET", },),
+				).rejects.toMatchObject({
+					code: "ambiguous_outcome",
+					details: { importId: "tmp-import-1", targetProjectKey: "TARGET", },
+				},);
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+
+		expect(requests,).toEqual([
+			"POST /public/api/projects/import/upload",
+			"POST /public/api/projects/import/tmp-import-1/process",
+		],);
+	});
+
+	it("treats a non-boolean success field as ambiguous", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-msgstr-",),);
+		const archivePath = path.join(tempDir, "project.zip",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
+
+		try {
+			await withServer(async (req, res,) => {
+				if (req.url === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					sendJson(res, { id: "tmp-import-1", },);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					sendJson(res, { success: "yes", },);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				await expect(
+					resource.importProjectFromArchive(archivePath, { targetProjectKey: "TARGET", },),
+				).rejects.toMatchObject({
+					code: "ambiguous_outcome",
+					details: { importId: "tmp-import-1", targetProjectKey: "TARGET", },
+				},);
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("wraps process 5xx as ambiguous while preserving the import id", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-5xx-",),);
+		const archivePath = path.join(tempDir, "project.zip",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
+		const requests: string[] = [];
+
+		try {
+			await withServer(async (req, res,) => {
+				requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+				if (req.url === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					sendJson(res, { id: "tmp-import-1", },);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					res.statusCode = 503;
+					res.setHeader("Content-Type", "application/json",);
+					res.end(JSON.stringify({ message: "import server hiccup", },),);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				await expect(
+					resource.importProjectFromArchive(archivePath, { targetProjectKey: "TARGET", },),
+				).rejects.toMatchObject({
+					code: "ambiguous_outcome",
+					details: { importId: "tmp-import-1", targetProjectKey: "TARGET", },
+				},);
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+
+		expect(requests,).toHaveLength(2,);
+	});
+
+	it("wraps transport failures after process as ambiguous while preserving the import id", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-drop-",),);
+		const archivePath = path.join(tempDir, "project.zip",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
+		const requests: string[] = [];
+
+		try {
+			await withServer(async (req, res,) => {
+				requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+				if (req.url === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					sendJson(res, { id: "tmp-import-1", },);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					req.socket.destroy();
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				await expect(
+					resource.importProjectFromArchive(archivePath, { targetProjectKey: "TARGET", },),
+				).rejects.toMatchObject({
+					code: "ambiguous_outcome",
+					details: { importId: "tmp-import-1", targetProjectKey: "TARGET", },
+				},);
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+
+		expect(requests.length,).toBeGreaterThanOrEqual(2,);
+	});
+
+	it("does not label a definitive 4xx process response ambiguous", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-4xx-",),);
+		const archivePath = path.join(tempDir, "project.zip",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
+
+		try {
+			await withServer(async (req, res,) => {
+				if (req.url === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					sendJson(res, { id: "tmp-import-1", },);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					res.statusCode = 400;
+					res.setHeader("Content-Type", "application/json",);
+					res.end(JSON.stringify({ message: "target project key conflict", },),);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				try {
+					await resource.importProjectFromArchive(archivePath, { targetProjectKey: "TARGET", },);
+					expect.unreachable("4xx process response must reject",);
+				} catch (error) {
+					expect(error,).toBeInstanceOf(DataikuError,);
+					expect(error,).toMatchObject({ status: 400, },);
+					expect(error instanceof ClientValidationError,).toBe(false,);
+				}
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("reports explicit remapping when the used key differs from the requested key", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-remap-",),);
+		const archivePath = path.join(tempDir, "project.zip",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
+		const landedDetails = {
+			projectKey: "ACTUAL",
+			name: "Landed Project",
+			creationTag: { lastModifiedOn: 999, },
+		};
+		const landedHash = projectIncarnationHash("ACTUAL", landedDetails,);
+
+		try {
+			await withServer(async (req, res,) => {
+				if (req.url === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					sendJson(res, { id: "tmp-import-1", },);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					sendJson(res, { success: true, usedProjectKey: "ACTUAL", },);
+					return;
+				}
+				if (req.method === "GET" && req.url === "/public/api/projects/ACTUAL/") {
+					sendJson(res, landedDetails,);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				await expect(
+					resource.importProjectFromArchive(archivePath, { targetProjectKey: "REQUESTED", },),
+				).resolves.toEqual({
+					success: true,
+					usedProjectKey: "ACTUAL",
+					importId: "tmp-import-1",
+					requestedProjectKey: "REQUESTED",
+					remapped: true,
+					projectIncarnationHash: landedHash,
+				},);
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("treats post-import verification 404 as ambiguous", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-miss-",),);
+		const archivePath = path.join(tempDir, "project.zip",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
+
+		try {
+			await withServer(async (req, res,) => {
+				if (req.url === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					sendJson(res, { id: "tmp-import-1", },);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					sendJson(res, { success: true, usedProjectKey: "TARGET", },);
+					return;
+				}
+				if (req.method === "GET" && req.url === "/public/api/projects/TARGET/") {
+					res.statusCode = 404;
+					res.setHeader("Content-Type", "application/json",);
+					res.end(JSON.stringify({ message: "project not found", },),);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				await expect(
+					resource.importProjectFromArchive(archivePath, { targetProjectKey: "TARGET", },),
+				).rejects.toMatchObject({
+					code: "ambiguous_outcome",
+					details: { importId: "tmp-import-1", usedProjectKey: "TARGET", },
+				},);
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("treats a landed project without creationTag identity as ambiguous", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dataiku-project-import-notag-",),);
+		const archivePath = path.join(tempDir, "project.zip",);
+		await writeProjectArchive(archivePath, "ARCHIVE_KEY",);
+
+		try {
+			await withServer(async (req, res,) => {
+				if (req.url === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					sendJson(res, { id: "tmp-import-1", },);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					sendJson(res, { success: true, usedProjectKey: "TARGET", },);
+					return;
+				}
+				if (req.method === "GET" && req.url === "/public/api/projects/TARGET/") {
+					sendJson(res, { projectKey: "TARGET", name: "No Tag", },);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const resource = new ProjectsResource(createClient(url,),);
+				await expect(
+					resource.importProjectFromArchive(archivePath, { targetProjectKey: "TARGET", },),
+				).rejects.toMatchObject({
+					code: "ambiguous_outcome",
+					details: { importId: "tmp-import-1", usedProjectKey: "TARGET", },
+				},);
+			},);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true, },);
+		}
+	});
+});
+
+describe("Project delete guards", () => {
+	const GUARDED_DETAILS = {
+		projectKey: "GUARDED",
+		name: "Guarded Project",
+		creationTag: { lastModifiedOn: 42, },
+	};
+	const GUARDED_HASH = projectIncarnationHash("GUARDED", GUARDED_DETAILS,);
+
+	it("deletes with a matching incarnation guard", async () => {
+		let deletes = 0;
+		const requests: string[] = [];
+		await withServer(async (req, res,) => {
+			const url = req.url ?? "";
+			requests.push(`${req.method ?? ""} ${url}`,);
+			if (req.method === "GET" && url === "/public/api/projects/GUARDED/") {
+				sendJson(res, GUARDED_DETAILS,);
+				return;
+			}
+			if (req.method === "DELETE" && url.startsWith("/public/api/projects/GUARDED",)) {
+				deletes++;
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(
+				projectCommands.delete.handler(client, ["GUARDED",], {
+					"if-exists": true,
+					"expect-project-incarnation": GUARDED_HASH,
+				},),
+			).resolves.toEqual({
+				deleted: true,
+				projectKey: "GUARDED",
+				projectIncarnationHash: GUARDED_HASH,
+			},);
+		},);
+
+		expect(deletes,).toBe(1,);
+		expect(requests,).toEqual([
+			"GET /public/api/projects/GUARDED/",
+			"DELETE /public/api/projects/GUARDED?clearManagedDatasets=false&clearOutputManagedFolders=false&clearJobAndScenarioLogs=true&wait=true",
+		],);
+	});
+
+	it("refuses an incarnation mismatch before any DELETE", async () => {
+		let deletes = 0;
+		await withServer(async (req, res,) => {
+			if (req.method === "GET" && req.url === "/public/api/projects/GUARDED/") {
+				sendJson(res, {
+					...GUARDED_DETAILS,
+					creationTag: { lastModifiedOn: 9999, },
+				},);
+				return;
+			}
+			if (req.method === "DELETE") {
+				deletes++;
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(
+				projectCommands.delete.handler(client, ["GUARDED",], {
+					"expect-project-incarnation": GUARDED_HASH,
+				},),
+			).rejects.toMatchObject({
+				code: "validation_failed",
+				details: {
+					projectKey: "GUARDED",
+					expectedProjectIncarnationHash: GUARDED_HASH,
+				},
+			},);
+		},);
+
+		expect(deletes,).toBe(0,);
+	});
+
+	it("refuses a missing creationTag before any DELETE", async () => {
+		let deletes = 0;
+		await withServer(async (req, res,) => {
+			if (req.method === "GET" && req.url === "/public/api/projects/GUARDED/") {
+				sendJson(res, { projectKey: "GUARDED", name: "No Tag", },);
+				return;
+			}
+			if (req.method === "DELETE") {
+				deletes++;
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(
+				projectCommands.delete.handler(client, ["GUARDED",], {
+					"expect-project-incarnation": GUARDED_HASH,
+				},),
+			).rejects.toMatchObject({
+				code: "validation_failed",
+				details: { projectKey: "GUARDED", },
+			},);
+		},);
+
+		expect(deletes,).toBe(0,);
+	});
+
+	it("treats an absent project as already deleted with --if-exists", async () => {
+		let deletes = 0;
+		await withServer(async (req, res,) => {
+			if (req.method === "GET" && req.url === "/public/api/projects/GUARDED/") {
+				res.statusCode = 404;
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify({ message: "project not found", },),);
+				return;
+			}
+			if (req.method === "DELETE") {
+				deletes++;
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(
+				projectCommands.delete.handler(client, ["GUARDED",], {
+					"if-exists": true,
+					"expect-project-incarnation": GUARDED_HASH,
+				},),
+			).resolves.toEqual({
+				deleted: false,
+				alreadyAbsent: true,
+				projectKey: "GUARDED",
+			},);
+		},);
+
+		expect(deletes,).toBe(0,);
+	});
+
+	it("rethrows absence without --if-exists", async () => {
+		await withServer(async (req, res,) => {
+			if (req.method === "GET" && req.url === "/public/api/projects/GUARDED/") {
+				res.statusCode = 404;
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify({ message: "project not found", },),);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(
+				projectCommands.delete.handler(client, ["GUARDED",], {
+					"expect-project-incarnation": GUARDED_HASH,
+				},),
+			).rejects.toMatchObject({ status: 404, },);
+		},);
+	});
+
+	it("verifies identity under --dry-run without deleting", async () => {
+		let deletes = 0;
+		await withServer(async (req, res,) => {
+			if (req.method === "GET" && req.url === "/public/api/projects/GUARDED/") {
+				sendJson(res, GUARDED_DETAILS,);
+				return;
+			}
+			if (req.method === "DELETE") {
+				deletes++;
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(
+				projectCommands.delete.handler(client, ["GUARDED",], {
+					"dry-run": true,
+					"expect-project-incarnation": GUARDED_HASH,
+				},),
+			).resolves.toEqual({
+				deleted: false,
+				dryRun: true,
+				projectKey: "GUARDED",
+				projectIncarnationHash: GUARDED_HASH,
+			},);
+		},);
+
+		expect(deletes,).toBe(0,);
+	});
+
+	it("rejects a malformed incarnation hash", async () => {
+		const client = createClient("http://127.0.0.1:1",);
+		await expect(
+			projectCommands.delete.handler(client, ["GUARDED",], {
+				"expect-project-incarnation": "not-a-hash",
+			},),
+		).rejects.toThrow("64-character lowercase SHA-256",);
+		await expect(
+			projectCommands.delete.handler(client, ["GUARDED",], {
+				"expect-project-incarnation": "not-a-hash",
+			},),
+		).rejects.toMatchObject({ code: "validation_failed", },);
+	});
+
+	it("keeps the direct unguarded delete when no guard flag is supplied", async () => {
+		const requests: string[] = [];
+		await withServer(async (req, res,) => {
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			if (req.method === "DELETE" && (req.url ?? "").startsWith("/public/api/projects/OLD",)) {
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(
+				projectCommands.delete.handler(client, ["OLD",], {},),
+			).resolves.toEqual({ deleted: "OLD", },);
+		},);
+
+		expect(requests,).toEqual([
+			"DELETE /public/api/projects/OLD?clearManagedDatasets=false&clearOutputManagedFolders=false&clearJobAndScenarioLogs=true&wait=true",
 		],);
 	});
 });

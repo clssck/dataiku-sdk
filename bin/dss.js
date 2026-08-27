@@ -56,9 +56,25 @@ if (hasFlag(["--insecure", "--skip-tls-verify",],)) {
 ) {
 	env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 }
-
 const runningOnBun = Boolean(process.versions.bun,);
 const usesSourceCli = cliPath === sourceCliPath;
+
+// Published dist carries dist/build-metadata.json with the revision it was
+// built from. Forward it to the CLI so provenance can report dist source and
+// its build revision; the source CLI gets nothing and never claims a revision.
+const distMetadataPath = path.resolve(here, "../dist/build-metadata.json",);
+if (!usesSourceCli) {
+	env.DSS_LOAD_SOURCE = "dist";
+	try {
+		const metadata = JSON.parse(fs.readFileSync(distMetadataPath, "utf-8",),);
+		if (typeof metadata.buildRevision === "string" && metadata.buildRevision.length > 0) {
+			env.DSS_BUILD_REVISION = metadata.buildRevision;
+		}
+	} catch {
+		// Dist without build metadata: provenance still reports dist source.
+	}
+}
+
 const runtimeBin = runningOnBun ? process.execPath : usesSourceCli ? "bun" : process.execPath;
 const runtimeArgs = runningOnBun || usesSourceCli ? ["--no-env-file",] : ["--use-system-ca",];
 const result = spawnSync(

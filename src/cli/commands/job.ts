@@ -45,6 +45,27 @@ function firstNumberPath(value: unknown, paths: string[][],): number | undefined
 	}
 	return undefined;
 }
+function aggregateJobWaitResults<
+	T extends { elapsedMs: number; pollCount: number; state: string; success: boolean; },
+>(jobs: T[], until: string,): T | {
+	elapsedMs: number;
+	jobs: T[];
+	pollCount: number;
+	state: string;
+	success: boolean;
+	until: string;
+} {
+	if (jobs.length === 1) return jobs[0]!;
+	const failed = jobs.find((job,) => !job.success);
+	return {
+		elapsedMs: jobs.reduce((maximum, job,) => Math.max(maximum, job.elapsedMs,), 0,),
+		jobs,
+		pollCount: jobs.reduce((total, job,) => total + job.pollCount, 0,),
+		state: failed?.state ?? "SUCCEEDED",
+		success: failed === undefined,
+		until,
+	};
+}
 
 function jobSummaryId(job: JobSummary | Record<string, unknown>, fallback?: string,): string {
 	return stringPath(job, ["baseStatus", "def", "id",],)
@@ -394,7 +415,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			};
 			const jobs = await Promise.all(a.map((jobId,) => c.jobs.wait(jobId, options,)),);
-			return a.length === 1 ? jobs[0] : { jobs, until: f["until"] ?? "all-done", };
+			return aggregateJobWaitResults(jobs, String(f["until"] ?? "all-done",),);
 		},
 		usage:
 			"dss job monitor <id...> [--summary] [--include-logs] [--log-filter stdout|stderr|user|errors] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--until all-done] [--project-key KEY]",
@@ -414,7 +435,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			};
 			const jobs = await Promise.all(a.map((jobId,) => c.jobs.wait(jobId, options,)),);
-			return a.length === 1 ? jobs[0] : { jobs, until: f["until"] ?? "all-done", };
+			return aggregateJobWaitResults(jobs, String(f["until"] ?? "all-done",),);
 		},
 		usage:
 			"dss job watch <id...> [--include-logs] [--log-filter stdout|stderr|user|errors] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--until all-done] [--project-key KEY]",

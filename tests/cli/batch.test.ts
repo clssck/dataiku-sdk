@@ -200,12 +200,13 @@ describe("CLI batch command", () => {
 			requestCount++;
 			sendJson(res, { ok: true, },);
 		}, async (url,) => {
-			const failure = await dssFailure(["project", "delete", "OLD", "--dry-run",], {
-				env: cliEnv(url,),
-			},);
+			const failure = await dssFailure(
+				["project", "create", "NEW", "New", "--owner", "alice", "--dry-run",],
+				{ env: cliEnv(url,), },
+			);
 			expect(failure.code,).toBe(1,);
 			expect(failure.stderr,).toBe("",);
-			expect(failure.stdout,).toContain("--dry-run is not supported for project delete",);
+			expect(failure.stdout,).toContain("--dry-run is not supported for project create",);
 			expect(JSON.parse(failure.stdout,),).toMatchObject({
 				code: "unknown_flag",
 				category: "usage",
@@ -254,12 +255,12 @@ describe("CLI batch command", () => {
 			const dryRunFailure = await dssFailure([
 				"batch",
 				"--data",
-				'[["project","delete","OLD","--dry-run"]]',
+				'[["project","create","NEW","New","--owner","alice","--dry-run"]]',
 			], { env: cliEnv(url,), },);
 			expect(dryRunFailure.code,).toBe(1,);
 			expect(dryRunFailure.stderr,).toBe("",);
 			expect(dryRunFailure.stdout,).toContain(
-				"Batch step 0 requests --dry-run, which is not supported for project delete",
+				"Batch step 0 requests --dry-run, which is not supported for project create",
 			);
 		},);
 		expect(requestCount,).toBe(0,);
@@ -270,7 +271,7 @@ describe("CLI batch command", () => {
 			"batch",
 			"--dry-run",
 			"--data",
-			'[["dataset","list","--plan"],["project","delete","OLD","--dry-run"]]',
+			'[["dataset","list","--plan"],["project","create","NEW","New","--owner","alice","--dry-run"]]',
 		], { env: hermetic, },);
 		expect(failure.code,).toBe(1,);
 		expect(failure.stderr,).toBe("",);
@@ -284,7 +285,7 @@ describe("CLI batch command", () => {
 		);
 		expect(report.steps[1],).toMatchObject({ index: 1, runnable: false, },);
 		expect(report.steps[1]?.error?.error,).toContain(
-			"Batch step 1 requests --dry-run, which is not supported for project delete",
+			"Batch step 1 requests --dry-run, which is not supported for project create",
 		);
 	});
 

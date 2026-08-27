@@ -100,6 +100,7 @@ export const VALUE_FLAGS = new Set([
 	"env-version",
 	"expect-hash",
 	"expect-project-incarnation",
+	"expected",
 	"expect-version",
 	"data-file",
 	"database",

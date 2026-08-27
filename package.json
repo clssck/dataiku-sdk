@@ -23,9 +23,9 @@
 		"bun": ">=1.3.14"
 	},
 	"scripts": {
-		"build": "tsc && tsc -p packages/types/tsconfig.json",
-		"prepack": "node scripts/sync-plugin-version.mjs --check && tsc && tsc -p packages/types/tsconfig.json",
-		"prepublishOnly": "node scripts/sync-plugin-version.mjs --check && tsc && tsc -p packages/types/tsconfig.json",
+		"build": "tsc && node scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
+		"prepack": "node scripts/sync-plugin-version.mjs --check && tsc && node scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
+		"prepublishOnly": "node scripts/sync-plugin-version.mjs --check && tsc && node scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
 		"check": "tsc --noEmit && node scripts/sync-plugin-version.mjs --check",
 		"version": "node scripts/sync-plugin-version.mjs && git add plugin.json",
 		"lint": "oxlint src/",
@@ -51,7 +51,8 @@
 		"typescript-language-service": "npm:typescript@5.9.3"
 	},
 	"dependencies": {
-		"@sinclair/typebox": "^0.34.52"
+		"@sinclair/typebox": "^0.34.52",
+		"node-stream-zip": "^1.16.0"
 	},
 	"bundledDependencies": [
 		"@sinclair/typebox"

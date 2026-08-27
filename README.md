@@ -20,6 +20,7 @@ npm install --global dataiku-sdk
 
 Bun is the primary development runtime and package manager. Examples below assume an installed `dss` binary. From a checkout, use `bun --no-env-file src/cli.ts ...` or the cross-runtime `bun --no-env-file ./bin/dss.js ...` launcher. Node users can invoke the same launcher as `node ./bin/dss.js ...`; if `dist/` is absent, it delegates to Bun. From another working directory, pass the checkout's absolute `bin/dss.js` path to Bun or Node.
 `--no-env-file` disables Bun's automatic preloading only; the CLI still applies its documented `.env` handling unless `DATAIKU_DISABLE_ENV=1` is set.
+`dss version` reports whether the running code came from `source` or `dist`, the Node/Bun runtime, the packaged build revision when available, and `staleBuild` when that revision differs from the checkout. Release builds generate `dist/build-metadata.json`; source snapshots without Git metadata still build but report no build revision.
 
 ## CLI contract
 
@@ -119,10 +120,14 @@ The command saves credentials and returns `{ "saved": true, "path": "..." }`.
 dss version
 dss doctor --fast
 dss project list
-dss project import ./project.zip --target-project-key IMPORTED_PROJECT
+dss project inspect-archive ./project.zip
+dss project import ./project.zip --target-project-key IMPORTED_PROJECT --record-cleanup cleanup.jsonl
 dss dataset list --project-key MYPROJ
 dss dataset files uploaded_input --project-key MYPROJ
 dss dataset upload-file uploaded_input ./new.csv --file-name new.csv --project-key MYPROJ
+dss dataset assert-count jmp_doe_ready --expected 12 --project-key MYPROJ
+dss dataset assert-schema jmp_doe_ready --data-file expected-schema.json --project-key MYPROJ
+dss data-quality assert-results jmp_doe_ready --project-key MYPROJ
 dss recipe get-payload compute_orders --project-key MYPROJ
 dss recipe get-payload compute_orders --output code.py --project-key MYPROJ
 dss install-skill --dry-run
@@ -140,11 +145,27 @@ dss cleanup --file cleanup.jsonl
 dss cleanup --file cleanup.jsonl --apply
 ```
 `project import` performs both public API stages: archive upload, then import processing. It
-exits nonzero when DSS returns `success:false` even if both HTTP requests succeeded.
+first validates ZIP integrity, safe unique member paths, the export manifest, and provable Flow
+references locally. Verified success reports DSS's actual project key, explicit remapping, and a
+`creationTag` incarnation hash; `--record-cleanup` records an incarnation-bound guarded delete.
+It exits nonzero when DSS returns `success:false` even if both HTTP requests succeeded. A timeout,
+5xx, malformed response, missing used key, or failed post-import identity read is
+`ambiguous_outcome` and retains the temporary import ID for inspection before retry.
+
 `dataset upload-file` only adds a filename that is not already present and verifies its byte
 length afterward. DSS 14.7 exposes no public UploadedFiles delete or replacement endpoint;
 the command refuses an existing filename before POST instead of triggering DSS's opaque 500.
 For replacement, import a successor project archive containing the desired upload.
+
+`dataset preview` returns `truncated` and `limit`; it probes one row past the requested cap instead
+of presenting a capped sample as an exact count. `dataset assert-count`, `dataset assert-schema`,
+and `data-quality assert-results` return `satisfied` and exit `4`/`assertion_failed` on a failed
+postcondition, so they can be used as `batch` steps. Multi-job `job monitor` and `job watch`
+aggregate child failures and also exit `4` when any watched job fails.
+
+`doctor` reads the documented `DSS-Version` and `DSS-API-Version` response headers plus the HTTP
+`Date` header from the public project-list call. Feature support remains behavioral: the CLI does
+not call an undocumented feature endpoint or infer licensed capabilities from a version string.
 
 ### Application release safety
 
@@ -223,7 +244,9 @@ conditional DELETE. Cleanup rechecks type and `creationTag` immediately before d
 detected key reuse, but cannot eliminate replacement in the remaining check-to-DELETE gap.
 `cleanup --apply` validates the full ledger before issuing any request and rejects legacy entries
 without server identity, mixed-server ledgers, entries for another DSS URL, and app cleanup entries
-without a valid incarnation binding.
+without a valid incarnation binding. Project-import cleanup uses the same rule: the ledger binds
+the actual imported key and verified `creationTag` hash, and `project delete
+--expect-project-incarnation` refuses a reused or unverifiable key before DELETE.
 
 Saving `version`/`versionNotes` in the public app manifest is a metadata write, not a publish
 transaction. If the manifest PUT or its verification read has an ambiguous transport/server

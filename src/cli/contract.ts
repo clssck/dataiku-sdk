@@ -372,7 +372,8 @@ const AGENT_CONTRACT_EXAMPLES = [
 	"dss agent contract --fields commands.actions",
 ];
 const VERSION_USAGE = "dss version";
-const VERSION_DESCRIPTION = "Print the CLI version and git revision as JSON.";
+const VERSION_DESCRIPTION =
+	"Print the CLI version, checkout/build revisions, load source, runtime, and stale-build status as JSON.";
 const VERSION_EXAMPLES = ["dss version", "dss --version",];
 const INSTALL_SKILL_USAGE =
 	"dss install-skill [--global] [--agent NAME] [--target PATH] [--list-agents] [--dry-run] [--plan]";
@@ -410,6 +411,7 @@ const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
 	"code-env delete",
 	"folder delete",
 	"folder delete-file",
+	"project delete",
 	"app delete-instance",
 ],);
 
@@ -1059,6 +1061,9 @@ function inferExitCodes(
 ): CommandExitCodes {
 	const longRunning = asyncKind !== "none" || `${resource}.${action}` === "batch.run";
 	const assertion = `${resource}.${action}` === "recipe.assert-unchanged"
+		|| `${resource}.${action}` === "dataset.assert-count"
+		|| `${resource}.${action}` === "dataset.assert-schema"
+		|| `${resource}.${action}` === "data-quality.assert-results"
 		|| `${resource}.${action}` === "batch.run";
 	return {
 		ok: 0,
@@ -1071,6 +1076,9 @@ function inferExitCodes(
 }
 
 function cleanupCommandFromDeleteUsage(resource: string, action: string,): string | undefined {
+	if (`${resource}.${action}` === "project.import") {
+		return "dss project delete <used-project-key> --if-exists --expect-project-incarnation <hash>";
+	}
 	if (resource === "project" && (action === "create" || action === "duplicate")) {
 		return undefined;
 	}
@@ -1199,7 +1207,7 @@ function buildRegistryEntry(
 	action: string,
 	meta: CommandMeta,
 ): CommandRegistryEntry {
-	const requiresAuth = inferRequiresAuth(resource,);
+	const requiresAuth = meta.localHandler === undefined && inferRequiresAuth(resource,);
 	const requiresProject = inferRequiresProject(resource, action, meta.usage,);
 	const sideEffect = inferSideEffect(resource, action,);
 	const destructive = inferDestructiveLevel(resource, sideEffect, action,);
@@ -3225,19 +3233,82 @@ export function commandPlanShape(
 				},
 			};
 		}
-		case "project.delete":
+		case "project.delete": {
+			const expectedProjectIncarnation = flags["expect-project-incarnation"] === undefined
+				? undefined
+				: requiredPlanFlag(flags, "expect-project-incarnation", entry.usage,);
+			if (
+				expectedProjectIncarnation !== undefined
+				&& !/^[0-9a-f]{64}$/.test(expectedProjectIncarnation,)
+			) {
+				throw new UsageError(
+					"--expect-project-incarnation must be a 64-character lowercase SHA-256 hash.",
+					"validation_failed",
+				);
+			}
+			const endpoint = `/public/api/projects/${encodeURIComponent(id,)}${
+				querySuffix({
+					clearManagedDatasets: flags["drop-data"] === true,
+					clearOutputManagedFolders: false,
+					clearJobAndScenarioLogs: true,
+					wait: true,
+				},)
+			}`;
+			const guarded = flags["if-exists"] === true
+				|| flags["dry-run"] === true
+				|| expectedProjectIncarnation !== undefined;
+			if (!guarded) {
+				return {
+					method: "DELETE",
+					endpoint,
+					identifiers: { projectKey: id, },
+				};
+			}
+			const projectProbe = `/public/api/projects/${encodeURIComponent(id,)}/`;
+			const incarnationGate = expectedProjectIncarnation === undefined
+				? { required: false, provided: false, }
+				: {
+					required: true,
+					provided: true,
+					expectedHash: expectedProjectIncarnation,
+				};
+			if (flags["dry-run"] === true) {
+				return {
+					method: "GET",
+					endpoint: projectProbe,
+					identifiers: {
+						projectKey: id,
+						dryRun: true,
+						ifExists: flags["if-exists"] === true,
+						projectIncarnationGate: incarnationGate,
+						note:
+							"Read-only guarded-delete preflight. No DELETE is issued; a supplied creationTag hash must match.",
+					},
+				};
+			}
 			return {
 				method: "DELETE",
-				endpoint: `/public/api/projects/${encodeURIComponent(id,)}${
-					querySuffix({
-						clearManagedDatasets: flags["drop-data"] === true,
-						clearOutputManagedFolders: false,
-						clearJobAndScenarioLogs: true,
-						wait: true,
-					},)
-				}`,
-				identifiers: { projectKey: id, },
+				endpoint,
+				identifiers: {
+					projectKey: id,
+					ifExists: flags["if-exists"] === true,
+					projectIncarnationGate: incarnationGate,
+					incarnationControl: expectedProjectIncarnation === undefined
+						? "none"
+						: "client-side-non-atomic-stale-identity-check",
+					preflightRequests: [{
+						method: "GET",
+						endpoint: projectProbe,
+						intent: expectedProjectIncarnation === undefined
+							? "Confirm existence before a convergent delete."
+							: "Recompute the current project-incarnation hash from creationTag before DELETE.",
+					},],
+					note: expectedProjectIncarnation === undefined
+						? "Convergent delete: a 404 preflight is an already-absent success only with --if-exists."
+						: "Incarnation-bound delete: the GET must match the expected creationTag hash before an unconditional DELETE. DSS exposes no conditional project DELETE, so the client-side gate cannot serialize against key reuse after the GET.",
+				},
 			};
+		}
 		case "project.duplicate": {
 			const options = jsonInput(flags,);
 			return {
@@ -3307,6 +3378,28 @@ export function commandPlanShape(
 				identifiers: {
 					filePath: id,
 					...(targetProjectKey ? { targetProjectKey, } : {}),
+					archivePreflight: {
+						local: true,
+						required: true,
+						checks: [
+							"zip-integrity",
+							"safe-unique-members",
+							"manifest",
+							"flow-references",
+							"orphan-members",
+						],
+					},
+					successVerification: {
+						usedProjectKeyRequired: true,
+						projectReadRequired: true,
+						projectIncarnationRequired: true,
+						remappingReported: true,
+					},
+					...(flags["record-cleanup"] === undefined
+						? {}
+						: {
+							cleanupBinding: "actual used project key plus verified creationTag incarnation hash",
+						}),
 				},
 				requests: [
 					{ sequence: 1, ...upload, },

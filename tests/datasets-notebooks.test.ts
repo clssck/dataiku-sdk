@@ -65,8 +65,11 @@ describe("DatasetsResource.preview", () => {
 	it("returns structured preview rows", async () => {
 		await withTestServer((req, res,) => {
 			expect(req.method,).toBe("GET",);
+			// One probe row beyond the requested cap is streamed to detect
+			// truncation; a dataset with exactly maxRows rows still reports
+			// truncated:false and the probe row is discarded.
 			expect(req.url,).toContain(
-				"/public/api/projects/TEST/datasets/sample/data/?format=tsv-excel-header&limit=2",
+				"/public/api/projects/TEST/datasets/sample/data/?format=tsv-excel-header&limit=3",
 			);
 			res.statusCode = 200;
 			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
@@ -78,6 +81,26 @@ describe("DatasetsResource.preview", () => {
 				columns: [{ name: "name", }, { name: "city", },],
 				rows: [["Alice", "Paris",], ["Bob", "Berlin",],],
 				rowCount: 2,
+				truncated: false,
+				limit: 2,
+			},);
+		},);
+	});
+
+	it("reports truncated when the dataset holds more rows than requested", async () => {
+		await withTestServer((req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+			res.end("name\tcity\nAlice\tParis\nBob\tBerlin\nCarole\tLyon\n",);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const preview = await client.datasets.preview("sample", { maxRows: 2, },);
+			expect(preview,).toEqual({
+				columns: [{ name: "name", }, { name: "city", },],
+				rows: [["Alice", "Paris",], ["Bob", "Berlin",],],
+				rowCount: 2,
+				truncated: true,
+				limit: 2,
 			},);
 		},);
 	});
