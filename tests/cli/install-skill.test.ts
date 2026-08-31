@@ -23,18 +23,20 @@ describe("CLI install-skill command", () => {
 			join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",),
 			"utf-8",
 		);
+		const licenseRef = "LicenseRef-Dataiku-SDK-Limited-Use-1.0";
 
 		expect(plugin,).toMatchObject({
 			$schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
 			name: "dataiku-sdk",
 			version: packageJson.version,
-			license: "MIT",
+			license: licenseRef,
 		},);
 		expect(packageJson.files,).toEqual(expect.arrayContaining(["plugin.json", "skills/",],),);
 		expect(packageJson.scripts?.version,).toContain("sync-plugin-version.mjs",);
 		expect(packageJson.scripts?.prepack,).toContain("sync-plugin-version.mjs --check",);
 		expect(packageJson.scripts?.prepublishOnly,).toContain("sync-plugin-version.mjs --check",);
 		expect(canonicalSkill,).toContain("name: dataiku-dss",);
+		expect(canonicalSkill,).toContain(`license: ${licenseRef}`,);
 		expect(canonicalSkill,).toContain("compatibility: >-",);
 		expect(canonicalSkill.split("\n",).length,).toBeLessThan(500,);
 	});
