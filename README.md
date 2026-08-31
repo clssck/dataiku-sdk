@@ -331,3 +331,15 @@ The `project-git` resource does not manage these settings, so public/auth-less a
 already-configured remotes are the supported automation paths.
 
 For fake-DSS smoke tests, return project lists as JSON arrays such as `[{ "projectKey": "MYPROJ", "name": "My Project" }]` from `/public/api/projects/`; recipe payload commands read `/public/api/projects/<PROJECT>/recipes/<NAME>?includePayload=true` and expect a JSON object shaped like `{ "recipe": { "name": "<NAME>", "type": "python" }, "payload": "..." }`.
+
+## License
+
+This project is source-available under the [Dataiku SDK Limited Use License 1.0](LICENSE), not an open-source license.
+
+- Individuals acting on their own behalf may use unmodified copies without a license fee.
+- Companies with total annual gross revenue below US $1,000,000 may use unmodified copies without a license fee.
+- Companies at or above that threshold, and all other entities, must request and obtain a separate written license before use.
+- Every modification, including private or internal changes, and every form of redistribution requires prior written approval.
+- Permitted use must preserve the license notices and display: `dataiku-sdk by clssck — https://github.com/clssck/dataiku-sdk`.
+
+Copies previously received under another license retain the rights granted for those copies. See [LICENSE](LICENSE) for the controlling terms and request path.

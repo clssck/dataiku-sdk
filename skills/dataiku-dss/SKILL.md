@@ -5,7 +5,7 @@ description: >-
   datasets, recipes, jobs, scenarios, folders, notebooks, SQL, variables,
   code envs, and connections. Discover scoped command metadata with
   dss commands run --fields RESOURCE.ACTION.
-license: MIT
+license: LicenseRef-Dataiku-SDK-Limited-Use-1.0
 compatibility: >-
   Requires the dss CLI, network access to a Dataiku DSS instance, configured
   DATAIKU_URL and DATAIKU_API_KEY credentials, and Bun >= 1.4.0.

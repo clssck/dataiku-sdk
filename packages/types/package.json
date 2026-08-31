@@ -2,6 +2,7 @@
 	"name": "@dataiku/types",
 	"version": "0.1.0",
 	"description": "TypeBox schemas and TypeScript types for the Dataiku DSS REST API",
+	"license": "SEE LICENSE IN LICENSE",
 	"type": "module",
 	"main": "src/index.ts",
 	"types": "src/index.ts",

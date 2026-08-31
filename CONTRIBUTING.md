@@ -73,4 +73,8 @@ The CLI exposes a stable, agent-facing contract via `dss commands run --json` an
 - Fill out the pull request template.
 - Behavioral changes are versioned per [semver](https://semver.org/) at release time (patch for fixes, minor for features).
 
-By contributing, you agree that your contributions are licensed under the project's [MIT License](LICENSE).
+## Contribution permission and licensing
+
+The project [license](LICENSE) does not permit modification without prior written approval, including changes made only for private or internal use. Before modifying the source for a proposed contribution, request and receive written approval from clssck through the [project repository](https://github.com/clssck/dataiku-sdk).
+
+By submitting an approved contribution, you represent that you have the right to do so and grant clssck a perpetual, worldwide, non-exclusive, irrevocable, royalty-free, transferable, sublicensable, and relicensable copyright license to use, reproduce, modify, prepare derivative works from, publish, distribute, perform, display, and otherwise exploit that contribution. This contributor grant lets the Licensor incorporate and license the contribution; it does not grant the contributor any permission beyond the written approval and the project license.

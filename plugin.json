@@ -5,7 +5,7 @@
 	"description": "Dataiku DSS SDK and agent-oriented CLI for programmatic access to DSS REST APIs.",
 	"homepage": "https://github.com/clssck/dataiku-sdk",
 	"repository": "https://github.com/clssck/dataiku-sdk",
-	"license": "MIT",
+	"license": "LicenseRef-Dataiku-SDK-Limited-Use-1.0",
 	"keywords": [
 		"dataiku",
 		"dss",
