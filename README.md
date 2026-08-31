@@ -9,7 +9,7 @@ The published `dss` CLI requires Bun >= 1.4.0 and supports Linux, macOS, and Win
 Run directly with Bun:
 
 ```text
-bunx dataiku-sdk version
+bunx --bun dataiku-sdk version
 ```
 
 Or install the npm binary:
@@ -17,8 +17,7 @@ Or install the npm binary:
 ```text
 npm install --global dataiku-sdk
 ```
-The installed `dss` bin runs Bun directly with Bun's automatic `.env` preloading disabled, so Bun >= 1.4.0 must be on `PATH`; the CLI's own `.env` handling stays authoritative.
-The launcher rejects forced Bun invocations that drop its `--no-env-file` shebang argument. Use `bunx dataiku-sdk`, not `bunx --bun dataiku-sdk`.
+The installed `dss` bin bootstraps Bun with automatic `.env` preloading disabled, so Bun >= 1.4.0 must be on `PATH`; the CLI's own `.env` handling stays authoritative. `bunx --bun` forces Bun's Node-compatibility mode, which provides the same no-preload guarantee across operating systems.
 
 Bun is the only supported runtime and the package manager. Examples below assume an installed `dss` binary. From a checkout, use `bun --no-env-file src/cli.ts ...` or the packaged launcher `bun --no-env-file ./bin/dss.js ...`. From another working directory, pass the checkout's absolute `bin/dss.js` path to Bun.
 `--no-env-file` disables Bun's automatic preloading only; the CLI still applies its documented `.env` handling unless `DATAIKU_DISABLE_ENV=1` is set.

@@ -63,7 +63,7 @@ try {
 	);
 	assert(typeof version.version === "string", "Bun packaged CLI version output is invalid",);
 	const bunxVersion = JSON.parse(
-		run(process.execPath, ["x", "dss", "version",], { cwd: installDir, },),
+		run(process.execPath, ["x", "--bun", "dss", "version",], { cwd: installDir, },),
 	);
 	assert(bunxVersion.version === version.version, "bunx reported the wrong packaged CLI version",);
 	assert(bunxVersion.runtime === "bun", "bunx did not execute the packaged CLI under Bun",);

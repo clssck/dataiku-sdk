@@ -1,18 +1,43 @@
-#!/usr/bin/env -S bun --no-env-file
-// npm bin for the dss CLI. Bun is the only supported runtime, so this launcher
-// runs the CLI in-process instead of spawning a second interpreter.
-//
-// `--no-env-file` must reach Bun on the command line: Bun preloads .env before
-// any user code runs, and the CLI's own loader (src/cli/env.ts) owns .env
-// precedence and DATAIKU_DISABLE_ENV. `env -S` splits the argument on POSIX
-// hosts, and the in-process guard below fails closed if an intermediary
-// such as a package runner drops the shebang argument.
+#!/usr/bin/env node
+// npm bin for the dss CLI. Bun is the only runtime that executes CLI code.
+// A Node-launched npm shim only bootstraps Bun with automatic .env loading
+// disabled; `bunx --bun` enters Bun's Node-compatibility mode, which disables
+// that loading before this module runs.
+import { spawnSync, } from "node:child_process";
 import * as path from "node:path";
-import { pathToFileURL, } from "node:url";
+import { fileURLToPath, pathToFileURL, } from "node:url";
 
-const envFileAutoloadDisabled = process.execArgv.includes("--no-env-file",);
+const runningUnderBun = typeof process.versions.bun === "string";
+const bunNodeCompatibilityMode = runningUnderBun
+	&& path.basename(process.argv0,).toLowerCase().startsWith("node",);
+const envFileAutoloadDisabled = process.execArgv.includes("--no-env-file",)
+	|| bunNodeCompatibilityMode;
 
-if (!envFileAutoloadDisabled) {
+if (!runningUnderBun) {
+	const result = spawnSync(
+		"bun",
+		["--no-env-file", fileURLToPath(import.meta.url,), ...process.argv.slice(2,),],
+		{ stdio: "inherit", env: process.env, },
+	);
+	if (result.error) {
+		process.stdout.write(`${
+			JSON.stringify({
+				type: "error",
+				ok: false,
+				error: "Unable to start the required Bun runtime.",
+				code: "internal_error",
+				category: "internal",
+				exitCode: 2,
+				hint: "Install Bun >= 1.4.0 and ensure `bun` is on PATH.",
+			},)
+		}\n`,);
+		process.exitCode = 2;
+	} else if (result.signal) {
+		process.kill(process.pid, result.signal,);
+	} else {
+		process.exitCode = result.status ?? 1;
+	}
+} else if (!envFileAutoloadDisabled) {
 	process.stdout.write(`${
 		JSON.stringify({
 			type: "error",
@@ -21,8 +46,7 @@ if (!envFileAutoloadDisabled) {
 			code: "env_autoload_enabled",
 			category: "usage",
 			exitCode: 1,
-			hint:
-				"Use `bunx dataiku-sdk` or pass `--no-env-file` before the script path. Do not use `bunx --bun`.",
+			hint: "Use `bunx --bun dataiku-sdk` or pass `--no-env-file` before the script path.",
 		},)
 	}\n`,);
 	process.exitCode = 1;
