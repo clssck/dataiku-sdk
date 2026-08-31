@@ -1,16 +1,16 @@
 import { describe, } from "bun:test";
 import { execFile, } from "node:child_process";
 import { randomUUID, } from "node:crypto";
-import { existsSync, readFileSync, } from "node:fs";
-import { dirname, join, resolve, } from "node:path";
+import * as nodeFs from "node:fs";
+import * as path from "node:path";
 import { fileURLToPath, } from "node:url";
 import { promisify, } from "node:util";
 import { DataikuClient, } from "../src/client.js";
 
 const exec = promisify(execFile,);
 
-export const SDK_ROOT = resolve(dirname(fileURLToPath(import.meta.url,),), "..",);
-export const CLI_PATH = join(SDK_ROOT, "src/cli.ts",);
+export const SDK_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url,),), "..",);
+export const CLI_PATH = path.join(SDK_ROOT, "src/cli.ts",);
 export const BUN = process.execPath;
 
 export interface DssRunOptions {
@@ -36,9 +36,9 @@ export interface CleanupStack {
 }
 
 export function loadDotEnv(): void {
-	const envPath = join(SDK_ROOT, ".env",);
-	if (!existsSync(envPath,)) return;
-	const content = readFileSync(envPath, "utf-8",);
+	const envPath = path.join(SDK_ROOT, ".env",);
+	if (!nodeFs.existsSync(envPath,)) return;
+	const content = nodeFs.readFileSync(envPath, "utf-8",);
 	for (const line of content.split("\n",)) {
 		const trimmed = line.trim();
 		if (!trimmed || trimmed.startsWith("#",)) continue;
@@ -117,13 +117,18 @@ export function createClient(): DataikuClient {
 export async function dssRaw(args: string[], opts: DssRunOptions = {},): Promise<DssRawResult> {
 	return await new Promise<DssRawResult>((resolveRun,) => {
 		try {
-			execFile(BUN, ["run", CLI_PATH, ...args,], dssExecOptions(opts,), (error, stdout, stderr,) => {
-				resolveRun({
-					code: exitCodeFromError(error,),
-					stdout: String(stdout,),
-					stderr: String(stderr,),
-				},);
-			},);
+			execFile(
+				BUN,
+				["--no-env-file", "run", CLI_PATH, ...args,],
+				dssExecOptions(opts,),
+				(error, stdout, stderr,) => {
+					resolveRun({
+						code: exitCodeFromError(error,),
+						stdout: String(stdout,),
+						stderr: String(stderr,),
+					},);
+				},
+			);
 		} catch (error) {
 			resolveRun({
 				code: 1,
@@ -135,7 +140,11 @@ export async function dssRaw(args: string[], opts: DssRunOptions = {},): Promise
 }
 
 export async function dss(args: string[], opts: DssRunOptions = {},): Promise<DssOutput> {
-	const { stdout, stderr, } = await exec(BUN, ["run", CLI_PATH, ...args,], dssExecOptions(opts,),);
+	const { stdout, stderr, } = await exec(
+		BUN,
+		["--no-env-file", "run", CLI_PATH, ...args,],
+		dssExecOptions(opts,),
+	);
 	return { stdout: String(stdout,), stderr: String(stderr,), };
 }
 
