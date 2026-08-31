@@ -126,7 +126,8 @@ recipient-sharing, or UI-click operations that the public DSS API does not expos
 dss app validate-manifest --project-key APP_TEMPLATE
 dss app compare-manifest APP_ID --project-key RELEASE_INSTANCE
 dss app manifest-version --project-key APP_TEMPLATE
-dss app set-manifest-version --manifest-version 1.4.0 --project-key APP_TEMPLATE
+dss app successor-preflight APP_ID --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 --copy-permissions
+dss app set-manifest-version --manifest-version 1.4.0 --expect-hash PREFLIGHT_TEMPLATE_MANIFEST_HASH --project-key APP_TEMPLATE
 # targetProjectKey in instance.json must be confirmed absent
 dss app create-instance APP_ID --data-file instance.json --wait --record-cleanup cleanup.jsonl
 dss app create-successor-instance APP_ID --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 --copy-permissions --record-cleanup cleanup.jsonl
@@ -137,39 +138,30 @@ dss app permissions-diff --project-key RELEASE_INSTANCE --file permissions.json
 dss app permissions-restore --project-key RELEASE_INSTANCE --file permissions.json --dry-run
 ```
 
-An invalid manifest exits non-zero with the validation result in the structured error details.
-Review the cleanup preview before `dss cleanup --file cleanup.jsonl --apply`. Every new entry is
-bound to the canonical DSS URL. App cleanup records a `creationTag` hash observed after the DSS
-future identifies its target key; unconfirmed creation stops unresolved. The future target and
-later `creationTag` are independent, non-atomic observations because the public API exposes
-neither an immutable project ID joined to the future nor a conditional DELETE. Cleanup rechecks
-type and `creationTag` immediately before deletion, rejecting detected key reuse but unable to
-eliminate replacement in the remaining check-to-DELETE gap. Apply validates the full ledger before
-any request and rejects legacy, mixed-server, mismatched-server, or unbound app cleanup entries.
-The successor's cleanup ledger entry targets only the new project key;
-the predecessor is never targeted. Some DSS deployments return 403 for an unknown target project:
-instance creation requires confirmed target absence before POST, so an inaccessible target absent
-from the visible project list is still rejected as unconfirmed rather than risking cleanup against
-a pre-existing project. A definitive create rejection never produces a cleanup entry.
+Run `successor-preflight` before changing the template version. It validates the template,
+predecessor, target, and optional ACL snapshot, performs no mutation, and returns the template
+manifest hash for the next `set-manifest-version --expect-hash` guard.
+
+A masked `403` absent from both visible lists is rejected as
+`target_absence_unverifiable` / `permission_or_environment`; lists prove collisions, not absence.
+DSS exposes no permission-independent public key-availability endpoint or guaranteed
+non-overwriting duplicate-key rejection, so no force or server-atomic bypass is supported. Use
+global project visibility. A definitive rejection writes no cleanup entry. An ambiguous POST
+without a returned future ID or verified incarnation is `INDETERMINATE` and also produces no cleanup
+entry. Future-addressable cleanup waits for target identity and `creationTag`; the predecessor is
+never targeted. Ledgers bind the canonical DSS URL, project key, and concrete project incarnation,
+and reject legacy, mixed-server, mismatched-server, or unbound app cleanup entries. Static plans
+expose `preflightExecuted:false` and `preflightWillRunDuringApply:true`.
 
 `app set-manifest-version` reports
-`concurrencyControl:"client-side-non-atomic-stale-read-check"`. `--expect-hash SHA256` refuses the
-write when the manifest already changed, but the PUT itself stays unconditional: this command can
-overwrite a writer that commits inside the read-then-write window, and the post-write read cannot
-detect that lost update when this command's payload wins. Never treat the hash as a serializing lock.
-An ambiguous manifest PUT or verification read exits non-zero with `persisted:null`,
-`after:null`, and `outcome:"indeterminate"`; it never claims success or rejection.
+`concurrencyControl:"client-side-non-atomic-stale-read-check"`. `--expect-hash` is a stale-read
+guard; the PUT is unconditional. Never treat the hash as a serializing lock. Ambiguous writes report
+`outcome:"indeterminate"`.
 
-The API key authenticates public REST only. `app verify-instance` reports `apiReady:true`,
-`status:"API_VERIFIED_UI_PENDING"`, and `uiPublicationVerified:false`. Its `visual-ui` gate
-requires a pre-authenticated SSO browser session or dedicated UI test identity and evidence from
-exercising the affected tiles, forms, and actions; the CLI never marks that external gate complete.
-Permission snapshots have an integrity hash bound to the canonical DSS URL, project key, and
-observed concrete project incarnation from `creationTag`; diff and restore reject detected server,
-key, or incarnation mismatches. DSS exposes no conditional permission PUT, so these client-side checks
-narrow and detect key-reuse races but cannot serialize the final check with the write. Snapshots
-contain access-control identities; keep them mode `0600` and commit them only when repository
-policy permits.
+The API key authenticates public REST only. `app verify-instance` reports
+`status:"API_VERIFIED_UI_PENDING"`; its external SSO gate requires exercising the affected tiles,
+forms, and actions. Permission snapshots bind identity and permissions to the server/project
+incarnation and reject mismatches.
 
 ## Project Git
 

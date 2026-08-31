@@ -121,6 +121,9 @@ describe("CLI install-skill command", () => {
 				"utf-8",
 			);
 			expect(content,).toBe(canonicalSkill,);
+			// Release prose is hard-wrapped; normalize whitespace so multi-line
+			// sentences stay pinned by meaning rather than by column position.
+			const prose = content.replace(/\s+/g, " ",);
 			expect(content,).toContain("name: dataiku-dss",);
 			expect(content,).toContain("dss agent contract",);
 			expect(content,).toContain('type:"error"',);
@@ -213,7 +216,10 @@ describe("CLI install-skill command", () => {
 				"dss app manifest-version --project-key APP_TEMPLATE",
 			);
 			expect(content,).toContain(
-				"dss app set-manifest-version --manifest-version 1.4.0 --project-key APP_TEMPLATE",
+				"dss app successor-preflight APP_ID --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 --copy-permissions",
+			);
+			expect(content,).toContain(
+				"dss app set-manifest-version --manifest-version 1.4.0 --expect-hash PREFLIGHT_TEMPLATE_MANIFEST_HASH --project-key APP_TEMPLATE",
 			);
 			expect(content,).toContain(
 				"dss app create-successor-instance APP_ID --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 --copy-permissions --record-cleanup cleanup.jsonl",
@@ -223,11 +229,30 @@ describe("CLI install-skill command", () => {
 			);
 			expect(content,).toContain("writing it is NOT a publish transaction",);
 			expect(content,).toContain("existing instances are never upgraded in",);
-			expect(content,).toContain("the predecessor is never targeted",);
+			expect(prose,).toContain("the predecessor is never targeted",);
+			expect(content,).toContain("Run `successor-preflight` before changing the template version.",);
+			expect(content,).toContain("performs no mutation",);
+			expect(prose,).toContain(
+				"returns the template manifest hash for the next `set-manifest-version --expect-hash` guard",
+			);
 			expect(content,).toContain('`status:"API_VERIFIED_UI_PENDING"`',);
 			expect(content,).toContain("The API key authenticates public REST only",);
-			expect(content,).toContain("instance creation requires confirmed target absence",);
-			expect(content,).toContain("exercising the affected tiles, forms, and actions",);
+			expect(prose,).toContain(
+				"rejected as `target_absence_unverifiable` / `permission_or_environment`",
+			);
+			expect(prose,).toContain(
+				"DSS exposes no permission-independent public key-availability endpoint",
+			);
+			expect(content,).toContain("so no force or server-atomic bypass is supported",);
+			expect(prose,).toContain(
+				"An ambiguous POST without a returned future ID or verified incarnation is `INDETERMINATE` and also produces no cleanup entry",
+			);
+			expect(prose,).toContain(
+				"Static plans expose `preflightExecuted:false` and `preflightWillRunDuringApply:true`",
+			);
+			expect(content,).not.toContain("--force",);
+			expect(content,).not.toContain("server-atomic-create",);
+			expect(prose,).toContain("exercising the affected tiles, forms, and actions",);
 			expect(content,).toContain(
 				'`concurrencyControl:"client-side-non-atomic-stale-read-check"`',
 			);
@@ -237,7 +262,7 @@ describe("CLI install-skill command", () => {
 			expect(content,).not.toContain("uiPublicationVerified:true",);
 			expect(content,).toContain("canonical DSS URL, project key, and",);
 			expect(content,).toContain("concrete project incarnation",);
-			expect(content,).toContain(
+			expect(prose,).toContain(
 				"legacy, mixed-server, mismatched-server, or unbound app cleanup entries",
 			);
 			expect(content,).toContain("stdout carries the JSON string equal to `PATH`",);

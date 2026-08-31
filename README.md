@@ -137,7 +137,8 @@ dss app validate-manifest --project-key MYAPP_INSTANCE
 dss app compare-manifest my-app --project-key MYAPP_INSTANCE
 dss app create-instance my-app --data '{"targetProjectKey":"MYAPP_INSTANCE"}' --wait --record-cleanup cleanup.jsonl
 dss app manifest-version --project-key MYAPP_TEMPLATE
-dss app set-manifest-version --manifest-version 1.4.0 --project-key MYAPP_TEMPLATE
+dss app successor-preflight my-app --from MYAPP_INSTANCE --to MYAPP_INSTANCE_V2 --copy-permissions
+dss app set-manifest-version --manifest-version 1.4.0 --expect-hash PREFLIGHT_TEMPLATE_MANIFEST_HASH --project-key MYAPP_TEMPLATE
 dss app create-successor-instance my-app --from MYAPP_INSTANCE --to MYAPP_INSTANCE_V2 --copy-permissions --record-cleanup cleanup.jsonl
 dss app verify-instance my-app --project-key MYAPP_INSTANCE_V2 --expect-version 1.4.0
 dss app permissions-snapshot --project-key MYAPP_INSTANCE --output permissions.json
@@ -184,6 +185,12 @@ dss app compare-manifest APP_ID --project-key RELEASE_INSTANCE
 # Read the raw `version` from the public app manifest (string fields only; never appVersion).
 dss app manifest-version --project-key APP_TEMPLATE
 
+# Run every read-only successor gate before changing the template version. This validates the
+# template references, verifies the predecessor, proves target absence, and optionally snapshots
+# the predecessor ACL. Keep template.manifestHash from the result for the next command.
+dss app successor-preflight APP_ID \
+  --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 --copy-permissions
+
 # Write version/versionNotes through the public app-manifest endpoint. This is NOT a publish
 # transaction: it only changes the raw manifest metadata. --expect-hash SHA256 is a non-atomic
 # stale-read guard, not a conditional write: it refuses the write when the manifest already
@@ -191,7 +198,8 @@ dss app manifest-version --project-key APP_TEMPLATE
 # overwrite a write landing between its read and PUT, and the final read cannot detect that lost
 # update when this command's payload wins. Every result reports
 # concurrencyControl: "client-side-non-atomic-stale-read-check".
-dss app set-manifest-version --manifest-version 1.4.0 --project-key APP_TEMPLATE
+dss app set-manifest-version --manifest-version 1.4.0 \
+  --expect-hash PREFLIGHT_TEMPLATE_MANIFEST_HASH --project-key APP_TEMPLATE
 
 # Create an instance only after its target key is confirmed absent, wait on the DSS future, and
 # record deterministic cleanup.
@@ -202,7 +210,8 @@ dss app create-instance APP_ID \
 # Roll out a new template version to an existing instance as an additive successor: the old
 # instance is never modified or deleted, and the command always waits on the DSS future
 # (there is no --wait flag). The recorded cleanup entry targets only the new project key. If DSS
-# accepts creation but returns no future ID, cleanup stops unresolved instead of racing creation.
+# may have accepted creation but no future ID is returned, the outcome is indeterminate and no
+# unbound cleanup entry is written.
 dss app create-successor-instance APP_ID \
   --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 \
   --name "Release instance v2" --copy-permissions --record-cleanup cleanup.jsonl
@@ -235,12 +244,24 @@ managed-folder IDs, and runtime-form parameter names against supported public pr
 
 Some DSS deployments hide unknown project keys behind `403` instead of returning `404`.
 Instance creation requires confirmed target absence before POST: an inaccessible target not present
-in the visible project list is still unconfirmed and is rejected rather than risking cleanup
-against a pre-existing project. A definitive create rejection never produces a cleanup entry.
+in the visible project and app-instance lists is still unconfirmed and is rejected with
+`target_absence_unverifiable` / `permission_or_environment` rather than risking cleanup against a
+pre-existing project. Choosing another key does not solve deployments that mask every unknown key.
+DSS exposes no permission-independent public availability endpoint, and its published app-instance
+API does not guarantee duplicate-key rejection before any write or non-overwrite behavior, so
+there is no unsafe force or unconfirmed-target bypass. Use an identity with global project
+visibility. A definitive create rejection never produces a cleanup entry; an ambiguous POST
+without a future ID or verified
+incarnation also produces no cleanup entry.
+
+Static create plans describe, but do not execute, these reads:
+`preflightExecuted:false` and `preflightWillRunDuringApply:true`. Run `successor-preflight` when
+live read evidence is required before changing the template version.
 
 Every new cleanup entry records the canonical DSS URL. App-instance cleanup records a
-`creationTag` hash observed after the DSS future identifies the target key; unconfirmed creation
-stops unresolved. The future target and later `creationTag` are independent, non-atomic
+`creationTag` hash observed after the DSS future identifies the target key; a future-addressable
+entry stops unresolved until the future names that key and its incarnation can be bound. An
+ambiguous POST with no future ID produces no entry. The future target and later `creationTag` are independent, non-atomic
 observations: the public API exposes neither an immutable project ID joined to the future nor a
 conditional DELETE. Cleanup rechecks type and `creationTag` immediately before deletion, rejecting
 detected key reuse, but cannot eliminate replacement in the remaining check-to-DELETE gap.
