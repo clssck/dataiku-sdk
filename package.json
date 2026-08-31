@@ -19,15 +19,14 @@
 		"packages/types/dist/"
 	],
 	"engines": {
-		"node": ">=22.15.0",
-		"bun": ">=1.3.14"
+		"bun": ">=1.4.0"
 	},
 	"scripts": {
-		"build": "tsc && node scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
-		"prepack": "node scripts/sync-plugin-version.mjs --check && tsc && node scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
-		"prepublishOnly": "node scripts/sync-plugin-version.mjs --check && tsc && node scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
-		"check": "tsc --noEmit && node scripts/sync-plugin-version.mjs --check",
-		"version": "node scripts/sync-plugin-version.mjs && git add plugin.json",
+		"build": "tsc && bun scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
+		"prepack": "bun scripts/sync-plugin-version.mjs --check && tsc && bun scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
+		"prepublishOnly": "bun scripts/sync-plugin-version.mjs --check && tsc && bun scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
+		"check": "tsc --noEmit && bun scripts/sync-plugin-version.mjs --check",
+		"version": "bun scripts/sync-plugin-version.mjs && git add plugin.json",
 		"lint": "oxlint src/",
 		"lint:fix": "oxlint --fix src/",
 		"format": "dprint fmt",
@@ -41,7 +40,7 @@
 		"test:integration:rigorous:mutating": "cross-env RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 bun test tests/integration-rigorous.test.ts"
 	},
 	"devDependencies": {
-		"@types/bun": "^1.3.14",
+		"@types/bun": "^1.4.0",
 		"cross-env": "^10.1.0",
 		"dprint": "^0.55.2",
 		"js-tiktoken": "1.0.21",
