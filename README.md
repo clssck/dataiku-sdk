@@ -4,12 +4,12 @@ Agent-only TypeScript SDK and `dss` CLI for Dataiku DSS automation.
 
 ## Platform support
 
-The published `dss` CLI supports Linux, macOS, and Windows under Bun >= 1.3.14 or Node.js >= 22.15.0. The release gate runs Bun 1.3.14 with Node 24 on all three operating systems, plus a lightweight minimum-Node 22.15 package smoke on Linux. The runtime dependency is pure JavaScript, so the same package also runs on runtime-supported x64 and ARM64 systems.
+The published `dss` CLI requires Bun >= 1.4.0 and supports Linux, macOS, and Windows. The release gate runs Bun 1.4.0 on all three operating systems. The runtime dependency is pure JavaScript, so the same package also runs on every Bun-supported x64 and ARM64 system.
 
 Run directly with Bun:
 
 ```text
-bunx --bun dataiku-sdk version
+bunx dataiku-sdk version
 ```
 
 Or install the npm binary:
@@ -17,10 +17,12 @@ Or install the npm binary:
 ```text
 npm install --global dataiku-sdk
 ```
+The installed `dss` bin runs Bun directly with Bun's automatic `.env` preloading disabled, so Bun >= 1.4.0 must be on `PATH`; the CLI's own `.env` handling stays authoritative.
+The launcher rejects forced Bun invocations that drop its `--no-env-file` shebang argument. Use `bunx dataiku-sdk`, not `bunx --bun dataiku-sdk`.
 
-Bun is the primary development runtime and package manager. Examples below assume an installed `dss` binary. From a checkout, use `bun --no-env-file src/cli.ts ...` or the cross-runtime `bun --no-env-file ./bin/dss.js ...` launcher. Node users can invoke the same launcher as `node ./bin/dss.js ...`; if `dist/` is absent, it delegates to Bun. From another working directory, pass the checkout's absolute `bin/dss.js` path to Bun or Node.
+Bun is the only supported runtime and the package manager. Examples below assume an installed `dss` binary. From a checkout, use `bun --no-env-file src/cli.ts ...` or the packaged launcher `bun --no-env-file ./bin/dss.js ...`. From another working directory, pass the checkout's absolute `bin/dss.js` path to Bun.
 `--no-env-file` disables Bun's automatic preloading only; the CLI still applies its documented `.env` handling unless `DATAIKU_DISABLE_ENV=1` is set.
-`dss version` reports whether the running code came from `source` or `dist`, the Node/Bun runtime, the packaged build revision when available, and `staleBuild` when that revision differs from the checkout. Release builds generate `dist/build-metadata.json`; source snapshots without Git metadata still build but report no build revision.
+`dss version` reports whether the running code came from `source` or `dist`, the runtime (always `bun`), the packaged build revision when available, and `staleBuild` when that revision differs from the checkout. Release builds generate `dist/build-metadata.json`; source snapshots without Git metadata still build but report no build revision.
 
 ## CLI contract
 

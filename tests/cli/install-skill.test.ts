@@ -189,7 +189,9 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain("dss auth login --url",);
 			expect(content,).toContain("~/.config/dataiku/credentials.json",);
 			expect(content,).toContain("For disposable agent tests, set `DSS_CONFIG_DIR`",);
-			expect(content,).toContain("node ./bin/dss.js",);
+			expect(content,).not.toContain("node ./bin/dss.js",);
+			expect(content,).not.toContain("cross-runtime",);
+			expect(content,).toContain("Bun >= 1.4.0",);
 			expect(content,).toContain("bun --no-env-file src/cli.ts",);
 			expect(content,).toContain("bun --no-env-file ./bin/dss.js",);
 			expect(content,).toContain("PowerShell:\n\n```powershell\n$env:DATAIKU_URL",);

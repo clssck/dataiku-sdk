@@ -7,14 +7,14 @@ description: >-
   dss commands run --fields RESOURCE.ACTION.
 license: MIT
 compatibility: >-
-  Requires the dss CLI, network access to a Dataiku DSS instance, and configured
-  DATAIKU_URL and DATAIKU_API_KEY credentials. Source-checkout fallback requires Bun.
+  Requires the dss CLI, network access to a Dataiku DSS instance, configured
+  DATAIKU_URL and DATAIKU_API_KEY credentials, and Bun >= 1.4.0.
 ---
 
 # Dataiku DSS agent CLI
 
 Use `dss` when an agent needs to inspect or change Dataiku DSS resources: projects, datasets, recipes, jobs, scenarios, folders, notebooks, SQL, variables, code envs, and connections.
-If the installed `dss` binary is unavailable but the repository checkout is the current workspace, prefer `bun --no-env-file src/cli.ts ...` or `bun --no-env-file ./bin/dss.js ...`. Node users can invoke the same cross-runtime launcher as `node ./bin/dss.js ...`; when `dist/` has not been built, it delegates to Bun. From another working directory, pass the checkout's absolute `bin/dss.js` path to Bun or Node.
+If the installed `dss` binary is unavailable but the repository checkout is the current workspace, prefer `bun --no-env-file src/cli.ts ...` or the packaged launcher `bun --no-env-file ./bin/dss.js ...`. From another working directory, pass the checkout's absolute `bin/dss.js` path to Bun.
 `--no-env-file` disables Bun's automatic preloading only; the CLI still applies its documented `.env` handling unless `DATAIKU_DISABLE_ENV=1` is set.
 
 ## Contract
