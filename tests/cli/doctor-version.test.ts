@@ -544,6 +544,14 @@ describe("dss version provenance", () => {
 
 describe("dss version provenance rejects corrupt revisions", () => {
 	it("never claims a corrupt or inherited revision as build provenance", async () => {
+		const metadataRevision = buildMetadataRevision(SDK_ROOT,) ?? null;
+		const checkoutRevision = gitFullRevision(SDK_ROOT,);
+		const metadataIsStale = sourceTreeNewerThanBuild(SDK_ROOT,)
+			|| (
+				metadataRevision !== null
+				&& checkoutRevision !== undefined
+				&& metadataRevision !== checkoutRevision
+			);
 		for (const corrupt of ["garbage", "A".repeat(40,), "a".repeat(41,), "0".repeat(39,),]) {
 			const { stdout, } = await dss(["version",], {
 				env: {
@@ -554,8 +562,8 @@ describe("dss version provenance rejects corrupt revisions", () => {
 			},);
 			const payload = JSON.parse(stdout,) as Record<string, string | boolean | null>;
 			expect(payload.source,).toBe("dist",);
-			expect(payload.buildRevision,).toBeNull();
-			expect(payload.staleBuild,).toBe(false,);
+			expect(payload.buildRevision,).toBe(metadataRevision,);
+			expect(payload.staleBuild,).toBe(metadataIsStale,);
 		}
 	});
 });
