@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Deterministic build metadata for the published dist/ tree.
 //
 // Writes `build-metadata.json` into the target directory (default: `<repo>/dist`).
@@ -6,7 +6,6 @@
 // same checkout produce byte-identical files (no timestamps or ambient state).
 // The packaged dist uses this to report its build revision; the source CLI reads
 // no build metadata and never claims a build revision.
-import { spawnSync, } from "node:child_process";
 import { mkdirSync, readFileSync, statSync, writeFileSync, } from "node:fs";
 import { dirname, join, resolve, } from "node:path";
 import { fileURLToPath, } from "node:url";
@@ -33,8 +32,8 @@ function revisionFromDotGit() {
 	}
 }
 
-const git = spawnSync("git", ["rev-parse", "HEAD",], { cwd: root, encoding: "utf-8", },);
-const candidateRevision = (git.status === 0 ? git.stdout.trim() : "").trim()
+const git = Bun.spawnSync(["git", "rev-parse", "HEAD",], { cwd: root, },);
+const candidateRevision = (git.exitCode === 0 ? git.stdout.toString().trim() : "").trim()
 	|| revisionFromDotGit();
 const buildRevision = candidateRevision && /^[0-9a-f]{40,}$/.test(candidateRevision,)
 	? candidateRevision

@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   platform:
-    name: ${{ matrix.os }} / Bun 1.3.14 / Node 24
+    name: ${{ matrix.os }} / Bun 1.4.0
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -27,13 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
 
       - name: Install dependencies with Bun
         run: bun install --frozen-lockfile
@@ -47,35 +43,11 @@ jobs:
       - name: Check formatting
         run: bun run format:check
 
-      - name: Test
-        run: bun test
-
-      - name: Smoke packaged CLI and skill
-        run: bun run test:platform
-
-  minimum-node:
-    name: ubuntu-latest / minimum Node 22.15
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.15.0
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-
-      - name: Install dependencies with Bun
-        run: bun install --frozen-lockfile
-
-      - name: Type check
-        run: bun run check
-
       - name: Build
         run: bun run build
+
+      - name: Test
+        run: bun test
 
       - name: Smoke packaged CLI and skill
         run: bun run test:platform

@@ -1,4 +1,3 @@
-import { execFileSync, spawnSync, } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -12,12 +11,20 @@ function assert(condition, message,) {
 }
 
 function run(command, args, options = {},) {
-	return execFileSync(command, args, {
+	const result = Bun.spawnSync([command, ...args,], {
 		cwd: root,
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "inherit",],
+		stdout: "pipe",
+		stderr: "inherit",
 		...options,
 	},);
+	if (result.exitCode !== 0) {
+		throw new Error(
+			`${command} ${
+				args.join(" ",)
+			} failed with exit code ${result.exitCode}: ${result.stdout.toString()}`,
+		);
+	}
+	return result.stdout.toString();
 }
 
 try {
@@ -54,9 +61,12 @@ try {
 	const version = JSON.parse(
 		run(process.execPath, ["--no-env-file", cli, "version",], { cwd: installDir, },),
 	);
-	const nodeVersion = JSON.parse(run("node", [cli, "version",], { cwd: installDir, },),);
 	assert(typeof version.version === "string", "Bun packaged CLI version output is invalid",);
-	assert(nodeVersion.version === version.version, "Node and Bun reported different CLI versions",);
+	const bunxVersion = JSON.parse(
+		run(process.execPath, ["x", "dss", "version",], { cwd: installDir, },),
+	);
+	assert(bunxVersion.version === version.version, "bunx reported the wrong packaged CLI version",);
+	assert(bunxVersion.runtime === "bun", "bunx did not execute the packaged CLI under Bun",);
 
 	const skillResult = JSON.parse(
 		run(process.execPath, [
@@ -72,7 +82,6 @@ try {
 	const skillPath = path.join(skillTarget, ".claude", "skills", "dataiku-dss", "SKILL.md",);
 	assert(skillResult.installed?.[0]?.path === skillPath, "skill installer returned the wrong path",);
 	const skill = fs.readFileSync(skillPath, "utf8",);
-	assert(skill.includes("node ./bin/dss.js",), "skill omits the portable checkout launcher",);
 	assert(
 		skill.includes("bun --no-env-file ./bin/dss.js",),
 		"skill omits the Bun checkout launcher",
@@ -83,14 +92,17 @@ try {
 		"skill omits Command Prompt environment syntax",
 	);
 
-	const failure = spawnSync("node", [cli, "not-a-resource",], {
+	const failure = Bun.spawnSync([process.execPath, "--no-env-file", cli, "not-a-resource",], {
 		cwd: installDir,
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "pipe",],
+		stdout: "pipe",
+		stderr: "pipe",
 	},);
-	assert(failure.status === 1, `packaged CLI returned unexpected error status: ${failure.status}`,);
-	assert(failure.stderr === "", "packaged CLI wrote error output to stderr",);
-	const errorLines = failure.stdout.trim().split("\n",);
+	assert(
+		failure.exitCode === 1,
+		`packaged CLI returned unexpected error status: ${failure.exitCode}`,
+	);
+	assert(failure.stderr.toString() === "", "packaged CLI wrote error output to stderr",);
+	const errorLines = failure.stdout.toString().trim().split("\n",);
 	assert(
 		errorLines.length === 1,
 		"packaged CLI error output was truncated or was not one JSONL event",
@@ -104,7 +116,6 @@ try {
 			platform: process.platform,
 			arch: process.arch,
 			bun: globalThis.Bun.version,
-			node: run("node", ["--version",],).trim(),
 			version: version.version,
 		},)
 	}\n`,);
