@@ -720,6 +720,8 @@ describe("agent contract accuracy", () => {
 		},);
 		expect(createPlan.targetProjectKey,).toBe("NEWPROJ",);
 		expect(createPlan.payload,).toEqual({ targetProjectKey: "NEWPROJ", },);
+		expect(createPlan.preflightExecuted,).toBe(false,);
+		expect(createPlan.preflightWillRunDuringApply,).toBe(true,);
 		expect(createPlan.preflightRequests,).toEqual([
 			expect.objectContaining({
 				method: "GET",
@@ -729,6 +731,11 @@ describe("agent contract accuracy", () => {
 			expect.objectContaining({
 				method: "GET",
 				endpoint: "/public/api/projects/",
+				when: "conditional",
+			},),
+			expect.objectContaining({
+				method: "GET",
+				endpoint: "/public/api/apps/MYAPP/instances/",
 				when: "conditional",
 			},),
 		],);
@@ -747,6 +754,8 @@ describe("agent contract accuracy", () => {
 		const successorPlan = buildMutationPlan("app", "create-successor-instance", successorMeta, [
 			"MYAPP",
 		], { from: "FROMKEY", to: "TOKEY", },);
+		expect(successorPlan.preflightExecuted,).toBe(false,);
+		expect(successorPlan.preflightWillRunDuringApply,).toBe(true,);
 		expect(successorPlan.preflightRequests,).toEqual([
 			expect.objectContaining({
 				method: "GET",

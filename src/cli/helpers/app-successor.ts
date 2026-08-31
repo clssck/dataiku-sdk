@@ -248,6 +248,8 @@ const SUCCESSOR_REMEDIATION =
 
 const CREATE_REJECTED_REMEDIATION =
 	"DSS refused the creation request, so no successor project was created: fix the reported problem and retry. The predecessor project was not modified.";
+const SUCCESSOR_UNBOUND_REMEDIATION =
+	"DSS may have accepted the successor request, but no future ID or project incarnation is available to authorize cleanup. Inspect the app's instances and DSS task history; do not delete the requested key until creation is known terminal and its identity is verified. The predecessor project was not modified.";
 
 /** Stage a permission copy reached. Only `copied`/`unchanged` mean the successor holds them. */
 export type AppPermissionCopyState =
@@ -301,8 +303,13 @@ interface SuccessorPreflight {
 	targetExists: false;
 	templateManifestHash: string;
 	templateVersion: string;
+	templateReferenceValidation: AppManifestValidationResult;
 	sourcePermissions?: ProjectPermissions;
 	sourcePermissionsHash?: string;
+}
+interface TargetAbsenceContext {
+	appId: string;
+	visibleAppInstanceKeys?: readonly (string | undefined)[];
 }
 
 /**
@@ -314,21 +321,95 @@ export async function requireAbsentProjectTarget(
 	client: DataikuClient,
 	targetProjectKey: string,
 	targetFlag: "--to" | "targetProjectKey",
+	context: TargetAbsenceContext,
 ): Promise<void> {
+	if (context.visibleAppInstanceKeys?.includes(targetProjectKey,) === true) {
+		throw new UsageError(
+			`Target project ${targetProjectKey} already exists as an app instance.`,
+			"validation_failed",
+			`Choose an unused ${targetFlag}: app instance creation never writes into an existing project.`,
+			{
+				targetProjectKey,
+				targetFlag,
+				directTargetProbe: "not-executed",
+				targetVisibleInProjectList: null,
+				targetVisibleInAppInstances: true,
+				appInstancesProbe: 200,
+				preflightExecuted: true,
+				creationPostAttempted: false,
+			},
+		);
+	}
 	try {
 		const existing = await readIfExists(() => client.projects.get(targetProjectKey,));
 		if (existing === undefined) return;
 	} catch (error) {
 		if (!(error instanceof DataikuError) || error.status !== 403) throw error;
-		const accessible = await client.projects.list();
-		if (!accessible.some((project,) => project.projectKey === targetProjectKey)) {
+		let projectListProbe: number = 200;
+		let targetVisibleInProjectList: boolean | null;
+		try {
+			const accessible = await client.projects.list();
+			targetVisibleInProjectList = accessible.some(
+				(project,) => project.projectKey === targetProjectKey,
+			);
+		} catch (projectListError) {
+			if (!(projectListError instanceof DataikuError) || projectListError.status !== 403) {
+				throw projectListError;
+			}
+			projectListProbe = 403;
+			targetVisibleInProjectList = null;
+		}
+		let appInstancesProbe: number = 200;
+		let visibleAppInstanceKeys = context.visibleAppInstanceKeys;
+		if (visibleAppInstanceKeys === undefined) {
+			try {
+				visibleAppInstanceKeys = (await client.applications.listInstances(context.appId,))
+					.map((instance,) => instance.projectKey);
+			} catch (appInstancesError) {
+				if (!(appInstancesError instanceof DataikuError) || appInstancesError.status !== 403) {
+					throw appInstancesError;
+				}
+				appInstancesProbe = 403;
+				visibleAppInstanceKeys = [];
+			}
+		}
+		const targetVisibleInAppInstances = appInstancesProbe === 200
+			? visibleAppInstanceKeys?.includes(targetProjectKey,) ?? false
+			: null;
+		const probeDetails = {
+			targetProjectKey,
+			targetFlag,
+			directTargetProbe: 403,
+			projectListProbe,
+			targetVisibleInProjectList,
+			targetVisibleInAppInstances,
+			appInstancesProbe,
+			preflightExecuted: true,
+			creationPostAttempted: false,
+		};
+		if (targetVisibleInProjectList !== true && targetVisibleInAppInstances !== true) {
 			throw new UsageError(
 				`Could not confirm target project ${targetProjectKey} is absent.`,
-				"validation_failed",
-				"Grant project-list/details visibility or choose a target key whose absence DSS can confirm; creation never risks cleanup against an unproven target.",
-				{ targetProjectKey, targetFlag, targetProbe: "forbidden-and-not-listable", },
+				"target_absence_unverifiable",
+				"DSS exposes no permission-independent project-key availability endpoint, and app-instance creation has no published atomic duplicate-key guarantee. Retry with an identity that has global project visibility; creation was not attempted.",
+				{
+					...probeDetails,
+					targetProbe: "forbidden-and-not-listable",
+					deploymentMasksUnknownProjects: "possible-but-unproven",
+					supportedRecoveryModes: ["grant-global-project-visibility",],
+					unavailableRecoveryModes: [
+						"use-supported-key-availability-endpoint",
+						"server-atomic-create",
+					],
+				},
 			);
 		}
+		throw new UsageError(
+			`Target project ${targetProjectKey} already exists.`,
+			"validation_failed",
+			`Choose an unused ${targetFlag}: app instance creation never writes into an existing project.`,
+			probeDetails,
+		);
 	}
 	throw new UsageError(
 		`Target project ${targetProjectKey} already exists.`,
@@ -388,7 +469,10 @@ async function preflightSuccessor(
 			{ sourceProjectKey: from, projectAppType: source.projectAppType ?? null, },
 		);
 	}
-	await requireAbsentProjectTarget(client, to, "--to",);
+	await requireAbsentProjectTarget(client, to, "--to", {
+		appId,
+		visibleAppInstanceKeys: instances.map((instance,) => instance.projectKey),
+	},);
 	const templateManifest = await client.applications.getAppManifest(appId,);
 	const templateVersion = rawVersion(templateManifest,);
 	if (templateVersion === null) {
@@ -397,6 +481,25 @@ async function preflightSuccessor(
 			"validation_failed",
 			"Set the template version first with `dss app set-manifest-version --manifest-version V --project-key <templateProjectKey>`.",
 			{ appId, },
+		);
+	}
+	const templateReferenceValidation = await client.applications.validateAppManifest(
+		templateManifest,
+		appId,
+	);
+	if (!templateReferenceValidation.valid) {
+		throw new UsageError(
+			`App template ${appId} failed manifest reference validation.`,
+			"validation_failed",
+			"Fix the template manifest references before changing its version or creating a successor.",
+			{
+				appId,
+				manifestHash: templateReferenceValidation.manifestHash,
+				checks: templateReferenceValidation.checks,
+				errors: templateReferenceValidation.errors,
+				preflightExecuted: true,
+				creationPostAttempted: false,
+			},
 		);
 	}
 	const sourcePermissions = request.copyPermissions
@@ -410,6 +513,7 @@ async function preflightSuccessor(
 		targetExists: false,
 		templateManifestHash: stableHash(templateManifest,),
 		templateVersion,
+		templateReferenceValidation,
 		...(sourcePermissions
 			? {
 				sourcePermissions,
@@ -420,14 +524,70 @@ async function preflightSuccessor(
 }
 
 /**
+ * Run every read-only gate used by successor creation without changing the
+ * template version or issuing the creation POST. Its manifest hash is suitable
+ * for the subsequent set-manifest-version --expect-hash guard.
+ */
+export async function preflightSuccessorInstance(
+	client: DataikuClient,
+	request: SuccessorInstanceRequest,
+	usage: string,
+): Promise<Record<string, unknown>> {
+	const preflight = await preflightSuccessor(client, request, usage,);
+	return {
+		action: "successor-preflight",
+		preflight: "passed",
+		preflightExecuted: true,
+		creationPostAttempted: false,
+		versionMutationAttempted: false,
+		appId: request.appId,
+		source: {
+			projectKey: request.from,
+			projectAppType: preflight.sourceProjectAppType,
+			version: preflight.sourceVersion,
+			manifestHash: preflight.sourceManifestHash,
+			...(preflight.sourcePermissionsHash
+				? { permissionsHash: preflight.sourcePermissionsHash, }
+				: {}),
+		},
+		target: {
+			projectKey: request.to,
+			name: preflight.targetProjectName,
+			exists: false,
+		},
+		targetPreflight: "confirmed-absent",
+		template: {
+			projectKey: request.appId,
+			version: preflight.templateVersion,
+			manifestHash: preflight.templateManifestHash,
+			referenceValidation: {
+				valid: preflight.templateReferenceValidation.valid,
+				checks: preflight.templateReferenceValidation.checks,
+				errors: preflight.templateReferenceValidation.errors,
+			},
+		},
+		copyPermissions: request.copyPermissions,
+		next: {
+			setVersion:
+				`dss app set-manifest-version --manifest-version <VERSION> --expect-hash ${preflight.templateManifestHash} --project-key ${request.appId}`,
+			createSuccessor:
+				`dss app create-successor-instance ${request.appId} --from ${request.from} --to ${request.to}${
+					request.name !== undefined ? ` --name ${JSON.stringify(request.name,)}` : ""
+				}${request.copyPermissions ? " --copy-permissions" : ""}`,
+		},
+	};
+}
+
+/**
  * Create a new app instance from the current template version alongside an
  * existing instance. Classic app instances have no public upgrade endpoint, so
  * the predecessor is never touched: it stays available until it is separately
  * and deliberately retired.
  *
  * After the creation POST this function never throws. A post-POST failure
- * returns a failed-wait result carrying the target project key, so the CLI still
- * exits 4 and the cleanup ledger still records an addressable successor.
+ * returns a failed-wait result. Only a DSS future ID or verified project
+ * incarnation can authorize cleanup; an ambiguous POST with neither stays
+ * indeterminate and produces no cleanup entry.
  */
 export async function createSuccessorInstance(
 	client: DataikuClient,
@@ -484,12 +644,17 @@ export async function createSuccessorInstance(
 			projectKey: to,
 			target: { projectKey: to, name: preflight.targetProjectName, },
 			success: false,
-			state: "CREATE_FAILED",
+			state: rejected ? "CREATE_FAILED" : "INDETERMINATE",
 			elapsedMs: 0,
 			pollCount: 0,
 			stage: "create",
-			cleanupEligible: !rejected,
-			remediation: rejected ? CREATE_REJECTED_REMEDIATION : SUCCESSOR_REMEDIATION,
+			outcome: rejected ? "rejected" : "indeterminate",
+			creationPostAttempted: true,
+			cleanupEligible: false,
+			recoveryCommands: rejected
+				? []
+				: [`dss app instances ${appId}`,],
+			remediation: rejected ? CREATE_REJECTED_REMEDIATION : SUCCESSOR_UNBOUND_REMEDIATION,
 			...safeErrorSummary(error,),
 		};
 	}
@@ -515,11 +680,13 @@ export async function createSuccessorInstance(
 			stage: "create",
 			...(instance ? { instance, } : {}),
 			...(jobId !== undefined ? { futureId: jobId, jobId, } : {}),
-			cleanupEligible: true,
+			cleanupEligible: jobId !== undefined,
 			error: "DSS named a different target project in the creation response.",
 			expected: { projectKey: to, },
 			actual: { projectKey: echoedTarget, },
-			remediation: SUCCESSOR_REMEDIATION,
+			remediation: jobId !== undefined
+				? SUCCESSOR_REMEDIATION
+				: SUCCESSOR_UNBOUND_REMEDIATION,
 		};
 	}
 	const base = {
@@ -553,14 +720,17 @@ export async function createSuccessorInstance(
 					: "scalar",
 			}),
 			success: false,
-			state: "UNTRACKABLE",
+			state: "INDETERMINATE",
 			elapsedMs: 0,
 			pollCount: 0,
 			stage: "future-wait",
-			cleanupEligible: true,
+			outcome: "indeterminate",
+			creationPostAttempted: true,
+			cleanupEligible: false,
 			error:
 				"DSS returned no instance-creation future ID, so the successor instance cannot be verified.",
-			remediation: SUCCESSOR_REMEDIATION,
+			remediation: SUCCESSOR_UNBOUND_REMEDIATION,
+			recoveryCommands: [`dss app instances ${appId}`,],
 		};
 	} else {
 		const startedAt = Date.now();
@@ -579,6 +749,7 @@ export async function createSuccessorInstance(
 				pollCount: 0,
 				stage: "future-wait",
 				cleanupEligible: true,
+				recoveryCommands: [`dss future wait ${jobId}`, `dss app instances ${appId}`,],
 				remediation: SUCCESSOR_REMEDIATION,
 				...safeErrorSummary(error,),
 			};
@@ -627,6 +798,9 @@ export async function createSuccessorInstance(
 	if (!waited.success) {
 		return failure(waited.state, "future-wait", {
 			error: "The instance-creation future did not complete successfully.",
+			recoveryCommands: jobId !== undefined
+				? [`dss future wait ${jobId}`, `dss app instances ${appId}`,]
+				: [`dss app instances ${appId}`,],
 		},);
 	}
 

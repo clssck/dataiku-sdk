@@ -310,6 +310,8 @@ describe("argv schema canonical form", () => {
 			method: "POST",
 			endpoint: "/public/api/apps/MYAPP/instances",
 			copyPermissions: true,
+			preflightExecuted: false,
+			preflightWillRunDuringApply: true,
 			payload: { targetProjectKey: "NEW", targetProjectName: "NEW", },
 			wait: true,
 		},);

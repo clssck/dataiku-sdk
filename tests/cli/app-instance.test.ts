@@ -30,35 +30,36 @@ const PROJECT_DETAILS = {
 	projectAppType: "APP_INSTANCE",
 	creationTag: { versionNumber: 1, lastModifiedOn: 1_700_000_000_000, },
 };
-const targetReadsByPort = new Map<number, number>();
 const PROJECT_INCARNATION_HASH = projectIncarnationHash("NEWPROJ", PROJECT_DETAILS,)!;
 const REPLACEMENT_PROJECT_DETAILS = {
 	...PROJECT_DETAILS,
 	creationTag: { versionNumber: 1, lastModifiedOn: 1_800_000_000_000, },
 };
 
-function answerAbsentCreationTarget(
-	method: string | undefined,
-	url: URL,
-	res: Parameters<typeof sendJson>[0],
-): boolean {
-	if (method !== "GET" || url.pathname !== "/public/api/projects/NEWPROJ/") return false;
-	const port = res.socket?.localPort ?? -1;
-	const reads = targetReadsByPort.get(port,) ?? 0;
-	targetReadsByPort.set(port, reads + 1,);
-	if (reads === 0) {
-		sendJson(res, { message: "Project not found", }, 404,);
-	} else {
-		sendJson(res, PROJECT_DETAILS,);
-	}
-	return true;
+function absentCreationTarget() {
+	let reads = 0;
+	return (
+		method: string | undefined,
+		url: URL,
+		res: Parameters<typeof sendJson>[0],
+	): boolean => {
+		if (method !== "GET" || url.pathname !== "/public/api/projects/NEWPROJ/") return false;
+		reads += 1;
+		if (reads === 1) {
+			sendJson(res, { message: "Project not found", }, 404,);
+		} else {
+			sendJson(res, PROJECT_DETAILS,);
+		}
+		return true;
+	};
 }
 
 describe("app create-instance wait, plans, and cleanup", () => {
 	it("polls the returned instance future with --wait and returns creation plus wait result", async () => {
+		const answerTarget = absentCreationTarget();
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
-			if (answerAbsentCreationTarget(req.method, url, res,)) return;
+			if (answerTarget(req.method, url, res,)) return;
 			if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 				sendJson(res, { appId: "MYAPP", projectKey: "NEWPROJ", jobId: "job-1", },);
 				return;
@@ -102,9 +103,10 @@ describe("app create-instance wait, plans, and cleanup", () => {
 	});
 
 	it("returns the instance reference without polling when --wait is omitted", async () => {
+		const answerTarget = absentCreationTarget();
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
-			if (answerAbsentCreationTarget(req.method, url, res,)) return;
+			if (answerTarget(req.method, url, res,)) return;
 			if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 				sendJson(res, { appId: "MYAPP", projectKey: "NEWPROJ", jobId: "job-1", },);
 				return;
@@ -136,10 +138,11 @@ describe("app create-instance wait, plans, and cleanup", () => {
 		const dir = join(tmpdir(), `dss-app-untrusted-controls-${Date.now()}`,);
 		mkdirSync(dir, { recursive: true, },);
 		const ledger = join(dir, "cleanup.jsonl",);
+		const answerTarget = absentCreationTarget();
 		try {
 			await withCliServer((req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);
-				if (answerAbsentCreationTarget(req.method, url, res,)) return;
+				if (answerTarget(req.method, url, res,)) return;
 				if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 					sendJson(res, {
 						appId: "MYAPP",
@@ -196,9 +199,10 @@ describe("app create-instance wait, plans, and cleanup", () => {
 	});
 
 	it("falls back to the request payload target project key for future results", async () => {
+		const answerTarget = absentCreationTarget();
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
-			if (answerAbsentCreationTarget(req.method, url, res,)) return;
+			if (answerTarget(req.method, url, res,)) return;
 			if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 				// DSS omits the project key here; only the payload carries the target.
 				sendJson(res, { appId: "MYAPP", jobId: "job-1", },);
@@ -257,8 +261,9 @@ describe("app create-instance wait, plans, and cleanup", () => {
 	});
 
 	it("requires confirmed target absence before direct creation", async () => {
-		for (const mode of ["existing", "hidden",] as const) {
+		for (const mode of ["existing", "app-instance-collision", "masked",] as const) {
 			let posts = 0;
+			let appInstanceProbes = 0;
 			await withCliServer((req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);
 				if (req.method === "GET" && url.pathname === "/public/api/projects/NEWPROJ/") {
@@ -271,6 +276,19 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				}
 				if (req.method === "GET" && url.pathname === "/public/api/projects/") {
 					sendJson(res, [],);
+					return;
+				}
+				// Only reached when the direct probe was masked: the app-instance
+				// list is the last permission-scoped witness of the target key,
+				// and it can prove a collision but never prove absence.
+				if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/instances/") {
+					appInstanceProbes += 1;
+					sendJson(
+						res,
+						mode === "app-instance-collision"
+							? [{ appId: "MYAPP", projectKey: "NEWPROJ", },]
+							: [],
+					);
 					return;
 				}
 				if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
@@ -291,12 +309,219 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				);
 				expect(failure.code,).toBe(1,);
 				expect(failure.stderr,).toBe("",);
-				expect(failure.stdout,).toContain(
-					mode === "existing" ? "already exists" : "Could not confirm",
-				);
+				const report = JSON.parse(failure.stdout,) as {
+					code: string;
+					category: string;
+					retryable?: boolean;
+					hint?: string;
+					details: Record<string, unknown>;
+				};
+				if (mode === "masked") {
+					// Unverifiable absence is an environment problem, never a
+					// bad flag: it must not be reported as ordinary usage.
+					expect(report.code,).toBe("target_absence_unverifiable",);
+					expect(report.category,).toBe("permission_or_environment",);
+					expect(report.retryable,).toBe(false,);
+					expect(failure.stdout,).toContain("Could not confirm",);
+					expect(report.details,).toMatchObject({
+						targetProjectKey: "NEWPROJ",
+						targetFlag: "targetProjectKey",
+						directTargetProbe: 403,
+						appInstancesProbe: 200,
+						targetVisibleInProjectList: false,
+						targetVisibleInAppInstances: false,
+						preflightExecuted: true,
+						creationPostAttempted: false,
+						targetProbe: "forbidden-and-not-listable",
+						deploymentMasksUnknownProjects: "possible-but-unproven",
+						supportedRecoveryModes: ["grant-global-project-visibility",],
+					},);
+					// No bypass is offered: the only supported recovery is a
+					// wider-visibility identity, and no server-side atomic
+					// create is claimed as an alternative.
+					expect(report.details.unavailableRecoveryModes,).toEqual([
+						"use-supported-key-availability-endpoint",
+						"server-atomic-create",
+					],);
+					expect(report.hint,).toContain("global project visibility",);
+				} else {
+					expect(report.code,).toBe("validation_failed",);
+					expect(report.category,).toBe("usage",);
+					expect(failure.stdout,).toContain("already exists",);
+				}
+				if (mode === "app-instance-collision") {
+					// Presence in the app-instance list is proof of collision,
+					// so the masked direct probe stops being decisive.
+					expect(report.details,).toMatchObject({
+						directTargetProbe: 403,
+						targetVisibleInProjectList: false,
+						targetVisibleInAppInstances: true,
+						creationPostAttempted: false,
+					},);
+				}
+				expect(appInstanceProbes,).toBe(mode === "existing" ? 0 : 1,);
 				expect(posts,).toBe(0,);
 			},);
 		}
+	});
+	it("refuses direct creation when the app-instance witness is also masked", async () => {
+		let posts = 0;
+		let projectListProbes = 0;
+		let appInstanceProbes = 0;
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST") {
+				posts += 1;
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${url.pathname}`,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/NEWPROJ/") {
+				sendJson(res, { message: "Forbidden", }, 403,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/") {
+				projectListProbes += 1;
+				// Answered, but the target key is not among the visible keys:
+				// this proves no collision, never absence.
+				sendJson(res, [{ projectKey: "OTHER", name: "Other project", },],);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/instances/") {
+				appInstanceProbes += 1;
+				// The last permission-scoped witness refuses to answer, so no
+				// observation distinguishes an unused key from a hidden project.
+				sendJson(res, { message: "Forbidden", }, 403,);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				[
+					"app",
+					"create-instance",
+					"MYAPP",
+					"--data",
+					'{"targetProjectKey":"NEWPROJ"}',
+				],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
+				code: string;
+				category: string;
+				retryable?: boolean;
+				hint?: string;
+				details: Record<string, unknown>;
+			};
+			// A masked witness is an environment problem, never a bad flag.
+			expect(report.code,).toBe("target_absence_unverifiable",);
+			expect(report.category,).toBe("permission_or_environment",);
+			expect(report.retryable,).toBe(false,);
+			expect(failure.stdout,).toContain("Could not confirm",);
+			expect(report.details,).toMatchObject({
+				targetProjectKey: "NEWPROJ",
+				targetFlag: "targetProjectKey",
+				directTargetProbe: 403,
+				appInstancesProbe: 403,
+				targetVisibleInProjectList: false,
+				preflightExecuted: true,
+				creationPostAttempted: false,
+				targetProbe: "forbidden-and-not-listable",
+				deploymentMasksUnknownProjects: "possible-but-unproven",
+				supportedRecoveryModes: ["grant-global-project-visibility",],
+			},);
+			// A refused app-instance list yields no verdict at all: reporting
+			// `false` would claim the key was observed to be free, which is
+			// exactly the unproven assumption this refusal exists to block.
+			expect(report.details.targetVisibleInAppInstances,).toBeNull();
+			expect(report.details.unavailableRecoveryModes,).toEqual([
+				"use-supported-key-availability-endpoint",
+				"server-atomic-create",
+			],);
+			expect(report.hint,).toContain("global project visibility",);
+			// Both fallback probes ran exactly once and neither proved anything.
+			expect(projectListProbes,).toBe(1,);
+			expect(appInstanceProbes,).toBe(1,);
+			expect(posts,).toBe(0,);
+		},);
+	});
+
+	it("folds a masked global project listing into the strict absence refusal", async () => {
+		let posts = 0;
+		let projectListProbes = 0;
+		let appInstanceProbes = 0;
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST") {
+				posts += 1;
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${url.pathname}`,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/NEWPROJ/") {
+				sendJson(res, { message: "Forbidden", }, 403,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/") {
+				projectListProbes += 1;
+				sendJson(res, { message: "Forbidden", }, 403,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/instances/") {
+				appInstanceProbes += 1;
+				sendJson(res, [],);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				[
+					"app",
+					"create-instance",
+					"MYAPP",
+					"--data",
+					'{"targetProjectKey":"NEWPROJ"}',
+				],
+				{ env: cliEnv(url,), },
+			);
+			const report = JSON.parse(failure.stdout,) as {
+				code: string;
+				category: string;
+				retryable?: boolean;
+				exitCode?: number;
+				status?: number;
+				hint?: string;
+				details: Record<string, unknown>;
+			};
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			expect(report,).toMatchObject({
+				code: "target_absence_unverifiable",
+				category: "permission_or_environment",
+				retryable: false,
+			},);
+			expect(report.details,).toMatchObject({
+				targetProjectKey: "NEWPROJ",
+				targetFlag: "targetProjectKey",
+				directTargetProbe: 403,
+				projectListProbe: 403,
+				targetVisibleInProjectList: null,
+				appInstancesProbe: 200,
+				targetVisibleInAppInstances: false,
+				preflightExecuted: true,
+				creationPostAttempted: false,
+				targetProbe: "forbidden-and-not-listable",
+				supportedRecoveryModes: ["grant-global-project-visibility",],
+			},);
+			expect(report.hint,).toContain("global project visibility",);
+			expect(projectListProbes,).toBe(1,);
+			expect(appInstanceProbes,).toBe(1,);
+			expect(posts,).toBe(0,);
+		},);
 	});
 
 	it("exits nonzero with structured details for an invalid app manifest", async () => {
@@ -349,14 +574,15 @@ describe("app create-instance wait, plans, and cleanup", () => {
 		expect(requestCount,).toBe(0,);
 	});
 
-	it("records cleanup and exits 4 when --wait cannot track the created instance", async () => {
+	it("does not record cleanup when --wait cannot track the created instance", async () => {
 		const dir = join(tmpdir(), `dss-app-untrackable-${Date.now()}`,);
 		mkdirSync(dir, { recursive: true, },);
 		const ledger = join(dir, "cleanup.jsonl",);
+		const answerTarget = absentCreationTarget();
 		try {
 			await withCliServer((req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);
-				if (answerAbsentCreationTarget(req.method, url, res,)) return;
+				if (answerTarget(req.method, url, res,)) return;
 				if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 					sendJson(res, { appId: "MYAPP", projectKey: "NEWPROJ", },);
 					return;
@@ -379,24 +605,20 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				);
 				expect(failure.code,).toBe(4,);
 				expect(failure.stderr,).toBe("",);
-				expect(failure.stdout,).toContain("UNTRACKABLE",);
+				expect(failure.stdout,).toContain("INDETERMINATE",);
 				expect(failure.stdout,).toContain("may still have been created",);
+				const report = JSON.parse(failure.stdout,) as {
+					details: { result: Record<string, unknown>; };
+				};
+				expect(report.details.result,).toMatchObject({
+					state: "INDETERMINATE",
+					projectKey: "NEWPROJ",
+					outcome: "indeterminate",
+					creationPostAttempted: true,
+					cleanupEligible: false,
+				},);
 			},);
-			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as Record<string, unknown>;
-			expect(entry,).toMatchObject({
-				resource: "app",
-				action: "create-instance",
-				name: "NEWPROJ",
-				cleanup: {
-					argv: [
-						"app",
-						"delete-instance",
-						"--project-key",
-						"NEWPROJ",
-						"--unconfirmed-creation",
-					],
-				},
-			},);
+			expect(readFileExists(ledger,),).toBe(false,);
 		} finally {
 			rmSync(dir, { recursive: true, force: true, },);
 		}
@@ -777,7 +999,7 @@ describe("app create-instance wait, plans, and cleanup", () => {
 			"create-successor-instance",
 			["MYAPP",],
 			{ from: "FROMKEY", to: "TOKEY", },
-			{ success: false, state: "UNTRACKABLE", projectKey: "TOKEY", },
+			{ success: false, state: "INDETERMINATE", projectKey: "TOKEY", },
 			"FROMKEY",
 		);
 		expect(noFuture,).toMatchObject({
@@ -824,13 +1046,13 @@ describe("app create-instance wait, plans, and cleanup", () => {
 		expect(entry,).toBeUndefined();
 	});
 
-	it("records successor cleanup for definitive-eligible true results", () => {
+	it("records successor cleanup for cleanupEligible true results", () => {
 		const entry = cleanupLedgerEntry(
 			"app",
 			"create-successor-instance",
 			["MYAPP",],
 			{ from: "FROMKEY", to: "TOKEY", },
-			{ success: false, state: "UNTRACKABLE", projectKey: "TOKEY", cleanupEligible: true, },
+			{ success: false, state: "WAIT_FAILED", projectKey: "TOKEY", cleanupEligible: true, },
 			undefined,
 		);
 		expect(entry,).toMatchObject({
@@ -1051,9 +1273,10 @@ describe("app create-instance wait, plans, and cleanup", () => {
 
 	it("completes an inline hasResult creation with --wait without polling", async () => {
 		let futureGets = 0;
+		const answerTarget = absentCreationTarget();
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
-			if (answerAbsentCreationTarget(req.method, url, res,)) return;
+			if (answerTarget(req.method, url, res,)) return;
 			if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 				sendJson(res, {
 					appId: "MYAPP",
@@ -1098,9 +1321,10 @@ describe("app create-instance wait, plans, and cleanup", () => {
 	});
 	it("rejects target identities contradicted by inline and polled future results", async () => {
 		for (const inline of [true, false,]) {
+			const answerTarget = absentCreationTarget();
 			await withCliServer((req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);
-				if (answerAbsentCreationTarget(req.method, url, res,)) return;
+				if (answerTarget(req.method, url, res,)) return;
 				if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 					sendJson(
 						res,
@@ -1158,14 +1382,15 @@ describe("app create-instance wait, plans, and cleanup", () => {
 		}
 	});
 
-	it("records the requested cleanup target for an empty 2xx creation response", async () => {
+	it("does not record cleanup for an empty 2xx creation response", async () => {
 		const dir = join(tmpdir(), `dss-app-empty-response-${Date.now()}`,);
 		mkdirSync(dir, { recursive: true, },);
 		const ledger = join(dir, "cleanup.jsonl",);
+		const answerTarget = absentCreationTarget();
 		try {
 			await withCliServer((req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);
-				if (answerAbsentCreationTarget(req.method, url, res,)) return;
+				if (answerTarget(req.method, url, res,)) return;
 				if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 					sendJson(res, null,);
 					return;
@@ -1190,35 +1415,26 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				const report = JSON.parse(failure.stdout,) as {
 					details: { result: Record<string, unknown>; };
 				};
+				expect(failure.stdout,).toContain("INDETERMINATE",);
 				expect(report.details.result,).toMatchObject({
-					state: "UNTRACKABLE",
+					state: "INDETERMINATE",
 					projectKey: "NEWPROJ",
 					responseKind: "null",
-					cleanupEligible: true,
+					creationPostAttempted: true,
+					cleanupEligible: false,
 				},);
 			},);
-			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as Record<string, unknown>;
-			expect(entry,).toMatchObject({
-				name: "NEWPROJ",
-				cleanup: {
-					argv: [
-						"app",
-						"delete-instance",
-						"--project-key",
-						"NEWPROJ",
-						"--unconfirmed-creation",
-					],
-				},
-			},);
+			expect(readFileExists(ledger,),).toBe(false,);
 		} finally {
 			rmSync(dir, { recursive: true, force: true, },);
 		}
 	});
 	it("fails a creation response that names a different target project and keeps the requested key", async () => {
 		let futureGets = 0;
+		const answerTarget = absentCreationTarget();
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
-			if (answerAbsentCreationTarget(req.method, url, res,)) return;
+			if (answerTarget(req.method, url, res,)) return;
 			if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 				sendJson(res, { appId: "MYAPP", projectKey: "SOMEONE_ELSE", jobId: "job-1", },);
 				return;
@@ -1260,15 +1476,16 @@ describe("app create-instance wait, plans, and cleanup", () => {
 		},);
 	});
 
-	it("records cleanup for an indeterminate 5xx create failure but not a definitive rejection", async () => {
+	it("does not record cleanup for an indeterminate 5xx create failure or a definitive rejection", async () => {
 		const dir = join(tmpdir(), `dss-app-create-failures-${Date.now()}`,);
 		mkdirSync(dir, { recursive: true, },);
 		const indeterminateLedger = join(dir, "indeterminate.jsonl",);
 		const rejectedLedger = join(dir, "rejected.jsonl",);
+		const answerIndeterminateTarget = absentCreationTarget();
 		try {
 			await withCliServer((req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);
-				if (answerAbsentCreationTarget(req.method, url, res,)) return;
+				if (answerIndeterminateTarget(req.method, url, res,)) return;
 				if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 					sendJson(res, { message: "boom", }, 500,);
 					return;
@@ -1289,32 +1506,24 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					],
 					{ env: cliEnv(url,), },
 				);
-				expect(failure.code,).toBe(4,);
-				expect(failure.stderr,).toBe("",);
-				expect(failure.stdout,).toContain("CREATE_FAILED",);
+				expect(failure.stdout,).toContain("INDETERMINATE",);
+				const report = JSON.parse(failure.stdout,) as {
+					details: { result: Record<string, unknown>; };
+				};
+				expect(report.details.result,).toMatchObject({
+					state: "INDETERMINATE",
+					projectKey: "NEWPROJ",
+					outcome: "indeterminate",
+					creationPostAttempted: true,
+					cleanupEligible: false,
+				},);
 			},);
-			const entry = JSON.parse(readFileSync(indeterminateLedger, "utf-8",),) as Record<
-				string,
-				unknown
-			>;
-			expect(entry,).toMatchObject({
-				resource: "app",
-				action: "create-instance",
-				name: "NEWPROJ",
-				cleanup: {
-					argv: [
-						"app",
-						"delete-instance",
-						"--project-key",
-						"NEWPROJ",
-						"--unconfirmed-creation",
-					],
-				},
-			},);
+			expect(readFileExists(indeterminateLedger,),).toBe(false,);
 
+			const answerRejectedTarget = absentCreationTarget();
 			await withCliServer((req, res,) => {
 				const url = new URL(req.url ?? "/", "http://localhost",);
-				if (answerAbsentCreationTarget(req.method, url, res,)) return;
+				if (answerRejectedTarget(req.method, url, res,)) return;
 				if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 					sendJson(res, { message: "Project key already exists", }, 400,);
 					return;

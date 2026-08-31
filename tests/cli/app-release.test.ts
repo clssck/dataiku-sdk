@@ -256,6 +256,55 @@ describe("app manifest-version and set-manifest-version", () => {
 		},);
 		expect(requestCount,).toBe(0,);
 	});
+
+	it("plans a manifest version write offline with a lowercased stale-read guard", async () => {
+		let requestCount = 0;
+		const expectHash = "ABCDEF0123456789".repeat(4,);
+		await withCliServer((req, res,) => {
+			requestCount += 1;
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${req.url}`,);
+		}, async (url,) => {
+			const plan = JSON.parse(
+				(
+					await dss(
+						[
+							"app",
+							"set-manifest-version",
+							"--manifest-version",
+							"3.0.0",
+							"--expect-hash",
+							expectHash,
+							"--project-key",
+							"MYAPP_TEMPLATE",
+							"--plan",
+						],
+						{ env: cliEnv(url,), },
+					)
+				).stdout,
+			) as Record<string, unknown>;
+			expect(plan,).toMatchObject({
+				plan: true,
+				resource: "app",
+				action: "set-manifest-version",
+				projectKey: "MYAPP_TEMPLATE",
+				method: "PUT",
+				endpoint: "/public/api/projects/MYAPP_TEMPLATE/app-manifest",
+				expectHash: expectHash.toLowerCase(),
+				concurrencyControl: "client-side-non-atomic-stale-read-check",
+				staleReadCheck: "client-side-expect-hash-compare-before-put",
+				idempotency: "none",
+				async: "none",
+			},);
+			// The plan advertises the patch it would merge, never a whole manifest
+			// body: the PUT payload is only knowable after the pre-write read.
+			expect(plan.payloadPatch,).toEqual({ version: "3.0.0", },);
+			expect(plan.payload,).toBeUndefined();
+			expect(plan.plannedAndDryRun,).toBeUndefined();
+			expect(plan.exitCodesOnFailure,).toEqual({ usage: 1, error: 2, transient: 3, },);
+		},);
+		expect(requestCount,).toBe(0,);
+	});
 });
 
 describe("app verify-instance API readiness", () => {
@@ -295,6 +344,7 @@ describe("app verify-instance API readiness", () => {
 				valid: true,
 				instanceVersion: "2.0.0",
 				templateVersion: "2.0.0",
+				expectedVersionSource: "template-manifest",
 			},);
 			expect(result.ready,).toBeUndefined();
 			expect(result.published,).toBeUndefined();
@@ -358,11 +408,13 @@ describe("app verify-instance API readiness", () => {
 				code: string;
 				details: {
 					result: {
+						expectedVersionSource: string;
 						checks: Array<{ check: string; status: string; expected: unknown; actual: unknown; }>;
 					};
 				};
 			};
 			expect(report.code,).toBe("validation_failed",);
+			expect(report.details.result.expectedVersionSource,).toBe("expect-version",);
 			const versionCheck = report.details.result.checks.find((entry,) =>
 				entry.check === "manifest-version"
 			);
@@ -499,6 +551,206 @@ describe("app verify-instance API readiness", () => {
 		expect(manifestReads,).toBe(1,);
 		expect(projectDetailReads,).toBe(1,);
 	});
+	for (
+		const scenario of [
+			{
+				label: "the project is not registered to the app",
+				instances: [] as Array<{ projectKey: string; }>,
+				manifest: INSTANCE_MANIFEST,
+				check: "app-registration",
+				expected: "MYAPP",
+				actual: null,
+			},
+			{
+				label: "the manifest identifies an app template instead of an instance",
+				instances: [{ projectKey: "RELEASE_INSTANCE", },],
+				manifest: { ...INSTANCE_MANIFEST, projectAppType: "APP_TEMPLATE", },
+				check: "project-type",
+				expected: "APP_INSTANCE",
+				actual: "APP_TEMPLATE",
+			},
+		]
+	) {
+		it(`fails required verification when ${scenario.label}`, async () => {
+			await withCliServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/") {
+					sendJson(res, TEMPLATE_MANIFEST,);
+					return;
+				}
+				if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/instances/") {
+					sendJson(res, scenario.instances,);
+					return;
+				}
+				if (
+					req.method === "GET"
+					&& url.pathname === "/public/api/projects/RELEASE_INSTANCE/app-manifest"
+				) {
+					sendJson(res, scenario.manifest,);
+					return;
+				}
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${url.pathname}`,);
+			}, async (url,) => {
+				const failure = await dssFailure(
+					["app", "verify-instance", "MYAPP", "--project-key", "RELEASE_INSTANCE",],
+					{ env: cliEnv(url,), },
+				);
+				expect(failure.code,).toBe(1,);
+				expect(failure.stderr,).toBe("",);
+				const report = JSON.parse(failure.stdout,) as {
+					code: string;
+					details: {
+						result: {
+							valid: boolean;
+							checks: Array<{
+								check: string;
+								status: string;
+								expected: unknown;
+								actual: unknown;
+							}>;
+						};
+					};
+				};
+				expect(report.code,).toBe("validation_failed",);
+				expect(report.details.result.valid,).toBe(false,);
+				expect(
+					report.details.result.checks.find((entry,) => entry.check === scenario.check),
+				).toMatchObject({
+					status: "failed",
+					expected: scenario.expected,
+					actual: scenario.actual,
+				},);
+			},);
+		});
+	}
+
+	it("fails verification when the instance manifest contains a missing reference", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/") {
+				sendJson(res, TEMPLATE_MANIFEST,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/instances/") {
+				sendJson(res, [{ projectKey: "RELEASE_INSTANCE", },],);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/RELEASE_INSTANCE/app-manifest"
+			) {
+				sendJson(res, {
+					...INSTANCE_MANIFEST,
+					homepageSections: [{
+						tiles: [{ type: "SCENARIO_RUN", scenarioId: "MISSING_SCENARIO", },],
+					},],
+				},);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/RELEASE_INSTANCE/scenarios/"
+			) {
+				sendJson(res, [],);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				["app", "verify-instance", "MYAPP", "--project-key", "RELEASE_INSTANCE",],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
+				details: {
+					result: {
+						valid: boolean;
+						referenceValidation: {
+							valid: boolean;
+							errors: Array<{ code: string; path: string; }>;
+						};
+						checks: Array<{ check: string; status: string; actual: unknown; }>;
+					};
+				};
+			};
+			const result = report.details.result;
+			expect(result.valid,).toBe(false,);
+			expect(result.referenceValidation.valid,).toBe(false,);
+			expect(result.referenceValidation.errors,).toContainEqual(
+				expect.objectContaining({
+					code: "MISSING_SCENARIO",
+					path: '$["homepageSections"][0]["tiles"][0]["scenarioId"]',
+				},),
+			);
+			expect(
+				result.checks.find((entry,) => entry.check === "manifest-references"),
+			).toMatchObject({ status: "failed", actual: false, },);
+		},);
+	});
+
+	it("reports null snapshot checks when DSS cannot read the instance manifest", async () => {
+		let projectDetailReads = 0;
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/") {
+				sendJson(res, TEMPLATE_MANIFEST,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/instances/") {
+				sendJson(res, [{ projectKey: "RELEASE_INSTANCE", },],);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/RELEASE_INSTANCE/app-manifest"
+			) {
+				sendJson(res, { message: "Not an app project", }, 400,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/RELEASE_INSTANCE/") {
+				projectDetailReads += 1;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				["app", "verify-instance", "MYAPP", "--project-key", "RELEASE_INSTANCE",],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
+				details: {
+					result: {
+						valid: boolean;
+						projectAppType: unknown;
+						instanceManifestHash: unknown;
+						referenceValidation: unknown;
+						checks: Array<{ check: string; status: string; actual: unknown; }>;
+					};
+				};
+			};
+			const result = report.details.result;
+			expect(result,).toMatchObject({
+				valid: false,
+				projectAppType: null,
+				instanceManifestHash: null,
+				referenceValidation: null,
+			},);
+			expect(
+				result.checks.filter((entry,) =>
+					entry.check === "project-type" || entry.check === "manifest-references"
+				),
+			).toEqual([
+				expect.objectContaining({ check: "project-type", status: "failed", actual: null, },),
+				expect.objectContaining({ check: "manifest-references", status: "failed", actual: null, },),
+			],);
+		},);
+		expect(projectDetailReads,).toBe(0,);
+	});
 
 	it("fails a whitespace-only template version even when --expect-version is supplied", async () => {
 		await withCliServer((req, res,) => {
@@ -577,6 +829,8 @@ describe("app create-successor-instance", () => {
 			future?: Route;
 			targetGet?: Route;
 			projectsList?: Route;
+			sourceManifest?: Route;
+			scenarios?: Route;
 			permissionsRead?: Route;
 			sourcePermissionsRead?: Route;
 			permissionsPut?: Route;
@@ -588,18 +842,24 @@ describe("app create-successor-instance", () => {
 			instanceManifest = { ...INSTANCE_MANIFEST, projectKey: "NEW_INSTANCE", },
 		} = overrides;
 		let targetGets = 0;
+		let instanceListGets = 0;
 		return (req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/instances/") {
+				instanceListGets += 1;
 				sendJson(
 					res,
-					created
+					created && instanceListGets > 1
 						? [{ projectKey: "OLD_INSTANCE", }, { projectKey: "NEW_INSTANCE", },]
 						: [{ projectKey: "OLD_INSTANCE", },],
 				);
 				return;
 			}
 			if (req.method === "GET" && url.pathname === "/public/api/projects/OLD_INSTANCE/app-manifest") {
+				if (overrides.sourceManifest) {
+					overrides.sourceManifest(req, res,);
+					return;
+				}
 				sendJson(res, { ...INSTANCE_MANIFEST, projectKey: "OLD_INSTANCE", version: "1.0.0", },);
 				return;
 			}
@@ -635,6 +895,12 @@ describe("app create-successor-instance", () => {
 			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/") {
 				sendJson(res, template,);
 				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/MYAPP/scenarios/") {
+				if (overrides.scenarios) {
+					overrides.scenarios(req, res,);
+					return;
+				}
 			}
 			if (req.method === "POST" && url.pathname === "/public/api/apps/MYAPP/instances") {
 				if (overrides.post) {
@@ -677,10 +943,26 @@ describe("app create-successor-instance", () => {
 		};
 	}
 
-	/** Extract the failed-wait result from the CLI error report on stderr. */
-	function failedResult(failure: { stderr: string; },): Record<string, unknown> {
-		return (JSON.parse(failure.stdout,) as { details: { result: Record<string, unknown>; }; }).details
-			.result;
+	/** Extract the failed-wait result from the CLI error report on stdout. */
+	function failedResult(failure: { stdout: string; },): Record<string, unknown> {
+		const report = JSON.parse(failure.stdout,) as {
+			details: { result: Record<string, unknown>; };
+		};
+		return report.details.result;
+	}
+	/** Extract the CLI error-report envelope printed on stdout for a refused command. */
+	function errorReport(failure: { stdout: string; },): {
+		code: string;
+		category: string;
+		hint?: string;
+		details?: Record<string, unknown>;
+	} {
+		return JSON.parse(failure.stdout,) as {
+			code: string;
+			category: string;
+			hint?: string;
+			details?: Record<string, unknown>;
+		};
 	}
 
 	it("dry-run completes preflight without POSTing and reports the additive plan", async () => {
@@ -738,6 +1020,242 @@ describe("app create-successor-instance", () => {
 			expect(posts,).toBe(0,);
 		},);
 	});
+	it("preflights the release before any version or creation mutation", async () => {
+		let mutationRequests = 0;
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" || req.method === "PUT" || req.method === "DELETE") {
+				mutationRequests += 1;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/instances/") {
+				sendJson(res, [{ projectKey: "OLD_INSTANCE", },],);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/OLD_INSTANCE/app-manifest") {
+				sendJson(res, { ...INSTANCE_MANIFEST, projectKey: "OLD_INSTANCE", },);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/NEW_INSTANCE/") {
+				sendJson(res, { message: "Project not found", }, 404,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/") {
+				sendJson(res, TEMPLATE_MANIFEST,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/OLD_INSTANCE/permissions") {
+				sendJson(res, PERMISSIONS,);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const result = JSON.parse(
+				(
+					await dss(
+						[
+							"app",
+							"successor-preflight",
+							"MYAPP",
+							"--from",
+							"OLD_INSTANCE",
+							"--to",
+							"NEW_INSTANCE",
+							"--name",
+							"Release 2",
+							"--copy-permissions",
+						],
+						{ env: cliEnv(url,), },
+					)
+				).stdout,
+			) as Record<string, unknown>;
+			expect(result,).toMatchObject({
+				action: "successor-preflight",
+				preflight: "passed",
+				preflightExecuted: true,
+				creationPostAttempted: false,
+				versionMutationAttempted: false,
+				appId: "MYAPP",
+				source: { projectKey: "OLD_INSTANCE", projectAppType: "APP_INSTANCE", },
+				target: { projectKey: "NEW_INSTANCE", name: "Release 2", exists: false, },
+				targetPreflight: "confirmed-absent",
+				template: {
+					projectKey: "MYAPP",
+					version: "2.0.0",
+					referenceValidation: { valid: true, },
+				},
+				copyPermissions: true,
+			},);
+			const template = result.template as { manifestHash: string; };
+			const next = result.next as { setVersion: string; createSuccessor: string; };
+			expect(template.manifestHash,).toMatch(/^[0-9a-f]{64}$/,);
+			expect(next.setVersion,).toContain(`--expect-hash ${template.manifestHash}`,);
+			expect(next.createSuccessor,).toContain("--copy-permissions",);
+			expect(mutationRequests,).toBe(0,);
+		},);
+	});
+	for (
+		const scenario of [
+			{
+				label: "cannot read the predecessor as an app project",
+				sourceManifest: (_req: IncomingMessage, res: ServerResponse,) => {
+					sendJson(res, { message: "Project not found", }, 404,);
+				},
+				expectedDetails: { sourceProjectKey: "OLD_INSTANCE", },
+				errorFragment: "could not be read as an app project",
+			},
+			{
+				label: "finds a template where an app instance is required",
+				sourceManifest: (_req: IncomingMessage, res: ServerResponse,) => {
+					sendJson(res, {
+						...INSTANCE_MANIFEST,
+						projectKey: "OLD_INSTANCE",
+						projectAppType: "APP_TEMPLATE",
+						version: "1.0.0",
+					},);
+				},
+				expectedDetails: {
+					sourceProjectKey: "OLD_INSTANCE",
+					projectAppType: "APP_TEMPLATE",
+				},
+				errorFragment: "not a classic Dataiku App instance",
+			},
+		]
+	) {
+		it(`refuses preflight when it ${scenario.label}`, async () => {
+			let mutationRequests = 0;
+			const route = successorServer({ sourceManifest: scenario.sourceManifest, },);
+			await withCliServer((req, res,) => {
+				if (req.method === "POST" || req.method === "PUT" || req.method === "DELETE") {
+					mutationRequests += 1;
+				}
+				route(req, res,);
+			}, async (url,) => {
+				const failure = await dssFailure(
+					[
+						"app",
+						"successor-preflight",
+						"MYAPP",
+						"--from",
+						"OLD_INSTANCE",
+						"--to",
+						"NEW_INSTANCE",
+					],
+					{ env: cliEnv(url,), },
+				);
+				expect(failure.code,).toBe(1,);
+				expect(failure.stderr,).toBe("",);
+				const report = errorReport(failure,);
+				expect(report,).toMatchObject({
+					code: "validation_failed",
+					category: "usage",
+					details: scenario.expectedDetails,
+				},);
+				expect(failure.stdout,).toContain(scenario.errorFragment,);
+			},);
+			expect(mutationRequests,).toBe(0,);
+		});
+	}
+
+	it("refuses invalid template references before creating a successor", async () => {
+		let mutationRequests = 0;
+		const route = successorServer({
+			template: {
+				...TEMPLATE_MANIFEST,
+				homepageSections: [{
+					tiles: [{ type: "SCENARIO_RUN", scenarioId: "MISSING_SCENARIO", },],
+				},],
+			},
+			scenarios: (_req, res,) => {
+				sendJson(res, [],);
+			},
+		},);
+		await withCliServer((req, res,) => {
+			if (req.method === "POST" || req.method === "PUT" || req.method === "DELETE") {
+				mutationRequests += 1;
+			}
+			route(req, res,);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				[
+					"app",
+					"create-successor-instance",
+					"MYAPP",
+					"--from",
+					"OLD_INSTANCE",
+					"--to",
+					"NEW_INSTANCE",
+				],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			const report = errorReport(failure,);
+			expect(report,).toMatchObject({
+				code: "validation_failed",
+				category: "usage",
+				details: {
+					appId: "MYAPP",
+					preflightExecuted: true,
+					creationPostAttempted: false,
+				},
+			},);
+			expect(report.details?.manifestHash,).toMatch(/^[0-9a-f]{64}$/,);
+			expect(report.details?.errors,).toContainEqual(
+				expect.objectContaining({
+					code: "MISSING_SCENARIO",
+					path: '$["homepageSections"][0]["tiles"][0]["scenarioId"]',
+				},),
+			);
+		},);
+		expect(mutationRequests,).toBe(0,);
+	});
+
+	it("fails permission snapshot preflight before any mutation", async () => {
+		let mutationRequests = 0;
+		const route = successorServer({
+			sourcePermissionsRead: (_req, res,) => {
+				sendJson(res, { message: "permission snapshot unavailable", }, 500,);
+			},
+		},);
+		await withCliServer((req, res,) => {
+			if (req.method === "POST" || req.method === "PUT" || req.method === "DELETE") {
+				mutationRequests += 1;
+			}
+			route(req, res,);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				[
+					"app",
+					"successor-preflight",
+					"MYAPP",
+					"--from",
+					"OLD_INSTANCE",
+					"--to",
+					"NEW_INSTANCE",
+					"--copy-permissions",
+					"--retries",
+					"1",
+				],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(3,);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
+				code: string;
+				category: string;
+				status: number;
+				retryable: boolean;
+			};
+			expect(report,).toMatchObject({
+				code: "transient",
+				category: "dss",
+				status: 500,
+				retryable: true,
+			},);
+		},);
+		expect(mutationRequests,).toBe(0,);
+	});
 
 	it("refuses --from == --to before any request", async () => {
 		let requestCount = 0;
@@ -761,6 +1279,33 @@ describe("app create-successor-instance", () => {
 			expect(failure.code,).toBe(1,);
 			expect(failure.stderr,).toBe("",);
 			expect(failure.stdout,).toContain("different project keys",);
+		},);
+		expect(requestCount,).toBe(0,);
+	});
+	it("does not expose an unproven server-atomic target bypass", async () => {
+		let requestCount = 0;
+		await withCliServer((req, res,) => {
+			requestCount += 1;
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${req.url}`,);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				[
+					"app",
+					"create-successor-instance",
+					"MYAPP",
+					"--from",
+					"OLD_INSTANCE",
+					"--to",
+					"NEW_INSTANCE",
+					"--target-absence",
+					"server-atomic",
+				],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("--target-absence",);
 		},);
 		expect(requestCount,).toBe(0,);
 	});
@@ -1000,8 +1545,8 @@ describe("app create-successor-instance", () => {
 		},);
 	});
 
-	it("exits 4 with an addressable failed-wait shape when no future ID is returned", async () => {
-		const dir = join(tmpdir(), `dss-app-successor-untrackable-${Date.now()}`,);
+	it("exits 4 with an indeterminate, ledger-free shape when no future ID is returned", async () => {
+		const dir = join(tmpdir(), `dss-app-successor-indeterminate-${Date.now()}`,);
 		mkdirSync(dir, { recursive: true, },);
 		const ledger = join(dir, "cleanup.jsonl",);
 		try {
@@ -1046,23 +1591,20 @@ describe("app create-successor-instance", () => {
 				);
 				expect(failure.code,).toBe(4,);
 				expect(failure.stderr,).toBe("",);
-				expect(failure.stdout,).toContain("UNTRACKABLE",);
+				// An ambiguous POST with neither a future ID nor a verified incarnation
+				// is indeterminate: it authorizes no cleanup and records no ledger entry.
+				expect(failedResult(failure,),).toMatchObject({
+					success: false,
+					state: "INDETERMINATE",
+					outcome: "indeterminate",
+					stage: "future-wait",
+					projectKey: "NEW_INSTANCE",
+					creationPostAttempted: true,
+					cleanupEligible: false,
+					recoveryCommands: ["dss app instances MYAPP",],
+				},);
 			},);
-			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as Record<string, unknown>;
-			expect(entry,).toMatchObject({
-				resource: "app",
-				action: "create-successor-instance",
-				name: "NEW_INSTANCE",
-				cleanup: {
-					argv: [
-						"app",
-						"delete-instance",
-						"--project-key",
-						"NEW_INSTANCE",
-						"--unconfirmed-creation",
-					],
-				},
-			},);
+			expect(readFileExists(ledger,),).toBe(false,);
 		} finally {
 			rmSync(dir, { recursive: true, force: true, },);
 		}
@@ -1292,7 +1834,7 @@ describe("app create-successor-instance", () => {
 		expect(posts,).toBe(0,);
 	});
 
-	it("returns an addressable UNTRACKABLE shape for an empty 2xx creation response", async () => {
+	it("returns an unbound INDETERMINATE shape for an empty 2xx creation response", async () => {
 		await withCliServer(
 			successorServer({
 				post: (_req, res,) => {
@@ -1317,10 +1859,12 @@ describe("app create-successor-instance", () => {
 				expect(failure.stderr,).toBe("",);
 				expect(failedResult(failure,),).toMatchObject({
 					success: false,
-					state: "UNTRACKABLE",
+					state: "INDETERMINATE",
 					projectKey: "NEW_INSTANCE",
 					responseKind: "empty",
-					cleanupEligible: true,
+					outcome: "indeterminate",
+					creationPostAttempted: true,
+					cleanupEligible: false,
 					elapsedMs: 0,
 					pollCount: 0,
 				},);
@@ -1328,7 +1872,7 @@ describe("app create-successor-instance", () => {
 		);
 	});
 
-	it("returns an addressable UNTRACKABLE shape for a JSON-null 2xx creation response", async () => {
+	it("returns an unbound INDETERMINATE shape for a JSON-null 2xx creation response", async () => {
 		await withCliServer(
 			successorServer({
 				post: (_req, res,) => {
@@ -1353,10 +1897,12 @@ describe("app create-successor-instance", () => {
 				const result = failedResult(failure,);
 				expect(result,).toMatchObject({
 					success: false,
-					state: "UNTRACKABLE",
+					state: "INDETERMINATE",
 					projectKey: "NEW_INSTANCE",
 					responseKind: "null",
-					cleanupEligible: true,
+					outcome: "indeterminate",
+					creationPostAttempted: true,
+					cleanupEligible: false,
 				},);
 				expect(result.instance,).toBeUndefined();
 			},
@@ -1703,7 +2249,7 @@ describe("app create-successor-instance", () => {
 	});
 
 	it("fails same-version manifest content drift without mislabeling it as a version change", async () => {
-		const template = { ...TEMPLATE_MANIFEST, };
+		const template: Record<string, unknown> = { ...TEMPLATE_MANIFEST, };
 		await withCliServer(
 			successorServer({
 				template,
@@ -1788,8 +2334,7 @@ describe("app create-successor-instance", () => {
 			rmSync(dir, { recursive: true, force: true, },);
 		}
 	});
-
-	it("retains cleanup eligibility for a 5xx create failure and records the successor target", async () => {
+	it("reports a 5xx create failure as indeterminate without recording cleanup", async () => {
 		const dir = join(tmpdir(), `dss-app-successor-5xx-${Date.now()}`,);
 		mkdirSync(dir, { recursive: true, },);
 		const ledger = join(dir, "cleanup.jsonl",);
@@ -1821,28 +2366,15 @@ describe("app create-successor-instance", () => {
 					expect(failure.stderr,).toBe("",);
 					expect(failedResult(failure,),).toMatchObject({
 						success: false,
-						state: "CREATE_FAILED",
+						state: "INDETERMINATE",
 						projectKey: "NEW_INSTANCE",
-						cleanupEligible: true,
+						outcome: "indeterminate",
+						creationPostAttempted: true,
+						cleanupEligible: false,
 					},);
 				},
 			);
-			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as Record<string, unknown>;
-			expect(entry,).toMatchObject({
-				resource: "app",
-				action: "create-successor-instance",
-				name: "NEW_INSTANCE",
-				cleanup: {
-					argv: [
-						"app",
-						"delete-instance",
-						"--project-key",
-						"NEW_INSTANCE",
-						"--unconfirmed-creation",
-					],
-				},
-			},);
-			expect(JSON.stringify(entry,),).not.toContain("OLD_INSTANCE",);
+			expect(readFileExists(ledger,),).toBe(false,);
 		} finally {
 			rmSync(dir, { recursive: true, force: true, },);
 		}
@@ -2448,6 +2980,27 @@ describe("app create-successor-instance", () => {
 				expect(failure.code,).toBe(1,);
 				expect(failure.stderr,).toBe("",);
 				expect(failure.stdout,).toContain("Could not confirm",);
+				expect(errorReport(failure,),).toMatchObject({
+					code: "target_absence_unverifiable",
+					category: "permission_or_environment",
+					details: {
+						targetProjectKey: "NEW_INSTANCE",
+						targetFlag: "--to",
+						directTargetProbe: 403,
+						projectListProbe: 200,
+						targetVisibleInProjectList: false,
+						appInstancesProbe: 200,
+						targetVisibleInAppInstances: false,
+						preflightExecuted: true,
+						creationPostAttempted: false,
+						targetProbe: "forbidden-and-not-listable",
+						supportedRecoveryModes: ["grant-global-project-visibility",],
+						unavailableRecoveryModes: [
+							"use-supported-key-availability-endpoint",
+							"server-atomic-create",
+						],
+					},
+				},);
 			},
 		);
 		expect(posts,).toBe(0,);
@@ -2484,6 +3037,27 @@ describe("app create-successor-instance", () => {
 				expect(failure.code,).toBe(1,);
 				expect(failure.stderr,).toBe("",);
 				expect(failure.stdout,).toContain("Could not confirm",);
+				expect(errorReport(failure,),).toMatchObject({
+					code: "target_absence_unverifiable",
+					category: "permission_or_environment",
+					details: {
+						targetProjectKey: "NEW_INSTANCE",
+						targetFlag: "--to",
+						directTargetProbe: 403,
+						projectListProbe: 200,
+						targetVisibleInProjectList: false,
+						appInstancesProbe: 200,
+						targetVisibleInAppInstances: false,
+						preflightExecuted: true,
+						creationPostAttempted: false,
+						targetProbe: "forbidden-and-not-listable",
+						supportedRecoveryModes: ["grant-global-project-visibility",],
+						unavailableRecoveryModes: [
+							"use-supported-key-availability-endpoint",
+							"server-atomic-create",
+						],
+					},
+				},);
 			},
 		);
 		expect(posts,).toBe(0,);
@@ -2523,7 +3097,7 @@ describe("app create-successor-instance", () => {
 		expect(posts,).toBe(0,);
 	});
 
-	it("retains cleanup eligibility for a transport failure on the creation POST", async () => {
+	it("reports a creation transport failure as indeterminate without authorizing cleanup", async () => {
 		await withCliServer(
 			successorServer({
 				post: (req,) => {
@@ -2549,11 +3123,548 @@ describe("app create-successor-instance", () => {
 				expect(failure.stderr,).toBe("",);
 				expect(failedResult(failure,),).toMatchObject({
 					success: false,
-					state: "CREATE_FAILED",
+					state: "INDETERMINATE",
 					projectKey: "NEW_INSTANCE",
-					cleanupEligible: true,
+					outcome: "indeterminate",
+					creationPostAttempted: true,
+					cleanupEligible: false,
+					recoveryCommands: ["dss app instances MYAPP",],
 				},);
 			},
 		);
+	});
+
+	it("binds a confirmed successor cleanup entry to the created project incarnation", async () => {
+		const dir = join(tmpdir(), `dss-app-successor-bound-ledger-${Date.now()}`,);
+		mkdirSync(dir, { recursive: true, },);
+		const ledger = join(dir, "cleanup.jsonl",);
+		try {
+			await withCliServer(successorServer(), async (url,) => {
+				const result = JSON.parse(
+					(
+						await dss(
+							[
+								"app",
+								"create-successor-instance",
+								"MYAPP",
+								"--from",
+								"OLD_INSTANCE",
+								"--to",
+								"NEW_INSTANCE",
+								"--record-cleanup",
+								ledger,
+							],
+							{ env: cliEnv(url,), },
+						)
+					).stdout,
+				) as Record<string, unknown>;
+				expect(result,).toMatchObject({
+					success: true,
+					state: "DONE",
+					projectKey: "NEW_INSTANCE",
+					futureTargetVerified: true,
+					projectIncarnationHash: NEW_INSTANCE_INCARNATION_HASH,
+				},);
+			},);
+			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as {
+				projectKey?: string;
+				name?: string;
+				cleanup?: { argv?: string[]; };
+			};
+			// A settled, incarnation-bound creation needs no unconfirmed escape
+			// hatch and no future gate: the recorded hash alone authorizes the
+			// delete, and only for the successor project.
+			expect(entry.cleanup?.argv,).toEqual([
+				"app",
+				"delete-instance",
+				"--project-key",
+				"NEW_INSTANCE",
+				"--expect-project-incarnation",
+				NEW_INSTANCE_INCARNATION_HASH,
+			],);
+			expect(entry.projectKey,).toBe("NEW_INSTANCE",);
+			expect(entry.name,).toBe("NEW_INSTANCE",);
+			const serialized = JSON.stringify(entry,);
+			expect(serialized,).not.toContain("--future-id",);
+			expect(serialized,).not.toContain("--unconfirmed-creation",);
+			// The predecessor is never a cleanup target.
+			expect(serialized,).not.toContain("OLD_INSTANCE",);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("refuses incarnation binding when the successor project details omit creationTag", async () => {
+		const dir = join(tmpdir(), `dss-app-successor-no-creation-tag-${Date.now()}`,);
+		mkdirSync(dir, { recursive: true, },);
+		const ledger = join(dir, "cleanup.jsonl",);
+		let targetGets = 0;
+		try {
+			await withCliServer(
+				successorServer({
+					targetGet: (_req, res,) => {
+						targetGets += 1;
+						if (targetGets === 1) {
+							sendJson(res, { message: "Project not found", }, 404,);
+							return;
+						}
+						// Terminal creation for the requested key, but DSS answers
+						// without the immutable creationTag identity.
+						sendJson(res, {
+							projectKey: "NEW_INSTANCE",
+							name: "New instance",
+							projectAppType: "APP_INSTANCE",
+						},);
+					},
+				},),
+				async (url,) => {
+					const failure = await dssFailure(
+						[
+							"app",
+							"create-successor-instance",
+							"MYAPP",
+							"--from",
+							"OLD_INSTANCE",
+							"--to",
+							"NEW_INSTANCE",
+							"--record-cleanup",
+							ledger,
+						],
+						{ env: cliEnv(url,), },
+					);
+					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
+					const result = failedResult(failure,);
+					expect(result,).toMatchObject({
+						success: false,
+						state: "INCARNATION_UNVERIFIED",
+						stage: "project-incarnation",
+						projectKey: "NEW_INSTANCE",
+						futureTargetVerified: true,
+						cleanupEligible: true,
+					},);
+					expect(result.projectIncarnationHash,).toBeUndefined();
+				},
+			);
+			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as {
+				cleanup?: { argv?: string[]; };
+			};
+			// A terminal target match alone cannot bind cleanup to an incarnation,
+			// so the entry stays explicitly unconfirmed instead of inventing a hash.
+			expect(entry.cleanup?.argv,).toEqual([
+				"app",
+				"delete-instance",
+				"--project-key",
+				"NEW_INSTANCE",
+				"--unconfirmed-creation",
+			],);
+			expect(JSON.stringify(entry,),).not.toContain("--expect-project-incarnation",);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("reports WAIT_FAILED with future and instance recovery commands when the future read fails", async () => {
+		const dir = join(tmpdir(), `dss-app-successor-wait-failed-${Date.now()}`,);
+		mkdirSync(dir, { recursive: true, },);
+		const ledger = join(dir, "cleanup.jsonl",);
+		let futureGets = 0;
+		try {
+			await withCliServer(
+				successorServer({
+					future: (_req, res,) => {
+						futureGets += 1;
+						sendJson(res, { message: "boom", }, 500,);
+					},
+				},),
+				async (url,) => {
+					const failure = await dssFailure(
+						[
+							"app",
+							"create-successor-instance",
+							"MYAPP",
+							"--from",
+							"OLD_INSTANCE",
+							"--to",
+							"NEW_INSTANCE",
+							"--retries",
+							"1",
+							"--record-cleanup",
+							ledger,
+						],
+						{ env: cliEnv(url,), },
+					);
+					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
+					const result = failedResult(failure,);
+					expect(result,).toMatchObject({
+						success: false,
+						state: "WAIT_FAILED",
+						stage: "future-wait",
+						projectKey: "NEW_INSTANCE",
+						jobId: "job-9",
+						cleanupEligible: true,
+						recoveryCommands: ["dss future wait job-9", "dss app instances MYAPP",],
+					},);
+					expect(result.futureTargetVerified,).toBeUndefined();
+					expect(result.projectIncarnationHash,).toBeUndefined();
+					expect(futureGets,).toBe(1,);
+				},
+			);
+			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as {
+				cleanup?: { argv?: string[]; };
+			};
+			expect(entry.cleanup?.argv,).toEqual([
+				"app",
+				"delete-instance",
+				"--project-key",
+				"NEW_INSTANCE",
+				"--unconfirmed-creation",
+			],);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("refuses a --to already listed as an app instance before probing the target or POSTing", async () => {
+		let posts = 0;
+		let targetGets = 0;
+		let projectListGets = 0;
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST") posts += 1;
+			if (req.method === "GET" && url.pathname === "/public/api/projects/NEW_INSTANCE/") {
+				targetGets += 1;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/") projectListGets += 1;
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/instances/") {
+				sendJson(res, [{ projectKey: "OLD_INSTANCE", }, { projectKey: "NEW_INSTANCE", },],);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/OLD_INSTANCE/app-manifest") {
+				sendJson(res, { ...INSTANCE_MANIFEST, projectKey: "OLD_INSTANCE", version: "1.0.0", },);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				[
+					"app",
+					"create-successor-instance",
+					"MYAPP",
+					"--from",
+					"OLD_INSTANCE",
+					"--to",
+					"NEW_INSTANCE",
+				],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			expect(failure.stdout,).toContain("already exists as an app instance",);
+			const report = errorReport(failure,);
+			expect(report.code,).toBe("validation_failed",);
+			expect(report.category,).toBe("usage",);
+			// The app-instance list already proves the collision, so the refusal
+			// reports exactly which probe answered and that nothing was created.
+			expect(report.details,).toMatchObject({
+				targetProjectKey: "NEW_INSTANCE",
+				targetFlag: "--to",
+				directTargetProbe: "not-executed",
+				targetVisibleInAppInstances: true,
+				appInstancesProbe: 200,
+				preflightExecuted: true,
+				creationPostAttempted: false,
+			},);
+			expect(report.details?.targetVisibleInProjectList,).toBeNull();
+		},);
+		expect(posts,).toBe(0,);
+		expect(targetGets,).toBe(0,);
+		expect(projectListGets,).toBe(0,);
+	});
+
+	it("refuses at create when the creation response names another project without a future ID", async () => {
+		const dir = join(tmpdir(), `dss-app-successor-echo-unbound-${Date.now()}`,);
+		mkdirSync(dir, { recursive: true, },);
+		const ledger = join(dir, "cleanup.jsonl",);
+		let futureGets = 0;
+		try {
+			await withCliServer(
+				successorServer({
+					post: (_req, res,) => {
+						sendJson(res, { appId: "MYAPP", targetProjectKey: "SOMEONE_ELSE", },);
+					},
+					future: (_req, res,) => {
+						futureGets += 1;
+						sendJson(res, DONE_FUTURE,);
+					},
+				},),
+				async (url,) => {
+					const failure = await dssFailure(
+						[
+							"app",
+							"create-successor-instance",
+							"MYAPP",
+							"--from",
+							"OLD_INSTANCE",
+							"--to",
+							"NEW_INSTANCE",
+							"--record-cleanup",
+							ledger,
+						],
+						{ env: cliEnv(url,), },
+					);
+					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
+					const result = failedResult(failure,);
+					// A stray key with no future ID authorizes nothing: neither the
+					// named project nor the requested one may be deleted.
+					expect(result,).toMatchObject({
+						success: false,
+						state: "VERIFICATION_FAILED",
+						stage: "create",
+						projectKey: "NEW_INSTANCE",
+						expected: { projectKey: "NEW_INSTANCE", },
+						actual: { projectKey: "SOMEONE_ELSE", },
+						cleanupEligible: false,
+					},);
+					expect(result.futureId,).toBeUndefined();
+					expect(result.jobId,).toBeUndefined();
+					expect(result.futureTargetVerified,).toBeUndefined();
+					expect(futureGets,).toBe(0,);
+				},
+			);
+			expect(readFileExists(ledger,),).toBe(false,);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("refuses at future-target when an inline creation result names another project", async () => {
+		let futureGets = 0;
+		await withCliServer(
+			successorServer({
+				post: (_req, res,) => {
+					sendJson(res, {
+						appId: "MYAPP",
+						targetProjectKey: "NEW_INSTANCE",
+						jobId: "job-9",
+						hasResult: true,
+						result: { targetProjectKey: "SOMEONE_ELSE", },
+					},);
+				},
+				future: (_req, res,) => {
+					futureGets += 1;
+					sendJson(res, DONE_FUTURE,);
+				},
+			},),
+			async (url,) => {
+				const failure = await dssFailure(
+					[
+						"app",
+						"create-successor-instance",
+						"MYAPP",
+						"--from",
+						"OLD_INSTANCE",
+						"--to",
+						"NEW_INSTANCE",
+					],
+					{ env: cliEnv(url,), },
+				);
+				expect(failure.code,).toBe(4,);
+				expect(failure.stderr,).toBe("",);
+				const result = failedResult(failure,);
+				expect(result,).toMatchObject({
+					success: false,
+					state: "VERIFICATION_FAILED",
+					stage: "future-target",
+					projectKey: "NEW_INSTANCE",
+					futureTargetMismatch: true,
+					futureTargetField: "targetProjectKey",
+					expected: { projectKey: "NEW_INSTANCE", },
+					actual: { projectKey: "SOMEONE_ELSE", },
+					cleanupEligible: true,
+				},);
+				expect(result.futureTargetVerified,).toBeUndefined();
+				// The inline verdict arrived with the POST: no future is polled.
+				expect(futureGets,).toBe(0,);
+			},
+		);
+	});
+
+	for (
+		const scenario of [
+			{ label: "array", body: [{ projectKey: "NEW_INSTANCE", },], responseKind: "array", },
+			{ label: "scalar", body: "NEW_INSTANCE", responseKind: "scalar", },
+		]
+	) {
+		it(`treats a ${scenario.label} creation response as indeterminate without cleanup`, async () => {
+			await withCliServer(
+				successorServer({
+					post: (_req, res,) => {
+						sendJson(res, scenario.body,);
+					},
+				},),
+				async (url,) => {
+					const failure = await dssFailure(
+						[
+							"app",
+							"create-successor-instance",
+							"MYAPP",
+							"--from",
+							"OLD_INSTANCE",
+							"--to",
+							"NEW_INSTANCE",
+						],
+						{ env: cliEnv(url,), },
+					);
+					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
+					const result = failedResult(failure,);
+					expect(result,).toMatchObject({
+						success: false,
+						state: "INDETERMINATE",
+						stage: "future-wait",
+						projectKey: "NEW_INSTANCE",
+						outcome: "indeterminate",
+						creationPostAttempted: true,
+						cleanupEligible: false,
+						responseKind: scenario.responseKind,
+						recoveryCommands: ["dss app instances MYAPP",],
+					},);
+					expect(result.instance,).toBeUndefined();
+					expect(result.futureId,).toBeUndefined();
+					expect(result.jobId,).toBeUndefined();
+				},
+			);
+		});
+	}
+
+	it("treats an HTTP 425 creation response as indeterminate rather than a definitive rejection", async () => {
+		const dir = join(tmpdir(), `dss-app-successor-too-early-${Date.now()}`,);
+		mkdirSync(dir, { recursive: true, },);
+		const ledger = join(dir, "cleanup.jsonl",);
+		let posts = 0;
+		try {
+			await withCliServer(
+				successorServer({
+					post: (_req, res,) => {
+						posts += 1;
+						sendJson(res, { message: "Too early", }, 425,);
+					},
+				},),
+				async (url,) => {
+					const failure = await dssFailure(
+						[
+							"app",
+							"create-successor-instance",
+							"MYAPP",
+							"--from",
+							"OLD_INSTANCE",
+							"--to",
+							"NEW_INSTANCE",
+							"--record-cleanup",
+							ledger,
+						],
+						{ env: cliEnv(url,), },
+					);
+					expect(failure.code,).toBe(4,);
+					expect(failure.stderr,).toBe("",);
+					// 409 proves nothing was created; a retryable 425 does not, so
+					// the outcome stays indeterminate and authorizes no cleanup.
+					expect(failedResult(failure,),).toMatchObject({
+						success: false,
+						state: "INDETERMINATE",
+						stage: "create",
+						projectKey: "NEW_INSTANCE",
+						outcome: "indeterminate",
+						creationPostAttempted: true,
+						cleanupEligible: false,
+						recoveryCommands: ["dss app instances MYAPP",],
+					},);
+				},
+			);
+			expect(posts,).toBe(1,);
+			expect(readFileExists(ledger,),).toBe(false,);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("plans a successor creation offline with its full preflight request disclosure", async () => {
+		let requestCount = 0;
+		await withCliServer((req, res,) => {
+			requestCount += 1;
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${req.url}`,);
+		}, async (url,) => {
+			const plan = JSON.parse(
+				(
+					await dss(
+						[
+							"app",
+							"create-successor-instance",
+							"MYAPP",
+							"--from",
+							"OLD_INSTANCE",
+							"--to",
+							"NEW_INSTANCE",
+							"--name",
+							"Release 2",
+							"--plan",
+						],
+						{ env: cliEnv(url,), },
+					)
+				).stdout,
+			) as Record<string, unknown>;
+			expect(plan,).toMatchObject({
+				plan: true,
+				resource: "app",
+				action: "create-successor-instance",
+				appId: "MYAPP",
+				sourceProjectKey: "OLD_INSTANCE",
+				targetProjectKey: "NEW_INSTANCE",
+				targetProjectName: "Release 2",
+				copyPermissions: false,
+				preflightExecuted: false,
+				preflightWillRunDuringApply: true,
+				incarnationControl: "client-side-non-atomic-future-target-and-creation-tag-join",
+				method: "POST",
+				endpoint: "/public/api/apps/MYAPP/instances",
+				wait: true,
+				idempotency: "none",
+				async: "future",
+			},);
+			expect(plan.payload,).toEqual({
+				targetProjectKey: "NEW_INSTANCE",
+				targetProjectName: "Release 2",
+			},);
+			expect(
+				(plan.exitCodesOnFailure as Record<string, number>).longRunningFailure,
+			).toBe(4,);
+			const preflightRequests = plan.preflightRequests as Array<
+				{ method: string; endpoint: string; when: string; }
+			>;
+			expect(
+				preflightRequests.map((entry,) => `${entry.method} ${entry.endpoint} ${entry.when}`),
+			).toEqual([
+				"GET /public/api/apps/MYAPP/instances/ before-create",
+				"GET /public/api/projects/OLD_INSTANCE/app-manifest before-create",
+				"GET /public/api/projects/NEW_INSTANCE/ before-create",
+				"GET /public/api/projects/ conditional",
+			],);
+			expect(plan.postFutureRequests,).toEqual([
+				expect.objectContaining({
+					method: "GET",
+					endpoint: "/public/api/projects/NEW_INSTANCE/",
+				},),
+			],);
+			// No ACL copy was requested, so no permission traffic is advertised.
+			expect(plan.permissionRequests,).toBeUndefined();
+			expect(plan.permissionConcurrencyControl,).toBeUndefined();
+			expect(plan.plannedAndDryRun,).toBeUndefined();
+		},);
+		expect(requestCount,).toBe(0,);
 	});
 });

@@ -2636,6 +2636,8 @@ export function commandPlanShape(
 				identifiers: {
 					appId: id,
 					targetProjectKey,
+					preflightExecuted: false,
+					preflightWillRunDuringApply: true,
 					incarnationControl: "client-side-non-atomic-future-target-and-creation-tag-join",
 					incarnationObservationRequests: [
 						{
@@ -2660,7 +2662,14 @@ export function commandPlanShape(
 							endpoint: "/public/api/projects/",
 							when: "conditional",
 							intent:
-								"Fallback list probe issued only when the direct project GET is forbidden (403) to confirm the target is absent; an unconfirmed target rejects creation.",
+								"Fallback list probe issued only when the direct project GET is forbidden (403). Presence proves a collision; absence cannot prove availability.",
+						},
+						{
+							method: "GET",
+							endpoint: `/public/api/apps/${encodeURIComponent(id,)}/instances/`,
+							when: "conditional",
+							intent:
+								"Fallback app-instance list probe issued when the direct project GET is forbidden (403). Presence proves a collision; absence still rejects creation as unverifiable.",
 						},
 					],
 					note:
@@ -2738,6 +2747,8 @@ export function commandPlanShape(
 					appId: id,
 					sourceProjectKey,
 					targetProjectKey,
+					preflightExecuted: false,
+					preflightWillRunDuringApply: true,
 					...(targetProjectName !== undefined ? { targetProjectName, } : {}),
 					copyPermissions,
 					incarnationControl: "client-side-non-atomic-future-target-and-creation-tag-join",
@@ -2778,7 +2789,7 @@ export function commandPlanShape(
 							endpoint: "/public/api/projects/",
 							when: "conditional",
 							intent:
-								"Fallback list probe issued only when the direct project GET is forbidden (403) to confirm the target is absent; an unconfirmed target rejects creation.",
+								"Fallback list probe issued only when the direct project GET is forbidden (403). Presence proves a collision; absence cannot prove availability and rejects creation.",
 						},
 					],
 					...(copyPermissions

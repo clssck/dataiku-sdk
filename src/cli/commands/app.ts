@@ -24,6 +24,7 @@ import {
 	createSuccessorInstance,
 	futureTargetIdentity,
 	isDefinitiveRejection,
+	preflightSuccessorInstance,
 	requireAbsentProjectTarget,
 	safeErrorSummary,
 	verifyAppInstance,
@@ -40,12 +41,14 @@ const SET_MANIFEST_VERSION_USAGE =
 	"dss app set-manifest-version (--manifest-version V|--version-notes NOTES) [--expect-hash SHA256] [--dry-run] [--project-key KEY]";
 const CREATE_SUCCESSOR_USAGE =
 	"dss app create-successor-instance <appId> --from KEY --to KEY [--name NAME] [--copy-permissions] [--timeout MS] [--poll-interval MS] [--dry-run] [--record-cleanup PATH]";
+const SUCCESSOR_PREFLIGHT_USAGE =
+	"dss app successor-preflight <appId> --from KEY --to KEY [--name NAME] [--copy-permissions]";
 const VERIFY_INSTANCE_USAGE =
 	"dss app verify-instance <appId> --project-key KEY [--expect-version V]";
 const DELETE_INSTANCE_USAGE =
 	"dss app delete-instance --project-key KEY [--future-id ID] [--expect-project-incarnation SHA256] [--unconfirmed-creation] [--timeout MS] [--poll-interval MS]";
 const CREATE_INSTANCE_INDETERMINATE_REMEDIATION =
-	"DSS may have accepted the creation, but no future ID proves when it settles. The recorded cleanup entry intentionally stops as unresolved; inspect `dss app instances <appId>` and retry deletion only after creation is known terminal.";
+	"DSS may have accepted the creation, but no future ID or project incarnation authorizes cleanup. Inspect `dss app instances <appId>` and DSS task history; delete only after creation is known terminal and the target identity is verified.";
 const CREATE_INSTANCE_REJECTED_REMEDIATION =
 	"DSS refused the creation request, so no instance project was created: fix the reported problem and retry.";
 const DELETE_INSTANCE_FUTURE_REMEDIATION =
@@ -197,22 +200,28 @@ export const appCommands: Record<string, CommandMeta> = {
 				);
 			}
 			body.targetProjectKey = requestedProjectKey;
-			await requireAbsentProjectTarget(c, requestedProjectKey, "targetProjectKey",);
+			await requireAbsentProjectTarget(c, requestedProjectKey, "targetProjectKey", {
+				appId: a[0],
+			},);
 			let created: unknown;
 			try {
 				created = await c.applications.createInstance(a[0], body,);
 			} catch (error) {
 				// A definitive rejection proves nothing was created; anything else
 				// (5xx, retryable 4xx, transport failure) leaves the outcome
-				// unknown and stays cleanup-eligible against the requested key.
+				// unknown. Without a returned future ID or verified incarnation,
+				// cleanup cannot be authorized.
 				const rejected = isDefinitiveRejection(error,);
 				return {
 					success: false,
-					state: "CREATE_FAILED",
+					state: rejected ? "CREATE_FAILED" : "INDETERMINATE",
 					elapsedMs: 0,
 					pollCount: 0,
 					projectKey: requestedProjectKey,
-					cleanupEligible: !rejected,
+					outcome: rejected ? "rejected" : "indeterminate",
+					creationPostAttempted: true,
+					cleanupEligible: false,
+					recoveryCommands: rejected ? [] : [`dss app instances ${a[0]}`,],
 					remediation: rejected
 						? CREATE_INSTANCE_REJECTED_REMEDIATION
 						: CREATE_INSTANCE_INDETERMINATE_REMEDIATION,
@@ -223,11 +232,13 @@ export const appCommands: Record<string, CommandMeta> = {
 			if (!instance) {
 				return {
 					success: false,
-					state: "UNTRACKABLE",
+					state: "INDETERMINATE",
 					elapsedMs: 0,
 					pollCount: 0,
 					projectKey: requestedProjectKey,
-					cleanupEligible: true,
+					outcome: "indeterminate",
+					creationPostAttempted: true,
+					cleanupEligible: false,
 					responseKind: created === undefined
 						? "empty"
 						: created === null
@@ -237,6 +248,7 @@ export const appCommands: Record<string, CommandMeta> = {
 						: "scalar",
 					error: "DSS accepted instance creation without returning a structured creation state.",
 					remediation: CREATE_INSTANCE_INDETERMINATE_REMEDIATION,
+					recoveryCommands: [`dss app instances ${a[0]}`,],
 				};
 			}
 			// The create endpoint's `jobId` is a DSS future ID (the official client wraps it in
@@ -254,7 +266,7 @@ export const appCommands: Record<string, CommandMeta> = {
 					projectKey: requestedProjectKey,
 					instance,
 					...(jobId !== undefined ? { futureId: jobId, jobId, } : {}),
-					cleanupEligible: true,
+					cleanupEligible: jobId !== undefined,
 					error: "DSS named a different target project in the creation response.",
 					expected: { projectKey: requestedProjectKey, },
 					actual: { projectKey: echoedTarget, },
@@ -330,15 +342,18 @@ export const appCommands: Record<string, CommandMeta> = {
 			if (!jobId) {
 				return {
 					success: false,
-					state: "UNTRACKABLE",
+					state: "INDETERMINATE",
 					elapsedMs: 0,
 					pollCount: 0,
 					projectKey: requestedProjectKey,
 					instance,
-					cleanupEligible: true,
+					outcome: "indeterminate",
+					creationPostAttempted: true,
+					cleanupEligible: false,
 					error:
-						"DSS returned no instance-creation future ID. The instance may still have been created; inspect app instances or replay the recorded cleanup entry.",
+						"DSS returned no instance-creation future ID. The instance may still have been created; inspect app instances before any recovery action.",
 					remediation: CREATE_INSTANCE_INDETERMINATE_REMEDIATION,
+					recoveryCommands: [`dss app instances ${a[0]}`,],
 				};
 			}
 			let waited: FutureWaitResult;
@@ -357,6 +372,7 @@ export const appCommands: Record<string, CommandMeta> = {
 					instance,
 					jobId,
 					cleanupEligible: true,
+					recoveryCommands: [`dss future wait ${jobId}`, `dss app instances ${a[0]}`,],
 					remediation: CREATE_INSTANCE_INDETERMINATE_REMEDIATION,
 					...safeErrorSummary(error,),
 				};
@@ -420,6 +436,26 @@ export const appCommands: Record<string, CommandMeta> = {
 		examples: [
 			'dss app create-instance my-app --data \'{"targetProjectKey":"NEWPROJ"}\'',
 			'dss app create-instance my-app --data \'{"targetProjectKey":"NEWPROJ"}\' --wait --timeout 120000 --poll-interval 2000',
+		],
+	},
+	"successor-preflight": {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 1, SUCCESSOR_PREFLIGHT_USAGE,);
+			return preflightSuccessorInstance(c, {
+				appId: a[0],
+				from: requiredStringFlag(f, "from", SUCCESSOR_PREFLIGHT_USAGE,),
+				to: requiredStringFlag(f, "to", SUCCESSOR_PREFLIGHT_USAGE,),
+				...(f["name"] !== undefined ? { name: f["name"] as string, } : {}),
+				copyPermissions: parseBooleanOption(f["copy-permissions"], "--copy-permissions",) ?? false,
+				dryRun: true,
+			}, SUCCESSOR_PREFLIGHT_USAGE,);
+		},
+		usage: SUCCESSOR_PREFLIGHT_USAGE,
+		description:
+			"Run every read-only successor gate before changing the template version: validate the template, verify the predecessor, prove target absence, and optionally snapshot the predecessor ACL.",
+		examples: [
+			"dss app successor-preflight my-app --from OLD_INSTANCE --to NEW_INSTANCE",
+			"dss app successor-preflight my-app --from OLD_INSTANCE --to NEW_INSTANCE --copy-permissions",
 		],
 	},
 	"create-successor-instance": {

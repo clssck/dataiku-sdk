@@ -1407,7 +1407,7 @@ interface ErrorReportEnvelope {
 	ok: false;
 	error: string;
 	code: StableErrorCode;
-	category: "usage" | "dss" | "internal";
+	category: "usage" | "permission_or_environment" | "dss" | "internal";
 	exitCode: number;
 	hint?: string;
 	resource?: string;
@@ -1549,8 +1549,11 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			ok: false,
 			error: err.message,
 			code: err.code,
-			category: "usage",
+			category: err.code === "target_absence_unverifiable"
+				? "permission_or_environment"
+				: "usage",
 			exitCode,
+			...(err.code === "target_absence_unverifiable" ? { retryable: false, } : {}),
 			...(err.hint ? { hint: err.hint, } : {}),
 			...(err.details ? { details: err.details, } : {}),
 			...context,

@@ -253,6 +253,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"manifest",
 		"manifest-version",
 		"instances",
+		"successor-preflight",
 		"create-instance",
 		"create-successor-instance",
 		"instance-manifest",
@@ -626,6 +627,37 @@ describe("CLI command surface", () => {
 				flag.name === "copy-permissions"
 			),
 		).toBe(true,);
+		expect(registry.app["successor-preflight"].sideEffect,).toBe("read",);
+		expect(registry.app["successor-preflight"].async,).toBe("none",);
+		expect(registry.app["successor-preflight"].dryRun,).toBe(false,);
+		expect(registry.app["successor-preflight"].idempotency,).toBe("safe",);
+		expect(registry.app["successor-preflight"].mutatesDss,).toBe(false,);
+		expect(registry.app["successor-preflight"].usage,).toBe(
+			"dss app successor-preflight <appId> --from KEY --to KEY [--name NAME] [--copy-permissions]",
+		);
+		expect(registry.app["successor-preflight"].requiredFlags,).toEqual(["from", "to",],);
+		expect(registry.app["successor-preflight"].optionalFlags,).toContain("name",);
+		expect(registry.app["successor-preflight"].optionalFlags,).toContain("copy-permissions",);
+		expect(
+			registry.app["successor-preflight"].flags.some(
+				(flag,) => flag.name === "copy-permissions" && flag.kind === "boolean",
+			),
+		).toBe(true,);
+		for (
+			const mutationFlag of [
+				"dry-run",
+				"plan",
+				"record-cleanup",
+				"wait",
+				"timeout",
+				"poll-interval",
+			]
+		) {
+			expect(
+				registry.app["successor-preflight"].flags.some((flag,) => flag.name === mutationFlag),
+				`successor-preflight must not expose the mutation flag --${mutationFlag}`,
+			).toBe(false,);
+		}
 		expect(registry.app["manifest-version"].sideEffect,).toBe("read",);
 		expect(registry.app["verify-instance"].sideEffect,).toBe("read",);
 		expect(registry.app["set-manifest-version"].sideEffect,).toBe("write",);

@@ -15,6 +15,7 @@ export type StableErrorCode =
 	| "invalid_enum"
 	| "not_found"
 	| "permission_denied"
+	| "target_absence_unverifiable"
 	| "validation_failed"
 	| "transient"
 	| "long_running_failure"
