@@ -1,5 +1,4 @@
 import { describe, expect, it, } from "bun:test";
-import * as fs from "node:fs";
 import {
 	cliEnv,
 	dss,
@@ -57,40 +56,27 @@ describe("CLI bin entrypoints", () => {
 			expect((statSync(binJs,).mode & 0o111) !== 0,).toBe(true,);
 		}
 	});
-
-	it("reports a missing source Bun runtime as one JSONL event", async () => {
-		const tmpRoot = join(tmpdir(), `dss-bin-missing-bun-${Date.now()}`,);
-		const copiedBin = join(tmpRoot, "bin", "dss.mjs",);
-		mkdirSync(join(tmpRoot, "bin",), { recursive: true, },);
-		fs.copyFileSync(binJs, copiedBin,);
-		const nodeBin = Bun.which("node",);
-		expect(nodeBin,).not.toBeNull();
+	it("rejects Bun invocations that bypass the no-env-file launcher guard", async () => {
 		try {
-			await exec(nodeBin!, [copiedBin, "version",], {
-				cwd: tmpRoot,
-				env: { ...process.env, PATH: "", },
-			},);
-			throw new Error("expected source launcher to fail without Bun",);
+			await exec(process.execPath, [binJs, "version",], { cwd: tmpdir(), },);
+			throw new Error("expected the unguarded Bun invocation to fail",);
 		} catch (error: unknown) {
 			const failure = error as { code?: number; stdout?: string; stderr?: string; };
-			expect(failure.code,).toBe(2,);
+			expect(failure.code,).toBe(1,);
 			expect(failure.stderr ?? "",).toBe("",);
-			const lines = (failure.stdout ?? "").trim().split(/\r?\n/,);
-			expect(lines,).toHaveLength(1,);
-			expect(JSON.parse(lines[0]!,),).toMatchObject({
+			expect(JSON.parse(failure.stdout ?? "",),).toMatchObject({
 				type: "error",
 				ok: false,
-				code: "internal_error",
-				exitCode: 2,
+				code: "env_autoload_enabled",
+				category: "usage",
+				exitCode: 1,
 			},);
-		} finally {
-			rmSync(tmpRoot, { recursive: true, force: true, },);
 		}
 	});
+
 	it("source checkout entrypoints emit version JSON", async () => {
 		const entrypoints: Array<[string, string[],]> = [
 			[process.execPath, ["--no-env-file", binJs, "version",],],
-			["node", [binJs, "version",],],
 		];
 		if (process.platform !== "win32") {
 			entrypoints.unshift([binShim, ["version",],], [binJs, ["version",],],);
@@ -113,11 +99,11 @@ describe("CLI bin entrypoints", () => {
 		}
 	});
 
-	it("node bin source fallback preserves JSON error envelopes", async () => {
+	it("bin launcher preserves JSON error envelopes under DATAIKU_DISABLE_ENV", async () => {
 		const tmpDir = join(tmpdir(), `dss-bin-entrypoint-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
 		try {
-			await exec("node", [binJs, "project", "list",], {
+			await exec(process.execPath, ["--no-env-file", binJs, "project", "list",], {
 				cwd: tmpDir,
 				env: {
 					...process.env,

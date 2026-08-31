@@ -7,7 +7,6 @@ import {
 	buildMetadataRevision,
 	buildVersionPayload,
 	cliVersionResult,
-	detectRuntime,
 	gitFullRevision,
 	gitRevision,
 	PACKAGE_ROOT,
@@ -106,7 +105,7 @@ async function runDoctorCapabilities(headers: Record<string, string> | undefined
 		if (headers) {
 			for (const [name, value,] of Object.entries(headers,)) res.setHeader(name, value,);
 		}
-		// Bun 1.3 still synthesizes Date despite sendDate=false. An explicit
+		// Bun's Node-compatible server can still synthesize Date despite sendDate=false. An explicit
 		// empty value keeps semantic absence deterministic across runtimes.
 		if (!Object.keys(headers ?? {},).some((name,) => name.toLowerCase() === "date")) {
 			res.setHeader("Date", "",);
@@ -284,12 +283,12 @@ describe("buildVersionPayload provenance", () => {
 			checkoutFullRevision: FORTY_A,
 			loadSource: "dist",
 			buildRevision: FORTY_B,
-			runtime: "node",
+			runtime: "bun",
 		},);
 		expect(stale.source,).toBe("dist",);
 		expect(stale.buildRevision,).toBe(FORTY_B,);
 		expect(stale.staleBuild,).toBe(true,);
-		expect(stale.runtime,).toBe("node",);
+		expect(stale.runtime,).toBe("bun",);
 
 		const current = buildVersionPayload({
 			packageVersion: "1.0.0",
@@ -310,7 +309,7 @@ describe("buildVersionPayload provenance", () => {
 			loadSource: "dist",
 			buildRevision: FORTY_A,
 			sourceNewerThanBuild: true,
-			runtime: "node",
+			runtime: "bun",
 		},);
 		expect(payload.staleBuild,).toBe(true,);
 	});
@@ -370,7 +369,7 @@ describe("buildVersionPayload provenance", () => {
 		expect(payload.source,).toBe("source",);
 		expect(payload.buildRevision,).toBeNull();
 		expect(payload.staleBuild,).toBe(false,);
-		expect(payload.runtime,).toBe(detectRuntime(),);
+		expect(payload.runtime,).toBe("bun",);
 		expect(payload.gitRevision,).toEqual(gitFullRevision(PACKAGE_ROOT,)?.slice(0, 7,) ?? null,);
 	});
 });
@@ -505,7 +504,7 @@ describe("git revision resolution", () => {
 /* ------------------------------------------------------------------ */
 
 describe("dss version provenance", () => {
-	const runtime = process.versions.bun ? "bun" : "node";
+	const runtime = "bun";
 
 	it("reports source provenance with no build revision and no paths", async () => {
 		const { stdout, stderr, } = await dss(["version",],);
@@ -588,10 +587,14 @@ describe("bin/dss.js build revision forwarding", () => {
 			const env: NodeJS.ProcessEnv = { ...process.env, };
 			delete env.DSS_BUILD_REVISION;
 			if (inherited !== undefined) env.DSS_BUILD_REVISION = inherited;
-			const { stdout, } = await exec(BUN, [join(root, "bin", "dss.js",), "version",], {
-				cwd: root,
-				env,
-			},);
+			const { stdout, } = await exec(
+				BUN,
+				["--no-env-file", join(root, "bin", "dss.js",), "version",],
+				{
+					cwd: root,
+					env,
+				},
+			);
 			return JSON.parse(stdout,) as { revision: string | null; source: string | null; };
 		} finally {
 			rmSync(root, { recursive: true, force: true, },);

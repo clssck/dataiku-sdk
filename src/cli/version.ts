@@ -132,7 +132,7 @@ export function gitRevision(packageRoot: string | undefined,): string | undefine
 }
 
 export type CliLoadSource = "source" | "dist";
-export type CliRuntime = "bun" | "node";
+export type CliRuntime = "bun";
 
 export function detectLoadSource(modulePath = fileURLToPath(import.meta.url,),): CliLoadSource {
 	return modulePath.replaceAll("\\", "/",).includes("/dist/",) ? "dist" : "source";
@@ -200,8 +200,9 @@ export interface CliVersionPayload {
 	staleBuild: boolean;
 }
 
+/** Bun is the only supported runtime; the field is retained for payload stability. */
 export function detectRuntime(): CliRuntime {
-	return process.versions.bun ? "bun" : "node";
+	return "bun";
 }
 
 export function buildVersionPayload(input: {
