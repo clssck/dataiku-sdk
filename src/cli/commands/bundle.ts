@@ -1,4 +1,3 @@
-import { writeFileSync, } from "node:fs";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -38,9 +37,11 @@ export const bundleCommands: Record<string, CommandMeta> = {
 				a[0],
 				f["project-key"] as string | undefined,
 			);
-			const buf = Buffer.from(await res.arrayBuffer(),);
-			writeFileSync(out, buf,);
-			return { path: out, bytes: buf.length, };
+			if (!res.body) {
+				throw new Error("bundles.downloadExportedArchive response did not include a body",);
+			}
+			const bytes = await Bun.write(out, new Response(res.body,), { createPath: false, },);
+			return { path: out, bytes, };
 		},
 		usage: "dss bundle download-exported <bundleId> --output PATH [--project-key KEY]",
 		description: "Download an exported Design-node bundle archive to a local file.",

@@ -1,5 +1,3 @@
-import { createWriteStream, } from "node:fs";
-import { Writable, } from "node:stream";
 import { ClientValidationError, DataikuError, } from "../errors.js";
 
 import {
@@ -351,13 +349,7 @@ export class ProjectsResource extends BaseResource {
 		);
 		if (!res.body) throw new Error("projects.exportArchive response did not include a body",);
 
-		const file = createWriteStream(filePath,);
-		try {
-			await res.body.pipeTo(Writable.toWeb(file,) as WritableStream<Uint8Array>,);
-		} catch (error) {
-			file.destroy();
-			throw error;
-		}
+		await Bun.write(filePath, new Response(res.body,), { createPath: false, },);
 	}
 
 	/** Upload a project archive and return its temporary import handle. */

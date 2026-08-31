@@ -1,7 +1,6 @@
 import StreamZip from "node-stream-zip";
 import { stat, } from "node:fs/promises";
 import type { Readable, } from "node:stream";
-import { crc32, } from "node:zlib";
 import { ClientValidationError, } from "../errors.js";
 
 const MANIFEST_MEMBER = "export-manifest.json";
@@ -140,7 +139,7 @@ function isUnsafeMemberPath(name: string,): boolean {
 /**
  * Stream one member through a bounded-memory CRC-32/size check. The library's
  * own verification is bypassed for data-descriptor records (bit 3 set), so the
- * manual `node:zlib.crc32` computation covers every record uniformly.
+ * manual `Bun.hash.crc32` computation covers every record uniformly.
  *
  * When `accumulate` is set, buffered content never exceeds `maxBytes`: the
  * buffer is dropped as soon as the cap is reached while the member is still
@@ -169,7 +168,7 @@ function streamMember(
 		stream.on("data", (chunk: Buffer | string,) => {
 			const buffer = typeof chunk === "string" ? Buffer.from(chunk,) : chunk;
 			bytes += buffer.length;
-			crc = crc32(buffer, crc,) >>> 0;
+			crc = Bun.hash.crc32(buffer, crc,) >>> 0;
 			if (!content || truncated) return;
 			if (bytes > maxBytes) {
 				truncated = true;
@@ -364,7 +363,7 @@ function residueIssue(member: string, counts: ResidueCounts,): ProjectArchiveIss
  * Inspect a DSS project export ZIP archive without extracting anything to
  * disk: enumerate every central-directory record, validate member paths
  * independently, stream every file member through a size/CRC-32 check with
- * bounded memory (manual `node:zlib.crc32`, covering data-descriptor
+ * bounded memory (manual `Bun.hash.crc32`, covering data-descriptor
  * records), parse `export-manifest.json` and the source project key, and run
  * the generic dangling-reference/orphan-member graph checks. Identity,
  * history and machine-specific residue is reported only as warnings carrying

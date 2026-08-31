@@ -1,4 +1,4 @@
-import { openAsBlob, readFileSync, } from "node:fs";
+import { readFileSync, } from "node:fs";
 import { basename, } from "node:path";
 import { getCACertificates, } from "node:tls";
 
@@ -610,7 +610,7 @@ export class DataikuClient {
 		filePath: string,
 		fileName?: string,
 	): Promise<Response> {
-		const fileBlob = await openAsBlob(filePath,);
+		const fileBlob = Bun.file(filePath,);
 		const formData = new FormData();
 		formData.append("file", fileBlob, fileName ?? basename(filePath,),);
 

@@ -1,7 +1,4 @@
-import { createWriteStream, } from "node:fs";
-import { resolve, } from "node:path";
-import { Readable, } from "node:stream";
-import { pipeline, } from "node:stream/promises";
+import * as nodePath from "node:path";
 import type { FolderCreateOptions, FolderDetails, FolderItem, FolderSummary, } from "../schemas.js";
 import {
 	FolderDetailsSchema,
@@ -115,10 +112,10 @@ export class FoldersResource extends BaseResource {
 		const res = await this.client.stream(
 			`/public/api/projects/${this.enc(opts?.projectKey,)}/managedfolders/${fEnc}/contents/${pEnc}`,
 		);
-		const dest = opts?.localPath ?? resolve(process.cwd(), inferDownloadFileName(normalizedPath,),);
-		const nodeStream = Readable.fromWeb(res.body as unknown as import("stream/web").ReadableStream,);
-		const fileOut = createWriteStream(dest,);
-		await pipeline(nodeStream, fileOut,);
+		if (!res.body) throw new Error("folders.download response did not include a body",);
+		const dest = opts?.localPath
+			?? nodePath.resolve(process.cwd(), inferDownloadFileName(normalizedPath,),);
+		await Bun.write(dest, new Response(res.body,), { createPath: false, },);
 		return dest;
 	}
 

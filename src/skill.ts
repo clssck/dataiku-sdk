@@ -1,4 +1,3 @@
-import { execFileSync, } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -93,16 +92,6 @@ export const AGENTS: Record<string, AgentDef> = {
 // Agent detection
 // ---------------------------------------------------------------------------
 
-function binaryExists(name: string,): boolean {
-	const cmd = process.platform === "win32" ? "where" : "which";
-	try {
-		execFileSync(cmd, [name,], { stdio: "pipe", },);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 export interface DetectedAgent {
 	id: string;
 	def: AgentDef;
@@ -113,7 +102,7 @@ export function detectAgents(): DetectedAgent[] {
 	const home = os.homedir();
 	const found: DetectedAgent[] = [];
 	for (const [id, def,] of Object.entries(AGENTS,)) {
-		const hasBinary = binaryExists(def.binary,);
+		const hasBinary = Bun.which(def.binary,) !== null;
 		const hasConfigDir = fs.existsSync(path.join(home, def.configDir,),);
 		if (hasBinary && (!def.configDirRequired || hasConfigDir)) {
 			found.push({ id, def, via: "binary", },);
@@ -124,9 +113,6 @@ export function detectAgents(): DetectedAgent[] {
 	return found;
 }
 
-// ---------------------------------------------------------------------------
-// Skill installation
-// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Workspace root detection
 // ---------------------------------------------------------------------------
@@ -150,6 +136,9 @@ export function findWorkspaceRoot(startDir: string,): string {
 	return startDir;
 }
 
+// ---------------------------------------------------------------------------
+// Skill installation
+// ---------------------------------------------------------------------------
 export interface InstallResult {
 	agent: string;
 	path: string;

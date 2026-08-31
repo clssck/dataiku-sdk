@@ -1,7 +1,5 @@
-import { createHash, } from "node:crypto";
-
 export function sha256Hex(value: string,): string {
-	return createHash("sha256",).update(value,).digest("hex",);
+	return new Bun.CryptoHasher("sha256",).update(value,).digest("hex",);
 }
 
 /** Locale-independent UTF-16 code-unit order for deterministic machine output. */

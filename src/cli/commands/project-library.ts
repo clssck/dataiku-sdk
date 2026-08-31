@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, } from "node:fs";
+import * as fs from "node:fs";
 import type { DataikuClient, } from "../../client.js";
 import { readStdinText, } from "../coerce.js";
 import { encodedProjectEndpoint, planResult, } from "../output.js";
@@ -108,8 +108,8 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 				a[0],
 				f["project-key"] as string | undefined,
 			);
-			writeFileSync(out, bytes,);
-			return { path: out, bytes: bytes.length, };
+			const written = await Bun.write(out, bytes, { createPath: false, },);
+			return { path: out, bytes: written, };
 		},
 		usage: "dss project-library get-bytes <path> --output PATH [--project-key KEY]",
 		description: "Download a project library file's raw bytes to a local file.",
@@ -170,7 +170,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			const content = typeof f["content"] === "string"
 				? f["content"] as string
 				: typeof f["file"] === "string"
-				? readFileSync(f["file"] as string, "utf-8",)
+				? fs.readFileSync(f["file"] as string, "utf-8",)
 				: await readStdinText();
 			await c.projectLibrary.addOrUpdateFile(a[0], content, pk,);
 			return { updated: a[0], };
