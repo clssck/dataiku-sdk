@@ -9,7 +9,14 @@ import { fileURLToPath, pathToFileURL, } from "node:url";
 
 const runningUnderBun = typeof process.versions.bun === "string";
 const bunNodeCompatibilityMode = runningUnderBun
-	&& path.basename(process.argv0,).toLowerCase().startsWith("node",);
+	&& (
+		path.basename(process.argv0,).toLowerCase().startsWith("node",)
+		|| (
+			process.env.npm_lifecycle_event === "bunx"
+			&& ["dss", "dataiku-sdk",].includes(process.env.npm_lifecycle_script ?? "",)
+			&& /^bun(?:\.exe)?$/i.test(path.basename(process.env.npm_execpath ?? "",),)
+		)
+	);
 const envFileAutoloadDisabled = process.execArgv.includes("--no-env-file",)
 	|| bunNodeCompatibilityMode;
 
