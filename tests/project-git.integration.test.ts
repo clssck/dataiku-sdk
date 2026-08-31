@@ -21,7 +21,7 @@ describeProjectGitIntegration("Project Git live integration", () => {
 		const cli = await dssRaw(["project-git", "status", "--project-key", gitProjectKey!,],);
 
 		expect(cli.code, cli.stderr,).toBe(0,);
-		expect(parseJsonOutput(cli.stdout,),).toEqual(sdkStatus,);
+		expect(parseJsonOutput<typeof sdkStatus>(cli.stdout,),).toEqual(sdkStatus,);
 	});
 
 	it("reads the current branch and local branches without mutation", async () => {
@@ -37,7 +37,9 @@ describeProjectGitIntegration("Project Git live integration", () => {
 
 		expect(cliCurrentBranch.code, cliCurrentBranch.stderr,).toBe(0,);
 		expect(cliBranches.code, cliBranches.stderr,).toBe(0,);
-		expect(parseJsonOutput(cliCurrentBranch.stdout,),).toEqual(sdkCurrentBranch,);
-		expect(parseJsonOutput(cliBranches.stdout,),).toEqual(sdkBranches,);
+		expect(parseJsonOutput<{ branch: string | null; }>(cliCurrentBranch.stdout,),).toEqual({
+			branch: sdkCurrentBranch,
+		},);
+		expect(parseJsonOutput<string[]>(cliBranches.stdout,),).toEqual(sdkBranches,);
 	});
 },);
