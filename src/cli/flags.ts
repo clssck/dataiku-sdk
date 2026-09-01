@@ -160,6 +160,7 @@ export const VALUE_FLAGS = new Set([
 	"path",
 	"path-in-repository",
 	"preview",
+	"render",
 	"prediction-type",
 	"project-key",
 	"recipe",

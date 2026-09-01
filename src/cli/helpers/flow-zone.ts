@@ -2,6 +2,7 @@ import { readFileSync, } from "node:fs";
 import type { DataikuClient, } from "../../client.js";
 import type { FlowZoneItemInput, } from "../../resources/flow-zones.js";
 import type { FlowZone, FlowZoneObjectType, FlowZonePosition, } from "../../schemas.js";
+import { compareStrings, } from "../../utils/stable-hash.js";
 import {
 	finiteNumberField,
 	jsonInput,
@@ -140,6 +141,7 @@ export interface FlowZoneOrganizeZonePlan {
 }
 
 export interface FlowZoneOrganizePlan {
+	topologyFingerprint?: string;
 	zones: FlowZoneOrganizeZonePlan[];
 }
 
@@ -291,13 +293,21 @@ export function validateUniqueFlowZoneAssignments(plan: FlowZoneOrganizePlan,): 
 
 export function parseFlowZoneOrganizePlan(input: Record<string, unknown>,): FlowZoneOrganizePlan {
 	const zones = input.zones;
-	if (!Array.isArray(zones,) || zones.length === 0) {
+	if (!Array.isArray(zones,)) {
 		throw new UsageError(
-			"Flow zone organize plan must include a non-empty zones array.",
+			"Flow zone organize plan must include a zones array.",
 			"validation_failed",
 		);
 	}
-	const plan = {
+	const topologyFingerprint = optionalStringField(input, ["topologyFingerprint",],);
+	if (topologyFingerprint !== undefined && !/^[0-9a-f]{64}$/.test(topologyFingerprint,)) {
+		throw new UsageError(
+			"topologyFingerprint must be a lowercase SHA-256 hash.",
+			"validation_failed",
+		);
+	}
+	const plan: FlowZoneOrganizePlan = {
+		...(topologyFingerprint ? { topologyFingerprint, } : {}),
 		zones: zones.map((value, index,) => {
 			const source = `zones[${index}]`;
 			const record = plainRecord(value,);
@@ -408,6 +418,38 @@ export function flowZoneExplicitItems(zone: FlowZone,): FlowZoneItemInput[] {
 	}));
 }
 
+export function flowZonePlanFromZones(
+	zones: FlowZone[],
+	topologyFingerprint: string,
+): FlowZoneOrganizePlan {
+	return {
+		topologyFingerprint,
+		zones: [...zones,]
+			.sort((a, b,) => compareStrings(a.id, b.id,))
+			.map((zone,) => {
+				const position = flowZoneCurrentPosition(zone,);
+				return {
+					id: zone.id,
+					name: zone.name,
+					...(zone.color ? { color: zone.color, } : {}),
+					...(position ? { position, } : {}),
+					items: flowZoneExplicitItems(zone,).sort((a, b,) =>
+						compareStrings(flowZoneItemKey(a,), flowZoneItemKey(b,),)
+					),
+				};
+			},),
+	};
+}
+
+export function flowZoneMoveDelta(
+	existing: FlowZone | undefined,
+	plannedItems: FlowZoneItemInput[],
+): FlowZoneItemInput[] {
+	if (!existing) return plannedItems;
+	const existingKeys = new Set(flowZoneExplicitItems(existing,).map(flowZoneItemKey,),);
+	return plannedItems.filter((item,) => !existingKeys.has(flowZoneItemKey(item,),));
+}
+
 export function flowZonePruneItems(
 	existing: FlowZone | undefined,
 	plannedItemKeys: Set<string>,
@@ -435,6 +477,7 @@ export function flowZoneOrganizeStep(
 		update.position = plan.position;
 	}
 	const pruneItems = sync ? flowZonePruneItems(existing, plannedItemKeys,) : [];
+	const moveItems = flowZoneMoveDelta(existing, plan.items,);
 	return {
 		target: {
 			...(plan.id ? { id: plan.id, } : {}),
@@ -444,7 +487,7 @@ export function flowZoneOrganizeStep(
 		},
 		...(existing ? { existing: flowZoneSummary(existing,), } : { create: true, }),
 		...(Object.keys(update,).length > 0 ? { update, } : {}),
-		moveItems: plan.items,
+		moveItems,
 		...(pruneItems.length > 0 ? { pruneItems, } : {}),
 	};
 }

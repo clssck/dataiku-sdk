@@ -310,6 +310,18 @@ export type {
 // Utilities
 export { deepMerge, } from "./utils/deep-merge.js";
 export {
+	type AnalyzedFlowMap,
+	type AnalyzedFlowNode,
+	analyzeFlowMap,
+	type FlowMapComponent,
+	type FlowMapDiagnostic,
+	type FlowMapRendering,
+	type FlowMapZone,
+	type FlowRenderFormat,
+	flowTopologyFingerprint,
+	renderFlowMap,
+} from "./utils/flow-analysis.js";
+export {
 	type NormalizedFlowEdge,
 	type NormalizedFlowMap,
 	type NormalizedFlowNode,

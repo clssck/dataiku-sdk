@@ -11,6 +11,8 @@ import type {
 	ProjectMetadata,
 	ProjectSummary,
 } from "../schemas.js";
+import type { AnalyzedFlowMap, FlowMapRendering, } from "../utils/flow-analysis.js";
+import { analyzeFlowMap, flowTopologyFingerprint, renderFlowMap, } from "../utils/flow-analysis.js";
 import type {
 	NormalizedFlowEdge,
 	NormalizedFlowMap,
@@ -165,8 +167,9 @@ function truncateFlowMap(
 // ---------------------------------------------------------------------------
 
 export interface FlowMapResult {
-	map: NormalizedFlowMap;
+	map: AnalyzedFlowMap;
 	truncation: FlowMapTruncationSummary;
+	rendering?: FlowMapRendering;
 	raw?: unknown;
 }
 
@@ -593,6 +596,13 @@ export class ProjectsResource extends BaseResource {
 		return this.client.get<unknown>(`/public/api/projects/${enc}/flow/graph/`,);
 	}
 
+	/** Compute a stable fingerprint of flow nodes and edges, excluding visual metadata. */
+	async topologyFingerprint(projectKey?: string,): Promise<string> {
+		const pk = this.resolveProjectKey(projectKey,);
+		const rawGraph = await this.flow(pk,);
+		return flowTopologyFingerprint(normalizeFlowGraph(rawGraph, pk,),);
+	}
+
 	/**
 	 * Build a normalized, optionally truncated flow map for a project.
 	 *
@@ -605,7 +615,7 @@ export class ProjectsResource extends BaseResource {
 		const pk = this.resolveProjectKey(opts?.projectKey,);
 		const timeoutMs = DEFAULT_METADATA_TIMEOUT_MS;
 
-		const [rawGraph, foldersMeta, datasetsMeta, recipesMeta,] = await Promise.all([
+		const [rawGraph, foldersMeta, datasetsMeta, recipesMeta, zonesMeta,] = await Promise.all([
 			this.client.get<unknown>(`/public/api/projects/${enc}/flow/graph/`,),
 			fetchWithTimeout(
 				"Managed folders",
@@ -625,6 +635,7 @@ export class ProjectsResource extends BaseResource {
 				timeoutMs,
 				() => this.client.get<Array<{ name?: string; }>>(`/public/api/projects/${enc}/recipes/`,),
 			),
+			fetchWithTimeout("Flow zones", timeoutMs, () => this.client.flowZones.list(pk,),),
 		],);
 
 		// Build folder name lookup
@@ -657,6 +668,7 @@ export class ProjectsResource extends BaseResource {
 			foldersMeta.warning,
 			datasetsMeta.warning,
 			recipesMeta.warning,
+			zonesMeta.warning,
 		].filter((w,): w is string => typeof w === "string" && w.length > 0);
 
 		const normalized = metadataWarnings.length > 0
@@ -669,9 +681,15 @@ export class ProjectsResource extends BaseResource {
 		// Truncate
 		const effectiveMaxNodes = opts?.maxNodes ?? DEFAULT_MAX_NODES;
 		const effectiveMaxEdges = opts?.maxEdges ?? DEFAULT_MAX_EDGES;
+		const topologyFingerprint = flowTopologyFingerprint(normalizeFlowGraph(rawGraph, pk,),);
 		const { map, truncation, } = truncateFlowMap(normalized, effectiveMaxNodes, effectiveMaxEdges,);
+		const analyzed = analyzeFlowMap(map, zonesMeta.value ?? [], {
+			topologyFingerprint,
+			truncated: truncation.truncated,
+		},);
 
-		const result: FlowMapResult = { map, truncation, };
+		const result: FlowMapResult = { map: analyzed, truncation, };
+		if (opts?.render) result.rendering = renderFlowMap(analyzed, opts.render,);
 		if (opts?.includeRaw) {
 			result.raw = rawGraph;
 		}

@@ -34,7 +34,7 @@ describe("CLI regression fixes", () => {
 		const map = registry.project?.map;
 
 		expect(map?.usage,).toBe(
-			"dss project map [--max-nodes N] [--max-edges N] [--include-raw] [--project-key KEY]",
+			"dss project map [--max-nodes N] [--max-edges N] [--include-raw] [--render ascii|mermaid] [--project-key KEY]",
 		);
 		expect(map?.requiresProject,).toBe(true,);
 		expect(map?.flags,).toContainEqual(

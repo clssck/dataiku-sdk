@@ -428,10 +428,18 @@ describe("CLI flow zone commands", () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			expect(req.method,).toBe("GET",);
-			expect(url.pathname,).toBe("/public/api/projects/TEST/flow/zones",);
-			sendJson(res, [
-				{ id: "zone-raw", name: "Raw", color: "#111111", items: [], },
-			],);
+			if (url.pathname === "/public/api/projects/TEST/flow/zones") {
+				sendJson(res, [
+					{ id: "zone-raw", name: "Raw", color: "#111111", items: [], },
+				],);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/flow/graph/") {
+				sendJson(res, {},);
+				return;
+			}
+			res.statusCode = 500;
+			res.end("unexpected request",);
 		}, async (url,) => {
 			const plan = {
 				zones: [
@@ -496,6 +504,10 @@ describe("CLI flow zone commands", () => {
 				],);
 				return;
 			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/flow/graph/") {
+				sendJson(res, {},);
+				return;
+			}
 			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/flow/zones") {
 				createBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
 				sendJson(res, { id: "zone-prepared", name: "Prepared", color: "#2ab1ac", items: [], },);
@@ -533,11 +545,13 @@ describe("CLI flow zone commands", () => {
 			expect(stderr,).toBe("",);
 			const result = JSON.parse(stdout,) as {
 				organized: boolean;
+				topologyUnchanged: boolean;
 				created: Array<{ id: string; name: string; }>;
 				moved: Array<{ zoneId: string; items: unknown[]; }>;
 				pruned: Array<{ zoneId: string; items: unknown[]; }>;
 			};
 			expect(result.organized,).toBe(true,);
+			expect(result.topologyUnchanged,).toBe(true,);
 			expect(result.created,).toEqual([{
 				id: "zone-prepared",
 				name: "Prepared",
@@ -555,10 +569,12 @@ describe("CLI flow zone commands", () => {
 
 		expect(requests,).toEqual([
 			"GET /public/api/projects/TEST/flow/zones",
+			"GET /public/api/projects/TEST/flow/graph/",
 			"POST /public/api/projects/TEST/flow/zones/zone-raw/add-items",
 			"POST /public/api/projects/TEST/flow/zones/default/add-items",
 			"POST /public/api/projects/TEST/flow/zones",
 			"POST /public/api/projects/TEST/flow/zones/zone-prepared/add-items",
+			"GET /public/api/projects/TEST/flow/graph/",
 		],);
 		expect(createBody,).toEqual({ name: "Prepared", color: "#2ab1ac", },);
 		expect(moveBodies,).toEqual([

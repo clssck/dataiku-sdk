@@ -1,5 +1,6 @@
 import { ClientValidationError, DataikuError, } from "../../errors.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
+import type { FlowRenderFormat, } from "../../utils/flow-analysis.js";
 import { inspectProjectArchive, } from "../../utils/project-archive.js";
 import type { ProjectArchiveInspection, } from "../../utils/project-archive.js";
 import { projectIncarnationHash, } from "../../utils/project-incarnation.js";
@@ -9,6 +10,12 @@ import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
 const INSPECT_ARCHIVE_USAGE = "dss project inspect-archive <file>";
+
+function flowRenderFormat(value: string | boolean | undefined,): FlowRenderFormat | undefined {
+	if (value === undefined) return undefined;
+	if (value === "ascii" || value === "mermaid") return value;
+	throw new UsageError("--render must be ascii or mermaid.", "invalid_enum",);
+}
 
 /** Local, DSS-free archive inspection shared by the local handler and the command handler. */
 function inspectArchiveCommand(args: string[],): Promise<ProjectArchiveInspection> {
@@ -48,12 +55,15 @@ export const projectCommands: Record<string, CommandMeta> = {
 				maxNodes: num(f["max-nodes"], "--max-nodes",),
 				maxEdges: num(f["max-edges"], "--max-edges",),
 				includeRaw: f["include-raw"] === true,
+				render: flowRenderFormat(f["render"],),
 			},),
-		usage: "dss project map [--max-nodes N] [--max-edges N] [--include-raw] [--project-key KEY]",
-		description: "Get a summarized, truncated flow map.",
+		usage:
+			"dss project map [--max-nodes N] [--max-edges N] [--include-raw] [--render ascii|mermaid] [--project-key KEY]",
+		description: "Get an analyzed flow map with zones, layers, components, and diagnostics.",
 		examples: [
 			"dss project map",
 			"dss project map --max-nodes 50 --max-edges 100",
+			"dss project map --render mermaid",
 			"dss project map --include-raw",
 		],
 	},

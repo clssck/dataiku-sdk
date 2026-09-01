@@ -813,6 +813,7 @@ export const FlowMapOptionsSchema = Type.Object({
 	maxNodes: Type.Optional(Type.Number(),),
 	maxEdges: Type.Optional(Type.Number(),),
 	includeRaw: Type.Optional(Type.Boolean(),),
+	render: Type.Optional(Type.Union([Type.Literal("ascii",), Type.Literal("mermaid",),],),),
 },);
 export type FlowMapOptions = Static<typeof FlowMapOptionsSchema>;
 // ---------------------------------------------------------------------------

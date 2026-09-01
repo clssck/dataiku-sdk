@@ -1,3 +1,4 @@
+import { ClientValidationError, } from "../../errors.js";
 import type { FlowZoneItemInput, } from "../../resources/flow-zones.js";
 import type { FlowZone, } from "../../schemas.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
@@ -9,9 +10,11 @@ import {
 	flowZoneCurrentPosition,
 	flowZoneDetailSummary,
 	flowZoneId,
+	flowZoneMoveDelta,
 	flowZoneMoveItems,
 	flowZoneName,
 	flowZoneOrganizeStep,
+	flowZonePlanFromZones,
 	flowZonePlanItemKeys,
 	flowZonePruneItems,
 	flowZoneSamePosition,
@@ -203,6 +206,19 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			"dss flow-zone move ZONE_ID --object SAVED_MODEL:model_id",
 		],
 	},
+	plan: {
+		handler: async (c, _a, f,) => {
+			const pk = f["project-key"] as string | undefined;
+			const [zones, topologyFingerprint,] = await Promise.all([
+				c.flowZones.list(pk,),
+				c.projects.topologyFingerprint(pk,),
+			],);
+			return flowZonePlanFromZones(zones, topologyFingerprint,);
+		},
+		usage: "dss flow-zone plan [--project-key KEY]",
+		description: "Export current visual flow-zone organization as an organize-compatible plan.",
+		examples: ["dss flow-zone plan --project-key MYPROJ",],
+	},
 	organize: {
 		handler: async (c, _a, f,) => {
 			const usage =
@@ -211,7 +227,18 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			const plan = readFlowZoneOrganizePlan(f, usage,);
 			const sync = f["sync"] === true;
 			const validateObjects = f["validate-objects"] === true;
-			const zones = await c.flowZones.list(pk,);
+			const [zones, topologyFingerprint,] = await Promise.all([
+				c.flowZones.list(pk,),
+				c.projects.topologyFingerprint(pk,),
+			],);
+			if (plan.topologyFingerprint && plan.topologyFingerprint !== topologyFingerprint) {
+				throw new ClientValidationError(
+					"Flow topology changed after this visual organization plan was generated.",
+					"assertion_failed",
+					"Regenerate the plan with dss flow-zone plan, then review it before applying.",
+					{ expected: plan.topologyFingerprint, actual: topologyFingerprint, },
+				);
+			}
 			const plannedItemKeys = flowZonePlanItemKeys(plan,);
 			const planned = plan.zones.map((zonePlan,) =>
 				flowZoneOrganizeStep(zonePlan, findFlowZoneForPlan(zones, zonePlan,), sync, plannedItemKeys,)
@@ -233,6 +260,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 					projectKey: pk,
 					sync,
 					validateObjects,
+					topologyFingerprint,
 					zoneCount: plan.zones.length,
 					itemCount,
 					pruneItemCount,
@@ -252,6 +280,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			for (const zonePlan of plan.zones) {
 				let zone = findFlowZoneForPlan(currentZones, zonePlan,);
 				ensureFlowZonePlanTarget(zonePlan, zone,);
+				const moveItems = flowZoneMoveDelta(zone, zonePlan.items,);
 				const pruneItems = sync ? flowZonePruneItems(zone, plannedItemKeys,) : [];
 				if (!zone) {
 					zone = await c.flowZones.create({
@@ -280,14 +309,24 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 					}
 				}
 
-				if (zonePlan.items.length > 0) {
-					await c.flowZones.moveItems(zone.id, zonePlan.items, pk,);
-					moved.push({ zoneId: zone.id, name: zone.name, items: zonePlan.items, },);
+				if (moveItems.length > 0) {
+					await c.flowZones.moveItems(zone.id, moveItems, pk,);
+					moved.push({ zoneId: zone.id, name: zone.name, items: moveItems, },);
 				}
 				if (pruneItems.length > 0) {
 					await c.flowZones.moveItems("default", pruneItems, pk,);
 					pruned.push({ zoneId: "default", fromZoneId: zone.id, name: zone.name, items: pruneItems, },);
 				}
+			}
+
+			const topologyFingerprintAfter = await c.projects.topologyFingerprint(pk,);
+			if (topologyFingerprintAfter !== topologyFingerprint) {
+				throw new ClientValidationError(
+					"Visual flow-zone changes modified flow topology.",
+					"assertion_failed",
+					"Inspect the flow before applying any further organization changes.",
+					{ before: topologyFingerprint, after: topologyFingerprintAfter, },
+				);
 			}
 
 			return {
@@ -297,6 +336,8 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 				projectKey: pk,
 				sync,
 				validateObjects,
+				topologyFingerprint,
+				topologyUnchanged: true,
 				zoneCount: plan.zones.length,
 				itemCount,
 				pruneItemCount,

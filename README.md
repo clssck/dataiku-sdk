@@ -285,6 +285,48 @@ never marks that external check complete. The public DSS APIs used by this SDK d
 supported app-template publish/recreate/rename workflow, recipient-level app sharing setter, or
 UI-click smoke test. The CLI does not guess private endpoints for those operations.
 
+## Flow visualization and zone planning
+
+`project map` returns one agent-oriented JSON view of the Flow: normalized nodes and edges,
+joined zone metadata, cycle-safe topological layers, weakly connected components, diagnostics, and
+a stable `topologyFingerprint`. Zone joins add `zoneId`/`zoneName` to each node; the top-level
+`zones` array preserves zone color, position, item count, and visible node IDs.
+
+```bash
+dss project map --project-key MYPROJ
+dss project map --render mermaid --project-key MYPROJ
+dss project map --render ascii --max-nodes 100 --max-edges 200 --project-key MYPROJ
+```
+
+Rendering is optional and remains inside the JSON result as `rendering.content`; stdout never
+switches to an unstructured diagram stream. Layers are computed after collapsing strongly connected
+components, so cycles are reported without blocking the analysis. Diagnostics cover cycles,
+disconnected components, isolated/default-zone nodes, cross-zone edges, duplicate assignments, and
+truncated analysis. When limits truncate the returned nodes or edges, the topology fingerprint still
+covers the full normalized Flow while layers/components/diagnostics cover the returned subset.
+
+The public API exposes zone positions and membership, not individual node pixel coordinates. The CLI
+therefore preserves only supported zone-level visual metadata and never fabricates node coordinates.
+Use the declarative export/apply loop for visual organization:
+
+```bash
+dss flow-zone plan --project-key MYPROJ > flow-zones.json
+dss flow-zone organize --file flow-zones.json --dry-run --project-key MYPROJ
+dss flow-zone organize --file flow-zones.json --project-key MYPROJ
+```
+
+`flow-zone plan` emits JSON accepted directly by `flow-zone organize`, including every
+current zone's supported metadata and explicit items. Reapplying an unchanged plan produces no
+redundant moves. `organize` compares the plan's topology fingerprint before mutation and recomputes
+it after mutation; a mismatch fails rather than claiming a visual-only change. Zone names, colors,
+positions, and membership are deliberately excluded from the fingerprint; flow node identity/kind and
+edges are included.
+
+Recipe/code analysis is a separate audit. `project map` and `flow-zone plan` do not fetch,
+hash, interpret, or grade recipe payloads. Use the recipe inspection/diff/assertion commands in a
+separate workflow when code quality or semantic review is required; never mix those findings into a
+layout plan.
+
 ## Project Git source-control safety
 
 Project Git commands require DSS 12.4.2 or newer plus read and write access to the project
