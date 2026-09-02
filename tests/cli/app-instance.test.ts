@@ -1,4 +1,5 @@
 import { describe, expect, it, } from "bun:test";
+import { mkdtempSync, } from "node:fs";
 import { cleanupLedgerEntry, } from "../../src/cli/helpers/cleanup.js";
 import { projectIncarnationHash, } from "../../src/utils/project-incarnation.js";
 import {
@@ -1110,54 +1111,9 @@ describe("app create-instance wait, plans, and cleanup", () => {
 	});
 
 	it("previews and applies the recorded cleanup entry through dss cleanup", async () => {
-		const dir = join(tmpdir(), "dss-app-instance-cleanup",);
-		mkdirSync(dir, { recursive: true, },);
+		const dir = mkdtempSync(join(tmpdir(), "dss-app-instance-cleanup-",),);
 		const ledger = join(dir, "cleanup.jsonl",);
-		writeFileSync(
-			ledger,
-			`${
-				JSON.stringify({
-					ts: "2026-08-12T00:00:00.000Z",
-					action: "create-instance",
-					resource: "app",
-					name: "NEWPROJ",
-					cleanup: { argv: ["app", "delete-instance", "--project-key", "NEWPROJ",], },
-				},)
-			}\n`,
-		);
-
-		const preview = JSON.parse(
-			(await dss(["cleanup", "--file", ledger,], { env: hermetic, },)).stdout,
-		) as { dryRun: boolean; steps: Array<Record<string, unknown>>; };
-		expect(preview.dryRun,).toBe(true,);
-		expect(preview.steps,).toHaveLength(1,);
-		expect(preview.steps[0],).toMatchObject({
-			resource: "app",
-			action: "create-instance",
-			dssUrl: null,
-			cleanup: { argv: ["app", "delete-instance", "--project-key", "NEWPROJ",], },
-		},);
-
-		await withCliServer((req, res,) => {
-			const url = new URL(req.url ?? "/", "http://localhost",);
-			if (req.method === "GET" && url.pathname === "/public/api/projects/NEWPROJ/") {
-				sendJson(res, PROJECT_DETAILS,);
-				return;
-			}
-			if (
-				req.method === "GET" && url.pathname === "/public/api/projects/NEWPROJ/app-manifest"
-			) {
-				sendJson(res, { projectAppType: "APP_INSTANCE", },);
-				return;
-			}
-			if (req.method === "DELETE" && url.pathname === "/public/api/projects/NEWPROJ") {
-				res.statusCode = 204;
-				res.end();
-				return;
-			}
-			res.statusCode = 500;
-			res.end(`unexpected ${req.method} ${url.pathname}`,);
-		}, async (url,) => {
+		try {
 			writeFileSync(
 				ledger,
 				`${
@@ -1166,43 +1122,89 @@ describe("app create-instance wait, plans, and cleanup", () => {
 						action: "create-instance",
 						resource: "app",
 						name: "NEWPROJ",
-						dssUrl: url,
-						cleanup: {
-							argv: [
-								"app",
-								"delete-instance",
-								"--project-key",
-								"NEWPROJ",
-								"--expect-project-incarnation",
-								PROJECT_INCARNATION_HASH,
-							],
-						},
+						cleanup: { argv: ["app", "delete-instance", "--project-key", "NEWPROJ",], },
 					},)
 				}\n`,
 			);
-			const applied = JSON.parse(
-				(
-					await dss(["cleanup", "--file", ledger, "--apply",], { env: cliEnv(url,), },)
-				).stdout,
-			) as { applied: boolean; results: Array<Record<string, unknown>>; failures: unknown[]; };
-			expect(applied.applied,).toBe(true,);
-			expect(applied.failures,).toHaveLength(0,);
-			expect(applied.results,).toHaveLength(1,);
-			expect(applied.results[0],).toMatchObject({
-				cleanup: {
-					argv: [
-						"app",
-						"delete-instance",
-						"--project-key",
-						"NEWPROJ",
-						"--expect-project-incarnation",
-						PROJECT_INCARNATION_HASH,
-					],
-				},
-			},);
-		},);
 
-		rmSync(dir, { recursive: true, force: true, },);
+			const preview = JSON.parse(
+				(await dss(["cleanup", "--file", ledger,], { env: hermetic, },)).stdout,
+			) as { dryRun: boolean; steps: Array<Record<string, unknown>>; };
+			expect(preview.dryRun,).toBe(true,);
+			expect(preview.steps,).toHaveLength(1,);
+			expect(preview.steps[0],).toMatchObject({
+				resource: "app",
+				action: "create-instance",
+				dssUrl: null,
+				cleanup: { argv: ["app", "delete-instance", "--project-key", "NEWPROJ",], },
+			},);
+
+			await withCliServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (req.method === "GET" && url.pathname === "/public/api/projects/NEWPROJ/") {
+					sendJson(res, PROJECT_DETAILS,);
+					return;
+				}
+				if (
+					req.method === "GET" && url.pathname === "/public/api/projects/NEWPROJ/app-manifest"
+				) {
+					sendJson(res, { projectAppType: "APP_INSTANCE", },);
+					return;
+				}
+				if (req.method === "DELETE" && url.pathname === "/public/api/projects/NEWPROJ") {
+					res.statusCode = 204;
+					res.end();
+					return;
+				}
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${url.pathname}`,);
+			}, async (url,) => {
+				writeFileSync(
+					ledger,
+					`${
+						JSON.stringify({
+							ts: "2026-08-12T00:00:00.000Z",
+							action: "create-instance",
+							resource: "app",
+							name: "NEWPROJ",
+							dssUrl: url,
+							cleanup: {
+								argv: [
+									"app",
+									"delete-instance",
+									"--project-key",
+									"NEWPROJ",
+									"--expect-project-incarnation",
+									PROJECT_INCARNATION_HASH,
+								],
+							},
+						},)
+					}\n`,
+				);
+				const applied = JSON.parse(
+					(
+						await dss(["cleanup", "--file", ledger, "--apply",], { env: cliEnv(url,), },)
+					).stdout,
+				) as { applied: boolean; results: Array<Record<string, unknown>>; failures: unknown[]; };
+				expect(applied.applied,).toBe(true,);
+				expect(applied.failures,).toHaveLength(0,);
+				expect(applied.results,).toHaveLength(1,);
+				expect(applied.results[0],).toMatchObject({
+					cleanup: {
+						argv: [
+							"app",
+							"delete-instance",
+							"--project-key",
+							"NEWPROJ",
+							"--expect-project-incarnation",
+							PROJECT_INCARNATION_HASH,
+						],
+					},
+				},);
+			},);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
 	});
 
 	it("preflights every app cleanup binding before applying the first step", async () => {

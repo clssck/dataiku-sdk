@@ -1,5 +1,5 @@
 import { readFileSync, } from "node:fs";
-import { mkdir, writeFile, } from "node:fs/promises";
+import { writeFile, } from "node:fs/promises";
 import { join, } from "node:path";
 import type { BuildMode, } from "../../schemas.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
@@ -18,6 +18,7 @@ import {
 } from "../coerce.js";
 import { moveCreatedItemsToZone, resolveFlowZoneIdFromFlags, } from "../helpers/flow-zone.js";
 import {
+	ensureRecipeBackupDir,
 	readRecipeBackup,
 	recipeBackupDocument,
 	recipeBackupPath,
@@ -26,6 +27,7 @@ import {
 	recipeInputItemRef,
 	recipeRoleInputItems,
 	recipeRunShouldWait,
+	writeRecipeBackup,
 } from "../helpers/recipe.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
@@ -670,11 +672,10 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				};
 			}
 			if (backupDir && backupPath) {
-				await mkdir(backupDir, { recursive: true, },);
-				await writeFile(
+				ensureRecipeBackupDir(backupDir,);
+				writeRecipeBackup(
 					backupPath,
 					`${JSON.stringify(recipeBackupDocument(a[0], pk, current,), null, 2,)}\n`,
-					"utf-8",
 				);
 			}
 			await c.recipes.replace(a[0], { ...current, payload: content, }, pk,);

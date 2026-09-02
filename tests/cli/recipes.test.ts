@@ -1,4 +1,6 @@
 import { describe, expect, it, } from "bun:test";
+import { lstatSync, mkdtempSync, readdirSync, symlinkSync, } from "node:fs";
+import { ensureRecipeBackupDir, writeRecipeBackup, } from "../../src/cli/helpers/recipe.js";
 import type { IncomingMessage, ServerResponse, } from "./_harness.js";
 import {
 	cliEnv,
@@ -12,6 +14,7 @@ import {
 	realpathSync,
 	rmSync,
 	sendJson,
+	statSync,
 	tmpdir,
 	withCliServer,
 	writeFileSync,
@@ -845,5 +848,150 @@ describe("CLI recipe get-payload and set-payload", () => {
 			"GET /public/api/projects/TEST/jobs/job-folder/",
 			"GET /public/api/projects/TEST/jobs/job-folder/log/",
 		],);
+	});
+});
+
+describe("recipe set-payload backup hardening", () => {
+	it("creates owner-only 0700 backup directories and a 0600 backup file", async () => {
+		const baseDir = mkdtempSync(join(tmpdir(), "dss-cli-backup-safe-",),);
+		const backupDir = join(baseDir, "nested", ".dss-backups", "recipes",);
+		const filePath = join(baseDir, "updated.py",);
+		writeFileSync(filePath, "print('updated')\n", "utf-8",);
+		let putBody: string | undefined;
+		try {
+			await withCliServer(async (req, res,) => {
+				if (req.method === "GET") {
+					sendJson(res, {
+						recipe: { type: "python", name: "my_recipe", },
+						payload: "print('remote')\n",
+					},);
+					return;
+				}
+				if (req.method === "PUT") {
+					putBody = await readBody(req,);
+					sendJson(res, {},);
+					return;
+				}
+				res.statusCode = 404;
+				res.end();
+			}, async (url,) => {
+				const { stdout, } = await dss([
+					"recipe",
+					"set-payload",
+					"my_recipe",
+					"--file",
+					filePath,
+					"--backup-dir",
+					backupDir,
+				], { env: cliEnv(url,), },);
+				const result = JSON.parse(stdout,) as {
+					backupCreated: boolean;
+					backupPath: string;
+				};
+				expect(result.backupCreated,).toBe(true,);
+				expect(lstatSync(backupDir,).isSymbolicLink(),).toBe(false,);
+				expect(statSync(backupDir,).mode & 0o777,).toBe(0o700,);
+				expect(statSync(join(baseDir, "nested", ".dss-backups",),).mode & 0o777,).toBe(
+					0o700,
+				);
+				expect(statSync(join(baseDir, "nested",),).mode & 0o777,).toBe(0o700,);
+				expect(statSync(result.backupPath,).mode & 0o777,).toBe(0o600,);
+			},);
+			expect(JSON.parse(putBody!,).payload,).toBe("print('updated')\n",);
+		} finally {
+			rmSync(baseDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("refuses a symlinked backup directory before writing or PUTting", async () => {
+		const baseDir = mkdtempSync(join(tmpdir(), "dss-cli-backup-linkdir-",),);
+		const realDir = join(baseDir, "real",);
+		const backupDir = join(baseDir, "backup-link",);
+		mkdirSync(realDir,);
+		symlinkSync(realDir, backupDir,);
+		const filePath = join(baseDir, "updated.py",);
+		writeFileSync(filePath, "print('updated')\n", "utf-8",);
+		let putBody: string | undefined;
+		try {
+			await withCliServer(async (req, res,) => {
+				if (req.method === "GET") {
+					sendJson(res, {
+						recipe: { type: "python", name: "my_recipe", },
+						payload: "print('remote')\n",
+					},);
+					return;
+				}
+				if (req.method === "PUT") {
+					putBody = await readBody(req,);
+					sendJson(res, {},);
+					return;
+				}
+				res.statusCode = 404;
+				res.end();
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"recipe",
+					"set-payload",
+					"my_recipe",
+					"--file",
+					filePath,
+					"--backup-dir",
+					backupDir,
+				], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(1,);
+				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+				expect(report.error,).toContain("symlink",);
+				expect(report.code,).toBe("usage_error",);
+			},);
+			expect(putBody,).toBeUndefined();
+			expect(readdirSync(realDir,).length,).toBe(0,);
+		} finally {
+			rmSync(baseDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("writeRecipeBackup refuses an existing destination without touching it", () => {
+		const baseDir = mkdtempSync(join(tmpdir(), "dss-cli-backup-exists-",),);
+		try {
+			const backupPath = join(baseDir, "backup.json",);
+			writeRecipeBackup(backupPath, "first",);
+			expect(() => writeRecipeBackup(backupPath, "second",)).toThrow(/already exists/,);
+			expect(readFileSync(backupPath, "utf-8",),).toBe("first",);
+			expect(statSync(backupPath,).mode & 0o777,).toBe(0o600,);
+		} finally {
+			rmSync(baseDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("writeRecipeBackup refuses a symlink destination without touching its target", () => {
+		const baseDir = mkdtempSync(join(tmpdir(), "dss-cli-backup-linkfile-",),);
+		try {
+			const target = join(baseDir, "target.json",);
+			writeFileSync(target, "original", "utf-8",);
+			const backupPath = join(baseDir, "backup.json",);
+			symlinkSync(target, backupPath,);
+			expect(() => writeRecipeBackup(backupPath, "second",)).toThrow(/already exists/,);
+			expect(readFileSync(target, "utf-8",),).toBe("original",);
+		} finally {
+			rmSync(baseDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("ensureRecipeBackupDir refuses a symlink component in the path", () => {
+		const baseDir = mkdtempSync(join(tmpdir(), "dss-cli-backup-linkpath-",),);
+		try {
+			const realDir = join(baseDir, "real",);
+			mkdirSync(realDir,);
+			symlinkSync(realDir, join(baseDir, "link",),);
+			expect(() => ensureRecipeBackupDir(join(baseDir, "link", "nested",),)).toThrow(
+				/symlink/,
+			);
+		} finally {
+			rmSync(baseDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("ensureRecipeBackupDir refuses the filesystem root as backup directory", () => {
+		expect(() => ensureRecipeBackupDir("/",)).toThrow(/filesystem root/,);
 	});
 });
