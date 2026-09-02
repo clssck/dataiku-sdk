@@ -569,12 +569,17 @@ describe("CLI execution behavior", () => {
 				"--retries",
 				"2",
 			], { env: cliEnv(url,), },);
-			expect(failure.code,).toBe(3,);
+			expect(failure.code,).toBe(2,);
 			expect(failure.stderr,).toBe("",);
 			expect(startAttempts,).toBe(1,);
 			const report = JSON.parse(failure.stdout,) as {
+				code: string;
+				retryable: boolean;
+				hint: string;
 				details?: { retry?: { enabled?: boolean; maxAttempts?: number; }; };
 			};
+			expect(report,).toMatchObject({ code: "ambiguous_outcome", retryable: false, },);
+			expect(report.hint,).toContain("verify whether the mutation took effect",);
 			expect(report.details?.retry,).toMatchObject({ enabled: false, maxAttempts: 1, },);
 		},);
 	});
@@ -746,19 +751,31 @@ describe("CLI execution behavior", () => {
 		}
 	});
 
-	it("rejects --preview without --output", async () => {
-		const failure = await dssFailure([
-			"sql",
-			"query",
-			"SELECT 1",
-			"--connection",
-			"CONN",
-			"--preview",
-			"5",
-		], { env: cliEnv("http://127.0.0.1:1",), },);
-		expect(failure.code,).toBe(1,);
-		expect(failure.stderr,).toBe("",);
-		expect(failure.stdout,).toContain("--preview requires --output",);
+	it("bounds SQL stdout with --preview and emits truncation metadata", async () => {
+		const rows = [[1,], [2,], [3,], [4,],];
+		await withCliServer(sqlPreviewServer("q-stdout-preview", rows,), async (url,) => {
+			const { stdout, stderr, } = await dss([
+				"sql",
+				"query",
+				"SELECT 1",
+				"--connection",
+				"CONN",
+				"--preview",
+				"2",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				queryId: "q-stdout-preview",
+				rowCount: 4,
+				preview: [[1,], [2,],],
+				truncated: true,
+			},);
+			const warning = JSON.parse(stderr,) as { warnings: Array<Record<string, unknown>>; };
+			expect(warning.warnings,).toContainEqual(expect.objectContaining({
+				code: "sql_preview_truncated",
+				rowCount: 4,
+				previewRows: 2,
+			},),);
+		},);
 	});
 
 	it("rejects a non-integer --preview value before querying", async () => {

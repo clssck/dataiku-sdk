@@ -31,18 +31,50 @@ import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js"
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
+/** Read a local recipe file before any DSS request, mapping read failures to usage validation. */
+function readRecipeFile(filePath: string, flagName: string,): string {
+	try {
+		return readFileSync(filePath, "utf-8",);
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error,);
+		throw new UsageError(
+			`Could not read ${flagName} ${filePath}: ${reason}.`,
+			"not_found",
+			"Verify the file path and that it is readable.",
+		);
+	}
+}
+
+/** Read a set-payload backup file before any DSS request, mapping read failures to usage validation. */
+function readRecipeBackupFile(backupPath: string,): Record<string, unknown> {
+	try {
+		return readRecipeBackup(backupPath,);
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error,);
+		throw new UsageError(
+			`Could not read --backup ${backupPath}: ${reason}.`,
+			"not_found",
+			"Verify the backup file path and that it is readable.",
+		);
+	}
+}
+
 function formatLineDiff(
 	remoteName: string,
 	localPath: string,
 	remoteContent: string,
 	localContent: string,
 ): string {
-	if (localContent === remoteContent) {
+	// Line-ending differences are not content differences: compare and split on
+	// CRLF-normalized text, mirroring assert-unchanged's normalized payload hash.
+	const normalizedLocal = normalizeLineEndings(localContent,);
+	const normalizedRemote = normalizeLineEndings(remoteContent,);
+	if (normalizedLocal === normalizedRemote) {
 		return "No differences.";
 	}
 
-	const localLines = localContent.split("\n",);
-	const remoteLines = remoteContent.split("\n",);
+	const localLines = normalizedLocal.split("\n",);
+	const remoteLines = normalizedRemote.split("\n",);
 	const lines: string[] = [`--- remote:${remoteName}`, `+++ local:${localPath}`, "",];
 	const maxLen = Math.max(localLines.length, remoteLines.length,);
 
@@ -141,7 +173,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 		usage:
 			"dss recipe run <name> [--wait|--no-wait] [--build-mode MODE] [--include-logs] [--log-filter stdout|stderr|user|errors] [--summary] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--partition PARTITION] [--dry-run] [--project-key KEY]",
 		description:
-			"Run a recipe by resolving its outputs and submitting the correct dataset or managed-folder build job.",
+			"Run a recipe by resolving its outputs and submitting the correct dataset or managed-folder build job. --timeout defaults to 120000 ms and --poll-interval to 2000 ms.",
 		examples: [
 			"dss recipe run compute_orders --wait",
 			"dss recipe run compute_exports --include-logs --log-filter stdout --summary --timeout 600000",
@@ -417,6 +449,8 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			if (!filePath) {
 				throw new UsageError("--file is required. Usage: dss recipe diff <name> --file PATH",);
 			}
+			// Read and validate the local file before any DSS request.
+			const localContent = readRecipeFile(filePath, "--file",);
 			const result = await c.recipes.get(a[0], {
 				includePayload: true,
 				projectKey: f["project-key"] as string | undefined,
@@ -424,7 +458,6 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			if (!result.payload) {
 				throw new Error(`Recipe "${a[0]}" has no code payload to diff.`,);
 			}
-			const localContent = readFileSync(filePath, "utf-8",);
 			return formatLineDiff(a[0], filePath, result.payload, localContent,);
 		},
 		usage: "dss recipe diff <name> --file PATH [--project-key KEY]",
@@ -613,7 +646,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, "dss recipe set-payload <name> --file PATH",);
 			const filePath = f["file"] as string;
 			if (!filePath) throw new UsageError("--file is required.",);
-			const content = readFileSync(filePath, "utf-8",);
+			const content = readRecipeFile(filePath, "--file",);
 			const pk = f["project-key"] as string | undefined;
 			const shouldBackup = f["no-backup"] !== true;
 			const backupDir = shouldBackup
@@ -669,7 +702,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				"dss recipe restore <name> --backup FILE [--payload-only] [--dry-run] [--project-key KEY]";
 			requireArgs(a, 1, usage,);
 			const backupPath = requiredStringFlag(f, "backup", usage,);
-			const backup = readRecipeBackup(backupPath,);
+			const backup = readRecipeBackupFile(backupPath,);
 			const payload = typeof backup.payload === "string" ? backup.payload : "";
 			const pk = f["project-key"] as string | undefined;
 			const current = await c.recipes.get(a[0], { includePayload: true, projectKey: pk, },);
@@ -713,7 +746,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			const usage = "dss recipe assert-unchanged <name> --since BACKUP [--project-key KEY]";
 			requireArgs(a, 1, usage,);
 			const backupPath = requiredStringFlag(f, "since", usage,);
-			const backup = readRecipeBackup(backupPath,);
+			const backup = readRecipeBackupFile(backupPath,);
 			const current = await c.recipes.get(a[0], {
 				includePayload: true,
 				projectKey: f["project-key"] as string | undefined,

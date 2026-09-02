@@ -342,6 +342,136 @@ describe("CLI recipe get", () => {
 	});
 });
 
+describe("recipe diff and local file validation", () => {
+	it("recipe diff reports no differences when only line endings differ", async () => {
+		const filePath = join(tmpdir(), `dss-cli-crlf-diff-${Date.now()}.py`,);
+		writeFileSync(filePath, "print('a')\r\nprint('b')\r\n", "utf-8",);
+		try {
+			await withCliServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				expect(req.method,).toBe("GET",);
+				expect(url.pathname,).toBe("/public/api/projects/TEST/recipes/my_recipe",);
+				sendJson(res, {
+					recipe: { type: "python", name: "my_recipe", },
+					payload: "print('a')\nprint('b')\n",
+				},);
+			}, async (url,) => {
+				const { stdout, stderr, } = await dss(
+					["recipe", "diff", "my_recipe", "--file", filePath,],
+					{ env: cliEnv(url,), },
+				);
+				expect(stderr,).toBe("",);
+				expect(JSON.parse(stdout,),).toBe("No differences.",);
+			},);
+		} finally {
+			rmSync(filePath, { force: true, },);
+		}
+	});
+
+	it("recipe diff reads the local file before any DSS request and maps missing files to usage", async () => {
+		let requests = 0;
+		await withCliServer((
+			_req,
+			_res,
+		) => {
+			requests += 1;
+		}, async (url,) => {
+			const missingPath = join(tmpdir(), `dss-cli-missing-${Date.now()}.py`,);
+			const failure = await dssFailure(["recipe", "diff", "my_recipe", "--file", missingPath,], {
+				env: cliEnv(url,),
+			},);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "not_found",
+				category: "usage",
+				exitCode: 1,
+			},);
+			expect(String(report.error,),).toContain(missingPath,);
+			expect(requests,).toBe(0,);
+		},);
+	});
+
+	it("set-payload maps a missing local file to usage validation before any DSS request", async () => {
+		let requests = 0;
+		await withCliServer((
+			_req,
+			_res,
+		) => {
+			requests += 1;
+		}, async (url,) => {
+			const missingPath = join(tmpdir(), `dss-cli-missing-setpayload-${Date.now()}.py`,);
+			const failure = await dssFailure(
+				["recipe", "set-payload", "my_recipe", "--file", missingPath, "--no-backup",],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "not_found",
+				category: "usage",
+				exitCode: 1,
+			},);
+			expect(String(report.error,),).toContain(missingPath,);
+			expect(requests,).toBe(0,);
+		},);
+	});
+
+	it("assert-unchanged maps a missing backup file to usage validation before any DSS request", async () => {
+		let requests = 0;
+		await withCliServer((
+			_req,
+			_res,
+		) => {
+			requests += 1;
+		}, async (url,) => {
+			const missingBackup = join(tmpdir(), `dss-cli-missing-backup-${Date.now()}.json`,);
+			const failure = await dssFailure(
+				["recipe", "assert-unchanged", "my_recipe", "--since", missingBackup,],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "not_found",
+				category: "usage",
+				exitCode: 1,
+			},);
+			expect(String(report.error,),).toContain(missingBackup,);
+			expect(requests,).toBe(0,);
+		},);
+	});
+
+	it("restore maps a missing backup file to usage validation before any DSS request", async () => {
+		let requests = 0;
+		await withCliServer((
+			_req,
+			_res,
+		) => {
+			requests += 1;
+		}, async (url,) => {
+			const missingBackup = join(tmpdir(), `dss-cli-missing-restore-${Date.now()}.json`,);
+			const failure = await dssFailure(
+				["recipe", "restore", "my_recipe", "--backup", missingBackup,],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "not_found",
+				category: "usage",
+				exitCode: 1,
+			},);
+			expect(String(report.error,),).toContain(missingBackup,);
+			expect(requests,).toBe(0,);
+		},);
+	});
+});
+
 describe("CLI recipe get-payload and set-payload", () => {
 	it("get-payload prints recipe code to stdout", async () => {
 		await withCliServer((_req, res,) => {

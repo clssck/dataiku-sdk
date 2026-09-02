@@ -25,31 +25,30 @@ Bun is the only supported runtime and the package manager. Examples below assume
 
 ## CLI contract
 
-- Command results write exactly one compact JSON value to stdout; void success is `{ok:true}`. `doctor`, `batch`, and `cleanup` failure reports are their direct result objects on stdout with a nonzero exit code — use the exit code and result fields.
-- Dispatch/runtime failures write one compact structured error object on stdout (`type:"error"`, `ok:false`, `error`, `code`, `category`, `exitCode`) with a nonzero exit code; stderr carries JSONL diagnostics only.
-- Non-fatal diagnostics and `--verbose` traces are JSONL stderr events (`type:"warning"` / `type:"trace"`), flushed before both success and failure output; no prose trace lines are part of the contract.
-- `--fields a,b,c` projects those fields from an object or array-of-objects result; dotted paths (`a.b.c`) drill into nested objects, and missing fields become `null`; string and scalar results pass through unchanged.
-- No prompts, help screens, tables, banners, or prose output are part of the contract.
-- Exit codes: `0` success, `1` usage/configuration error, `2` DSS/internal error, `3` transient DSS error, `4` a failed long-running result or synchronous assertion.
-- `--retries N` controls idempotent GET retries only. `dss sql query --start-retries N` explicitly retries transient failures while starting a query; use it only when executing the SQL more than once is safe.
-- The exit code is the success signal. For portable multi-step mutations, prefer `dss batch`; shell chaining and pipeline exit semantics differ across POSIX shells, Windows PowerShell, PowerShell 7, and Command Prompt.
-- Recipe payload commands write the payload as a JSON string on stdout; use `--output PATH` to write the exact bytes to a file instead, with stdout carrying the JSON string equal to `PATH`.
+The complete agent-facing contract — stdout JSON discipline, stderr JSONL diagnostics, the error
+envelope, exit codes, `--fields` projection, command discovery, and planning/safety rules — is the
+canonical skill at [`skills/dataiku-dss/SKILL.md`](skills/dataiku-dss/SKILL.md); keep that file as
+the single source of truth for agent integrations and for the `dss install-skill` payload. Human
+essentials: exactly one compact JSON value on stdout per command (void success is `{ok:true}`),
+failures as one structured JSON error object on stdout with a nonzero exit code, stderr reserved
+for JSONL diagnostics only, and exit codes `0` success / `1` usage error / `2` DSS or internal
+error / `3` transient DSS error / `4` failed long-running result or assertion. `--retries N`
+controls idempotent GET retries only; `dss sql query --start-retries N` retries transient failures
+while starting a query. For portable multi-step mutations, prefer `dss batch`; shell chaining and
+pipeline exit semantics differ across platforms.
 
-Discover the agent contract and command surface with scoped calls:
+Discover the command surface with scoped calls:
 
 ```text
 dss commands run
-dss commands run --fields dataset
-dss commands run --fields dataset.create
 dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples
 dss commands run --output commands.json
 dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility
-dss agent contract --fields commands.actions
 ```
 
-`dss commands run` prints the compact resource/action summary — every resource keyed to its action names, about 1k tokens — and never dumps registry entries to stdout. Bootstrap contract discovery with the scoped `agent contract` call above: `protocol,agentContractVersion,cli,stdio,planning,compatibility` cover protocol/schema compatibility, stdout/stderr stream semantics, preferred discovery commands, planning rules, and compatibility guarantees in ~250 tokens; request `schemas` or `commands` only when you actually need them. Before choosing syntax, scope `commands run` with `--fields`: `--fields RESOURCE.ACTION` returns one complete registry entry, `--fields RESOURCE` returns every action of one resource, and appending `.FIELD` paths projects the metadata you need — the four-field per-action projection `usage,description,flags,examples` is the smallest self-sufficient starting point for constructing an invocation. Inspect `flags`, `structuredExamples`, `schemas`, `requiresAuth`, `requiresProject`, `sideEffect`, `async`, `idempotency`, `dryRun`, `cleanupCommand`, `unsafeOutputs`, `outputShape`, `inputContract`, and `exitCodes` instead of guessing.
-
-`--fields` takes a comma-separated list, so request several actions in one call. Each key is echoed exactly as requested (`--fields dataset.create` returns `{"dataset.create": {...}}`); an empty `--fields` is a usage error, never a silent full dump. The full registry (~220k tokens) is exported only via `--output PATH`: the command writes the registry, or the selected `--fields` subset, as compact JSON to `PATH`, and stdout carries the compact `{"path":"PATH"}` result — never the registry itself. An unknown resource or action exits with code 1 and a compact JSON error object on stdout containing the valid options.
+`dss commands run` prints the compact resource/action summary; registry entries (~220k tokens
+exported) never dump to stdout — they travel only via `--output PATH`. See the canonical skill for
+the full `--fields` projection rules and planning workflow.
 
 ## Agent skill installation
 
@@ -71,6 +70,15 @@ Project installs write `SKILL.md` under the target workspace:
 - OMP: `.omp/skills/dataiku-dss/SKILL.md`
 
 Global installs write under the agent's home config path, for example OMP: `~/.omp/agent/skills/dataiku-dss/SKILL.md`.
+
+Each entry in the `installed` array reports deterministic file state:
+
+- `status`: `missing` (no file at the destination), `stale` (file present but bytes differ from the canonical skill), or `current` (byte-identical to the canonical skill).
+- `changed`: whether the install writes the file — `true` for `missing` and `stale`, `false` for `current`; installs skip byte-identical files and replace missing/stale files through a same-directory temporary file followed by rename.
+- `expectedSha256`: SHA-256 of the canonical skill bytes this SDK ships.
+- `actualSha256`: SHA-256 of the file currently at the destination; present only when the file exists.
+
+`--dry-run` and `--plan` never write; they report the same `status`/`changed`/hash fields so you can see which copies a real install would refresh — a `stale` copy is detected and would be refreshed, while a `current` copy is already byte-identical and needs no refresh.
 
 ## Credentials
 
@@ -371,6 +379,71 @@ server account. Configure these before private-remote fetch, pull, or push. `--p
 applies only to external project-library operations and does not persist a remote credential.
 The `project-git` resource does not manage these settings, so public/auth-less and
 already-configured remotes are the supported automation paths.
+
+## Coding, notebooks, and project libraries
+
+`project-library` manages files in a project's internal `lib/` tree. External Git-backed
+libraries are a different surface: inspect and change those with `project-git list-libraries`,
+`set-library`, `push-library`, and the related future commands. Internal paths are canonicalized;
+leading slashes are removed, while traversal (`..`) and empty segments are rejected.
+
+Use a read/diff/guarded-write sequence for internal files. `get-bytes` preserves binary data and
+returns its SHA-256; `diff` caps text output and detects binary files instead of dumping bytes.
+`put --expect-sha256` re-reads the remote bytes and refuses a stale overwrite. New files and
+folders never overwrite existing items; `--if-not-exists` turns an existing target into a skip.
+
+```bash
+dss project-library get-bytes python/mylib/utils.py --output ./utils.py --project-key MYPROJ
+dss project-library diff python/mylib/utils.py --file ./utils.py --project-key MYPROJ
+dss project-library put python/mylib/utils.py --file ./utils.py --expect-sha256 HASH --dry-run --project-key MYPROJ
+dss project-library put python/mylib/utils.py --file ./utils.py --expect-sha256 HASH --project-key MYPROJ
+```
+
+For one-off Python, prefer a file so shell quoting cannot change the source. `code run` creates an
+observable throwaway custom-Python scenario, waits with a bounded timeout, caps returned logs, and
+deletes only that generated scenario unless `--keep` is set.
+
+```bash
+dss code run --file inspect.py --env py311 --project-key MYPROJ
+dss recipe diff prepare_orders --file recipe.py --project-key MYPROJ
+dss recipe set-payload prepare_orders --file recipe.py --dry-run --project-key MYPROJ
+dss recipe set-payload prepare_orders --file recipe.py --backup-dir .dss-backups/recipes --project-key MYPROJ
+dss recipe run prepare_orders --dry-run --project-key MYPROJ
+```
+
+Recipe payload diffs normalize LF/CRLF. `set-payload` backs up payload, graph, settings, code-env,
+and version metadata by default; use `restore --backup FILE --dry-run` before applying a rollback.
+`recipe run --dry-run` performs live output resolution without creating a job; static
+`--plan` reports `exact:false` rather than inventing that live payload.
+
+Notebook saves are save-or-create operations. Read first, preserve the full notebook object, then
+use the persisted hash from save/dry-run output with `--expect-hash`. Jupyter output clearing uses
+the official DELETE endpoint. `unload-jupyter --all` is deliberately composed: list active
+notebooks, list their sessions, then delete each session; DSS has no unload-all endpoint.
+
+```bash
+dss notebook get-jupyter analysis.ipynb --project-key MYPROJ
+dss notebook save-jupyter analysis.ipynb --data-file notebook.json --dry-run --project-key MYPROJ
+dss notebook save-jupyter analysis.ipynb --data-file notebook.json --expect-hash HASH --project-key MYPROJ
+dss notebook clear-jupyter-outputs analysis.ipynb --dry-run --project-key MYPROJ
+dss notebook unload-jupyter --all --dry-run --project-key MYPROJ
+```
+
+Code-environment reads expose definitions, deployment mode, installed/requested packages, project
+versions, usages, and bounded build logs. Fetch the definition/hash before `set-definition` or
+`set-packages --expect-hash`; package, image, Jupyter, create, and delete operations can return DSS
+futures with `--no-wait`.
+
+Webapp updates use GET–deep-merge–PUT; API-service `save-settings` is explicit full replacement.
+Run either with `--dry-run` to inspect `currentHash`/`nextHash`, then apply with
+`--expect-hash`. Webapp restart futures support `--wait`. API packages and project bundles
+forward release notes and explicit Deployer target IDs.
+
+An agent plan with `exact:false` is an honesty boundary: live state is required and no endpoint or
+payload was guessed. Use the command's own `--dry-run` when it resolves that state. The supported
+public DSS API exposes no plugin-authoring lifecycle, notebook execution/checkpoint operation, or
+webapp/API-service delete. Use project Git for plugin source, `code run`/recipes for execution,
+and the authenticated DSS UI for unsupported lifecycle operations.
 
 For fake-DSS smoke tests, return project lists as JSON arrays such as `[{ "projectKey": "MYPROJ", "name": "My Project" }]` from `/public/api/projects/`; recipe payload commands read `/public/api/projects/<PROJECT>/recipes/<NAME>?includePayload=true` and expect a JSON object shaped like `{ "recipe": { "name": "<NAME>", "type": "python" }, "payload": "..." }`.
 

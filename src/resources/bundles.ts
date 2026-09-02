@@ -1,5 +1,36 @@
 import { BaseResource, } from "./base.js";
 
+/**
+ * Optional, documented parameters of the bundle-export endpoint:
+ * - `releaseNotes`: important changes introduced in the bundle;
+ * - `evaluateProjectStandardsChecks`: whether the Project Standards Checks
+ *   applying to the project should run (defaults to true server-side, and the
+ *   official client always sends it).
+ */
+export interface BundleExportOptions {
+	releaseNotes?: string;
+	evaluateProjectStandardsChecks?: boolean;
+}
+
+/**
+ * Optional, documented parameter of the bundle-publish endpoint: the key of
+ * the published project on the Project Deployer where the bundle is deployed
+ * (a new published project is created when no match exists; when omitted, the
+ * server falls back to the source project's key).
+ */
+export interface BundlePublishOptions {
+	publishedProjectKey?: string;
+}
+
+/**
+ * Optional, documented parameter of the bundle-activation endpoint: scenario
+ * IDs mapped to whether each scenario should be enabled or disabled upon
+ * activation.
+ */
+export interface BundleActivateOptions {
+	scenariosToEnable?: Record<string, boolean>;
+}
+
 export class BundlesResource extends BaseResource {
 	/** List bundles exported from a project on the Design node. */
 	async listExported(projectKey?: string,): Promise<Record<string, unknown>[]> {
@@ -9,12 +40,27 @@ export class BundlesResource extends BaseResource {
 		return res.bundles ?? [];
 	}
 
-	/** Create or overwrite an exported Design-node bundle. */
-	async exportBundle(bundleId: string, projectKey?: string,): Promise<void> {
+	/**
+	 * Create or overwrite an exported Design-node bundle. The documented
+	 * optional parameters are forwarded as query parameters:
+	 * `releaseNotes` when provided, and `evaluateProjectStandardsChecks`
+	 * (defaults to true, matching the official client which always sends it).
+	 */
+	async exportBundle(
+		bundleId: string,
+		projectKey?: string,
+		options: BundleExportOptions = {},
+	): Promise<void> {
+		const params = new URLSearchParams();
+		if (options.releaseNotes !== undefined) params.set("releaseNotes", options.releaseNotes,);
+		params.set(
+			"evaluateProjectStandardsChecks",
+			String(options.evaluateProjectStandardsChecks ?? true,),
+		);
 		await this.client.putVoid(
 			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported/${
 				encodeURIComponent(bundleId,)
-			}`,
+			}?${params.toString()}`,
 			{},
 		);
 	}
@@ -37,10 +83,28 @@ export class BundlesResource extends BaseResource {
 		);
 	}
 
-	/** Publish a Design-node bundle to the Project Deployer. */
-	async publish(bundleId: string, projectKey?: string,): Promise<Record<string, unknown>> {
+	/**
+	 * Publish a Design-node bundle to the Project Deployer. The documented
+	 * optional `publishedProjectKey` parameter selects the published project
+	 * the bundle is deployed to (a new published project is created when no
+	 * match exists; when omitted, the server falls back to the source
+	 * project's key). It is forwarded as the `publishedProjectKey` query
+	 * parameter when provided.
+	 */
+	async publish(
+		bundleId: string,
+		projectKey?: string,
+		options: BundlePublishOptions = {},
+	): Promise<Record<string, unknown>> {
+		const params = new URLSearchParams();
+		if (options.publishedProjectKey !== undefined) {
+			params.set("publishedProjectKey", options.publishedProjectKey,);
+		}
+		const query = params.size > 0 ? `?${params.toString()}` : "";
 		return this.client.post<Record<string, unknown>>(
-			`/public/api/projects/${this.enc(projectKey,)}/bundles/${encodeURIComponent(bundleId,)}/publish`,
+			`/public/api/projects/${this.enc(projectKey,)}/bundles/${
+				encodeURIComponent(bundleId,)
+			}/publish${query}`,
 			{},
 		);
 	}
@@ -74,13 +138,26 @@ export class BundlesResource extends BaseResource {
 		);
 	}
 
-	/** Activate an imported Automation-node bundle. */
-	async activate(bundleId: string, projectKey?: string,): Promise<Record<string, unknown>> {
+	/**
+	 * Activate an imported Automation-node bundle. The documented optional
+	 * `scenariosToEnable` dict (scenario ID → enabled/disabled upon
+	 * activation) is forwarded as the `scenariosActiveOnActivation` request
+	 * body when provided.
+	 */
+	async activate(
+		bundleId: string,
+		projectKey?: string,
+		options: BundleActivateOptions = {},
+	): Promise<Record<string, unknown>> {
+		const body = options.scenariosToEnable !== undefined
+				&& Object.keys(options.scenariosToEnable,).length > 0
+			? { scenariosActiveOnActivation: options.scenariosToEnable, }
+			: {};
 		return this.client.post<Record<string, unknown>>(
 			`/public/api/projects/${this.enc(projectKey,)}/bundles/imported/${
 				encodeURIComponent(bundleId,)
 			}/actions/activate`,
-			{},
+			body,
 		);
 	}
 

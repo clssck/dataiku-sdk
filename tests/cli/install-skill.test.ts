@@ -1,4 +1,6 @@
 import { describe, expect, it, } from "bun:test";
+import { createHash, } from "node:crypto";
+import { statSync, utimesSync, writeFileSync, } from "node:fs";
 import {
 	dss,
 	dssFailure,
@@ -10,6 +12,27 @@ import {
 	SDK_ROOT,
 	tmpdir,
 } from "./_harness.js";
+interface InstalledEntry {
+	agent: string;
+	path: string;
+	via: string;
+	status: string;
+	changed: boolean;
+	expectedSha256: string;
+	actualSha256?: string;
+}
+
+function firstEntryOf(stdout: string,): InstalledEntry {
+	const parsed: unknown = JSON.parse(stdout,);
+	if (typeof parsed !== "object" || parsed === null || !("installed" in parsed)) {
+		throw new Error("install-skill output has no installed array",);
+	}
+	const installed: unknown = (parsed as { installed: unknown; }).installed;
+	if (!Array.isArray(installed,) || installed.length === 0) {
+		throw new Error("install-skill installed array is empty",);
+	}
+	return installed[0] as InstalledEntry;
+}
 
 describe("CLI install-skill command", () => {
 	it("ships an Agent Plugin manifest and canonical skill", () => {
@@ -97,6 +120,125 @@ describe("CLI install-skill command", () => {
 		expect(result.agents,).toEqual([{ id: "omp", name: "OhMyPi", via: "flag", },],);
 	});
 
+	it("dry-run reports status missing, changed true, and the expected hash without writing", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-skill-status-missing-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			const { stdout, stderr, } = await dss([
+				"install-skill",
+				"--agent",
+				"claude",
+				"--target",
+				tmpDir,
+				"--dry-run",
+			],);
+			expect(stderr,).toBe("",);
+			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+			const entry = firstEntryOf(stdout,);
+			expect(entry,).toMatchObject({
+				agent: "claude",
+				path: skillPath,
+				via: "flag",
+				status: "missing",
+				changed: true,
+			},);
+			expect(entry.expectedSha256,).toMatch(/^[0-9a-f]{64}$/,);
+			expect(entry,).not.toHaveProperty("actualSha256",);
+			// Plan/dry-run preserved: no file, no directories left behind.
+			expect(readFileExists(skillPath,),).toBe(false,);
+			expect(readFileExists(join(tmpDir, ".claude",),),).toBe(false,);
+			const canonicalSkill = readFileSync(
+				join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",),
+				"utf-8",
+			);
+			expect(entry.expectedSha256,).toBe(
+				createHash("sha256",).update(canonicalSkill,).digest(
+					"hex",
+				),
+			);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("dry-run detects a stale copy as stale without refreshing it", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-skill-status-stale-${Date.now()}`,);
+		const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+		mkdirSync(join(tmpDir, ".claude", "skills", "dataiku-dss",), { recursive: true, },);
+		writeFileSync(skillPath, "# outdated skill copy\n", "utf-8",);
+		try {
+			const { stdout, stderr, } = await dss([
+				"install-skill",
+				"--agent",
+				"claude",
+				"--target",
+				tmpDir,
+				"--dry-run",
+			],);
+			expect(stderr,).toBe("",);
+			const entry = firstEntryOf(stdout,);
+			expect(entry,).toMatchObject({
+				agent: "claude",
+				status: "stale",
+				changed: true,
+			},);
+			const actualSha256 = entry.actualSha256;
+			expect(actualSha256,).toMatch(/^[0-9a-f]{64}$/,);
+			expect(actualSha256,).not.toBe(entry.expectedSha256,);
+			expect(actualSha256,).toBe(
+				createHash("sha256",).update(readFileSync(skillPath,),).digest("hex",),
+			);
+			// Dry-run must not refresh the stale copy.
+			expect(readFileSync(skillPath, "utf-8",),).toBe("# outdated skill copy\n",);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("first install reports changed true and second install is current and writes nothing", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-skill-status-current-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			const canonicalSkill = readFileSync(
+				join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",),
+				"utf-8",
+			);
+			const first = await dss(["install-skill", "--agent", "claude", "--target", tmpDir,],);
+			expect(first.stderr,).toBe("",);
+			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
+			const firstEntry = firstEntryOf(first.stdout,);
+			expect(firstEntry,).toMatchObject({
+				agent: "claude",
+				path: skillPath,
+				via: "flag",
+				status: "missing",
+				changed: true,
+			},);
+			expect(statSync(skillPath,).isFile(),).toBe(true,);
+			// Backdate the first write deterministically, so a rewrite during the
+			// second install is observable as an mtime change without wall-clock waits.
+			const past = new Date(Date.now() - 3_600_000,);
+			utimesSync(skillPath, past, past,);
+			const afterFirst = statSync(skillPath,).mtimeMs;
+			const second = await dss(["install-skill", "--agent", "claude", "--target", tmpDir,],);
+			expect(second.stderr,).toBe("",);
+			const secondEntry = firstEntryOf(second.stdout,);
+			expect(secondEntry,).toMatchObject({
+				agent: "claude",
+				path: skillPath,
+				status: "current",
+				changed: false,
+			},);
+			expect(secondEntry.expectedSha256,).toBe(firstEntry.expectedSha256,);
+			expect(secondEntry.actualSha256,).toBe(firstEntry.expectedSha256,);
+			// Byte-identical files are skipped: no rewrite happened.
+			expect(statSync(skillPath,).mtimeMs,).toBe(afterFirst,);
+			expect(readFileSync(skillPath, "utf-8",),).toBe(canonicalSkill,);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
 	it("dss install-skill --agent claude writes SKILL.md to project dir", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-skill-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
@@ -122,7 +264,16 @@ describe("CLI install-skill command", () => {
 				join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",),
 				"utf-8",
 			);
+			// Installed bytes are canonical, and the reported expected hash agrees;
+			// the install ran on a missing destination, so changed is true here.
 			expect(content,).toBe(canonicalSkill,);
+			const installedEntry = firstEntryOf(stdout,);
+			expect(installedEntry.status,).toBe("missing",);
+			expect(installedEntry.changed,).toBe(true,);
+			expect(installedEntry.expectedSha256,).toBe(
+				createHash("sha256",).update(canonicalSkill,).digest("hex",),
+			);
+			expect(installedEntry.actualSha256,).toBeUndefined();
 			// Release prose is hard-wrapped; normalize whitespace so multi-line
 			// sentences stay pinned by meaning rather than by column position.
 			const prose = content.replace(/\s+/g, " ",);
@@ -273,7 +424,7 @@ describe("CLI install-skill command", () => {
 			expect(content,).toContain("a `403` blocks the save",);
 			expect(content,).toContain("syncOutputSchemaPropagated",);
 			expect(content,).toContain("first verifies the parent service through its settings",);
-			expect(content,).toContain("preserving markdown and raw cells unchanged",);
+			expect(content,).toContain("plans the official output DELETE",);
 			expect(content,).toContain(
 				"dataset metadata `404` and `403` errors propagate as `not_found` and `permission_denied`",
 			);

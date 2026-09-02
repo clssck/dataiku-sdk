@@ -91,4 +91,36 @@ describe("CLI job aggregation", () => {
 			}
 		},);
 	});
+
+	it("keeps monitor success when a terminal job's log endpoint returns not found", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (url.pathname.endsWith("/log/",)) {
+				res.statusCode = 404;
+				res.setHeader("content-type", "text/plain",);
+				res.end("Job log not found",);
+				return;
+			}
+			const jobId = decodeURIComponent(url.pathname.split("/",).at(-2,) ?? "",);
+			sendJson(res, {
+				baseStatus: { def: { id: jobId, type: "RECURSIVE_BUILD", }, state: "DONE", },
+				globalState: { done: 1, failed: 0, running: 0, total: 1, },
+			},);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss([
+				"job",
+				"monitor",
+				"JOB_LOG_404",
+				"--poll-interval",
+				"1",
+			], { env: cliEnv(url,), },);
+			expect(stderr,).toBe("",);
+			expect(JSON.parse(stdout,),).toMatchObject({
+				success: true,
+				state: "DONE",
+				logUnavailable: "not_found",
+				removed: false,
+			},);
+		},);
+	});
 });

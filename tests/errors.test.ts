@@ -1,5 +1,10 @@
 import { describe, expect, it, } from "bun:test";
-import { classifyDataikuError, DataikuError, dataikuErrorCode, } from "../src/errors.js";
+import {
+	canonicalStatusText,
+	classifyDataikuError,
+	DataikuError,
+	dataikuErrorCode,
+} from "../src/errors.js";
 
 describe("classifyDataikuError", () => {
 	describe("network/transport (status=0)", () => {
@@ -267,11 +272,61 @@ describe("classifyDataikuError", () => {
 			expect(result.category,).toBe("unknown",);
 			expect(result.retryable,).toBe(false,);
 		});
+	});
 
-		it("classifies 418 as unknown", () => {
-			const result = classifyDataikuError(418, "teapot",);
-			expect(result.category,).toBe("unknown",);
+	describe("unexpected_response", () => {
+		it("classifies unhandled 4xx statuses as non-retryable unexpected_response", () => {
+			for (const status of [405, 406, 410, 412, 413, 415, 416, 418, 426, 440, 451,]) {
+				const result = classifyDataikuError(status, "rejected",);
+				expect(result.category, `status ${status}`,).toBe("unexpected_response",);
+				expect(result.retryable, `status ${status}`,).toBe(false,);
+				expect(dataikuErrorCode(result.category,), `status ${status}`,)
+					.toBe("unexpected_response",);
+				expect(result.retryHint,).toContain("unrecognized HTTP status",);
+			}
+		});
+
+		it("keeps the transport-based 5xx catch-all transient after the unexpected-response fallback", () => {
+			const result = classifyDataikuError(500, "plain server error",);
+			expect(result.category,).toBe("transient",);
+			expect(result.retryable,).toBe(true,);
+		});
+
+		it("classifies a non-JSON 2xx body as unexpected_response with proxy/login hint", () => {
+			const result = classifyDataikuError(
+				200,
+				"Expected JSON response body but got non-JSON content: <!doctype html>login",
+			);
+			expect(result.category,).toBe("unexpected_response",);
 			expect(result.retryable,).toBe(false,);
+			expect(result.retryHint.toLowerCase(),).toContain("proxy",);
+			expect(result.retryHint.toLowerCase(),).toContain("login page",);
+		});
+
+		it("leaves ordinary 2xx responses out of the non-JSON check", () => {
+			const result = classifyDataikuError(200, '{"ok":true}',);
+			expect(result.category,).toBe("unknown",);
+		});
+
+		it("surfaces unexpected_response on a constructed DataikuError", () => {
+			const err = new DataikuError(405, "Method Not Allowed", "method rejected",);
+			expect(err.category,).toBe("unexpected_response",);
+			expect(err.retryable,).toBe(false,);
+			expect(err.safeMessage,).toContain("Error type: unexpected_response",);
+			expect(err.safeMessage,).toContain("405 Method Not Allowed",);
+		});
+
+		it("maps canonical status text for the newly covered 4xx codes", () => {
+			expect(canonicalStatusText(405,),).toBe("Method Not Allowed",);
+			expect(canonicalStatusText(406,),).toBe("Not Acceptable",);
+			expect(canonicalStatusText(410,),).toBe("Gone",);
+			expect(canonicalStatusText(412,),).toBe("Precondition Failed",);
+			expect(canonicalStatusText(413,),).toBe("Payload Too Large",);
+			expect(canonicalStatusText(415,),).toBe("Unsupported Media Type",);
+			expect(canonicalStatusText(416,),).toBe("Range Not Satisfiable",);
+			expect(canonicalStatusText(418,),).toBe("I'm a Teapot",);
+			expect(canonicalStatusText(426,),).toBe("Upgrade Required",);
+			expect(canonicalStatusText(451,),).toBe("Unavailable For Legal Reasons",);
 		});
 	});
 });

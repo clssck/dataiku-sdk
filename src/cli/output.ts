@@ -26,21 +26,55 @@ export function flushCliWarnings(): void {
 	process.stderr.write(`${JSON.stringify({ type: "warning", warnings, },)}\n`,);
 }
 
-function resolveFieldPath(source: Record<string, unknown>, field: string,): unknown {
+interface ResolvedFieldPath {
+	found: boolean;
+	value: unknown;
+}
+
+function resolveFieldPath(source: Record<string, unknown>, field: string,): ResolvedFieldPath {
 	let current: unknown = source;
 	for (const segment of field.split(".",)) {
-		if (current === null || typeof current !== "object" || Array.isArray(current,)) return null;
-		current = (current as Record<string, unknown>)[segment];
+		if (current === null || typeof current !== "object" || Array.isArray(current,)) {
+			return { found: false, value: null, };
+		}
+		const record = current as Record<string, unknown>;
+		if (!Object.prototype.hasOwnProperty.call(record, segment,)) {
+			return { found: false, value: null, };
+		}
+		current = record[segment];
 	}
-	return current ?? null;
+	return { found: true, value: current ?? null, };
 }
 
 export function pickResultFields(item: unknown, fields: string[],): unknown {
 	if (!item || typeof item !== "object" || Array.isArray(item,)) return item;
 	const source = item as Record<string, unknown>;
 	const picked: Record<string, unknown> = {};
-	for (const field of fields) picked[field] = resolveFieldPath(source, field,);
+	for (const field of fields) picked[field] = resolveFieldPath(source, field,).value;
 	return picked;
+}
+
+function projectionRecords(result: unknown,): Array<Record<string, unknown>> {
+	const items = Array.isArray(result,) ? result : [result,];
+	return items.filter((item,) =>
+		item !== null && typeof item === "object" && !Array.isArray(item,)
+	) as Array<Record<string, unknown>>;
+}
+
+function warnUnknownProjectionFields(result: unknown, fields: string[],): void {
+	const records = projectionRecords(result,);
+	if (records.length === 0) return;
+	const unknownFields = fields.filter((field,) =>
+		!records.some((record,) => resolveFieldPath(record, field,).found)
+	);
+	if (unknownFields.length === 0) return;
+	const availableFields = [...new Set(records.flatMap((record,) => Object.keys(record,)),),].sort();
+	enqueueCliWarning({
+		code: "field_projection_missing",
+		fields: unknownFields,
+		availableFields,
+		hint: "Use fields from the command's schemas.output contract or an unprojected result.",
+	},);
 }
 
 /**
@@ -49,15 +83,16 @@ export function pickResultFields(item: unknown, fields: string[],): unknown {
  * that are absent become null so every row keeps a stable, predictable shape.
  */
 export function projectResultFields(result: unknown, fields: string[],): unknown {
+	warnUnknownProjectionFields(result, fields,);
 	if (Array.isArray(result,)) return result.map((item,) => pickResultFields(item, fields,));
 	return pickResultFields(result, fields,);
 }
 
 export function writeCommandResult(result: unknown,): void {
-	flushCliWarnings();
 	const projected = outputFieldProjection
 		? projectResultFields(result, outputFieldProjection,)
 		: result;
+	flushCliWarnings();
 	process.stdout.write(
 		`${JSON.stringify(projected ?? { ok: true, },)}\n`,
 	);
@@ -215,6 +250,7 @@ export function planResult(
 	options: {
 		asyncKind: string;
 		endpoint?: string;
+		exact?: boolean;
 		exitCodesOnFailure: Record<string, number>;
 		identifiers?: Record<string, unknown>;
 		idempotency: string;
@@ -222,6 +258,7 @@ export function planResult(
 		payload?: unknown;
 		localWrites?: unknown;
 		plannedAndDryRun?: boolean;
+		reason?: string;
 		requests?: unknown;
 		wait?: unknown;
 	},
@@ -231,6 +268,8 @@ export function planResult(
 		action,
 		resource,
 		...(options.plannedAndDryRun ? { plannedAndDryRun: true, } : {}),
+		...(options.exact !== undefined ? { exact: options.exact, } : {}),
+		...(options.reason !== undefined ? { reason: options.reason, } : {}),
 		...options.identifiers,
 		...(options.method ? { method: options.method, } : {}),
 		...(options.endpoint ? { endpoint: options.endpoint, } : {}),

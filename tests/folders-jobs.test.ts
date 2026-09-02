@@ -442,6 +442,183 @@ describe("JobsResource.wait", () => {
 
 		expect(logRequested,).toBe(false,);
 	});
+
+	it("keeps terminal success and reports logUnavailable when the log endpoint returns not found", async () => {
+		let statusRequests = 0;
+
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-purged/") {
+				statusRequests += 1;
+				sendJson(res, {
+					baseStatus: { def: { id: "job-purged", type: "DATASET_BUILD", }, state: "DONE", },
+					globalState: { done: 1, failed: 0, running: 0, total: 1, },
+				}, 200,);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-purged/log/") {
+				res.statusCode = 404;
+				res.end("Job log not found",);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (client,) => {
+			const result = await client.jobs.wait("job-purged", {
+				includeLogs: true,
+				pollIntervalMs: 1,
+				timeoutMs: 5_000,
+			},);
+
+			expect(result,).toEqual({
+				success: true,
+				jobId: "job-purged",
+				state: "DONE",
+				type: "DATASET_BUILD",
+				elapsedMs: expect.any(Number,),
+				pollCount: 1,
+				progress: { done: 1, failed: 0, running: 0, total: 1, },
+				logUnavailable: "not_found",
+				removed: false,
+			},);
+		},);
+
+		expect(statusRequests,).toBe(2,); // terminal poll + removal probe
+	});
+
+	it("marks a removed terminal job with logUnavailable not_found and removed true", async () => {
+		let statusRequests = 0;
+
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-removed/") {
+				statusRequests += 1;
+				if (statusRequests === 1) {
+					sendJson(res, {
+						baseStatus: { def: { id: "job-removed", type: "DATASET_BUILD", }, state: "DONE", },
+						globalState: { done: 1, failed: 0, running: 0, total: 1, },
+					}, 200,);
+				} else {
+					res.statusCode = 404;
+					res.end("Job not found",);
+				}
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-removed/log/") {
+				res.statusCode = 404;
+				res.end("Job not found",);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (client,) => {
+			const result = await client.jobs.wait("job-removed", {
+				summary: true,
+				pollIntervalMs: 1,
+				timeoutMs: 5_000,
+			},);
+
+			expect(result,).toEqual({
+				success: true,
+				jobId: "job-removed",
+				state: "DONE",
+				type: "DATASET_BUILD",
+				elapsedMs: expect.any(Number,),
+				pollCount: 1,
+				progress: { done: 1, failed: 0, running: 0, total: 1, },
+				logUnavailable: "not_found",
+				removed: true,
+			},);
+		},);
+
+		expect(statusRequests,).toBe(2,); // terminal poll + removal probe
+	});
+
+	it("keeps a failed terminal outcome when logs are not found", async () => {
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-failed-log/") {
+				sendJson(res, {
+					baseStatus: { def: { id: "job-failed-log", type: "RECURSIVE_BUILD", }, state: "FAILED", },
+					globalState: { done: 0, failed: 1, running: 0, total: 1, },
+				},);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/jobs/job-failed-log/log/"
+			) {
+				res.statusCode = 404;
+				res.end("Job log not found",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (client,) => {
+			const result = await client.jobs.wait("job-failed-log", {
+				includeLogs: true,
+				pollIntervalMs: 1,
+				timeoutMs: 5_000,
+			},);
+
+			expect(result,).toEqual({
+				success: false,
+				jobId: "job-failed-log",
+				state: "FAILED",
+				type: "RECURSIVE_BUILD",
+				elapsedMs: expect.any(Number,),
+				pollCount: 1,
+				progress: { done: 0, failed: 1, running: 0, total: 1, },
+				logUnavailable: "not_found",
+				removed: false,
+			},);
+		},);
+	});
+
+	it("reports logUnavailable error without claiming removal for other log failures", async () => {
+		let logRequests = 0;
+
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (url.pathname === "/public/api/projects/TEST/jobs/job-log-403/") {
+				sendJson(res, {
+					baseStatus: { def: { id: "job-log-403", type: "DATASET_BUILD", }, state: "DONE", },
+					globalState: { done: 1, failed: 0, running: 0, total: 1, },
+				},);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/jobs/job-log-403/log/") {
+				logRequests += 1;
+				res.statusCode = 403;
+				res.end("access denied to job log",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (client,) => {
+			const result = await client.jobs.wait("job-log-403", {
+				summary: true,
+				pollIntervalMs: 1,
+				timeoutMs: 5_000,
+			},);
+
+			expect(result,).toMatchObject({
+				success: true,
+				state: "DONE",
+				logUnavailable: "error",
+			},);
+			expect(result,).not.toHaveProperty("removed",);
+			expect(result,).not.toHaveProperty("logSummary",);
+		},);
+
+		expect(logRequests,).toBe(1,); // 403 is not retried; single failed attempt
+	});
 });
 
 describe("JobsResource.buildAndWait", () => {

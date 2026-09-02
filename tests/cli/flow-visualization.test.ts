@@ -168,7 +168,13 @@ describe("CLI flow visualization", () => {
 				JSON.stringify(stale,),
 			], { env: cliEnv(url,), },);
 
-			expect(failure.code,).toBe(1,);
+			expect(failure.code,).toBe(4,);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				code: "assertion_failed",
+				category: "dss",
+				exitCode: 4,
+				retryable: false,
+			},);
 			expect(failure.stdout,).toContain("Flow topology changed",);
 			expect(failure.stdout,).toContain("Regenerate the plan",);
 		},);

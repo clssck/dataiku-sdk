@@ -1,8 +1,41 @@
+import { readFileSync, } from "node:fs";
 import type { CleanupLedgerEntry, } from "../../utils/cleanup-ledger.js";
 import { resultRecord, stringField, } from "../coerce.js";
 
 export function projectArg(projectKey: string | undefined,): string[] {
 	return projectKey ? ["--project-key", projectKey,] : [];
+}
+
+/** Snapshot of the create input for actions whose identifiers live in the JSON
+ * payload rather than positional args (e.g. `workspace.create`). Only
+ * `--data`/`--data-file` are inspected: restating `--stdin` would re-read a
+ * stream the command already consumed, so a stdin-backed create cannot pin
+ * identifiers here and the caller must skip it.
+ */
+function createInputFromFlags(
+	flags: Record<string, string | boolean>,
+): Record<string, unknown> | undefined {
+	const text = typeof flags["data"] === "string"
+		? flags["data"] as string
+		: typeof flags["data-file"] === "string"
+		? ((): string | undefined => {
+			try {
+				return readFileSync(flags["data-file"] as string, "utf-8",);
+			} catch {
+				return undefined;
+			}
+		})()
+		: undefined;
+	if (text === undefined) return undefined;
+	try {
+		const parsed: unknown = JSON.parse(text,);
+		return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed,)
+			? parsed as Record<string, unknown>
+			: undefined;
+	} catch {
+		// An unparsable input cannot pin the resource: no entry, no guess.
+		return undefined;
+	}
 }
 
 export function cleanupLedgerEntry(
@@ -13,11 +46,17 @@ export function cleanupLedgerEntry(
 	result: unknown,
 	projectKey: string | undefined,
 ): CleanupLedgerEntry | undefined {
+	const record = resultRecord(result,);
+	// A notebook save is ledger-eligible only when it created the notebook:
+	// an update overwrote something that already existed, so there is nothing
+	// for cleanup to remove, and a dry run never mutated anything.
+	const isCreatedNotebookSave = (action === "save-jupyter" || action === "save-sql")
+		&& record.created === true;
 	if (
-		!(action.startsWith("create",) || action === "clone" || action === "duplicate"
+		!isCreatedNotebookSave
+		&& !(action.startsWith("create",) || action === "clone" || action === "duplicate"
 			|| action === "import" || action === "upload")
 	) return undefined;
-	const record = resultRecord(result,);
 	if (record.skipped !== undefined) return undefined;
 	// Only an explicit `cleanupEligible:false` suppresses the ledger: absent or
 	// true (including indeterminate post-POST outcomes) must stay addressable.
@@ -180,6 +219,43 @@ export function cleanupLedgerEntry(
 				cleanup: { argv: ["code-env", "delete", lang, name, "--if-exists",], },
 			};
 		}
+		case "streaming-endpoint.create": {
+			const id = args[0];
+			return {
+				...base,
+				id,
+				cleanup: { argv: ["streaming-endpoint", "delete", id, ...withProject,], },
+			};
+		}
+		case "meaning.create": {
+			const id = args[0];
+			return {
+				...base,
+				id,
+				name: args[1],
+				cleanup: { argv: ["meaning", "delete", id, "--if-exists",], },
+			};
+		}
+		case "workspace.create": {
+			const input = resultRecord(createInputFromFlags(flags,),);
+			const workspaceKey = stringField(input, ["workspaceKey",],);
+			if (!workspaceKey) return undefined;
+			return {
+				...base,
+				id: workspaceKey,
+				name: stringField(input, ["displayName",],),
+				cleanup: { argv: ["workspace", "delete", workspaceKey,], },
+			};
+		}
+		case "project-library.create-file":
+		case "project-library.create-folder": {
+			const path = args[0];
+			return {
+				...base,
+				path,
+				cleanup: { argv: ["project-library", "delete", path, ...withProject,], },
+			};
+		}
 		case "folder.upload":
 			return {
 				...base,
@@ -187,6 +263,28 @@ export function cleanupLedgerEntry(
 				path: args[1],
 				cleanup: { argv: ["folder", "delete-file", args[0], args[1], ...withProject,], },
 			};
+		case "notebook.save-jupyter": {
+			const name = args[0];
+			if (!name) return undefined;
+			return {
+				...base,
+				name,
+				cleanup: {
+					argv: ["notebook", "delete-jupyter", name, "--if-exists", ...withProject,],
+				},
+			};
+		}
+		case "notebook.save-sql": {
+			const id = args[0];
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				cleanup: {
+					argv: ["notebook", "delete-sql", id, "--if-exists", ...withProject,],
+				},
+			};
+		}
 		case "project.import": {
 			const usedProjectKey = stringField(record, ["usedProjectKey",],);
 			const recordedIncarnation = stringField(record, ["projectIncarnationHash",],);

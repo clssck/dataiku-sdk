@@ -15,6 +15,7 @@ export interface CommandPayloadSchema {
 	stdin?: boolean;
 	dataFlag?: boolean;
 	dataFileFlag?: boolean;
+	contentType?: "application/json" | "text/plain";
 	jsonShape?: "object" | "array";
 }
 

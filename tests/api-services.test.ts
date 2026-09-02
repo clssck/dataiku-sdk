@@ -2,8 +2,9 @@ import { describe, expect, it, } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
 import { DataikuClient, } from "../src/client.js";
-import { DataikuError, } from "../src/errors.js";
+import { ClientValidationError, DataikuError, } from "../src/errors.js";
 import { ApiServicesResource, } from "../src/resources/api-services.js";
+import { stableHash, } from "../src/utils/stable-hash.js";
 
 async function readBody(req: IncomingMessage,): Promise<string> {
 	let body = "";
@@ -283,6 +284,83 @@ describe("ApiServicesResource", () => {
 			"POST /public/api/projects/TEST/apiservices/svc%20id/packages/pkg%2F1/publish",
 		],);
 		expect(requestBodies,).toEqual([{}, {},],);
+	});
+
+	it("save-settings with expectHash refuses stale settings before any PUT", async () => {
+		const stored = { endpoints: [{ id: "predict", type: "PY_FUNCTION", },], versionTag: {}, };
+		let sawPut = false;
+
+		await withServer(async (req, res,) => {
+			if ((req.method ?? "") === "PUT") sawPut = true;
+			sendJson(res, stored,);
+		}, async (url,) => {
+			const resource = new ApiServicesResource(createClient(url,),);
+			await expect(
+				resource.saveSettings("svc", { endpoints: [], }, undefined, {
+					expectHash: "0".repeat(64,),
+				},),
+			).rejects.toThrow(ClientValidationError,);
+		},);
+
+		expect(sawPut,).toBe(false,);
+	});
+
+	it("save-settings with a matching expectHash PUTs the supplied body", async () => {
+		const stored = { endpoints: [{ id: "predict", type: "PY_FUNCTION", },], };
+		const body = { endpoints: [{ id: "predict", type: "PY_FUNCTION", },], versionTag: { v: 2, }, };
+		const response = { saved: true, };
+		const requests: string[] = [];
+		let putBody: unknown;
+
+		await withServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method ?? "GET"} ${url.pathname}`,);
+			if ((req.method ?? "") === "GET") {
+				sendJson(res, stored,);
+				return;
+			}
+			putBody = JSON.parse(await readBody(req,),) as unknown;
+			sendJson(res, response,);
+		}, async (url,) => {
+			const resource = new ApiServicesResource(createClient(url,),);
+			await expect(
+				resource.saveSettings("svc", body, undefined, { expectHash: stableHash(stored,), },),
+			).resolves.toEqual(response,);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/apiservices/svc/settings",
+			"PUT /public/api/projects/TEST/apiservices/svc/settings",
+		],);
+		expect(putBody,).toEqual(body,);
+	});
+
+	it("createPackage forwards releaseNotes and publishPackage forwards publishedServiceId", async () => {
+		const requests: string[] = [];
+
+		await withServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method ?? "GET"} ${url.pathname}${url.search}`,);
+			if (url.pathname.endsWith("/publish",)) {
+				sendJson(res, { published: true, },);
+				return;
+			}
+			res.setHeader("Content-Type", "text/plain",);
+			res.end("ok",);
+		}, async (url,) => {
+			const resource = new ApiServicesResource(createClient(url,),);
+			await expect(
+				resource.createPackage("svc", "pkg", undefined, { releaseNotes: "Adds churn endpoint", },),
+			).resolves.toEqual({ message: "ok", },);
+			await expect(
+				resource.publishPackage("svc", "pkg", undefined, { publishedServiceId: "prod-churn", },),
+			).resolves.toEqual({ published: true, },);
+		},);
+
+		expect(requests,).toEqual([
+			"POST /public/api/projects/TEST/apiservices/svc/packages/pkg?releaseNotes=Adds+churn+endpoint",
+			"POST /public/api/projects/TEST/apiservices/svc/packages/pkg/publish?publishedServiceId=prod-churn",
+		],);
 	});
 
 	it("downloads package archives as responses", async () => {

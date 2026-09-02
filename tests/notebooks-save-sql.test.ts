@@ -2,6 +2,7 @@ import { describe, expect, it, } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { notebookCommands, } from "../src/cli/commands/notebook.js";
 import { DataikuClient, } from "../src/client.js";
+import { stableHash, } from "../src/utils/stable-hash.js";
 
 async function readRequestBody(req: IncomingMessage,): Promise<string> {
 	let body = "";
@@ -66,19 +67,25 @@ describe("notebook save-sql command", () => {
 	};
 	const notebookPath = "/public/api/projects/TEST/sql-notebooks/sql%20notebook";
 
-	it("creates a missing SQL notebook after probing get-sql", async () => {
+	it("creates a missing SQL notebook, exposes created=true and the persisted hash", async () => {
 		const requests: string[] = [];
 		let createdBody: unknown;
+		const state: { stored?: Record<string, unknown>; } = {};
 
 		await withServer(async (req, res,) => {
 			const request = `${req.method ?? ""} ${req.url ?? ""}`;
 			requests.push(request,);
 			if (req.method === "GET" && req.url === notebookPath) {
-				sendJson(res, { message: "SQL notebook not found", }, 404,);
+				if (state.stored === undefined) {
+					sendJson(res, { message: "SQL notebook not found", }, 404,);
+					return;
+				}
+				sendJson(res, state.stored,);
 				return;
 			}
 			if (req.method === "POST" && req.url === "/public/api/projects/TEST/sql-notebooks/") {
 				createdBody = JSON.parse(await readRequestBody(req,),);
+				state.stored = createdBody as Record<string, unknown>;
 				res.statusCode = 204;
 				res.end();
 				return;
@@ -89,13 +96,18 @@ describe("notebook save-sql command", () => {
 			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
 			const result = await saveSql.handler(client, ["sql notebook",], {
 				data: JSON.stringify(nextNotebook,),
-			},);
-			expect(result,).toEqual({ saved: "sql notebook", resource: "sql-notebook", },);
+			},) as { saved?: string; resource?: string; created?: boolean; hash?: string; };
+			expect(result.saved,).toBe("sql notebook",);
+			expect(result.resource,).toBe("sql-notebook",);
+			expect(result.created,).toBe(true,);
+			expect(result.hash,).toBe(stableHash(state.stored,),);
 		},);
 
+		// Fresh read decides create vs update, then POST, then a confirming read.
 		expect(requests,).toEqual([
 			`GET ${notebookPath}`,
 			"POST /public/api/projects/TEST/sql-notebooks/",
+			`GET ${notebookPath}`,
 		],);
 		expect(createdBody,).toEqual({
 			...nextNotebook,
@@ -104,9 +116,59 @@ describe("notebook save-sql command", () => {
 		},);
 	});
 
-	it("saves an existing SQL notebook after probing get-sql", async () => {
+	it("saves an existing SQL notebook, exposes created=false and a stable hash", async () => {
 		const requests: string[] = [];
 		let savedBody: unknown;
+		const currentNotebook = {
+			connection: "postgres",
+			cells: [{ id: "cell-1", type: "QUERY", code: "select 0", },],
+		};
+		const state: { stored?: Record<string, unknown>; } = { stored: currentNotebook, };
+
+		await withServer(async (req, res,) => {
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			if (req.method === "GET" && req.url === notebookPath) {
+				sendJson(res, state.stored,);
+				return;
+			}
+			if (req.method === "PUT" && req.url === notebookPath) {
+				savedBody = JSON.parse(await readRequestBody(req,),);
+				state.stored = savedBody as Record<string, unknown>;
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${request}`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const first = await saveSql.handler(client, ["sql notebook",], {
+				data: JSON.stringify(nextNotebook,),
+			},) as { created?: boolean; hash?: string; };
+			const second = await saveSql.handler(client, ["sql notebook",], {
+				data: JSON.stringify(nextNotebook,),
+			},) as { created?: boolean; hash?: string; };
+			expect(first.created,).toBe(false,);
+			expect(second.created,).toBe(false,);
+			// Deterministic: identical persisted content yields the same hash.
+			expect(first.hash,).toBe(second.hash,);
+			expect(first.hash,).toBe(stableHash(state.stored,),);
+		},);
+
+		expect(requests,).toEqual([
+			`GET ${notebookPath}`,
+			`PUT ${notebookPath}`,
+			`GET ${notebookPath}`,
+			`GET ${notebookPath}`,
+			`PUT ${notebookPath}`,
+			`GET ${notebookPath}`,
+		],);
+		expect(savedBody,).toEqual(nextNotebook,);
+	});
+
+	it("rejects a stale --expect-hash without writing", async () => {
+		const requests: string[] = [];
 		const currentNotebook = {
 			connection: "postgres",
 			cells: [{ id: "cell-1", type: "QUERY", code: "select 0", },],
@@ -119,8 +181,43 @@ describe("notebook save-sql command", () => {
 				sendJson(res, currentNotebook,);
 				return;
 			}
+			if (req.method === "PUT" || req.method === "POST") {
+				res.statusCode = 500;
+				res.end(`guard must prevent mutation: ${request}`,);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${request}`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await expect(
+				saveSql.handler(client, ["sql notebook",], {
+					data: JSON.stringify(nextNotebook,),
+					"expect-hash": "0".repeat(64,),
+				},),
+			).rejects.toThrow(/changed since it was read/,);
+		},);
+
+		expect(requests,).toEqual([`GET ${notebookPath}`,],);
+	});
+
+	it("saves when --expect-hash matches the stored content hash", async () => {
+		const requests: string[] = [];
+		const currentNotebook = {
+			connection: "postgres",
+			cells: [{ id: "cell-1", type: "QUERY", code: "select 0", },],
+		};
+		const state: { stored?: Record<string, unknown>; } = { stored: currentNotebook, };
+
+		await withServer(async (req, res,) => {
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			if (req.method === "GET" && req.url === notebookPath) {
+				sendJson(res, state.stored,);
+				return;
+			}
 			if (req.method === "PUT" && req.url === notebookPath) {
-				savedBody = JSON.parse(await readRequestBody(req,),);
+				state.stored = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
 				res.statusCode = 204;
 				res.end();
 				return;
@@ -131,15 +228,38 @@ describe("notebook save-sql command", () => {
 			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
 			const result = await saveSql.handler(client, ["sql notebook",], {
 				data: JSON.stringify(nextNotebook,),
-			},);
-			expect(result,).toEqual({ saved: "sql notebook", resource: "sql-notebook", },);
+				"expect-hash": stableHash(currentNotebook,),
+			},) as { created?: boolean; hash?: string; };
+			expect(result.created,).toBe(false,);
+			expect(result.hash,).toBe(stableHash(state.stored,),);
 		},);
 
 		expect(requests,).toEqual([
 			`GET ${notebookPath}`,
 			`PUT ${notebookPath}`,
+			`GET ${notebookPath}`,
 		],);
-		expect(savedBody,).toEqual(nextNotebook,);
+	});
+
+	it("rejects a malformed --expect-hash before any request", async () => {
+		const requests: string[] = [];
+
+		await withServer(async (req, res,) => {
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			res.statusCode = 500;
+			res.end(`unexpected ${request}`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await expect(
+				saveSql.handler(client, ["sql notebook",], {
+					data: JSON.stringify(nextNotebook,),
+					"expect-hash": "not-a-hash",
+				},),
+			).rejects.toThrow(/64-character SHA-256 hex digest/,);
+		},);
+
+		expect(requests,).toEqual([],);
 	});
 
 	it("dry-runs a missing SQL notebook save without creating it", async () => {

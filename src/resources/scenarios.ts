@@ -60,6 +60,32 @@ export interface ScenarioUpdateResult extends ScenarioUpdatePreview {
 	mismatches: [];
 }
 
+export interface ScenarioScriptRunCleanup {
+	status: "deleted" | "kept" | "failed";
+	error?: string;
+}
+
+/** Cleanup failure carried on errors thrown from {@link ScenariosResource.runScript}. */
+export interface ScenarioScriptRunCleanupFailure {
+	scenarioId: string;
+	error: string;
+}
+
+/**
+ * Wraps a primary code-run failure so the original error (and its taxonomy:
+ * category, exit-code semantics) stays intact while the concurrent throwaway
+ * cleanup failure remains observable via {@link cleanupFailure}.
+ */
+export class ScenarioScriptRunWithCleanupFailureError extends Error {
+	constructor(
+		public readonly cause: unknown,
+		public readonly cleanupFailure: ScenarioScriptRunCleanupFailure,
+	) {
+		super("Code run failed and its throwaway scenario cleanup also failed.",);
+		this.name = "ScenarioScriptRunWithCleanupFailureError";
+	}
+}
+
 export interface ScenarioScriptRunResult {
 	scenarioId: string;
 	runId: string;
@@ -72,6 +98,10 @@ export interface ScenarioScriptRunResult {
 	logTruncated: boolean;
 	maxLogBytes: number;
 	envName?: string;
+	timedOut?: boolean;
+	timeoutMs?: number;
+	/** Observable throwaway-scenario cleanup outcome; never silently swallowed here. */
+	cleanup: ScenarioScriptRunCleanup;
 }
 
 const DEFAULT_CODE_RUN_MAX_LOG_BYTES = 1_048_576;
@@ -582,6 +612,13 @@ export class ScenariosResource extends BaseResource {
 			0,
 			Math.floor(opts?.maxLogBytes ?? DEFAULT_CODE_RUN_MAX_LOG_BYTES,),
 		);
+		let outcome = "UNKNOWN";
+		let runId = "";
+		let pollCount = 0;
+		let timedOut = false;
+		let log = "";
+		let logTruncated = false;
+		let primaryError: unknown;
 		try {
 			await this.client.post(`/public/api/projects/${pkEnc}/scenarios/`, {
 				id: scenarioId,
@@ -610,12 +647,10 @@ export class ScenariosResource extends BaseResource {
 				encodeURIComponent(triggerRunId,)
 			}`;
 
-			let runId = "";
-			let outcome = "UNKNOWN";
-			let pollCount = 0;
 			while (true) {
 				if (Date.now() - startedAt >= timeout) {
 					outcome = "TIMEOUT";
+					timedOut = true;
 					break;
 				}
 				pollCount += 1;
@@ -642,8 +677,6 @@ export class ScenariosResource extends BaseResource {
 				);
 			}
 
-			let log = "";
-			let logTruncated = false;
 			if (runId && outcome !== "TIMEOUT") {
 				const limitedLog = await this.client.getTextLimited(
 					`${base}/${encodeURIComponent(runId,)}/log`,
@@ -652,28 +685,59 @@ export class ScenariosResource extends BaseResource {
 				log = limitedLog.text;
 				logTruncated = limitedLog.truncated;
 			}
-			const output = extractCodeRunOutput(log,);
-			return {
-				scenarioId,
-				runId,
-				outcome,
-				success: outcome === "SUCCESS",
-				elapsedMs: Date.now() - startedAt,
-				pollCount,
-				output,
-				log,
-				logTruncated,
-				maxLogBytes,
-				...(opts?.envName ? { envName: opts.envName, } : {}),
-			};
-		} finally {
-			if (opts?.keepScenario !== true) {
-				try {
-					await this.client.del(base,);
-				} catch {
-					// Best-effort cleanup of the throwaway scenario.
-				}
+		} catch (error) {
+			primaryError = error;
+		}
+		const cleanup = await this.removeThrowawayScenario(base, opts?.keepScenario === true,);
+		if (primaryError !== undefined) {
+			if (cleanup.status === "failed") {
+				throw new ScenarioScriptRunWithCleanupFailureError(primaryError, {
+					scenarioId,
+					error: cleanup.error ?? "unknown cleanup error",
+				},);
 			}
+			throw primaryError;
+		}
+		const output = extractCodeRunOutput(log,);
+		return {
+			scenarioId,
+			runId,
+			outcome,
+			success: outcome === "SUCCESS",
+			elapsedMs: Date.now() - startedAt,
+			pollCount,
+			output,
+			log,
+			logTruncated,
+			maxLogBytes,
+			...(opts?.envName ? { envName: opts.envName, } : {}),
+			...(timedOut ? { timedOut: true, timeoutMs: timeout, } : {}),
+			cleanup,
+		};
+	}
+
+	/**
+	 * Delete the throwaway scenario at the end of a code run, or report the
+	 * explicit keep outcome. Never throws: delete failures are surfaced in the
+	 * returned cleanup outcome instead of being swallowed. A 404 is idempotent
+	 * success — the scenario is already gone.
+	 */
+	private async removeThrowawayScenario(
+		base: string,
+		keep: boolean,
+	): Promise<ScenarioScriptRunCleanup> {
+		if (keep) return { status: "kept", };
+		try {
+			await this.client.del(base,);
+			return { status: "deleted", };
+		} catch (error) {
+			if (error instanceof DataikuError && error.category === "not_found") {
+				return { status: "deleted", };
+			}
+			return {
+				status: "failed",
+				error: error instanceof Error ? error.message : String(error,),
+			};
 		}
 	}
 }

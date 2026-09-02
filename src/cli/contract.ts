@@ -5,6 +5,41 @@ import { getCredentialsPath, saveCredentials, } from "../config.js";
 import { DataikuError, } from "../errors.js";
 import { APP_MANIFEST_CONCURRENCY_CONTROL, } from "../resources/applications.js";
 import {
+	encodeLibraryPath,
+	PROJECT_LIBRARY_CONCURRENCY_CONTROL,
+	validateLibraryDestinationPath,
+	validateLibraryName,
+	validateLibraryPath,
+} from "../resources/project-library.js";
+import {
+	CodeEnvDetailsSchema,
+	CodeEnvLogSummaryArraySchema,
+	CodeEnvSummaryArraySchema,
+	CodeEnvUsageArraySchema,
+	CodeEnvVersionForProjectSchema,
+	DatasetDetailsSchema,
+	DatasetSchemaSchema,
+	DatasetSummaryArraySchema,
+	FlowZoneArraySchema,
+	FlowZoneSchema,
+	JobSummaryArraySchema,
+	JobWaitResultSchema,
+	JupyterNotebookContentSchema,
+	JupyterNotebookSummaryArraySchema,
+	NotebookSessionArraySchema,
+	ProjectDetailsSchema,
+	ProjectMetadataSchema,
+	ProjectSummaryArraySchema,
+	RecipeSummaryArraySchema,
+	ScenarioDetailsSchema,
+	ScenarioStatusSchema,
+	ScenarioSummaryArraySchema,
+	SqlNotebookContentSchema,
+	SqlNotebookHistorySchema,
+	SqlNotebookSummaryArraySchema,
+	SqlQueryResponseSchema,
+} from "../schemas.js";
+import {
 	jobBuildTargetTypeFromFlags,
 	json,
 	jsonInput,
@@ -15,10 +50,15 @@ import {
 	requiredJsonInput,
 	rewritePairsFromFlags,
 	schemaColumnsInput,
+	sha256Hex,
+	stableHash,
 	stringField,
 	textInput,
 } from "./coerce.js";
+import { parseCodeRunIntegerFlag, resolveCodeInputWithSource, } from "./commands/code.js";
 import { commands, } from "./commands/index.js";
+import { projectLibraryPutPayload, } from "./commands/project-library.js";
+import { resolveSqlQueryInvocation, } from "./commands/sql.js";
 import { dataikuEnvironmentEnabled, } from "./env.js";
 import { BOOLEAN_FLAGS, FLAG_ALIASES, KNOWN_LONG_FLAGS, SHORT_FLAGS, } from "./flags.js";
 import { flowZoneColor, flowZoneMoveItems, flowZoneName, } from "./helpers/flow-zone.js";
@@ -41,6 +81,15 @@ import {
 
 function codeEnvWait(flags: Record<string, string | boolean>,): boolean {
 	return flags["no-wait"] !== true;
+}
+
+function codeEnvLang(value: string | undefined, usage: string,): "PYTHON" | "R" {
+	if (value !== "PYTHON" && value !== "R") {
+		throw new UsageError(
+			`Invalid code environment language ${JSON.stringify(value,)}. Usage: ${usage}`,
+		);
+	}
+	return value;
 }
 
 function codeEnvParams(flags: Record<string, string | boolean>,): Record<string, unknown> {
@@ -164,6 +213,20 @@ export type CommandFlagMetadata = {
 	allowEmptyValue?: boolean;
 };
 
+export interface CommandPositionalMetadata {
+	name: string;
+	required: boolean;
+}
+
+export interface CommandRequiredInputAlternative {
+	flags?: string[];
+	positionals?: string[];
+}
+
+export interface CommandRequiredInputGroup {
+	oneOf: CommandRequiredInputAlternative[];
+}
+
 export interface CommandStructuredExample {
 	shell: string;
 	argv?: string[];
@@ -192,6 +255,7 @@ export interface CommandRegistryEntry {
 	structuredExamples: CommandStructuredExample[];
 	flags: CommandFlagMetadata[];
 	positionals: string[];
+	positionalArguments: CommandPositionalMetadata[];
 	sideEffect: CommandSideEffect;
 	requiresAuth: boolean;
 	requiresProject: boolean;
@@ -205,6 +269,7 @@ export interface CommandRegistryEntry {
 	dryRun: boolean;
 	requiredFlags: string[];
 	requiredOneOf?: CommandFlagChoice[];
+	requiredInputGroups?: CommandRequiredInputGroup[];
 	optionalFlags: string[];
 	payloadSchema?: CommandPayloadSchema;
 	schemas: CommandAgentSchemas;
@@ -377,13 +442,15 @@ const VERSION_DESCRIPTION =
 const VERSION_EXAMPLES = ["dss version", "dss --version",];
 const INSTALL_SKILL_USAGE =
 	"dss install-skill [--global] [--agent NAME] [--target PATH] [--list-agents] [--dry-run] [--plan]";
-const INSTALL_SKILL_DESCRIPTION = "Install the dataiku-dss agent skill for detected coding agents.";
+const INSTALL_SKILL_DESCRIPTION =
+	"Report missing/stale/current skill status and atomically install changed dataiku-dss agent skills.";
 const INSTALL_SKILL_EXAMPLES = [
 	"dss install-skill --list-agents",
 	"dss install-skill --agent omp --dry-run",
 ];
 export const CLEANUP_USAGE = "dss cleanup --file PATH [--dry-run|--apply] [--continue-on-error]";
-const CLEANUP_DESCRIPTION = "Replay cleanup ledger entries in reverse order.";
+const CLEANUP_DESCRIPTION =
+	"Replay cleanup entries in reverse order; failures include structured code/category/exitCode/retryability summaries.";
 const CLEANUP_EXAMPLES = [
 	"dss cleanup --file cleanup.jsonl",
 	"dss cleanup --file cleanup.jsonl --apply",
@@ -413,6 +480,12 @@ const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
 	"folder delete-file",
 	"project delete",
 	"app delete-instance",
+	"meaning delete",
+	"notebook delete-jupyter",
+	"notebook delete-sql",
+	"project-library delete",
+	"streaming-endpoint delete",
+	"workspace delete",
 ],);
 
 export function isAllowedCleanupAction(resource: string, action: string,): boolean {
@@ -557,7 +630,208 @@ function structuredExamples(
 	},);
 }
 
-function outputJsonSchema(shape: CommandOutputShape,): Record<string, unknown> {
+const PROJECT_LIBRARY_ITEM_OUTPUT_SCHEMA: Record<string, unknown> = {
+	type: "object",
+	additionalProperties: false,
+	required: ["name",],
+	properties: {
+		name: { type: "string", },
+		path: { type: "string", },
+		size: { type: "integer", minimum: 0, },
+		mimeType: { type: "string", },
+		hasData: { type: "boolean", },
+		lastModified: { type: "number", },
+		children: { type: "array", items: { type: "object", additionalProperties: true, }, },
+	},
+};
+
+const NOTEBOOK_SAVE_OUTPUT_SCHEMA: Record<string, unknown> = {
+	type: "object",
+	additionalProperties: false,
+	required: ["saved", "resource", "created", "hash",],
+	properties: {
+		saved: { type: "string", },
+		resource: { enum: ["jupyter-notebook", "sql-notebook",], },
+		created: { type: "boolean", },
+		hash: { type: "string", pattern: "^[a-f0-9]{64}$", },
+	},
+};
+
+const COMMAND_OUTPUT_SCHEMAS: Record<string, Record<string, unknown>> = {
+	"code-env.list": CodeEnvSummaryArraySchema as unknown as Record<string, unknown>,
+	"code-env.get": CodeEnvDetailsSchema as unknown as Record<string, unknown>,
+	"code-env.list-logs": CodeEnvLogSummaryArraySchema as unknown as Record<string, unknown>,
+	"code-env.get-log": {
+		oneOf: [
+			{
+				type: "object",
+				required: ["log", "bytes", "truncated", "tailed", "envLang", "envName", "logName",],
+				properties: {
+					log: { type: "string", },
+					bytes: { type: "integer", minimum: 0, },
+					truncated: { type: "boolean", },
+					tailed: { type: "boolean", },
+					envLang: { enum: ["PYTHON", "R",], },
+					envName: { type: "string", },
+					logName: { type: "string", },
+				},
+			},
+			{
+				type: "object",
+				required: ["path", "bytes", "truncated", "tailed", "envLang", "envName", "logName",],
+				properties: {
+					path: { type: "string", },
+					bytes: { type: "integer", minimum: 0, },
+					truncated: { type: "boolean", },
+					tailed: { type: "boolean", },
+					envLang: { enum: ["PYTHON", "R",], },
+					envName: { type: "string", },
+					logName: { type: "string", },
+				},
+			},
+		],
+	},
+	"code-env.version": CodeEnvVersionForProjectSchema as unknown as Record<string, unknown>,
+	"code-env.usages": CodeEnvUsageArraySchema as unknown as Record<string, unknown>,
+	"code.run": {
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"outcome",
+			"success",
+			"runId",
+			"elapsedMs",
+			"pollCount",
+			"output",
+			"logTruncated",
+			"maxLogBytes",
+			"cleanup",
+		],
+		properties: {
+			outcome: { type: "string", },
+			success: { type: "boolean", },
+			runId: { type: "string", },
+			elapsedMs: { type: "number", minimum: 0, },
+			pollCount: { type: "integer", minimum: 0, },
+			output: { type: "string", },
+			log: { type: "string", },
+			logTruncated: { type: "boolean", },
+			maxLogBytes: { type: "integer", minimum: 0, },
+			timedOut: { const: true, },
+			timeoutMs: { type: "integer", minimum: 0, },
+			cleanup: {
+				type: "object",
+				additionalProperties: false,
+				required: ["status",],
+				properties: {
+					status: { enum: ["deleted", "kept", "failed",], },
+					error: { type: "string", },
+				},
+			},
+		},
+	},
+	"notebook.list-jupyter": JupyterNotebookSummaryArraySchema as unknown as Record<string, unknown>,
+	"notebook.get-jupyter": JupyterNotebookContentSchema as unknown as Record<string, unknown>,
+	"notebook.sessions-jupyter": NotebookSessionArraySchema as unknown as Record<string, unknown>,
+	"notebook.list-sql": SqlNotebookSummaryArraySchema as unknown as Record<string, unknown>,
+	"notebook.get-sql": SqlNotebookContentSchema as unknown as Record<string, unknown>,
+	"notebook.history-sql": SqlNotebookHistorySchema as unknown as Record<string, unknown>,
+	"notebook.save-jupyter": NOTEBOOK_SAVE_OUTPUT_SCHEMA,
+	"notebook.save-sql": NOTEBOOK_SAVE_OUTPUT_SCHEMA,
+	"project-library.list": { type: "array", items: PROJECT_LIBRARY_ITEM_OUTPUT_SCHEMA, },
+	"project-library.get-bytes": {
+		type: "object",
+		additionalProperties: false,
+		required: ["path", "bytes", "sha256",],
+		properties: {
+			path: { type: "string", },
+			bytes: { type: "integer", minimum: 0, },
+			sha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
+		},
+	},
+	"project-library.put": {
+		type: "object",
+		additionalProperties: false,
+		required: ["updated", "bytes", "sha256",],
+		properties: {
+			updated: { type: "string", },
+			bytes: { type: "integer", minimum: 0, },
+			sha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
+			beforeSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
+		},
+	},
+	"project-library.diff": {
+		type: "object",
+		additionalProperties: false,
+		required: [
+			"path",
+			"unchanged",
+			"added",
+			"removed",
+			"diff",
+			"diffTruncated",
+			"localSha256",
+			"localBytes",
+			"maxLines",
+		],
+		properties: {
+			path: { type: "string", },
+			unchanged: { type: "boolean", },
+			added: { type: "integer", minimum: 0, },
+			removed: { type: "integer", minimum: 0, },
+			diff: { type: "string", },
+			diffTruncated: { type: "boolean", },
+			binary: { type: "boolean", },
+			remoteAbsent: { type: "boolean", },
+			remoteSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
+			remoteBytes: { type: "integer", minimum: 0, },
+			localSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
+			localBytes: { type: "integer", minimum: 0, },
+			maxLines: { type: "integer", minimum: 0, },
+		},
+	},
+	"project.list": ProjectSummaryArraySchema as unknown as Record<string, unknown>,
+	"project.get": ProjectDetailsSchema as unknown as Record<string, unknown>,
+	"project.metadata": ProjectMetadataSchema as unknown as Record<string, unknown>,
+	"dataset.list": DatasetSummaryArraySchema as unknown as Record<string, unknown>,
+	"dataset.get": DatasetDetailsSchema as unknown as Record<string, unknown>,
+	"dataset.schema": DatasetSchemaSchema as unknown as Record<string, unknown>,
+	"recipe.list": RecipeSummaryArraySchema as unknown as Record<string, unknown>,
+	"job.list": JobSummaryArraySchema as unknown as Record<string, unknown>,
+	"job.wait": JobWaitResultSchema as unknown as Record<string, unknown>,
+	"job.monitor": JobWaitResultSchema as unknown as Record<string, unknown>,
+	"scenario.list": ScenarioSummaryArraySchema as unknown as Record<string, unknown>,
+	"scenario.get": ScenarioDetailsSchema as unknown as Record<string, unknown>,
+	"scenario.status": ScenarioStatusSchema as unknown as Record<string, unknown>,
+	"flow-zone.list": FlowZoneArraySchema as unknown as Record<string, unknown>,
+	"flow-zone.get": FlowZoneSchema as unknown as Record<string, unknown>,
+	"sql.query": {
+		anyOf: [
+			SqlQueryResponseSchema as unknown as Record<string, unknown>,
+			{
+				type: "object",
+				required: ["queryId", "rowCount", "preview",],
+				additionalProperties: true,
+				properties: {
+					queryId: { type: "string", },
+					rowCount: { type: "number", },
+					preview: { type: "array", items: true, },
+					truncated: { type: "boolean", },
+					outputPath: { type: "string", },
+					written: { type: "string", },
+				},
+			},
+		],
+	},
+};
+
+function outputJsonSchema(
+	resource: string,
+	action: string,
+	shape: CommandOutputShape,
+): Record<string, unknown> {
+	const precise = COMMAND_OUTPUT_SCHEMAS[registryKey(resource, action,)];
+	if (precise) return precise;
 	if (shape === "array") return { type: "array", items: true, };
 	if (shape === "string") return { type: "string", };
 	return { type: "object", additionalProperties: true, };
@@ -567,6 +841,9 @@ function payloadJsonSchema(
 	payloadSchema: CommandPayloadSchema | undefined,
 ): Record<string, unknown> | undefined {
 	if (!payloadSchema) return undefined;
+	if (payloadSchema.contentType === "text/plain") {
+		return { type: "string", contentMediaType: "text/plain", };
+	}
 	return payloadSchema.jsonShape === "array"
 		? { type: "array", items: true, }
 		: { type: "object", additionalProperties: true, };
@@ -746,11 +1023,14 @@ export function buildCommandSchemas(
 	return {
 		argv: argvJsonSchema(resource, action, flags, usage, requiredFlags, requiredOneOf,),
 		...(payloadSchema ? { input: payloadJsonSchema(payloadSchema,), } : {}),
-		output: outputJsonSchema(outputShape,),
+		output: outputJsonSchema(resource, action, outputShape,),
 	};
 }
 
 const EXPLICIT_REGISTRY_OVERRIDES: Record<string, CommandRegistryOverride> = {
+	"code.run": {
+		payloadSchema: { stdin: true, contentType: "text/plain", },
+	},
 	"dashboard.create": {
 		examplePayload: { name: "Agent dashboard", pages: [], },
 	},
@@ -805,8 +1085,76 @@ function extractUsageFlags(usage: string,): string[] {
 	return uniqueStrings(flags,).filter((flag,) => KNOWN_LONG_FLAGS.has(flag,));
 }
 
-function extractPositionals(usage: string,): string[] {
-	return uniqueStrings([...usage.matchAll(/<([^>]+)>/g,),].map((match,) => match[1]),);
+function extractPositionalArguments(usage: string,): CommandPositionalMetadata[] {
+	const positionals: CommandPositionalMetadata[] = [];
+	const add = (name: string, required: boolean,) => {
+		const existing = positionals.find((positional,) => positional.name === name);
+		if (existing) existing.required ||= required;
+		else positionals.push({ name, required, },);
+	};
+	for (const match of usage.matchAll(/<([^>]+)>/g,)) {
+		const before = usage.slice(0, match.index,);
+		const openParen = before.lastIndexOf("(",);
+		const insideParen = openParen > before.lastIndexOf(")",);
+		const closeParen = insideParen ? usage.indexOf(")", match.index,) : -1;
+		const group = closeParen >= 0 ? usage.slice(openParen + 1, closeParen,) : "";
+		const hasFlagAlternative = group.split("|",).some((alternative,) => alternative.includes("--",));
+		const required = before.lastIndexOf("[",) <= before.lastIndexOf("]",)
+			&& !hasFlagAlternative;
+		add(match[1]!, required,);
+	}
+	for (const suffix of usage.split("[",).slice(1,)) {
+		const candidate = suffix.split("]", 1,)[0];
+		if (candidate && /^[A-Za-z][A-Za-z0-9_-]*$/.test(candidate,)) add(candidate, false,);
+	}
+	for (const group of topLevelParenGroups(usage,)) {
+		const candidate = group.split("|", 1,)[0]?.trim();
+		if (candidate && /^[A-Z][A-Z0-9_-]*$/.test(candidate,)) add(candidate, false,);
+	}
+	return positionals;
+}
+
+const COMMAND_REQUIRED_INPUT_GROUPS: Record<string, CommandRequiredInputGroup[]> = {
+	"notebook.unload-jupyter": [
+		{
+			oneOf: [
+				{ positionals: ["name", "sessionId",], },
+				{ flags: ["all",], },
+			],
+		},
+	],
+	"sql.query": [
+		{
+			oneOf: [
+				{ positionals: ["SQL",], },
+				{ flags: ["sql",], },
+				{ flags: ["sql-file",], },
+				{ flags: ["stdin",], },
+			],
+		},
+		{ oneOf: [{ flags: ["connection",], }, { flags: ["dataset",], },], },
+	],
+	"flow-zone.move": [
+		{
+			oneOf: [
+				{ positionals: ["id",], },
+				{ flags: ["zone",], },
+				{ flags: ["zone-id",], },
+			],
+		},
+		{
+			oneOf: [
+				{ flags: ["dataset",], },
+				{ flags: ["recipe",], },
+				{ flags: ["folder",], },
+				{ flags: ["object",], },
+			],
+		},
+	],
+};
+
+function requiredInputGroups(resource: string, action: string,): CommandRequiredInputGroup[] {
+	return COMMAND_REQUIRED_INPUT_GROUPS[registryKey(resource, action,)] ?? [];
 }
 
 function inferSideEffect(resource: string, action: string,): CommandSideEffect {
@@ -819,6 +1167,8 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 		return "read";
 	}
 	if (resource === "install-skill") return "write";
+	if (resource === "sql" && action === "query") return "write";
+	if (resource === "ml-task" && action === "train") return "write";
 	// Project and dashboard exports stream a rendered/archive artifact and write it
 	// locally; the DSS-side resource is untouched.
 	if ((resource === "project" || resource === "dashboard") && action === "export") return "read";
@@ -857,6 +1207,7 @@ export function inferRequiresProject(resource: string, action: string, usage: st
 	) {
 		return false;
 	}
+	if (resource === "sql" && action === "query") return false;
 	if (PROJECT_SCOPED_RESOURCES.has(resource,)) return true;
 	if (resource === "project-git") return !action.startsWith("future-",);
 	return usage.includes("--project-key",);
@@ -1012,6 +1363,11 @@ const GLOBAL_FLAG_VALUE_HINTS: Record<string, { valueType: string; enumValues?: 
 	"ca-cert": { valueType: "PATH", },
 	"project-key": { valueType: "KEY", },
 	"record-cleanup": { valueType: "PATH", },
+	color: { valueType: "HEX", },
+	data: { valueType: "JSON", },
+	local: { valueType: "JSON", },
+	standard: { valueType: "JSON", },
+	until: { valueType: "STATE", },
 };
 
 /** Derive a value placeholder (and enum members) for each value flag from its usage token. */
@@ -1064,6 +1420,7 @@ function inferExitCodes(
 		|| `${resource}.${action}` === "dataset.assert-count"
 		|| `${resource}.${action}` === "dataset.assert-schema"
 		|| `${resource}.${action}` === "data-quality.assert-results"
+		|| `${resource}.${action}` === "flow-zone.organize"
 		|| `${resource}.${action}` === "batch.run";
 	return {
 		ok: 0,
@@ -1076,6 +1433,12 @@ function inferExitCodes(
 }
 
 function cleanupCommandFromDeleteUsage(resource: string, action: string,): string | undefined {
+	if (`${resource}.${action}` === "notebook.save-jupyter") {
+		return "dss notebook delete-jupyter <name> --if-exists";
+	}
+	if (`${resource}.${action}` === "notebook.save-sql") {
+		return "dss notebook delete-sql <id> --if-exists";
+	}
 	if (`${resource}.${action}` === "project.import") {
 		return "dss project delete <used-project-key> --if-exists --expect-project-incarnation <hash>";
 	}
@@ -1110,6 +1473,7 @@ export function supportsCleanupLedger(resource: string, action: string,): boolea
  */
 const EXPLICIT_DESTRUCTIVE_KEYS: Record<string, true> = {
 	"dataset.upload-file": true,
+	"sql.query": true,
 };
 
 function inferDestructiveLevel(
@@ -1133,6 +1497,7 @@ function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
 		return "job";
 	}
 	if (resource === "recipe" && action === "run") return "job";
+	if (resource === "ml-task" && action === "train") return "job";
 	if (resource === "future" && ["get", "peek", "wait", "abort",].includes(action,)) return "future";
 	if (resource === "scenario" && ["run", "run-and-wait", "status",].includes(action,)) {
 		return "future";
@@ -1142,6 +1507,11 @@ function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
 	// calls and the future lifecycle itself; plain Git actions settle inline.
 	if (resource === "project-git" && PROJECT_GIT_FUTURE_ACTIONS[action] === true) return "future";
 	if (resource === "code" && action === "run") return "future";
+	if (resource === "webapp" && action === "restart-backend") return "future";
+	if (
+		resource === "code-env"
+		&& ["create", "update-packages", "update-images", "set-jupyter", "delete",].includes(action,)
+	) return "future";
 	if (
 		resource === "app"
 		&& ["create-instance", "create-successor-instance", "delete-instance",].includes(action,)
@@ -1158,6 +1528,7 @@ function inferIdempotency(
 	usage: string,
 ): CommandIdempotency {
 	if (sideEffect === "read") return "safe";
+	if (`${resource}.${action}` === "install-skill.run") return "convergent";
 	if (action.startsWith("create",) && usage.includes("--if-not-exists",)) return "if-not-exists";
 	if (action.startsWith("delete",) && usage.includes("--if-exists",)) return "if-exists";
 	if (`${resource}.${action}` === "app.set-manifest-version") return "none";
@@ -1193,17 +1564,23 @@ export function inferCleanupHint(resource: string, action: string,): string | un
 	// Git mutations are not cleanup-ledger operations: no project-git branch or
 	// tag create has a generic `delete` command to close it out.
 	if (resource === "project-git") return undefined;
-	if (!(action.startsWith("create",) || action === "clone")) return undefined;
-	if (LEDGER_ONLY_CLEANUP_KEYS[`${resource}.${action}`] === true) {
-		return LEDGER_ONLY_CLEANUP_HINT;
+	const key = `${resource}.${action}`;
+	if (key === "notebook.save-jupyter") {
+		return "When the save reports created:true, delete with `dss notebook delete-jupyter <name> --if-exists`.";
 	}
+	if (key === "notebook.save-sql") {
+		return "When the save reports created:true, delete with `dss notebook delete-sql <id> --if-exists`.";
+	}
+	if (!(action.startsWith("create",) || action === "clone")) return undefined;
+	if (LEDGER_ONLY_CLEANUP_KEYS[key] === true) return LEDGER_ONLY_CLEANUP_HINT;
 	const deleteAction = action === "create-rule"
 		? "delete-rule"
 		: action === "create-instance" || action === "create-successor-instance"
 		? "delete-instance"
 		: "delete";
 	const deleteUsage = commands[resource]?.[deleteAction]?.usage;
-	const ifExists = deleteUsage?.includes("--if-exists",) ? " --if-exists" : "";
+	if (!deleteUsage) return undefined;
+	const ifExists = deleteUsage.includes("--if-exists",) ? " --if-exists" : "";
 	if (resource === "code-env") {
 		return `Delete with \`dss code-env delete <lang> <name>${ifExists}\`.`;
 	}
@@ -1281,7 +1658,9 @@ function buildRegistryEntry(
 			...allowEmptyPart,
 		};
 	},);
-	const positionals = extractPositionals(meta.usage,);
+	const positionalArguments = extractPositionalArguments(meta.usage,);
+	const positionals = positionalArguments.map((positional,) => positional.name);
+	const inputGroups = requiredInputGroups(resource, action,);
 	const outputShape = inferOutputShape(resource, action,);
 	const producesLocalFile = meta.usage.includes("--output PATH",)
 		|| meta.usage.includes("--output-file PATH",);
@@ -1297,6 +1676,7 @@ function buildRegistryEntry(
 		structuredExamples: structuredExamples(meta.examples, examplePayload,),
 		flags: flagMetadata,
 		positionals,
+		positionalArguments,
 		sideEffect,
 		requiresAuth,
 		requiresProject,
@@ -1311,6 +1691,7 @@ function buildRegistryEntry(
 		requiredFlags: uniqueRequiredFlags,
 		optionalFlags: uniqueOptionalFlags,
 		...(requiredOneOf.length > 0 ? { requiredOneOf, } : {}),
+		...(inputGroups.length > 0 ? { requiredInputGroups: inputGroups, } : {}),
 		...(payloadSchema ? { payloadSchema, } : {}),
 		schemas: buildCommandSchemas(
 			resource,
@@ -1435,6 +1816,7 @@ function commandRegistryEntryJsonSchema(): Record<string, unknown> {
 			"usage",
 			"flags",
 			"positionals",
+			"positionalArguments",
 			"sideEffect",
 			"requiresAuth",
 			"requiresProject",
@@ -1454,6 +1836,15 @@ function commandRegistryEntryJsonSchema(): Record<string, unknown> {
 			structuredExamples: { type: "array", items: { type: "object", additionalProperties: true, }, },
 			flags: { type: "array", items: commandFlagJsonSchema(), },
 			positionals: { type: "array", items: { type: "string", }, },
+			positionalArguments: {
+				type: "array",
+				items: {
+					type: "object",
+					required: ["name", "required",],
+					additionalProperties: false,
+					properties: { name: { type: "string", }, required: { type: "boolean", }, },
+				},
+			},
 			sideEffect: { enum: ["read", "write", "auth",], },
 			requiresAuth: { type: "boolean", },
 			requiresProject: { type: "boolean", },
@@ -1466,6 +1857,7 @@ function commandRegistryEntryJsonSchema(): Record<string, unknown> {
 			idempotency: { enum: ["safe", "convergent", "if-not-exists", "if-exists", "none",], },
 			dryRun: { type: "boolean", },
 			requiredFlags: { type: "array", items: { type: "string", }, },
+			requiredInputGroups: { type: "array", items: { type: "object", additionalProperties: true, }, },
 			optionalFlags: { type: "array", items: { type: "string", }, },
 			schemas: { type: "object", additionalProperties: true, },
 			unsafeOutputs: { type: "array", items: { type: "object", additionalProperties: true, }, },
@@ -1496,8 +1888,13 @@ function errorEnvelopeJsonSchema(): Record<string, unknown> {
 			ok: { const: false, },
 			error: { type: "string", },
 			code: { type: "string", },
-			category: { enum: ["usage", "dss", "internal",], },
+			category: { enum: ["usage", "permission_or_environment", "dss", "internal",], },
 			exitCode: { type: "number", },
+			hint: { type: "string", },
+			status: { type: "number", },
+			retryable: { type: "boolean", },
+			requestId: { type: "string", },
+			details: { type: "object", additionalProperties: true, },
 			resource: { type: "string", },
 			action: { type: "string", },
 			projectKey: { type: "string", },
@@ -1596,6 +1993,9 @@ export function buildAgentContract(): Record<string, unknown> {
 				format: "compact-json",
 				success: "single-json-value",
 				failure: "structured-error-object",
+				failureResultDetailLimitBytes: 65_536,
+				fieldProjection:
+					"Missing --fields paths stay null on stdout and emit field_projection_missing on stderr.",
 				richFailureResults:
 					"doctor/batch/cleanup nonzero outcomes are their own compact result on stdout ({ok:false,...}) with the command's exit code; not re-wrapped.",
 			},
@@ -1709,7 +2109,9 @@ function requiredPlanJsonInput(
 }
 
 function requiredPlanPositionals(usage: string,): string[] {
-	return [...stripOptionalUsageGroups(usage,).matchAll(/<([^>]+)>/g,),].map((match,) => match[1]!);
+	return extractPositionalArguments(usage,)
+		.filter((positional,) => positional.required)
+		.map((positional,) => positional.name);
 }
 
 function dataQualityEndpoint(projectKey: string, datasetName: string, suffix: string,): string {
@@ -1842,10 +2244,12 @@ export function commandPlanShape(
 	projectKey: string | undefined,
 ): {
 	endpoint?: string;
+	exact?: boolean;
 	identifiers?: Record<string, unknown>;
 	method?: string;
 	payload?: unknown;
 	localWrites?: unknown;
+	reason?: string;
 	wait?: unknown;
 	requests?: unknown;
 } {
@@ -1855,7 +2259,7 @@ export function commandPlanShape(
 	};
 	const id = args[0];
 	const codeEnvEndpoint = (suffix = "",) =>
-		`/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
+		`/public/api/admin/code-envs/${encodeURIComponent(codeEnvLang(args[0], entry.usage,),)}/${
 			encodeURIComponent(args[1],)
 		}${suffix}`;
 	const statisticsWorksheetsEndpoint = (datasetName: string,) =>
@@ -1863,6 +2267,31 @@ export function commandPlanShape(
 	const statisticsWorksheetEndpoint = (datasetName: string, worksheetId: string,) =>
 		`${statisticsWorksheetsEndpoint(datasetName,)}${encodeURIComponent(worksheetId,)}`;
 	switch (`${resource}.${action}`) {
+		case "sql.query": {
+			const payload = resolveSqlQueryInvocation(args, flags, planProjectKeyFromArgs(flags,),);
+			return {
+				method: "POST",
+				endpoint: "/public/api/sql/queries/",
+				identifiers: {
+					connection: payload.connection,
+					dataset: payload.datasetFullName,
+				},
+				payload,
+			};
+		}
+		case "ml-task.train":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/models/lab/${encodeURIComponent(args[0],)}/${encodeURIComponent(args[1],)}/train`,
+				),
+				identifiers: { analysisId: args[0], mlTaskId: args[1], },
+				payload: {
+					sessionName: flags["session-name"] as string | undefined,
+					runQueue: false,
+				},
+				wait: flags["wait"] === true,
+			};
 		case "wiki.create": {
 			const name = requiredPlanFlag(flags, "name", entry.usage,);
 			return {
@@ -2248,17 +2677,74 @@ export function commandPlanShape(
 		}
 		case "recipe.run":
 			return {
+				exact: false,
+				reason:
+					"The job endpoint is exact, but DSS reads the recipe and its outputs before constructing the job payload; use recipe run --dry-run for a resolved payload.",
 				method: "POST",
 				endpoint: projectEndpoint("/jobs/",),
 				identifiers: { recipe: id, },
-				payload: {
-					recipe: id,
-					outputResolution: "dynamic",
-					projectKey,
-					partition: flags["partition"] as string | undefined,
-				},
 				wait: recipeRunShouldWait(flags,),
 			};
+		case "code.run": {
+			const { script, source, } = resolveCodeInputWithSource(args, flags,);
+			const sourceSha256 = sha256Hex(script,);
+			const scenarioBase = projectEndpoint("/scenarios/{generatedScenarioId}",);
+			const envName = flags["env"] as string | undefined;
+			const keepScenario = flags["keep"] === true;
+			const timeoutMs = parseCodeRunIntegerFlag(flags["timeout"], "--timeout",) ?? 120_000;
+			const maxLogBytes = flags["full-log"] === true
+				? 0
+				: parseCodeRunIntegerFlag(flags["max-log-bytes"], "--max-log-bytes",) ?? 1_048_576;
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/scenarios/",),
+				identifiers: {
+					source,
+					sourceSha256,
+					sourceBytes: Buffer.byteLength(script,),
+				},
+				requests: [
+					{
+						method: "POST",
+						endpoint: projectEndpoint("/scenarios/",),
+						payload: {
+							id: "{generatedScenarioId}",
+							name: "dss code run ({generatedScenarioId})",
+							projectKey,
+							type: "custom_python",
+							params: {
+								envSelection: envName
+									? { envMode: "EXPLICIT_ENV", envName, }
+									: { envMode: "INHERIT", },
+							},
+						},
+					},
+					{
+						method: "PUT",
+						endpoint: `${scenarioBase}/payload`,
+						payload: { extension: "py", script: "<omitted>", },
+						redactedFields: ["payload.script",],
+					},
+					{ method: "POST", endpoint: `${scenarioBase}/run/`, payload: {}, },
+					{
+						method: "GET",
+						endpoint:
+							`${scenarioBase}/get-run-for-trigger?triggerId={triggerId}&triggerRunId={triggerRunId}`,
+						repeat: "until scenarioRun.result.outcome or timeout",
+					},
+					{
+						method: "GET",
+						endpoint: `${scenarioBase}/{runId}/log`,
+						boundedBytes: maxLogBytes,
+					},
+					...keepScenario ? [] : [{ method: "DELETE", endpoint: scenarioBase, cleanup: true, },],
+				],
+				wait: {
+					timeoutMs,
+					pollEndpoint: `${scenarioBase}/get-run-for-trigger`,
+				},
+			};
+		}
 		case "recipe.update":
 			return {
 				method: "PUT",
@@ -3075,27 +3561,208 @@ export function commandPlanShape(
 				identifiers: { dataset: args[0], worksheetId: args[1], },
 				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
-		case "bundle.export":
+		case "webapp.create":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/webapps/",),
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "webapp.update-settings": {
+			const patch = requiredPlanJsonInput(flags, entry.usage,);
+			const expectHash = flags["expect-hash"] as string | undefined;
+			if (expectHash !== undefined && !/^[a-fA-F0-9]{64}$/.test(expectHash,)) {
+				throw new UsageError("Expected webapp hash must be a 64-character SHA-256 hex digest.",);
+			}
+			const endpoint = projectEndpoint(`/webapps/${encodeURIComponent(id,)}`,);
+			return {
+				exact: false,
+				reason: "Apply GETs the current settings, deep-merges the patch, then PUTs the full object.",
+				method: "PUT",
+				endpoint,
+				identifiers: {
+					webappId: id,
+					patchHash: stableHash(patch,),
+					...(expectHash ? { expectHash: expectHash.toLowerCase(), } : {}),
+				},
+				payload: { patch: "<omitted>", patchHash: stableHash(patch,), },
+				requests: [
+					{ method: "GET", endpoint, purpose: "read full settings and verify expectHash", },
+					{
+						method: "PUT",
+						endpoint,
+						condition: "settings read and expected hash matched",
+						payload: "<merged full settings>",
+					},
+				],
+			};
+		}
+		case "webapp.stop-backend":
 			return {
 				method: "PUT",
-				endpoint: projectEndpoint(`/bundles/exported/${encodeURIComponent(id,)}`,),
+				endpoint: projectEndpoint(
+					`/webapps/${encodeURIComponent(id,)}/backend/actions/stop`,
+				),
+				identifiers: { webappId: id, },
+				payload: {},
+			};
+		case "webapp.restart-backend": {
+			const endpoint = projectEndpoint(
+				`/webapps/${encodeURIComponent(id,)}/backend/actions/restart`,
+			);
+			return {
+				method: "PUT",
+				endpoint,
+				identifiers: { webappId: id, },
+				payload: {},
+				wait: {
+					requested: flags["wait"] === true,
+					timeoutMs: num(flags["timeout"], "--timeout",),
+					pollIntervalMs: num(flags["poll-interval"], "--poll-interval",),
+				},
+			};
+		}
+		case "api-service.create":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/apiservices/${encodeURIComponent(id,)}`,),
+				identifiers: { serviceId: id, },
+				payload: {},
+			};
+		case "api-service.save-settings": {
+			const settings = requiredPlanJsonInput(flags, entry.usage,);
+			const expectHash = flags["expect-hash"] as string | undefined;
+			if (expectHash !== undefined && !/^[a-fA-F0-9]{64}$/.test(expectHash,)) {
+				throw new UsageError(
+					"Expected API service settings hash must be a 64-character SHA-256 hex digest.",
+				);
+			}
+			const endpoint = projectEndpoint(
+				`/apiservices/${encodeURIComponent(id,)}/settings`,
+			);
+			const payload = {
+				settings: "<omitted>",
+				settingsHash: stableHash(settings,),
+				...(expectHash ? { expectHash: expectHash.toLowerCase(), } : {}),
+			};
+			return {
+				method: "PUT",
+				endpoint,
+				identifiers: { serviceId: id, },
+				payload,
+				requests: [
+					...(expectHash
+						? [{ method: "GET", endpoint, purpose: "verify expectHash", },]
+						: []),
+					{
+						method: "PUT",
+						endpoint,
+						condition: expectHash ? "hash matched" : "unconditional",
+						payload,
+					},
+				],
+			};
+		}
+		case "api-service.add-prediction-endpoint": {
+			const endpoint = projectEndpoint(
+				`/apiservices/${encodeURIComponent(id,)}/settings`,
+			);
+			return {
+				exact: false,
+				reason: "Apply GETs the full settings, appends one endpoint, then PUTs the full object.",
+				method: "PUT",
+				endpoint,
+				identifiers: { serviceId: id, endpointId: args[1], savedModelId: args[2], },
+				payload: { id: args[1], type: "STD_PREDICTION", modelRef: args[2], },
+				requests: [
+					{ method: "GET", endpoint, purpose: "read full settings", },
+					{ method: "PUT", endpoint, payload: "<merged full settings>", },
+				],
+			};
+		}
+		case "api-service.create-package":
+		case "api-service.delete-package":
+		case "api-service.publish-package": {
+			const serviceId = args[0];
+			const packageId = args[1];
+			const packageEndpoint = projectEndpoint(
+				`/apiservices/${encodeURIComponent(serviceId,)}/packages/${encodeURIComponent(packageId,)}`,
+			);
+			if (action === "delete-package") {
+				return {
+					method: "DELETE",
+					endpoint: packageEndpoint,
+					identifiers: { serviceId, packageId, },
+				};
+			}
+			if (action === "publish-package") {
+				return {
+					method: "POST",
+					endpoint: `${packageEndpoint}/publish${
+						querySuffix({
+							publishedServiceId: flags["published-service-id"] as string | undefined,
+						},)
+					}`,
+					identifiers: { serviceId, packageId, },
+				};
+			}
+			return {
+				method: "POST",
+				endpoint: packageEndpoint + querySuffix({
+					releaseNotes: flags["release-notes"] as string | undefined,
+				},),
+				identifiers: { serviceId, packageId, },
+			};
+		}
+		case "bundle.export": {
+			const evaluateProjectStandardsChecks = parseBooleanOption(
+				flags["evaluate-standards-checks"],
+				"--evaluate-standards-checks",
+			) ?? true;
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint("/bundles/exported/" + encodeURIComponent(id,),) + querySuffix({
+					releaseNotes: flags["release-notes"] as string | undefined,
+					evaluateProjectStandardsChecks,
+				},),
 				identifiers: { bundleId: id, },
 				payload: {},
 			};
+		}
 		case "bundle.publish":
 			return {
 				method: "POST",
-				endpoint: projectEndpoint(`/bundles/${encodeURIComponent(id,)}/publish`,),
+				endpoint: projectEndpoint("/bundles/" + encodeURIComponent(id,) + "/publish",) + querySuffix({
+					publishedProjectKey: flags["published-project-key"] as string | undefined,
+				},),
 				identifiers: { bundleId: id, },
 				payload: {},
 			};
-		case "bundle.activate":
+		case "bundle.activate": {
+			const rawScenarios = flags["scenarios"];
+			let scenariosToEnable: Record<string, boolean> | undefined;
+			if (rawScenarios !== undefined && rawScenarios !== false) {
+				const parsed = json(rawScenarios,);
+				if (
+					typeof parsed !== "object"
+					|| parsed === null
+					|| Array.isArray(parsed,)
+					|| !Object.values(parsed,).every((value,) => typeof value === "boolean")
+				) {
+					throw new UsageError("--scenarios must be a JSON object mapping scenario IDs to true|false.",);
+				}
+				scenariosToEnable = parsed as Record<string, boolean>;
+			}
 			return {
 				method: "POST",
-				endpoint: projectEndpoint(`/bundles/imported/${encodeURIComponent(id,)}/actions/activate`,),
+				endpoint: projectEndpoint(
+					`/bundles/imported/${encodeURIComponent(id,)}/actions/activate`,
+				),
 				identifiers: { bundleId: id, },
-				payload: {},
+				payload: scenariosToEnable === undefined
+					? {}
+					: { scenariosActiveOnActivation: scenariosToEnable, },
 			};
+		}
 		case "bundle.preload":
 			return {
 				method: "POST",
@@ -3103,45 +3770,157 @@ export function commandPlanShape(
 				identifiers: { bundleId: id, },
 				payload: {},
 			};
-		case "code-env.create":
+		case "project-library.create-file":
+		case "project-library.create-folder": {
+			const libraryPath = validateLibraryPath(id,);
+			const kind = action === "create-file" ? "contents" : "folders";
+			return {
+				exact: false,
+				reason:
+					"Apply performs a live absence check before POST; --if-not-exists may stop after that read, and create never overwrites an existing item.",
+				method: "POST",
+				endpoint: projectEndpoint(`/libraries/${kind}/${encodeLibraryPath(libraryPath,)}`,),
+				identifiers: { path: libraryPath, },
+			};
+		}
+		case "project-library.put": {
+			const libraryPath = validateLibraryPath(id,);
+			const endpoint = projectEndpoint(`/libraries/contents/${encodeLibraryPath(libraryPath,)}`,);
+			const payload = projectLibraryPutPayload(flags,);
 			return {
 				method: "POST",
-				endpoint: "/public/api/admin/code-envs/",
-				identifiers: { lang: args[0], name: args[1], },
-				payload: {
-					envLang: args[0],
-					envName: args[1],
-					deploymentMode: requiredPlanFlag(flags, "deployment-mode", entry.usage,),
-					params: codeEnvParams(flags,),
-					wait: codeEnvWait(flags,),
+				endpoint,
+				identifiers: {
+					path: libraryPath,
+					concurrencyControl: payload.expectSha256
+						? PROJECT_LIBRARY_CONCURRENCY_CONTROL
+						: "none",
 				},
-				wait: codeEnvWait(flags,),
+				payload,
+				...(payload.expectSha256
+					? {
+						requests: [
+							{
+								method: "GET",
+								endpoint: `${endpoint}?dataEncoding=base64`,
+								purpose: "verify expectSha256",
+							},
+							{ method: "POST", endpoint, condition: "hash matched", payload, },
+						],
+					}
+					: {}),
 			};
-		case "code-env.set-definition":
+		}
+		case "project-library.delete": {
+			const libraryPath = validateLibraryPath(id,);
 			return {
-				method: "PUT",
-				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
-					encodeURIComponent(args[1],)
-				}`,
-				identifiers: { lang: args[0], name: args[1], },
-				payload: requiredPlanJsonInput(flags, entry.usage,),
+				method: "DELETE",
+				endpoint: projectEndpoint(`/libraries/contents/${encodeLibraryPath(libraryPath,)}`,),
+				identifiers: { path: libraryPath, },
 			};
+		}
+		case "project-library.rename": {
+			const libraryPath = validateLibraryPath(id,);
+			const newName = validateLibraryName(args[1],);
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/libraries/contents-actions/rename/",),
+				identifiers: { path: libraryPath, newName, },
+				payload: { oldPath: `/${libraryPath}`, newName, },
+			};
+		}
+		case "project-library.move": {
+			const libraryPath = validateLibraryPath(id,);
+			const destinationFolder = validateLibraryDestinationPath(args[1],);
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/libraries/contents-actions/move",),
+				identifiers: { path: libraryPath, destinationFolder, },
+				payload: { oldPath: `/${libraryPath}`, newPath: destinationFolder, },
+			};
+		}
+		case "code-env.create": {
+			const wait = codeEnvWait(flags,);
+			return {
+				method: "POST",
+				endpoint: `${codeEnvEndpoint()}?wait=${wait}`,
+				identifiers: { lang: codeEnvLang(args[0], entry.usage,), name: args[1], },
+				payload: {
+					...codeEnvParams(flags,),
+					deploymentMode: requiredPlanFlag(flags, "deployment-mode", entry.usage,),
+				},
+				wait,
+			};
+		}
+		case "code-env.set-definition": {
+			const definition = requiredPlanJsonInput(flags, entry.usage,);
+			const expectHash = flags["expect-hash"] as string | undefined;
+			if (expectHash !== undefined && !/^[a-fA-F0-9]{64}$/.test(expectHash,)) {
+				throw new UsageError("--expect-hash must be a 64-character SHA-256 hex digest.",);
+			}
+			const endpoint = codeEnvEndpoint();
+			const definitionHash = stableHash(definition,);
+			const normalizedExpectHash = expectHash?.toLowerCase();
+			return {
+				exact: false,
+				reason:
+					"Apply PUTs the supplied definition object unchanged; this plan omits that body and reports only its hash.",
+				method: "PUT",
+				endpoint,
+				identifiers: {
+					lang: codeEnvLang(args[0], entry.usage,),
+					name: args[1],
+					definitionHash,
+					...(normalizedExpectHash ? { expectHash: normalizedExpectHash, } : {}),
+				},
+				payload: "<omitted>",
+				...(normalizedExpectHash
+					? {
+						requests: [
+							{ method: "GET", endpoint, purpose: "verify expectHash", },
+							{
+								method: "PUT",
+								endpoint,
+								condition: "hash matched",
+								payload: "<omitted>",
+								redactedFields: ["payload",],
+							},
+						],
+					}
+					: {}),
+			};
+		}
 		case "code-env.set-packages": {
 			const installCorePackages = parseBooleanOption(
 				flags["install-core-packages"],
 				"--install-core-packages",
 			);
-			const payload: Record<string, unknown> = {
-				specPackageList: codeEnvPackageList(flags,).join("\n",),
-			};
-			if (installCorePackages !== undefined) {
-				payload.desc = { installCorePackages, };
+			const expectHash = flags["expect-hash"] as string | undefined;
+			if (expectHash !== undefined && !/^[a-fA-F0-9]{64}$/.test(expectHash,)) {
+				throw new UsageError("--expect-hash must be a 64-character SHA-256 hex digest.",);
 			}
+			const endpoint = codeEnvEndpoint();
 			return {
+				exact: false,
+				reason:
+					"Apply GETs the full definition, merges only package fields, then PUTs the full result.",
 				method: "PUT",
-				endpoint: codeEnvEndpoint(),
-				identifiers: { lang: args[0], name: args[1], },
-				payload,
+				endpoint,
+				identifiers: { lang: codeEnvLang(args[0], entry.usage,), name: args[1], },
+				payload: {
+					packages: codeEnvPackageList(flags,),
+					...(installCorePackages !== undefined ? { installCorePackages, } : {}),
+					...(expectHash ? { expectHash: expectHash.toLowerCase(), } : {}),
+				},
+				requests: [
+					{ method: "GET", endpoint, purpose: "read full definition and verify expectHash", },
+					{
+						method: "PUT",
+						endpoint,
+						condition: "definition read and hash matched",
+						payload: "<merged full definition>",
+					},
+				],
 			};
 		}
 		case "code-env.update-packages": {
@@ -3150,17 +3929,29 @@ export function commandPlanShape(
 				: typeof flags["version"] === "string"
 				? flags["version"]
 				: undefined;
+			const wait = codeEnvWait(flags,);
 			return {
 				method: "POST",
 				endpoint: `${codeEnvEndpoint("/packages",)}${
 					querySuffix({
 						forceRebuildEnv: flags["force-rebuild"] === true,
 						versionToUpdate,
-						wait: codeEnvWait(flags,),
+						wait,
 					},)
 				}`,
-				identifiers: { lang: args[0], name: args[1], },
-				wait: codeEnvWait(flags,),
+				identifiers: { lang: codeEnvLang(args[0], entry.usage,), name: args[1], },
+				wait,
+			};
+		}
+		case "code-env.update-images": {
+			const wait = codeEnvWait(flags,);
+			return {
+				method: "POST",
+				endpoint: `${codeEnvEndpoint("/images",)}${
+					querySuffix({ envVersion: flags["env-version"] as string | undefined, wait, },)
+				}`,
+				identifiers: { lang: codeEnvLang(args[0], entry.usage,), name: args[1], },
+				wait,
 			};
 		}
 		case "code-env.set-jupyter": {
@@ -3170,31 +3961,53 @@ export function commandPlanShape(
 					"--active is required. Usage: dss code-env set-jupyter <lang> <name> --active true|false",
 				);
 			}
+			const wait = codeEnvWait(flags,);
 			return {
 				method: "POST",
-				endpoint: `${codeEnvEndpoint("/jupyter",)}${
-					querySuffix({ active, wait: codeEnvWait(flags,), },)
-				}`,
-				identifiers: { lang: args[0], name: args[1], },
-				wait: codeEnvWait(flags,),
+				endpoint: `${codeEnvEndpoint("/jupyter",)}${querySuffix({ active, wait, },)}`,
+				identifiers: { lang: codeEnvLang(args[0], entry.usage,), name: args[1], },
+				wait,
 			};
 		}
-		case "code-env.delete":
+		case "code-env.delete": {
+			const wait = codeEnvWait(flags,);
 			return {
 				method: "DELETE",
-				endpoint: `/public/api/admin/code-envs/${encodeURIComponent(args[0],)}/${
-					encodeURIComponent(args[1],)
-				}`,
-				identifiers: { lang: args[0], name: args[1], },
-				wait: codeEnvWait(flags,),
+				endpoint: `${codeEnvEndpoint()}?wait=${wait}`,
+				identifiers: { lang: codeEnvLang(args[0], entry.usage,), name: args[1], },
+				wait,
 			};
-		case "notebook.save-jupyter":
+		}
+		case "notebook.save-jupyter": {
+			const content = requiredPlanJsonInput(flags, entry.usage,);
+			const expectHash = flags["expect-hash"] as string | undefined;
+			if (expectHash !== undefined && !/^[a-fA-F0-9]{64}$/.test(expectHash,)) {
+				throw new UsageError("Expected notebook hash must be a 64-character SHA-256 hex digest.",);
+			}
+			const endpoint = projectEndpoint(`/jupyter-notebooks/${encodeURIComponent(id,)}`,);
 			return {
-				method: "PUT",
-				endpoint: projectEndpoint(`/jupyter-notebooks/${encodeURIComponent(id,)}`,),
-				identifiers: { name: id, },
-				payload: requiredPlanJsonInput(flags, entry.usage,),
+				exact: false,
+				reason:
+					"A fresh GET selects POST when absent or PUT when present; a confirming GET supplies the persisted hash.",
+				endpoint,
+				identifiers: {
+					name: id,
+					contentHash: stableHash(content,),
+					...(expectHash ? { expectHash: expectHash.toLowerCase(), } : {}),
+				},
+				requests: [
+					{ method: "GET", endpoint, purpose: "resolve create/update and check --expect-hash", },
+					{
+						method: "POST|PUT",
+						endpoint,
+						condition: "POST after not_found; otherwise PUT",
+						payload: "<omitted>",
+						redactedFields: ["payload",],
+					},
+					{ method: "GET", endpoint, purpose: "confirm persisted hash", },
+				],
 			};
+		}
 		case "notebook.delete-jupyter":
 			return {
 				method: "DELETE",
@@ -3203,28 +4016,78 @@ export function commandPlanShape(
 			};
 		case "notebook.clear-jupyter-outputs":
 			return {
-				method: "PUT",
-				endpoint: projectEndpoint(`/jupyter-notebooks/${encodeURIComponent(id,)}`,),
+				method: "DELETE",
+				endpoint: projectEndpoint(`/jupyter-notebooks/${encodeURIComponent(id,)}/outputs`,),
 				identifiers: { name: id, },
-				payload: { clearOutputs: true, },
 			};
 		case "notebook.unload-jupyter":
+			if (flags["all"] === true) {
+				if (args.length > 0) throw new UsageError(entry.usage,);
+				return {
+					exact: false,
+					reason:
+						"DSS has no unload-all endpoint; apply lists active notebooks and sessions, then issues one verified session DELETE per result.",
+					identifiers: { all: true, },
+					requests: [
+						{ method: "GET", endpoint: projectEndpoint("/jupyter-notebooks/?active=true",), },
+						{
+							method: "GET",
+							endpoint: projectEndpoint("/jupyter-notebooks/{name}/sessions",),
+							forEach: "active notebook",
+						},
+						{
+							method: "DELETE",
+							endpoint: projectEndpoint("/jupyter-notebooks/{name}/sessions/{sessionId}",),
+							forEach: "listed session",
+						},
+					],
+				};
+			}
+			requireArgs(args, 2, entry.usage,);
 			return {
-				method: "POST",
+				method: "DELETE",
 				endpoint: projectEndpoint(
-					`/jupyter-notebooks/${encodeURIComponent(args[0],)}/sessions/${
-						encodeURIComponent(args[1],)
-					}/unload`,
+					`/jupyter-notebooks/${encodeURIComponent(args[0],)}/sessions/${encodeURIComponent(args[1],)}`,
 				),
 				identifiers: { name: args[0], sessionId: args[1], },
 			};
-		case "notebook.save-sql":
+		case "notebook.save-sql": {
+			const content = requiredPlanJsonInput(flags, entry.usage,);
+			const expectHash = flags["expect-hash"] as string | undefined;
+			if (expectHash !== undefined && !/^[a-fA-F0-9]{64}$/.test(expectHash,)) {
+				throw new UsageError("Expected notebook hash must be a 64-character SHA-256 hex digest.",);
+			}
+			const endpoint = projectEndpoint(`/sql-notebooks/${encodeURIComponent(id,)}`,);
 			return {
-				method: "PUT",
-				endpoint: projectEndpoint(`/sql-notebooks/${encodeURIComponent(id,)}`,),
-				identifiers: { id, },
-				payload: requiredPlanJsonInput(flags, entry.usage,),
+				exact: false,
+				reason:
+					"A fresh GET selects collection POST when absent or entity PUT when present; a confirming GET supplies the persisted hash.",
+				endpoint,
+				identifiers: {
+					id,
+					contentHash: stableHash(content,),
+					...(expectHash ? { expectHash: expectHash.toLowerCase(), } : {}),
+				},
+				requests: [
+					{ method: "GET", endpoint, purpose: "resolve create/update and check --expect-hash", },
+					{
+						method: "POST",
+						endpoint: projectEndpoint("/sql-notebooks/",),
+						condition: "after not_found",
+						payload: "<omitted; includes id and projectKey>",
+						redactedFields: ["payload",],
+					},
+					{
+						method: "PUT",
+						endpoint,
+						condition: "when present",
+						payload: "<omitted>",
+						redactedFields: ["payload",],
+					},
+					{ method: "GET", endpoint, purpose: "confirm persisted hash", },
+				],
 			};
+		}
 		case "notebook.delete-sql":
 			return {
 				method: "DELETE",
@@ -3233,10 +4096,13 @@ export function commandPlanShape(
 			};
 		case "notebook.clear-sql-history":
 			return {
-				method: "PUT",
-				endpoint: projectEndpoint(`/sql-notebooks/${encodeURIComponent(id,)}/history`,),
-				identifiers: { id, cellId: flags["cell-id"] as string | undefined, },
-				payload: { retain: num(flags["retain"], "--retain",), },
+				method: "POST",
+				endpoint: projectEndpoint(`/sql-notebooks/${encodeURIComponent(id,)}/history/clear`,),
+				identifiers: { id, },
+				payload: {
+					cellId: flags["cell-id"] as string | undefined,
+					numRunsToRetain: num(flags["retain"], "--retain",),
+				},
 			};
 		case "project.create": {
 			const settings = jsonInput(flags,) ?? null;
@@ -3751,12 +4617,10 @@ export function commandPlanShape(
 			};
 		default:
 			return {
-				method: action.startsWith("delete",) || action === "abort" ? "DELETE" : "POST",
-				endpoint: projectKey
-					? projectEndpoint(`/${resource}s/${id ? encodeURIComponent(id,) : ""}`,)
-					: undefined,
+				exact: false,
+				reason:
+					`No exact offline request shape is defined for ${resource}.${action}; no endpoint was guessed.`,
 				identifiers: id ? { id, } : undefined,
-				payload: jsonInput(flags,),
 			};
 	}
 }
@@ -3800,7 +4664,7 @@ export const BATCH_PLAN_EXIT_CODES: Record<string, number> = {
 export const BATCH_USAGE =
 	"dss batch (--data JSON|--data-file PATH|--stdin) [--continue-on-error] [--dry-run]";
 const BATCH_DESCRIPTION =
-	"Run a sequence of dss commands from a JSON array of argv arrays. Fail-fast by default; returns one envelope with a per-step ok/result/error and exits non-zero if any step failed.";
+	"Run dss argv arrays fail-fast by default. The result aggregates failed/retryable/failureCodes; process exit remains the first failed step's exit code.";
 export const BATCH_HINT =
 	'Pass a JSON array of argv arrays, e.g. [["dataset","list"],["recipe","update","r","--data-file","p.json"]].';
 export const BATCH_EXAMPLE_PAYLOAD: string[][] = [

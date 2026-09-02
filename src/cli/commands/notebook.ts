@@ -1,14 +1,21 @@
-import { jsonInput, num, } from "../coerce.js";
-import { encodedProjectEndpoint, isNotFoundError, readIfExists, skipResult, } from "../output.js";
+import { jsonInput, num, parseBooleanOption, } from "../coerce.js";
+import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
-import { requireArgs, UsageError, } from "../usage.js";
+import { requireArgs, requireNoArgs, UsageError, } from "../usage.js";
 
 export const notebookCommands: Record<string, CommandMeta> = {
 	"list-jupyter": {
-		handler: (c, _a, f,) => c.notebooks.listJupyter(f["project-key"] as string | undefined,),
-		usage: "dss notebook list-jupyter [--project-key KEY]",
-		description: "List Jupyter notebooks.",
-		examples: ["dss notebook list-jupyter",],
+		handler: (c, _a, f,) =>
+			c.notebooks.listJupyter(f["project-key"] as string | undefined, {
+				active: parseBooleanOption(f["active"], "--active",),
+			},),
+		usage: "dss notebook list-jupyter [--active true|false] [--project-key KEY]",
+		description:
+			"List Jupyter notebooks. Pass --active to use the official ?active= filter: true lists currently running notebooks, false lists non-running ones.",
+		examples: [
+			"dss notebook list-jupyter",
+			"dss notebook list-jupyter --active true",
+		],
 	},
 	"get-jupyter": {
 		handler: (c, a, f,) => {
@@ -42,21 +49,23 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, "dss notebook clear-jupyter-outputs <name>",);
 			const pk = f["project-key"] as string | undefined;
 			if (f["dry-run"] === true) {
+				// The real mutation is a single server-side DELETE of the
+				// outputs endpoint, so the dry run can only report the current
+				// content (read-only) and the exact request that would run; the
+				// stripped `next` shape would misdescribe the operation.
 				const current = await c.notebooks.getJupyter(a[0], pk,);
-				const next = {
-					...current,
-					cells: current.cells.map((cell,) => {
-						if (cell.cell_type !== "code") return cell;
-						return { ...cell, outputs: [], execution_count: 0, };
-					},),
-				};
 				return {
 					dryRun: true,
 					action: "clear-jupyter-outputs",
 					resource: "jupyter-notebook",
 					name: a[0],
 					current,
-					next,
+					endpoint: encodedProjectEndpoint(
+						c,
+						pk,
+						`/jupyter-notebooks/${encodeURIComponent(a[0],)}/outputs`,
+					),
+					method: "DELETE",
 				};
 			}
 			await c.notebooks.clearJupyterOutputs(a[0], pk,);
@@ -77,8 +86,39 @@ export const notebookCommands: Record<string, CommandMeta> = {
 	},
 	"unload-jupyter": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 2, "dss notebook unload-jupyter <name> <sessionId>",);
 			const pk = f["project-key"] as string | undefined;
+			if (f["all"] === true) {
+				requireNoArgs(a, "dss notebook unload-jupyter --all [--dry-run] [--project-key KEY]",);
+				if (f["dry-run"] === true) {
+					const planned = [];
+					for (const notebook of await c.notebooks.listJupyter(pk, { active: true, },)) {
+						for (const session of await c.notebooks.listJupyterSessions(notebook.name, pk,)) {
+							planned.push({
+								name: notebook.name,
+								sessionId: session.sessionId,
+								endpoint: encodedProjectEndpoint(
+									c,
+									pk,
+									`/jupyter-notebooks/${encodeURIComponent(notebook.name,)}/sessions/${
+										encodeURIComponent(session.sessionId,)
+									}`,
+								),
+								method: "DELETE",
+							},);
+						}
+					}
+					return {
+						dryRun: true,
+						action: "unload-jupyter",
+						resource: "jupyter-notebook",
+						all: true,
+						planned,
+					};
+				}
+				const unloaded = await c.notebooks.unloadJupyterAll(pk,);
+				return { unloaded, resource: "jupyter-notebook", all: true, };
+			}
+			requireArgs(a, 2, "dss notebook unload-jupyter <name> <sessionId>",);
 			if (f["dry-run"] === true) {
 				const sessions = await c.notebooks.listJupyterSessions(a[0], pk,);
 				const current = sessions.find((session,) => session.sessionId === a[1]);
@@ -100,9 +140,13 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			await c.notebooks.unloadJupyter(a[0], a[1], pk,);
 			return { unloaded: a[0], sessionId: a[1], resource: "jupyter-notebook", };
 		},
-		usage: "dss notebook unload-jupyter <name> <sessionId> [--dry-run] [--project-key KEY]",
-		description: "Unload a Jupyter notebook kernel session.",
-		examples: ["dss notebook unload-jupyter my_notebook SESSION_ID --dry-run",],
+		usage: "dss notebook unload-jupyter (<name> <sessionId>|--all) [--dry-run] [--project-key KEY]",
+		description:
+			"Unload a Jupyter notebook kernel session, or every session of every running notebook with --all.",
+		examples: [
+			"dss notebook unload-jupyter my_notebook SESSION_ID --dry-run",
+			"dss notebook unload-jupyter --all --dry-run",
+		],
 	},
 	"list-sql": {
 		handler: (c, _a, f,) => c.notebooks.listSql(f["project-key"] as string | undefined,),
@@ -171,17 +215,20 @@ export const notebookCommands: Record<string, CommandMeta> = {
 					next: data,
 				};
 			}
-			try {
-				await c.notebooks.saveJupyter(a[0], data as never, pk,);
-			} catch (error) {
-				if (!isNotFoundError(error,)) throw error;
-				await c.notebooks.createJupyter(a[0], data as never, pk,);
-			}
-			return { saved: a[0], resource: "jupyter-notebook", };
+			const result = await c.notebooks.saveOrCreateJupyter(a[0], data as never, pk, {
+				expectHash: f["expect-hash"] as string | undefined,
+			},);
+			return {
+				saved: a[0],
+				resource: "jupyter-notebook",
+				created: result.created,
+				hash: result.hash,
+			};
 		},
 		usage:
-			"dss notebook save-jupyter <name> (--data '{...}' | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
-		description: "Save content to a Jupyter notebook, creating it if missing.",
+			"dss notebook save-jupyter <name> (--data '{...}' | --data-file PATH | --stdin) [--expect-hash SHA256] [--dry-run] [--project-key KEY]",
+		description:
+			"Save content to a Jupyter notebook, creating it if missing. Reports created versus updated and the persisted content hash; --expect-hash aborts with a stale-read error when the stored content hash changed.",
 		examples: [
 			"dss notebook save-jupyter my_notebook --data-file notebook.json --dry-run",
 			"cat notebook.json | dss notebook save-jupyter my_notebook --stdin",
@@ -208,17 +255,20 @@ export const notebookCommands: Record<string, CommandMeta> = {
 					next: data,
 				};
 			}
-			const current = await readIfExists(() => c.notebooks.getSql(a[0], pk,));
-			if (current) {
-				await c.notebooks.saveSql(a[0], data as never, pk,);
-			} else {
-				await c.notebooks.createSql(a[0], data as never, pk,);
-			}
-			return { saved: a[0], resource: "sql-notebook", };
+			const result = await c.notebooks.saveOrCreateSql(a[0], data as never, pk, {
+				expectHash: f["expect-hash"] as string | undefined,
+			},);
+			return {
+				saved: a[0],
+				resource: "sql-notebook",
+				created: result.created,
+				hash: result.hash,
+			};
 		},
 		usage:
-			"dss notebook save-sql <id> (--data '{...}' | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
-		description: "Save content to a SQL notebook, creating it if missing.",
+			"dss notebook save-sql <id> (--data '{...}' | --data-file PATH | --stdin) [--expect-hash SHA256] [--dry-run] [--project-key KEY]",
+		description:
+			"Save content to a SQL notebook, creating it if missing. Reports created versus updated and the persisted content hash; --expect-hash rejects a stale read before writing.",
 		examples: ["dss notebook save-sql my_sql_notebook --data-file content.json --dry-run",],
 	},
 	"clear-sql-history": {

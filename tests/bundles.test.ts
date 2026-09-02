@@ -101,9 +101,32 @@ describe("BundlesResource", () => {
 
 		expect(observedMethod,).toBe("PUT",);
 		expect(observedPath,).toBe(
-			"/public/api/projects/TEST/bundles/exported/bundle%2Fslash",
+			"/public/api/projects/TEST/bundles/exported/bundle%2Fslash?evaluateProjectStandardsChecks=true",
 		);
 		expect(observedBody,).toEqual({},);
+	});
+
+	it("forwards bundle export release notes and standards-check opt-out", async () => {
+		let observedPath = "";
+
+		await withServer(async (req, res,) => {
+			await readBody(req,);
+			observedPath = req.url ?? "";
+			res.statusCode = 204;
+			res.end();
+		}, async (url,) => {
+			const resource = new BundlesResource(createClient(url,),);
+			await expect(
+				resource.exportBundle("v2", undefined, {
+					releaseNotes: "Adds churn model",
+					evaluateProjectStandardsChecks: false,
+				},),
+			).resolves.toBeUndefined();
+		},);
+
+		expect(observedPath,).toBe(
+			"/public/api/projects/TEST/bundles/exported/v2?releaseNotes=Adds+churn+model&evaluateProjectStandardsChecks=false",
+		);
 	});
 
 	it("deletes exported and imported bundles with encoded ids", async () => {
@@ -143,6 +166,52 @@ describe("BundlesResource", () => {
 		expect(observedMethod,).toBe("POST",);
 		expect(observedPath,).toBe(
 			"/public/api/projects/TEST/bundles/imported/bundle%20action/actions/activate",
+		);
+		expect(observedBody,).toEqual({},);
+	});
+
+	it("forwards activation scenarios on activate", async () => {
+		let observedBody: unknown;
+
+		await withServer(async (req, res,) => {
+			observedBody = JSON.parse(await readBody(req,),) as unknown;
+			sendJson(res, { report: "ok", },);
+		}, async (url,) => {
+			const resource = new BundlesResource(createClient(url,),);
+			await expect(
+				resource.activate("v1", undefined, {
+					scenariosToEnable: { daily_build: true, hourly_retrain: false, },
+				},),
+			).resolves.toEqual({ report: "ok", },);
+		},);
+
+		expect(observedBody,).toEqual({
+			scenariosActiveOnActivation: { daily_build: true, hourly_retrain: false, },
+		},);
+	});
+
+	it("forwards publishedProjectKey on bundle publish", async () => {
+		let observedPath = "";
+		let observedBody: unknown;
+
+		await withServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			observedPath = `${url.pathname}${url.search}`;
+			observedBody = JSON.parse(await readBody(req,),) as unknown;
+			sendJson(res, { publishedProjectKey: "PROD-CHURN", publishedOn: 1, publishedBy: "admin", },);
+		}, async (url,) => {
+			const resource = new BundlesResource(createClient(url,),);
+			await expect(
+				resource.publish("v1", undefined, { publishedProjectKey: "PROD-CHURN", },),
+			).resolves.toEqual({
+				publishedProjectKey: "PROD-CHURN",
+				publishedOn: 1,
+				publishedBy: "admin",
+			},);
+		},);
+
+		expect(observedPath,).toBe(
+			"/public/api/projects/TEST/bundles/v1/publish?publishedProjectKey=PROD-CHURN",
 		);
 		expect(observedBody,).toEqual({},);
 	});

@@ -225,10 +225,14 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"list",
 		"get",
 		"get-definition",
+		"list-logs",
+		"get-log",
+		"version",
 		"create",
 		"set-definition",
 		"set-packages",
 		"update-packages",
+		"update-images",
 		"set-jupyter",
 		"delete",
 		"usages",
@@ -381,6 +385,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"create-file",
 		"create-folder",
 		"put",
+		"diff",
 		"delete",
 		"rename",
 		"move",
@@ -567,6 +572,7 @@ describe("CLI command surface", () => {
 							|| (resource === "dataset" && action === "assert-count")
 							|| (resource === "dataset" && action === "assert-schema")
 							|| (resource === "data-quality" && action === "assert-results")
+							|| (resource === "flow-zone" && action === "organize")
 							|| (resource === "batch" && action === "run")
 						? { assertionFailure: 4, }
 						: {}),

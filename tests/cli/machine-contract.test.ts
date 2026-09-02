@@ -20,6 +20,9 @@ describe("machine contract: stdio streams and failure codes", () => {
 			format: "compact-json",
 			success: "single-json-value",
 			failure: "structured-error-object",
+			failureResultDetailLimitBytes: 65_536,
+			fieldProjection:
+				"Missing --fields paths stay null on stdout and emit field_projection_missing on stderr.",
 			richFailureResults:
 				"doctor/batch/cleanup nonzero outcomes are their own compact result on stdout ({ok:false,...}) with the command's exit code; not re-wrapped.",
 		},);
@@ -47,6 +50,9 @@ describe("machine contract: stdio streams and failure codes", () => {
 			error: 2,
 			transient: 3,
 			longRunningFailure: 4,
+			assertionFailure: 4,
+		},);
+		expect(registry["flow-zone"]?.organize?.exitCodes,).toMatchObject({
 			assertionFailure: 4,
 		},);
 	});

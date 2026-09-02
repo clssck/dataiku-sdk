@@ -1,3 +1,4 @@
+import { json, parseBooleanOption, } from "../coerce.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -10,13 +11,30 @@ export const bundleCommands: Record<string, CommandMeta> = {
 	},
 	export: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss bundle export <bundleId> [--project-key KEY]",);
-			await c.bundles.exportBundle(a[0], f["project-key"] as string | undefined,);
+			const usage =
+				"dss bundle export <bundleId> [--release-notes TEXT] [--evaluate-standards-checks true|false] [--project-key KEY]";
+			requireArgs(a, 1, usage,);
+			await c.bundles.exportBundle(a[0], f["project-key"] as string | undefined, {
+				...(typeof f["release-notes"] === "string" ? { releaseNotes: f["release-notes"], } : {}),
+				...(f["evaluate-standards-checks"] !== undefined
+					? {
+						evaluateProjectStandardsChecks: parseBooleanOption(
+							f["evaluate-standards-checks"],
+							"--evaluate-standards-checks",
+						) ?? true,
+					}
+					: {}),
+			},);
 			return { exported: a[0], };
 		},
-		usage: "dss bundle export <bundleId> [--project-key KEY]",
-		description: "Create (or overwrite) an exported Design-node bundle.",
-		examples: ["dss bundle export v1",],
+		usage:
+			"dss bundle export <bundleId> [--release-notes TEXT] [--evaluate-standards-checks true|false] [--project-key KEY]",
+		description:
+			"Create (or overwrite) an exported Design-node bundle. --release-notes forwards the documented releaseNotes parameter; --evaluate-standards-checks toggles the documented Project Standards Checks evaluation (default true).",
+		examples: [
+			"dss bundle export v1",
+			"dss bundle export v1 --release-notes='Adds churn model' --evaluate-standards-checks=false",
+		],
 	},
 	"delete-exported": {
 		handler: async (c, a, f,) => {
@@ -49,12 +67,23 @@ export const bundleCommands: Record<string, CommandMeta> = {
 	},
 	publish: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss bundle publish <bundleId> [--project-key KEY]",);
-			return c.bundles.publish(a[0], f["project-key"] as string | undefined,);
+			const usage = "dss bundle publish <bundleId> [--published-project-key KEY] [--project-key KEY]";
+			requireArgs(a, 1, usage,);
+			return c.bundles.publish(
+				a[0],
+				f["project-key"] as string | undefined,
+				typeof f["published-project-key"] === "string"
+					? { publishedProjectKey: f["published-project-key"], }
+					: {},
+			);
 		},
-		usage: "dss bundle publish <bundleId> [--project-key KEY]",
-		description: "Publish a Design-node bundle to the Project Deployer.",
-		examples: ["dss bundle publish v1",],
+		usage: "dss bundle publish <bundleId> [--published-project-key KEY] [--project-key KEY]",
+		description:
+			"Publish a Design-node bundle to the Project Deployer; --published-project-key forwards the documented publishedProjectKey query parameter (a new published project is created when no match exists; the source project's key is the server-side default).",
+		examples: [
+			"dss bundle publish v1",
+			"dss bundle publish v1 --published-project-key=PROD-CHURN",
+		],
 	},
 	"list-imported": {
 		handler: (c, _a, f,) => c.bundles.listImported(f["project-key"] as string | undefined,),
@@ -83,12 +112,37 @@ export const bundleCommands: Record<string, CommandMeta> = {
 	},
 	activate: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss bundle activate <bundleId> [--project-key KEY]",);
-			return c.bundles.activate(a[0], f["project-key"] as string | undefined,);
+			const usage = "dss bundle activate <bundleId> [--scenarios JSON] [--project-key KEY]";
+			requireArgs(a, 1, usage,);
+			const rawScenarios = f["scenarios"];
+			let scenariosToEnable: Record<string, boolean> | undefined;
+			if (rawScenarios !== undefined && rawScenarios !== false) {
+				const parsed = json(rawScenarios,);
+				if (
+					typeof parsed !== "object"
+					|| parsed === null
+					|| Array.isArray(parsed,)
+					|| !Object.values(parsed,).every((value,) => typeof value === "boolean")
+				) {
+					throw new UsageError(
+						"--scenarios must be a JSON object mapping scenario IDs to true|false. Usage: dss bundle activate <bundleId> --scenarios '{\"daily_build\":true}'",
+					);
+				}
+				scenariosToEnable = parsed as Record<string, boolean>;
+			}
+			return c.bundles.activate(
+				a[0],
+				f["project-key"] as string | undefined,
+				scenariosToEnable !== undefined ? { scenariosToEnable, } : {},
+			);
 		},
-		usage: "dss bundle activate <bundleId> [--project-key KEY]",
-		description: "Activate an imported Automation-node bundle.",
-		examples: ["dss bundle activate v1",],
+		usage: "dss bundle activate <bundleId> [--scenarios JSON] [--project-key KEY]",
+		description:
+			"Activate an imported Automation-node bundle; --scenarios forwards the documented scenario-ID-to-enabled dict as the scenariosActiveOnActivation body.",
+		examples: [
+			"dss bundle activate v1",
+			'dss bundle activate v1 --scenarios=\'{"daily_build":true,"hourly_retrain":false}\'',
+		],
 	},
 	preload: {
 		handler: (c, a, f,) => {

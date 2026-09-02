@@ -2,6 +2,7 @@ import { readFileSync, } from "node:fs";
 import { mkdir, writeFile, } from "node:fs/promises";
 import { dirname, resolve, } from "node:path";
 import { readStdinText, stripUtf8Bom, } from "../coerce.js";
+import { enqueueCliWarning, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { UsageError, } from "../usage.js";
 
@@ -52,7 +53,7 @@ function parseSqlStartRetries(value: string | boolean | undefined,): number | un
 	return parsed;
 }
 
-function resolveSqlInput(args: string[], flags: Record<string, string | boolean>,): string {
+export function resolveSqlInput(args: string[], flags: Record<string, string | boolean>,): string {
 	const sources: Array<{ label: string; read: () => string; }> = [];
 
 	if (typeof flags["sql"] === "string") {
@@ -97,38 +98,68 @@ function resolveSqlInput(args: string[], flags: Record<string, string | boolean>
 	return query;
 }
 
+export interface SqlQueryInvocation {
+	query: string;
+	connection?: string;
+	datasetFullName?: string;
+	database?: string;
+	projectKey?: string;
+	type: "sql";
+}
+
+export function resolveSqlQueryInvocation(
+	args: string[],
+	flags: Record<string, string | boolean>,
+	projectKeyOverride?: string,
+): SqlQueryInvocation {
+	const connection = flags["connection"] as string | undefined;
+	const datasetFullName = flags["dataset"] as string | undefined;
+	if ((connection ? 1 : 0) + (datasetFullName ? 1 : 0) !== 1) {
+		throw new UsageError(`Pass exactly one of --connection or --dataset. Usage: ${SQL_QUERY_USAGE}`,);
+	}
+	return {
+		query: resolveSqlInput(args, flags,),
+		connection,
+		datasetFullName,
+		database: flags["database"] as string | undefined,
+		projectKey: projectKeyOverride ?? flags["project-key"] as string | undefined,
+		type: "sql",
+	};
+}
+
 export const sqlCommands: Record<string, CommandMeta> = {
 	query: {
 		handler: async (c, a, f,) => {
-			const connection = f["connection"] as string | undefined;
-			const datasetFullName = f["dataset"] as string | undefined;
-			if ((connection ? 1 : 0) + (datasetFullName ? 1 : 0) !== 1) {
-				throw new UsageError(
-					`Pass exactly one of --connection or --dataset. Usage: ${SQL_QUERY_USAGE}`,
-				);
-			}
 			const outputFile = (f["output"] as string | undefined)
 				?? (f["output-file"] as string | undefined);
 			const previewProvided = f["preview"] !== undefined;
-			if (previewProvided && !outputFile) {
-				throw new UsageError(
-					`--preview requires --output or --output-file. Usage: ${SQL_QUERY_USAGE}`,
-					"validation_failed",
-				);
-			}
 			const previewCount = previewProvided
 				? parseSqlPreviewCount(f["preview"],)
 				: DEFAULT_SQL_PREVIEW_ROWS;
-			const query = resolveSqlInput(a, f,);
 			const result = await c.sql.query({
-				query,
-				connection,
-				datasetFullName,
-				database: f["database"] as string | undefined,
-				projectKey: f["project-key"] as string | undefined,
+				...resolveSqlQueryInvocation(a, f,),
 				retryMaxAttempts: parseSqlStartRetries(f["start-retries"],),
 			},);
-			if (!outputFile) return result;
+			if (!outputFile && !previewProvided) return result;
+			if (!outputFile) {
+				const truncated = result.rows.length > previewCount;
+				if (truncated) {
+					enqueueCliWarning({
+						code: "sql_preview_truncated",
+						rowCount: result.rows.length,
+						previewRows: previewCount,
+						hint: "Use --output PATH to write the full result without placing it on stdout.",
+					},);
+				}
+				return {
+					queryId: result.queryId,
+					schema: result.schema,
+					columns: result.columns ?? result.schema,
+					rowCount: result.rows.length,
+					preview: result.rows.slice(0, previewCount,),
+					truncated,
+				};
+			}
 
 			const outputPath = resolve(outputFile,);
 			await mkdir(dirname(outputPath,), { recursive: true, },);
@@ -145,7 +176,7 @@ export const sqlCommands: Record<string, CommandMeta> = {
 		},
 		usage: SQL_QUERY_USAGE,
 		description:
-			"Run a SQL query against a DSS connection or dataset. --start-retries may execute the SQL more than once; use it only when repetition is safe.",
+			"Run potentially mutating SQL against a DSS connection or dataset. Use --preview N for bounded stdout or --output PATH for full rows. --start-retries may execute SQL more than once; use it only when repetition is safe.",
 		examples: [
 			"dss sql query 'SELECT * FROM orders LIMIT 10' --connection my_pg",
 			"dss sql query --sql-file query.sql --connection my_pg",

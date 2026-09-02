@@ -47,6 +47,7 @@ export const BOOLEAN_FLAGS = new Set([
 	"no-add-to-python-path",
 	"delete-directory",
 	"peek",
+	"all",
 ],);
 
 export const SHORT_FLAGS: Record<string, string> = {
@@ -100,6 +101,7 @@ export const VALUE_FLAGS = new Set([
 	"env-version",
 	"expect-hash",
 	"expect-project-incarnation",
+	"expect-sha256",
 	"expected",
 	"expect-version",
 	"data-file",
@@ -109,6 +111,7 @@ export const VALUE_FLAGS = new Set([
 	"file-name",
 	"file-type",
 	"env",
+	"evaluate-standards-checks",
 	"install-core-packages",
 	"fuzzy-on",
 	"fuzzy-distance",
@@ -125,6 +128,10 @@ export const VALUE_FLAGS = new Set([
 	"join-type",
 	"package",
 	"packages",
+	"published-service-id",
+	"published-project-key",
+	"release-notes",
+	"scenarios",
 	"local",
 	"login",
 	"manifest-version",

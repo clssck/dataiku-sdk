@@ -6,7 +6,16 @@ import {
 	buildMutationPlan,
 } from "../../src/cli/contract.js";
 import { RESOURCE_NAMES, } from "../../src/cli/usage.js";
-import { dss, dssFailure, join, mkdirSync, readFileSync, rmSync, tmpdir, } from "./_harness.js";
+import {
+	dss,
+	dssFailure,
+	join,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+	tmpdir,
+	writeFileSync,
+} from "./_harness.js";
 
 type Schema = Record<string, unknown>;
 
@@ -64,6 +73,120 @@ describe("agent contract accuracy", () => {
 		expect(registry.project?.import?.mutatesDss,).toBe(true,);
 		expect(registry.project?.import?.sideEffect,).toBe("write",);
 		expect(registry.bundle?.export?.mutatesDss,).toBe(true,);
+	});
+
+	it("classifies opaque SQL and ML training as planned mutations", () => {
+		const registry = buildCommandRegistry();
+		expect(registry.sql?.query,).toMatchObject({
+			sideEffect: "write",
+			mutatesDss: true,
+			destructive: "destructive",
+			idempotency: "none",
+			requiresProject: false,
+		},);
+		expect(registry.mlTask?.train ?? registry["ml-task"]?.train,).toMatchObject({
+			sideEffect: "write",
+			mutatesDss: true,
+			async: "job",
+			idempotency: "none",
+		},);
+		expect(registry["install-skill"]?.run?.idempotency,).toBe("convergent",);
+
+		const sqlPlan = buildMutationPlan(
+			"sql",
+			"query",
+			commands.sql!.query!,
+			["DROP TABLE obsolete",],
+			{ connection: "WAREHOUSE", },
+		);
+		expect(sqlPlan,).toMatchObject({
+			plan: true,
+			method: "POST",
+			endpoint: "/public/api/sql/queries/",
+			connection: "WAREHOUSE",
+			payload: { query: "DROP TABLE obsolete", connection: "WAREHOUSE", type: "sql", },
+			idempotency: "none",
+		},);
+		const trainPlan = buildMutationPlan(
+			"ml-task",
+			"train",
+			commands["ml-task"]!.train!,
+			["analysis", "task",],
+			{ "project-key": "PROJECT", "session-name": "baseline", wait: true, },
+		);
+		expect(trainPlan,).toMatchObject({
+			plan: true,
+			method: "POST",
+			endpoint: "/public/api/projects/PROJECT/models/lab/analysis/task/train",
+			analysisId: "analysis",
+			mlTaskId: "task",
+			payload: { sessionName: "baseline", runQueue: false, },
+			wait: true,
+			async: "job",
+			idempotency: "none",
+		},);
+	});
+
+	it("exposes complete positional, value, and output schemas", () => {
+		const registry = buildCommandRegistry();
+		expect(registry.sql?.query?.positionalArguments,).toContainEqual({
+			name: "SQL",
+			required: false,
+		},);
+		expect(registry.sql?.query?.requiredInputGroups,).toEqual([
+			{
+				oneOf: [
+					{ positionals: ["SQL",], },
+					{ flags: ["sql",], },
+					{ flags: ["sql-file",], },
+					{ flags: ["stdin",], },
+				],
+			},
+			{ oneOf: [{ flags: ["connection",], }, { flags: ["dataset",], },], },
+		],);
+		expect(registry["flow-zone"]?.move?.positionalArguments,).toContainEqual({
+			name: "id",
+			required: false,
+		},);
+		expect(registry["flow-zone"]?.move?.requiredInputGroups,).toHaveLength(2,);
+
+		for (const actions of Object.values(registry,)) {
+			for (const entry of Object.values(actions,)) {
+				for (const flag of entry.flags.filter((candidate,) => candidate.kind === "value")) {
+					expect(flag.valueType, `${entry.resource}.${entry.action} --${flag.name}`,).toEqual(
+						expect.any(String,),
+					);
+				}
+			}
+		}
+
+		expect(registry.project?.list?.schemas.output,).toMatchObject({
+			type: "array",
+			items: { type: "object", required: ["projectKey", "name",], },
+		},);
+		expect(registry.dataset?.get?.schemas.output,).toMatchObject({
+			type: "object",
+			required: ["name",],
+		},);
+		expect(registry["flow-zone"]?.get?.schemas.output,).toMatchObject({
+			type: "object",
+			required: ["id", "name",],
+		},);
+	});
+
+	it("publishes an error schema that accepts every emitted field", () => {
+		const contract = buildAgentContract();
+		const schema = (contract.schemas as Record<string, Schema>).errorEnvelope;
+		const properties = schema.properties as Record<string, Schema>;
+		expect(properties.category.enum,).toEqual([
+			"usage",
+			"permission_or_environment",
+			"dss",
+			"internal",
+		],);
+		for (const field of ["hint", "status", "retryable", "requestId", "details",]) {
+			expect(properties,).toHaveProperty(field,);
+		}
 	});
 
 	it("reports agent, version, and batch among valid resources", async () => {
@@ -781,6 +904,307 @@ describe("agent contract accuracy", () => {
 		},);
 	});
 });
+
+describe("agent contract accuracy: coding plans", () => {
+	it("never guesses endpoints for uncovered mutations", () => {
+		const streaming = commands["streaming-endpoint"]!;
+		const plan = buildMutationPlan(
+			"streaming-endpoint",
+			"create",
+			streaming.create!,
+			["stream", "kafka",],
+			{ "project-key": "TEST", },
+		);
+		expect(plan,).toMatchObject({
+			plan: true,
+			resource: "streaming-endpoint",
+			action: "create",
+			exact: false,
+		},);
+		expect(plan.reason,).toContain("no endpoint was guessed",);
+		expect(plan.endpoint,).toBeUndefined();
+		expect(plan.method,).toBeUndefined();
+	});
+
+	it("describes code run lifecycle without exposing Python source", () => {
+		const dir = join(tmpdir(), `dss-code-plan-${Date.now()}`,);
+		mkdirSync(dir, { recursive: true, },);
+		const sourcePath = join(dir, "script.py",);
+		writeFileSync(sourcePath, "print('contract_secret_marker')\n",);
+		try {
+			const plan = buildMutationPlan("code", "run", commands.code!.run!, [], {
+				file: sourcePath,
+				"project-key": "TEST",
+			},);
+			expect(plan,).toMatchObject({
+				endpoint: "/public/api/projects/TEST/scenarios/",
+				method: "POST",
+				source: { kind: "file", path: sourcePath, },
+			},);
+			expect(plan.sourceSha256,).toMatch(/^[a-f0-9]{64}$/,);
+			expect(plan.requests,).toHaveLength(6,);
+			expect(JSON.stringify(plan,),).not.toContain("contract_secret_marker",);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("marks recipe output resolution as unavailable offline", () => {
+		const plan = buildMutationPlan("recipe", "run", commands.recipe!.run!, ["prepare",], {
+			"project-key": "TEST",
+		},);
+		expect(plan,).toMatchObject({
+			exact: false,
+			method: "POST",
+			endpoint: "/public/api/projects/TEST/jobs/",
+			recipe: "prepare",
+		},);
+		expect(plan.payload,).toBeUndefined();
+		expect(plan.reason,).toContain("recipe run --dry-run",);
+	});
+
+	it("publishes raw-text stdin for code run", () => {
+		const codeRun = buildCommandRegistry().code!.run!;
+		expect(codeRun.payloadSchema,).toEqual({ stdin: true, contentType: "text/plain", },);
+		expect(codeRun.schemas.input,).toEqual({ type: "string", contentMediaType: "text/plain", },);
+		expect(codeRun.schemas.output,).toMatchObject({
+			type: "object",
+			additionalProperties: false,
+			required: expect.arrayContaining(["outcome", "success", "cleanup",],),
+		},);
+	});
+
+	it("guards project-library paths and content with hashes", () => {
+		expect(() =>
+			buildMutationPlan(
+				"project-library",
+				"create-file",
+				commands["project-library"]!["create-file"]!,
+				[
+					"../escape.py",
+				],
+				{ "project-key": "TEST", },
+			)
+		).toThrow();
+
+		const expectSha256 = "a".repeat(64,);
+		const plan = buildMutationPlan("project-library", "put", commands["project-library"]!.put!, [
+			"python/lib.py",
+		], {
+			content: "library_secret_marker",
+			"expect-sha256": expectSha256,
+			"project-key": "TEST",
+		},);
+		expect(plan,).toMatchObject({
+			method: "POST",
+			endpoint: "/public/api/projects/TEST/libraries/contents/python/lib.py",
+			payload: {
+				contentSource: "flag",
+				bytes: 21,
+				expectSha256,
+			},
+		},);
+		expect((plan.payload as Record<string, unknown>).sha256,).toMatch(/^[a-f0-9]{64}$/,);
+		expect(plan.requests,).toHaveLength(2,);
+		expect(JSON.stringify(plan,),).not.toContain("library_secret_marker",);
+	});
+
+	it("uses documented notebook output and composed unload requests", () => {
+		const clear = buildMutationPlan(
+			"notebook",
+			"clear-jupyter-outputs",
+			commands.notebook!["clear-jupyter-outputs"]!,
+			["analysis.ipynb",],
+			{ "project-key": "TEST", },
+		);
+		expect(clear,).toMatchObject({
+			method: "DELETE",
+			endpoint: "/public/api/projects/TEST/jupyter-notebooks/analysis.ipynb/outputs",
+		},);
+
+		const unloadAll = buildMutationPlan(
+			"notebook",
+			"unload-jupyter",
+			commands.notebook!["unload-jupyter"]!,
+			[],
+			{ all: true, "project-key": "TEST", },
+		);
+		expect(unloadAll,).toMatchObject({ exact: false, all: true, },);
+		expect(unloadAll.endpoint,).toBeUndefined();
+		expect(unloadAll.requests,).toEqual([
+			expect.objectContaining({
+				method: "GET",
+				endpoint: "/public/api/projects/TEST/jupyter-notebooks/?active=true",
+			},),
+			expect.objectContaining({ method: "GET", forEach: "active notebook", },),
+			expect.objectContaining({ method: "DELETE", forEach: "listed session", },),
+		],);
+	});
+
+	it("describes code-env entity, merge, image, and delete requests", () => {
+		const create = buildMutationPlan("code-env", "create", commands["code-env"]!.create!, [
+			"PYTHON",
+			"audit_env",
+		], { "deployment-mode": "DESIGN_MANAGED", },);
+		expect(create,).toMatchObject({
+			method: "POST",
+			endpoint: "/public/api/admin/code-envs/PYTHON/audit_env?wait=true",
+			payload: { deploymentMode: "DESIGN_MANAGED", },
+		},);
+
+		const expectHash = "c".repeat(64,);
+		const definition = buildMutationPlan(
+			"code-env",
+			"set-definition",
+			commands["code-env"]!["set-definition"]!,
+			["PYTHON", "audit_env",],
+			{
+				data: '{"desc":{"secret":"definition_secret_marker"}}',
+				"expect-hash": expectHash,
+			},
+		);
+		expect(definition,).toMatchObject({
+			exact: false,
+			method: "PUT",
+			endpoint: "/public/api/admin/code-envs/PYTHON/audit_env",
+			lang: "PYTHON",
+			name: "audit_env",
+			expectHash,
+			payload: "<omitted>",
+		},);
+		expect(definition.reason,).toContain("omits that body",);
+		expect(definition.definitionHash,).toMatch(/^[a-f0-9]{64}$/,);
+		expect(definition.requests,).toEqual([
+			{ method: "GET", endpoint: definition.endpoint, purpose: "verify expectHash", },
+			{
+				method: "PUT",
+				endpoint: definition.endpoint,
+				condition: "hash matched",
+				payload: "<omitted>",
+				redactedFields: ["payload",],
+			},
+		],);
+		expect(JSON.stringify(definition,),).not.toContain("definition_secret_marker",);
+
+		const packages = buildMutationPlan(
+			"code-env",
+			"set-packages",
+			commands["code-env"]!["set-packages"]!,
+			[
+				"PYTHON",
+				"audit_env",
+			],
+			{ packages: "pandas==2.2", },
+		);
+		expect(packages,).toMatchObject({
+			exact: false,
+			method: "PUT",
+			endpoint: "/public/api/admin/code-envs/PYTHON/audit_env",
+		},);
+		expect(packages.requests,).toHaveLength(2,);
+
+		const images = buildMutationPlan(
+			"code-env",
+			"update-images",
+			commands["code-env"]!["update-images"]!,
+			[
+				"PYTHON",
+				"audit_env",
+			],
+			{ "env-version": "v1", "no-wait": true, },
+		);
+		expect(images.endpoint,).toBe(
+			"/public/api/admin/code-envs/PYTHON/audit_env/images?envVersion=v1&wait=false",
+		);
+
+		const remove = buildMutationPlan("code-env", "delete", commands["code-env"]!.delete!, [
+			"PYTHON",
+			"audit_env",
+		], { "no-wait": true, },);
+		expect(remove,).toMatchObject({
+			method: "DELETE",
+			endpoint: "/public/api/admin/code-envs/PYTHON/audit_env?wait=false",
+		},);
+	});
+
+	it("models guarded webapp and API service settings without exposing definitions", () => {
+		const expectHash = "b".repeat(64,);
+		const webapp = buildMutationPlan(
+			"webapp",
+			"update-settings",
+			commands.webapp!["update-settings"]!,
+			[
+				"web-1",
+			],
+			{
+				data: '{"params":{"secret":"webapp_secret_marker"}}',
+				"expect-hash": expectHash,
+				"project-key": "TEST",
+			},
+		);
+		expect(webapp,).toMatchObject({
+			exact: false,
+			method: "PUT",
+			endpoint: "/public/api/projects/TEST/webapps/web-1",
+		},);
+		expect(webapp.requests,).toHaveLength(2,);
+		expect(JSON.stringify(webapp,),).not.toContain("webapp_secret_marker",);
+		expect(buildCommandRegistry().webapp!["restart-backend"]!.async,).toBe("future",);
+
+		const service = buildMutationPlan(
+			"api-service",
+			"save-settings",
+			commands["api-service"]!["save-settings"]!,
+			["svc",],
+			{
+				data: '{"secret":"api_service_secret_marker"}',
+				"expect-hash": expectHash,
+				"project-key": "TEST",
+			},
+		);
+		expect(service,).toMatchObject({
+			method: "PUT",
+			endpoint: "/public/api/projects/TEST/apiservices/svc/settings",
+			payload: { expectHash, settings: "<omitted>", },
+		},);
+		expect(service.requests,).toHaveLength(2,);
+		expect(JSON.stringify(service,),).not.toContain("api_service_secret_marker",);
+	});
+
+	it("forwards deployable package and bundle parameters in exact plans", () => {
+		const publishPackage = buildMutationPlan(
+			"api-service",
+			"publish-package",
+			commands["api-service"]!["publish-package"]!,
+			["svc", "v1",],
+			{ "project-key": "TEST", "published-service-id": "prod svc", },
+		);
+		expect(publishPackage.endpoint,).toBe(
+			"/public/api/projects/TEST/apiservices/svc/packages/v1/publish?publishedServiceId=prod+svc",
+		);
+
+		const exported = buildMutationPlan("bundle", "export", commands.bundle!.export!, ["v1",], {
+			"project-key": "TEST",
+			"release-notes": "ready now",
+			"evaluate-standards-checks": "false",
+		},);
+		expect(exported,).toMatchObject({ method: "PUT", payload: {}, },);
+		expect(exported.endpoint,).toBe(
+			"/public/api/projects/TEST/bundles/exported/v1?releaseNotes=ready+now&evaluateProjectStandardsChecks=false",
+		);
+
+		const activated = buildMutationPlan("bundle", "activate", commands.bundle!.activate!, ["v1",], {
+			"project-key": "TEST",
+			scenarios: '{"daily":true,"hourly":false}',
+		},);
+		expect(activated,).toMatchObject({
+			method: "POST",
+			endpoint: "/public/api/projects/TEST/bundles/imported/v1/actions/activate",
+			payload: { scenariosActiveOnActivation: { daily: true, hourly: false, }, },
+		},);
+	});
+});
+
 describe("agent contract accuracy: project-git surface", () => {
 	it("exposes the exact project-git action list through the agent contract", () => {
 		const registry = buildCommandRegistry();

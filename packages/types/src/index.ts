@@ -539,7 +539,6 @@ export type ConnectionSummary = Static<typeof ConnectionSummarySchema>;
 export const CodeEnvSummarySchema = Type.Object({
 	envName: Type.String(),
 	envLang: Type.String(),
-	pythonInterpreter: Type.Optional(Type.String(),),
 	deploymentMode: Type.Optional(Type.String(),),
 }, { additionalProperties: true, },);
 export type CodeEnvSummary = Static<typeof CodeEnvSummarySchema>;
@@ -548,10 +547,46 @@ export const CodeEnvDetailsSchema = Type.Object({
 	envName: Type.String(),
 	envLang: Type.String(),
 	pythonInterpreter: Type.Optional(Type.String(),),
+	deploymentMode: Type.Optional(Type.String(),),
 	requestedPackages: Type.Array(Type.String(),),
 	installedPackages: Type.Array(Type.String(),),
+	definitionHash: Type.Optional(Type.String(),),
 },);
 export type CodeEnvDetails = Static<typeof CodeEnvDetailsSchema>;
+
+export const CodeEnvLogSummarySchema = Type.Object({
+	name: Type.String(),
+}, { additionalProperties: true, },);
+export type CodeEnvLogSummary = Static<typeof CodeEnvLogSummarySchema>;
+
+export const CodeEnvLogSummaryArraySchema = Type.Array(CodeEnvLogSummarySchema,);
+export type CodeEnvLogSummaryArray = Static<typeof CodeEnvLogSummaryArraySchema>;
+
+export const CodeEnvLogResultSchema = Type.Object({
+	log: Type.String(),
+	bytes: Type.Number(),
+	truncated: Type.Boolean(),
+	tailed: Type.Boolean(),
+}, { additionalProperties: false, },);
+export type CodeEnvLogResult = Static<typeof CodeEnvLogResultSchema>;
+
+export const CodeEnvGetLogOptionsSchema = Type.Object({
+	maxBytes: Type.Optional(Type.Number(),),
+	maxLines: Type.Optional(Type.Number(),),
+}, { additionalProperties: false, },);
+export type CodeEnvGetLogOptions = Static<typeof CodeEnvGetLogOptionsSchema>;
+
+export const CodeEnvUpdateImagesOptionsSchema = Type.Object({
+	envVersion: Type.Optional(Type.String(),),
+	wait: Type.Optional(Type.Boolean(),),
+}, { additionalProperties: false, },);
+export type CodeEnvUpdateImagesOptions = Static<typeof CodeEnvUpdateImagesOptionsSchema>;
+
+export const CodeEnvVersionForProjectSchema = Type.Object({
+	version: Type.Optional(Type.String(),),
+	bundleId: Type.Optional(Type.String(),),
+}, { additionalProperties: true, },);
+export type CodeEnvVersionForProject = Static<typeof CodeEnvVersionForProjectSchema>;
 
 export const CodeEnvActionResultSchema = Type.Record(Type.String(), Type.Unknown(),);
 export type CodeEnvActionResult = Static<typeof CodeEnvActionResultSchema>;
@@ -574,6 +609,7 @@ export type CodeEnvPackageList = Static<typeof CodeEnvPackageListSchema>;
 export const CodeEnvSetPackagesOptionsSchema = Type.Object({
 	packages: CodeEnvPackageListSchema,
 	installCorePackages: Type.Optional(Type.Boolean(),),
+	expectHash: Type.Optional(Type.String(),),
 }, { additionalProperties: false, },);
 export type CodeEnvSetPackagesOptions = Static<typeof CodeEnvSetPackagesOptionsSchema>;
 
@@ -717,7 +753,9 @@ export type DataQualityComputeResult = Static<typeof DataQualityComputeResultSch
 
 export const JupyterCellSchema = Type.Object({
 	cell_type: Type.String(),
-	source: Type.Array(Type.String(),),
+	// nbformat permits a cell's source to be either a single string or an
+	// array of strings; DSS returns whichever form the notebook carries.
+	source: Type.Union([Type.String(), Type.Array(Type.String(),),],),
 	metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
 	outputs: Type.Optional(Type.Array(Type.Unknown(),),),
 	execution_count: Type.Optional(Type.Union([Type.Null(), Type.Number(),],),),
@@ -779,6 +817,13 @@ export const SqlNotebookContentSchema = Type.Object({
 	cells: Type.Array(SqlNotebookCellSchema,),
 }, { additionalProperties: true, },);
 export type SqlNotebookContent = Static<typeof SqlNotebookContentSchema>;
+
+/** Execution history of a SQL notebook: cell ID to the runs recorded for it. */
+export const SqlNotebookHistorySchema = Type.Record(
+	Type.String(),
+	Type.Array(Type.Unknown(),),
+);
+export type SqlNotebookHistory = Static<typeof SqlNotebookHistorySchema>;
 
 // ---------------------------------------------------------------------------
 // SQL Queries

@@ -2,7 +2,9 @@ import { describe, expect, it, } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
 import { DataikuClient, } from "../src/client.js";
+import { ClientValidationError, } from "../src/errors.js";
 import { WebappsResource, } from "../src/resources/webapps.js";
+import { stableHash, } from "../src/utils/stable-hash.js";
 
 async function readBody(req: IncomingMessage,): Promise<string> {
 	let body = "";
@@ -132,33 +134,91 @@ describe("WebappsResource", () => {
 		expect(requestedBody,).toEqual(payload,);
 	});
 
-	it("updates webapp settings with the supplied body", async () => {
-		let requestedMethod = "";
-		let requestedPath = "";
-		let requestedBody: unknown;
-		const payload = {
+	it("updates webapp settings via GET-merge-PUT, preserving untouched fields", async () => {
+		const requests: Array<{ method: string; path: string; body: unknown; }> = [];
+		const stored = {
+			id: "webapp/1",
+			name: "Main",
+			type: "STANDARD",
+			params: { html: "<main />", backend: "python", },
+			tags: ["prod",],
+		};
+		const patch = { name: "Updated", params: { html: "<section />", }, };
+		const merged = {
 			id: "webapp/1",
 			name: "Updated",
 			type: "STANDARD",
-			params: { html: "<main />", },
+			params: { html: "<main />", backend: "python", },
+			tags: ["prod",],
 		};
-		const response = { ...payload, saved: true, };
+		const response = { ...merged, saved: true, };
 
 		await withServer(async (req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
-			requestedMethod = req.method ?? "";
-			requestedPath = url.pathname;
-			requestedBody = JSON.parse(await readBody(req,),) as unknown;
+			const method = req.method ?? "";
+			const body = await readBody(req,);
+			requests.push({ method, path: url.pathname, body: body ? JSON.parse(body,) : undefined, },);
+			if (method === "GET") {
+				sendJson(res, stored,);
+				return;
+			}
 			sendJson(res, response,);
 		}, async (url,) => {
 			const resource = new WebappsResource(createClient(url,),);
 
-			await expect(resource.updateSettings("webapp/1", payload,),).resolves.toEqual(response,);
+			await expect(
+				resource.updateSettings("webapp/1", { name: "Updated", params: { html: "<main />", }, },),
+			).resolves.toEqual(response,);
 		},);
 
-		expect(requestedMethod,).toBe("PUT",);
-		expect(requestedPath,).toBe("/public/api/projects/TEST/webapps/webapp%2F1",);
-		expect(requestedBody,).toEqual(payload,);
+		expect(requests,).toEqual([
+			{ method: "GET", path: "/public/api/projects/TEST/webapps/webapp%2F1", body: undefined, },
+			{ method: "PUT", path: "/public/api/projects/TEST/webapps/webapp%2F1", body: merged, },
+		],);
+	});
+
+	it("refuses update-settings when the expectHash guard sees a stale object", async () => {
+		const stored = { id: "webapp-1", name: "Main", type: "STANDARD", params: {}, };
+		let sawPut = false;
+
+		await withServer(async (req, res,) => {
+			if ((req.method ?? "") === "PUT") sawPut = true;
+			sendJson(res, stored,);
+		}, async (url,) => {
+			const resource = new WebappsResource(createClient(url,),);
+
+			const staleHash = "0".repeat(64,);
+			await expect(
+				resource.updateSettings("webapp-1", { name: "Updated", }, undefined, {
+					expectHash: staleHash,
+				},),
+			).rejects.toThrow(ClientValidationError,);
+		},);
+
+		expect(sawPut,).toBe(false,);
+	});
+
+	it("accepts update-settings when the expectHash guard matches", async () => {
+		const stored = { id: "webapp-1", name: "Main", type: "STANDARD", params: {}, };
+		const response = { ...stored, name: "Updated", };
+		let putBody: unknown;
+
+		await withServer(async (req, res,) => {
+			if ((req.method ?? "") === "PUT") {
+				putBody = JSON.parse(await readBody(req,),) as unknown;
+			}
+			sendJson(res, (req.method ?? "") === "GET" ? stored : response,);
+		}, async (url,) => {
+			const resource = new WebappsResource(createClient(url,),);
+
+			await expect(
+				resource.updateSettings("webapp-1", { name: "Updated", }, undefined, {
+					expectHash: stableHash(stored,),
+				},),
+			).resolves.toEqual(response,);
+		},);
+
+		expect(putBody,).toEqual(response,);
 	});
 
 	it("stops and restarts webapp backends", async () => {
@@ -172,13 +232,21 @@ describe("WebappsResource", () => {
 				path: url.pathname,
 				body: JSON.parse(body,) as unknown,
 			},);
+			if (url.pathname.endsWith("/actions/restart",)) {
+				sendJson(res, { jobId: "restart-future-1", hasResult: false, alive: true, },);
+				return;
+			}
 			res.statusCode = 204;
 			res.end();
 		}, async (url,) => {
 			const resource = new WebappsResource(createClient(url,),);
 
 			await resource.stopBackend("webapp-1",);
-			await resource.startOrRestartBackend("webapp-1",);
+			await expect(resource.startOrRestartBackend("webapp-1",),).resolves.toEqual({
+				jobId: "restart-future-1",
+				hasResult: false,
+				alive: true,
+			},);
 		},);
 
 		expect(requests,).toEqual([
@@ -193,5 +261,47 @@ describe("WebappsResource", () => {
 				body: {},
 			},
 		],);
+	});
+
+	it("waits on the restart future and surfaces the settled wait result", async () => {
+		const requests: Array<{ method: string; path: string; }> = [];
+		let polls = 0;
+
+		await withServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push({ method: req.method ?? "", path: url.pathname, },);
+			if (url.pathname.endsWith("/actions/restart",)) {
+				sendJson(res, { jobId: "restart-future-9", hasResult: false, alive: true, },);
+				return;
+			}
+			polls += 1;
+			sendJson(
+				res,
+				polls >= 2
+					? { jobId: "restart-future-9", hasResult: true, alive: false, result: { started: true, }, }
+					: { jobId: "restart-future-9", hasResult: false, alive: true, },
+			);
+		}, async (url,) => {
+			const resource = new WebappsResource(createClient(url,),);
+
+			await expect(
+				resource.restartBackendAndWait("webapp-1", undefined, {
+					pollIntervalMs: 1,
+					timeoutMs: 5_000,
+				},),
+			).resolves.toMatchObject({
+				futureId: "restart-future-9",
+				state: "DONE",
+				success: true,
+				hasResult: true,
+			},);
+		},);
+
+		expect(requests[0],).toEqual({
+			method: "PUT",
+			path: "/public/api/projects/TEST/webapps/webapp-1/backend/actions/restart",
+		},);
+		expect(requests.slice(1,).every((request,) => request.method === "GET"),).toBe(true,);
+		expect(polls,).toBeGreaterThanOrEqual(2,);
 	});
 });

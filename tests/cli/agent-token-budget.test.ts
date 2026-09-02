@@ -18,8 +18,8 @@ interface TokenBudget {
 }
 
 const TOKEN_BUDGETS = {
-	skill: { baseline: 3_943, maxTokens: 4_300, },
-	agentContract: { baseline: 2_705, maxTokens: 2_900, },
+	skill: { baseline: 4_126, maxTokens: 4_300, },
+	agentContract: { baseline: 3_015, maxTokens: 3_200, },
 	commandsRunDefault: { baseline: 1_037, maxTokens: 1_200, },
 	registryExportStdout: { baseline: 17, maxTokens: 40, },
 	datasetResource: { baseline: 14_057, maxTokens: 15_250, },
@@ -33,7 +33,7 @@ const TOKEN_BUDGETS = {
 	unknownFlag: { baseline: 42, maxTokens: 60, },
 	unknownResourceRecovery: { baseline: 204, maxTokens: 240, },
 	doctorFailure: { baseline: 105, maxTokens: 130, },
-	batchFailure: { baseline: 138, maxTokens: 170, },
+	batchFailure: { baseline: 188, maxTokens: 220, },
 	cleanupFailure: { baseline: 99, maxTokens: 130, },
 } satisfies Record<string, TokenBudget>;
 

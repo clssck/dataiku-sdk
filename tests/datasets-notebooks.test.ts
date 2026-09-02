@@ -13,6 +13,7 @@ import {
 	type SqlNotebookContent,
 } from "../src/index.js";
 import { buildDatasetCloneSettings, DatasetsResource, } from "../src/resources/datasets.js";
+import { stableHash, } from "../src/utils/stable-hash.js";
 
 async function withTestServer(
 	handler: (req: IncomingMessage, res: ServerResponse,) => Promise<void> | void,
@@ -585,87 +586,374 @@ describe("NotebooksResource.create", () => {
 });
 
 describe("NotebooksResource.clearJupyterOutputs", () => {
-	it("fetches the notebook, strips code-cell outputs, and preserves non-code cells", async () => {
+	it("clears outputs with the official single DELETE of the outputs endpoint", async () => {
 		const requests: string[] = [];
-		let savedNotebook: JupyterNotebookContent | undefined;
 		const notebookName = "analysis notebook";
-		const notebookPath = "/public/api/projects/TEST/jupyter-notebooks/"
-			+ encodeURIComponent(notebookName,);
-		const notebook: JupyterNotebookContent = {
-			metadata: { kernelspec: { name: "python3", }, },
-			nbformat: 4,
-			nbformat_minor: 5,
-			cells: [
-				{
-					cell_type: "code",
-					source: ["print('hello')\n",],
-					metadata: { collapsed: false, },
-					outputs: [{ output_type: "stream", text: ["hello\n",], },],
-					execution_count: 7,
-				},
-				{
-					cell_type: "markdown",
-					source: ["# Title\n",],
-					metadata: { tag: "intro", },
-				},
-				{
-					cell_type: "raw",
-					source: ["unexecuted payload\n",],
-					metadata: { format: "text/plain", },
-					custom: { retained: true, },
-				},
-			],
-		};
+		const outputsPath = "/public/api/projects/TEST/jupyter-notebooks/"
+			+ `${encodeURIComponent(notebookName,)}/outputs`;
 
 		await withTestServer(async (req, res,) => {
 			requests.push(`${req.method} ${req.url}`,);
-
-			if (req.method === "GET" && req.url === notebookPath) {
-				res.statusCode = 200;
-				res.setHeader("Content-Type", "application/json",);
-				res.end(JSON.stringify(notebook,),);
-				return;
-			}
-
-			if (req.method === "PUT" && req.url === notebookPath) {
-				savedNotebook = JSON.parse(await readRequestBody(req,),) as JupyterNotebookContent;
+			if (req.method === "DELETE" && req.url === outputsPath) {
 				res.statusCode = 204;
 				res.end();
 				return;
 			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${req.url}`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await expect(client.notebooks.clearJupyterOutputs(notebookName,),).resolves.toBeUndefined();
+		},);
 
-			if (req.url?.endsWith("/outputs",)) {
-				res.statusCode = 404;
-				res.end("unexpected outputs endpoint",);
+		// Atomic: exactly one request, no GET/PUT round trip.
+		expect(requests,).toEqual([`DELETE ${outputsPath}`,],);
+	});
+
+	it("rejects the legacy GET-strip-PUT path: no notebook read or write occurs", async () => {
+		const notebookName = "analysis notebook";
+		const notebookPath = "/public/api/projects/TEST/jupyter-notebooks/"
+			+ encodeURIComponent(notebookName,);
+		const outputsPath = `${notebookPath}/outputs`;
+		const requests: string[] = [];
+
+		await withTestServer(async (req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			if (req.method === "DELETE" && req.url === outputsPath) {
+				res.statusCode = 204;
+				res.end();
 				return;
 			}
-
 			res.statusCode = 404;
-			res.end("unexpected request",);
+			res.end(`unexpected ${req.method} ${req.url}`,);
 		}, async (url,) => {
 			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
 			await client.notebooks.clearJupyterOutputs(notebookName,);
 		},);
 
-		expect(requests,).toEqual([
-			`GET ${notebookPath}`,
-			`PUT ${notebookPath}`,
-		],);
-		expect(savedNotebook,).toEqual({
-			...notebook,
-			cells: [
-				{
-					...notebook.cells[0],
-					outputs: [],
-					execution_count: 0,
-				},
-				notebook.cells[1],
-				notebook.cells[2],
-			],
-		},);
-		expect(savedNotebook?.cells.slice(1,),).toStrictEqual(notebook.cells.slice(1,),);
-		expect(JSON.stringify(savedNotebook?.cells.slice(1,),),).toBe(
-			JSON.stringify(notebook.cells.slice(1,),),
+		expect(requests.some((request,) => request.startsWith(`GET ${notebookPath}`,)),).toBe(
+			false,
 		);
+		expect(requests.some((request,) => request.startsWith(`PUT ${notebookPath}`,)),).toBe(
+			false,
+		);
+	});
+});
+
+describe("NotebooksResource.listJupyter active filter", () => {
+	it("requests the official ?active=true filter when active is true", async () => {
+		const requests: string[] = [];
+
+		await withTestServer(async (req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			if (
+				req.method === "GET" && req.url === "/public/api/projects/TEST/jupyter-notebooks/?active=true"
+			) {
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify([{ name: "running", projectKey: "TEST", language: "python", },],),);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${req.url}`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const list = await client.notebooks.listJupyter(undefined, { active: true, },);
+			expect(list,).toEqual([{ name: "running", projectKey: "TEST", language: "python", },],);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/jupyter-notebooks/?active=true",
+		],);
+	});
+
+	it("passes ?active=false for the inactive filter and omits the query without a filter", async () => {
+		const requests: string[] = [];
+
+		await withTestServer(async (req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			if (
+				req.method === "GET" && req.url === "/public/api/projects/TEST/jupyter-notebooks/?active=false"
+			) {
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify([],),);
+				return;
+			}
+			if (req.method === "GET" && req.url === "/public/api/projects/TEST/jupyter-notebooks/") {
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify([{ name: "any", projectKey: "TEST", language: "python", },],),);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${req.url}`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			expect(await client.notebooks.listJupyter(undefined, { active: false, },),).toEqual([],);
+			expect(await client.notebooks.listJupyter(),).toEqual([
+				{ name: "any", projectKey: "TEST", language: "python", },
+			],);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/jupyter-notebooks/?active=false",
+			"GET /public/api/projects/TEST/jupyter-notebooks/",
+		],);
+	});
+});
+
+describe("NotebooksResource.unloadJupyterAll", () => {
+	it("unloads every session of every active notebook through per-session DELETEs", async () => {
+		const requests: string[] = [];
+
+		await withTestServer(async (req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			if (
+				req.method === "GET" && req.url === "/public/api/projects/TEST/jupyter-notebooks/?active=true"
+			) {
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify([
+					{ name: "busy", projectKey: "TEST", language: "python", },
+					{ name: "idle", projectKey: "TEST", language: "python", },
+				],),);
+				return;
+			}
+			if (
+				req.method === "GET" && req.url === "/public/api/projects/TEST/jupyter-notebooks/busy/sessions"
+			) {
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify([
+					{ sessionId: "s1", notebookName: "busy", },
+					{ sessionId: "s2", notebookName: "busy", },
+				],),);
+				return;
+			}
+			if (
+				req.method === "GET" && req.url === "/public/api/projects/TEST/jupyter-notebooks/idle/sessions"
+			) {
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify([],),);
+				return;
+			}
+			if (
+				req.method === "DELETE"
+				&& req.url === "/public/api/projects/TEST/jupyter-notebooks/busy/sessions/s1"
+			) {
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			if (
+				req.method === "DELETE"
+				&& req.url === "/public/api/projects/TEST/jupyter-notebooks/busy/sessions/s2"
+			) {
+				res.statusCode = 404;
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify({ message: "Session s2 not found", },),);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${req.url}`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			// A session that vanished between listing and unloading counts as
+			// already unloaded instead of failing the sweep.
+			expect(await client.notebooks.unloadJupyterAll(),).toEqual([
+				{ name: "busy", unloadedSessionIds: ["s1",], },
+				{ name: "idle", unloadedSessionIds: [], },
+			],);
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/jupyter-notebooks/?active=true",
+			"GET /public/api/projects/TEST/jupyter-notebooks/busy/sessions",
+			"DELETE /public/api/projects/TEST/jupyter-notebooks/busy/sessions/s1",
+			"DELETE /public/api/projects/TEST/jupyter-notebooks/busy/sessions/s2",
+			"GET /public/api/projects/TEST/jupyter-notebooks/idle/sessions",
+		],);
+	});
+});
+
+describe("NotebooksResource.saveOrCreateJupyter", () => {
+	const notebookName = "analysis notebook";
+	const notebookPath = "/public/api/projects/TEST/jupyter-notebooks/"
+		+ encodeURIComponent(notebookName,);
+	const content: JupyterNotebookContent = {
+		metadata: { kernelspec: { name: "python3", }, },
+		nbformat: 4,
+		nbformat_minor: 5,
+		cells: [{
+			cell_type: "code",
+			source: "print('saved')",
+			metadata: {},
+			outputs: [],
+			execution_count: null,
+		},],
+	};
+
+	function notebookServer(
+		requests: string[],
+		state: { stored?: JupyterNotebookContent; },
+	): (req: IncomingMessage, res: ServerResponse,) => Promise<void> {
+		return async (req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			if (req.method === "GET" && req.url === notebookPath) {
+				if (state.stored === undefined) {
+					res.statusCode = 404;
+					res.setHeader("Content-Type", "application/json",);
+					res.end(JSON.stringify({ message: "Jupyter notebook not found", },),);
+					return;
+				}
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify(state.stored,),);
+				return;
+			}
+			if (req.method === "POST" && req.url === notebookPath) {
+				state.stored = JSON.parse(await readRequestBody(req,),) as JupyterNotebookContent;
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			if (req.method === "PUT" && req.url === notebookPath) {
+				state.stored = JSON.parse(await readRequestBody(req,),) as JupyterNotebookContent;
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${req.url}`,);
+		};
+	}
+
+	it("creates a missing notebook, exposes created, and hashes the persisted content", async () => {
+		const requests: string[] = [];
+		const state: { stored?: JupyterNotebookContent; } = {};
+
+		await withTestServer(notebookServer(requests, state,), async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const result = await client.notebooks.saveOrCreateJupyter(notebookName, content,);
+			expect(result.created,).toBe(true,);
+			expect(result.hash,).toMatch(/^[0-9a-f]{64}$/,);
+			expect(result.hash,).toBe(stableHash(state.stored,),);
+			// Fresh read decides create vs update; POST then a confirming read.
+			expect(requests,).toEqual([
+				`GET ${notebookPath}`,
+				`POST ${notebookPath}`,
+				`GET ${notebookPath}`,
+			],);
+			expect(state.stored,).toEqual(content,);
+		},);
+	});
+
+	it("updates an existing notebook and reports created=false with a stable hash", async () => {
+		const requests: string[] = [];
+		const state: { stored?: JupyterNotebookContent; } = { stored: content, };
+
+		await withTestServer(notebookServer(requests, state,), async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const first = await client.notebooks.saveOrCreateJupyter(notebookName, content,);
+			const second = await client.notebooks.saveOrCreateJupyter(notebookName, content,);
+			expect(first.created,).toBe(false,);
+			expect(second.created,).toBe(false,);
+			// Deterministic: identical persisted content yields the same hash.
+			expect(first.hash,).toBe(second.hash,);
+		},);
+	});
+
+	it("aborts with a stale-read error when --expect-hash does not match the stored content", async () => {
+		const requests: string[] = [];
+		const state: { stored?: JupyterNotebookContent; } = { stored: content, };
+
+		await withTestServer(notebookServer(requests, state,), async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await expect(
+				client.notebooks.saveOrCreateJupyter(notebookName, content, undefined, {
+					expectHash: "0".repeat(64,),
+				},),
+			).rejects.toThrow(/changed since it was read/,);
+			// Only the fresh read happened: no PUT, no create.
+			expect(requests,).toEqual([`GET ${notebookPath}`,],);
+		},);
+	});
+
+	it("verifies the stored hash before saving when --expect-hash matches", async () => {
+		const requests: string[] = [];
+		const state: { stored?: JupyterNotebookContent; } = { stored: content, };
+
+		await withTestServer(notebookServer(requests, state,), async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const result = await client.notebooks.saveOrCreateJupyter(notebookName, content, undefined, {
+				expectHash: stableHash(state.stored,),
+			},);
+			expect(result.created,).toBe(false,);
+			expect(requests,).toEqual([
+				`GET ${notebookPath}`,
+				`PUT ${notebookPath}`,
+				`GET ${notebookPath}`,
+			],);
+		},);
+	});
+
+	it("rejects a malformed --expect-hash before any request", async () => {
+		const requests: string[] = [];
+		const state: { stored?: JupyterNotebookContent; } = {};
+
+		await withTestServer(notebookServer(requests, state,), async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await expect(
+				client.notebooks.saveOrCreateJupyter(notebookName, content, undefined, {
+					expectHash: "not-a-hash",
+				},),
+			).rejects.toThrow(/64-character SHA-256 hex digest/,);
+			expect(requests,).toEqual([],);
+		},);
+	});
+
+	it("treats an expect-hash on a missing notebook as a stale read and never creates", async () => {
+		const requests: string[] = [];
+		const state: { stored?: JupyterNotebookContent; } = {};
+
+		await withTestServer(notebookServer(requests, state,), async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			await expect(
+				client.notebooks.saveOrCreateJupyter(notebookName, content, undefined, {
+					expectHash: "a".repeat(64,),
+				},),
+			).rejects.toThrow(/changed since it was read/,);
+			expect(requests,).toEqual([`GET ${notebookPath}`,],);
+			expect(state.stored,).toBeUndefined();
+		},);
+	});
+});
+
+describe("NotebooksResource.getJupyter cell source forms", () => {
+	it("accepts valid nbformat cells whose source is a single string or an array", async () => {
+		const requests: string[] = [];
+		const notebookPath = "/public/api/projects/TEST/jupyter-notebooks/nb";
+		const notebook = {
+			metadata: {},
+			nbformat: 4,
+			nbformat_minor: 5,
+			cells: [
+				{ cell_type: "code", source: "print('string source')", metadata: {}, },
+				{ cell_type: "markdown", source: ["# Title\n",], metadata: {}, },
+			],
+		};
+
+		await withTestServer(async (req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			if (req.method === "GET" && req.url === notebookPath) {
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify(notebook,),);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${req.url}`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const parsed = await client.notebooks.getJupyter("nb",);
+			expect(parsed.cells[0]?.source,).toBe("print('string source')",);
+			expect(parsed.cells[1]?.source,).toEqual(["# Title\n",],);
+		},);
+
+		expect(requests,).toEqual([`GET ${notebookPath}`,],);
 	});
 });

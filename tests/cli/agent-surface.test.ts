@@ -93,6 +93,28 @@ describe("CLI agent-only command surface", () => {
 		expect(contract,).toHaveProperty("schemas.agentContract",);
 		expect(contract,).toHaveProperty("schemas.traceEvent",);
 	});
+	it("warns when --fields names are absent instead of silently returning null", async () => {
+		const { stdout, stderr, } = await dss([
+			"version",
+			"--fields",
+			"version,capabilities",
+		],);
+		expect(JSON.parse(stdout,),).toMatchObject({
+			version: expect.any(String,),
+			capabilities: null,
+		},);
+		const event = JSON.parse(stderr,) as {
+			type: string;
+			warnings: Array<Record<string, unknown>>;
+		};
+		expect(event.type,).toBe("warning",);
+		expect(event.warnings,).toContainEqual(expect.objectContaining({
+			code: "field_projection_missing",
+			fields: ["capabilities",],
+			availableFields: expect.arrayContaining(["version", "runtime",],),
+		},),);
+	});
+
 	it("--report-json is rejected as an unknown flag", async () => {
 		const failure = await dssFailure(["commands", "run", "--report-json",],);
 		expect(failure.code,).toBe(1,);

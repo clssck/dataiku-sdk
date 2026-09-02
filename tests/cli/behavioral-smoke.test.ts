@@ -526,6 +526,7 @@ describe("CLI command behavioral smoke coverage", () => {
 		};
 		let codeEnvDefinitionBody: Record<string, unknown> | undefined;
 		let savedJupyterBody: Record<string, unknown> | undefined;
+		let clearOutputsRequested = false;
 		let savedSqlBody: Record<string, unknown> | undefined;
 		let clearSqlHistoryBody: Record<string, unknown> | undefined;
 		try {
@@ -609,6 +610,15 @@ describe("CLI command behavioral smoke coverage", () => {
 				) {
 					savedJupyterBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
 					sendJson(res, { ok: true, }, 204,);
+					return;
+				}
+				if (
+					req.method === "DELETE"
+					&& url.pathname === "/public/api/projects/TEST/jupyter-notebooks/notebook-1/outputs"
+				) {
+					clearOutputsRequested = true;
+					res.statusCode = 204;
+					res.end();
 					return;
 				}
 				if (
@@ -739,7 +749,7 @@ describe("CLI command behavioral smoke coverage", () => {
 					),
 				)
 					.toHaveProperty("nbformat", 4,);
-				expect(JSON.parse(
+				const saveJupyterResult = JSON.parse(
 					(await dss([
 						"notebook",
 						"save-jupyter",
@@ -747,7 +757,12 @@ describe("CLI command behavioral smoke coverage", () => {
 						"--data",
 						JSON.stringify(jupyterContent,),
 					], { env: cliEnv(url,), },)).stdout,
-				),).toEqual({ saved: "notebook-1", resource: "jupyter-notebook", },);
+				) as { saved?: string; resource?: string; created?: boolean; hash?: string; };
+				expect(saveJupyterResult.saved,).toBe("notebook-1",);
+				expect(saveJupyterResult.resource,).toBe("jupyter-notebook",);
+				// The notebook already existed in the mock, so the save updated it.
+				expect(saveJupyterResult.created,).toBe(false,);
+				expect(saveJupyterResult.hash,).toMatch(/^[0-9a-f]{64}$/,);
 				expect(savedJupyterBody,).toHaveProperty("nbformat", 4,);
 				expect(
 					JSON.parse(
@@ -756,11 +771,8 @@ describe("CLI command behavioral smoke coverage", () => {
 					),
 				)
 					.toEqual({ cleared: "notebook-1", resource: "jupyter-notebook", },);
-				expect(savedJupyterBody,).toBeDefined();
-				const savedCells = (savedJupyterBody as Record<string, unknown>).cells as Array<
-					Record<string, unknown>
-				>;
-				expect(savedCells[0]?.outputs as unknown[],).toEqual([],);
+				// The clear is the official single DELETE of the outputs endpoint.
+				expect(clearOutputsRequested,).toBe(true,);
 				expect(
 					JSON.parse(
 						(await dss(["notebook", "sessions-jupyter", "notebook-1",], { env: cliEnv(url,), },)).stdout,
@@ -786,7 +798,7 @@ describe("CLI command behavioral smoke coverage", () => {
 					JSON.parse((await dss(["notebook", "get-sql", "sql-1",], { env: cliEnv(url,), },)).stdout,),
 				)
 					.toHaveProperty("connection", "filesystem_managed",);
-				expect(JSON.parse(
+				const saveSqlResult = JSON.parse(
 					(await dss([
 						"notebook",
 						"save-sql",
@@ -794,7 +806,11 @@ describe("CLI command behavioral smoke coverage", () => {
 						"--data",
 						JSON.stringify(sqlContent,),
 					], { env: cliEnv(url,), },)).stdout,
-				),).toEqual({ saved: "sql-1", resource: "sql-notebook", },);
+				) as { saved?: string; resource?: string; created?: boolean; hash?: string; };
+				expect(saveSqlResult.saved,).toBe("sql-1",);
+				expect(saveSqlResult.resource,).toBe("sql-notebook",);
+				expect(saveSqlResult.created,).toBe(false,);
+				expect(saveSqlResult.hash,).toMatch(/^[0-9a-f]{64}$/,);
 				expect(savedSqlBody,).toHaveProperty("connection", "filesystem_managed",);
 				expect(
 					JSON.parse(

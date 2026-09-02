@@ -194,6 +194,64 @@ describe("CLI batch command", () => {
 		},);
 	});
 
+	it("aggregates retryability and failure codes across mixed batch failures", async () => {
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (url.pathname.includes("/datasets/TRANSIENT",)) {
+				sendJson(res, { message: "temporary", }, 500,);
+				return;
+			}
+			if (url.pathname.includes("/datasets/MISSING",)) {
+				sendJson(res, { message: "missing", }, 404,);
+				return;
+			}
+			res.statusCode = 500;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"batch",
+				"--continue-on-error",
+				"--data",
+				JSON.stringify([
+					[
+						"dataset",
+						"get",
+						"TRANSIENT",
+						"--project-key",
+						"TEST",
+						"--retries",
+						"1",
+					],
+					[
+						"dataset",
+						"get",
+						"MISSING",
+						"--project-key",
+						"TEST",
+						"--retries",
+						"1",
+					],
+				],),
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(3,); // First failed step remains the process exit contract.
+			const report = JSON.parse(failure.stdout,) as {
+				failed: number;
+				retryable: boolean;
+				hasRetryableFailures: boolean;
+				failureCodes: Array<Record<string, unknown>>;
+			};
+			expect(report,).toMatchObject({
+				failed: 2,
+				retryable: false,
+				hasRetryableFailures: true,
+			},);
+			expect(report.failureCodes,).toEqual([
+				{ index: 0, code: "transient", category: "dss", exitCode: 3, retryable: true, },
+				{ index: 1, code: "not_found", category: "dss", exitCode: 2, retryable: false, },
+			],);
+		},);
+	}, 15_000,);
+
 	it("rejects --dry-run for commands without a dry-run mode before any network call", async () => {
 		let requestCount = 0;
 		await withCliServer((req, res,) => {

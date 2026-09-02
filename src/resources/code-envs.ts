@@ -1,15 +1,32 @@
+import { ClientValidationError, } from "../errors.js";
 import type {
 	CodeEnvActionResult,
 	CodeEnvCreateOptions,
 	CodeEnvDetails,
+	CodeEnvGetLogOptions,
+	CodeEnvLogResult,
+	CodeEnvLogSummary,
 	CodeEnvPackageList,
 	CodeEnvSetPackagesOptions,
 	CodeEnvSummary,
+	CodeEnvUpdateImagesOptions,
 	CodeEnvUpdatePackagesOptions,
+	CodeEnvVersionForProject,
 	CodeEnvWaitOptions,
 } from "../schemas.js";
-import { CodeEnvSummaryArraySchema, CodeEnvUsageArraySchema, } from "../schemas.js";
+import {
+	CodeEnvLogSummaryArraySchema,
+	CodeEnvSummaryArraySchema,
+	CodeEnvUsageArraySchema,
+	CodeEnvVersionForProjectSchema,
+} from "../schemas.js";
+import { stableHash, } from "../utils/stable-hash.js";
 import { BaseResource, } from "./base.js";
+
+/** Byte cap applied to fetched code-env logs so stdout/JSON stays bounded. */
+const DEFAULT_LOG_MAX_BYTES = 10 * 1024 * 1024;
+/** Default number of tail lines returned by getLog (0 disables). */
+const DEFAULT_LOG_MAX_LINES = 500;
 
 export class CodeEnvsResource extends BaseResource {
 	async list(opts?: { envLang?: "PYTHON" | "R"; },): Promise<CodeEnvSummary[]> {
@@ -39,8 +56,12 @@ export class CodeEnvsResource extends BaseResource {
 			envName: (raw.envName as string) ?? envName,
 			envLang: (raw.envLang as string) ?? envLang,
 			pythonInterpreter: desc.pythonInterpreter as string | undefined,
+			deploymentMode: typeof raw.deploymentMode === "string"
+				? raw.deploymentMode
+				: undefined,
 			requestedPackages,
 			installedPackages,
+			definitionHash: stableHash(raw,),
 		};
 	}
 
@@ -49,6 +70,88 @@ export class CodeEnvsResource extends BaseResource {
 		const nameEnc = encodeURIComponent(envName,);
 		return this.client.get<Record<string, unknown>>(
 			`/public/api/admin/code-envs/${langEnc}/${nameEnc}`,
+		);
+	}
+
+	/** List the build log files DSS keeps for this code environment. */
+	async listLogs(envLang: string, envName: string,): Promise<CodeEnvLogSummary[]> {
+		const langEnc = encodeURIComponent(envLang,);
+		const nameEnc = encodeURIComponent(envName,);
+		const raw = await this.client.get<unknown>(
+			`/public/api/admin/code-envs/${langEnc}/${nameEnc}/logs`,
+		);
+		return this.client.safeParse(CodeEnvLogSummaryArraySchema, raw, "codeEnvs.listLogs",);
+	}
+
+	/**
+	 * Fetch one code-env build log, bounded by default: at most
+	 * `maxBytes` bytes (default 10 MiB, 0 disables the cap) and the last
+	 * `maxLines` lines (default 500, 0 disables the tail). Returns what was
+	 * kept plus the truncation flags so callers can warn instead of
+	 * silently losing output.
+	 */
+	async getLog(
+		envLang: string,
+		envName: string,
+		logName: string,
+		opts?: CodeEnvGetLogOptions,
+	): Promise<CodeEnvLogResult> {
+		const langEnc = encodeURIComponent(envLang,);
+		const nameEnc = encodeURIComponent(envName,);
+		const logEnc = encodeURIComponent(logName,);
+		const path = `/public/api/admin/code-envs/${langEnc}/${nameEnc}/logs/${logEnc}`;
+		const maxBytes = opts?.maxBytes ?? DEFAULT_LOG_MAX_BYTES;
+		const fetched = maxBytes > 0
+			? await this.client.getTextLimited(path, maxBytes,)
+			: { text: await this.client.getText(path,), truncated: false, };
+		const tailed = tailLog(fetched.text, opts?.maxLines ?? DEFAULT_LOG_MAX_LINES,);
+		return {
+			log: tailed.log,
+			bytes: Buffer.byteLength(fetched.text, "utf-8",),
+			truncated: fetched.truncated,
+			tailed: tailed.tailed,
+		};
+	}
+
+	/**
+	 * Rebuild the Docker image(s) of the code environment to match its
+	 * settings. `wait: false` returns the raw DSS future payload.
+	 */
+	async updateImages(
+		envLang: string,
+		envName: string,
+		opts?: CodeEnvUpdateImagesOptions,
+	): Promise<CodeEnvActionResult> {
+		const langEnc = encodeURIComponent(envLang,);
+		const nameEnc = encodeURIComponent(envName,);
+		const query = new URLSearchParams();
+		if (opts?.envVersion !== undefined) query.set("envVersion", opts.envVersion,);
+		query.set("wait", String(opts?.wait !== false,),);
+
+		return this.client.post<CodeEnvActionResult>(
+			`/public/api/admin/code-envs/${langEnc}/${nameEnc}/images?${query.toString()}`,
+		);
+	}
+
+	/**
+	 * Resolve the code-env version a project uses (versioned environments on
+	 * automation nodes); empty `version` for unversioned environments.
+	 */
+	async getVersionForProject(
+		envLang: string,
+		envName: string,
+		projectKey: string,
+	): Promise<CodeEnvVersionForProject> {
+		const langEnc = encodeURIComponent(envLang,);
+		const nameEnc = encodeURIComponent(envName,);
+		const pkEnc = encodeURIComponent(projectKey,);
+		const raw = await this.client.get<unknown>(
+			`/public/api/admin/code-envs/${langEnc}/${nameEnc}/${pkEnc}/version`,
+		);
+		return this.client.safeParse(
+			CodeEnvVersionForProjectSchema,
+			raw,
+			"codeEnvs.getVersionForProject",
 		);
 	}
 
@@ -69,7 +172,12 @@ export class CodeEnvsResource extends BaseResource {
 		envLang: string,
 		envName: string,
 		definition: Record<string, unknown>,
+		opts?: { expectHash?: string; },
 	): Promise<CodeEnvActionResult> {
+		if (opts?.expectHash !== undefined) {
+			const current = await this.getDefinition(envLang, envName,);
+			assertDefinitionHash(envLang, envName, current, opts.expectHash,);
+		}
 		const langEnc = encodeURIComponent(envLang,);
 		const nameEnc = encodeURIComponent(envName,);
 		return this.client.put<CodeEnvActionResult>(
@@ -82,9 +190,12 @@ export class CodeEnvsResource extends BaseResource {
 		envLang: string,
 		envName: string,
 		packages: CodeEnvPackageList,
-		opts?: Pick<CodeEnvSetPackagesOptions, "installCorePackages">,
+		opts?: Pick<CodeEnvSetPackagesOptions, "installCorePackages" | "expectHash">,
 	): Promise<CodeEnvActionResult> {
 		const current = await this.getDefinition(envLang, envName,);
+		if (opts?.expectHash !== undefined) {
+			assertDefinitionHash(envLang, envName, current, opts.expectHash,);
+		}
 		const next: Record<string, unknown> = {
 			...current,
 			specPackageList: normalizePackageList(packages,),
@@ -166,6 +277,44 @@ export class CodeEnvsResource extends BaseResource {
 
 		return this.client.safeParse(CodeEnvUsageArraySchema, raw, "codeEnvs.listUsages",);
 	}
+}
+
+/**
+ * Keep only the last `maxLines` lines of a log (0 disables the tail).
+ * Returns whether any leading lines were dropped.
+ */
+function tailLog(log: string, maxLines: number,): { log: string; tailed: boolean; } {
+	if (!log) return { log, tailed: false, };
+	if (maxLines <= 0) return { log, tailed: false, };
+	const lines = log.split(/\r\n|\n/,);
+	if (lines.length <= maxLines) return { log, tailed: false, };
+	return { log: lines.slice(lines.length - maxLines,).join("\n",), tailed: true, };
+}
+
+/**
+ * Provenance guard for full-definition writes: DSS requires the PUT body to
+ * come from a prior GET, so refuse the write when the definition no longer
+ * hashes to the hash the caller captured.
+ */
+function assertDefinitionHash(
+	envLang: string,
+	envName: string,
+	current: Record<string, unknown>,
+	expected: string,
+): void {
+	const currentHash = stableHash(current,);
+	if (currentHash === expected) return;
+	throw new ClientValidationError(
+		`Code env ${envLang}/${envName} changed since the expected definition hash was captured; refusing to overwrite it.`,
+		"validation_failed",
+		"Re-read the definition with dss code-env get-definition (definitionHash comes from code-env get), review the diff, and retry with the fresh hash.",
+		{
+			envLang,
+			envName,
+			expectedDefinitionHash: expected,
+			currentDefinitionHash: currentHash,
+		},
+	);
 }
 
 function splitPackageList(raw: string | undefined,): string[] {

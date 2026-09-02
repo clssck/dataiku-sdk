@@ -361,7 +361,7 @@ describe("CLI regression fixes", () => {
 						resource: "bundle",
 						action: "export",
 						method: "PUT",
-						endpoint: "/public/api/projects/TEST/bundles/exported/v1",
+						endpoint: "/public/api/projects/TEST/bundles/exported/v1?evaluateProjectStandardsChecks=true",
 						payload: {},
 					},
 				},

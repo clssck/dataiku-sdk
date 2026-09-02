@@ -382,6 +382,15 @@ describe("CLI agent-readiness mutation contracts", () => {
 				sendJson(res, notebook,);
 				return;
 			}
+			if (
+				req.method === "DELETE"
+				&& url.pathname === "/public/api/projects/TEST/jupyter-notebooks/book/outputs"
+			) {
+				mutationRequests++;
+				res.statusCode = 500;
+				res.end("dry run must not issue the outputs DELETE",);
+				return;
+			}
 			res.statusCode = 500;
 			res.end(`unexpected ${req.method} ${url.pathname}`,);
 		}, async (url,) => {
@@ -396,21 +405,15 @@ describe("CLI agent-readiness mutation contracts", () => {
 					env: cliEnv(url,),
 				},)).stdout,
 			) as {
-				current?: { cells?: Array<Record<string, unknown>>; };
-				next?: { cells?: Array<Record<string, unknown>>; };
+				current?: unknown;
+				endpoint?: string;
+				method?: string;
 			};
-			expect(clearDryRun.next?.cells?.[0]?.outputs,).toEqual([],);
-			expect(clearDryRun.next?.cells?.[0]?.execution_count,).toBe(0,);
-			expect(clearDryRun.next?.cells?.[0],).toEqual({
-				...notebook.cells[0],
-				outputs: [],
-				execution_count: 0,
-			},);
 			expect(clearDryRun.current,).toStrictEqual(notebook,);
-			expect(clearDryRun.next?.cells?.slice(1,),).toStrictEqual(notebook.cells.slice(1,),);
-			expect(JSON.stringify(clearDryRun.next?.cells?.slice(1,),),).toBe(
-				JSON.stringify(notebook.cells.slice(1,),),
+			expect(clearDryRun.endpoint,).toBe(
+				"/public/api/projects/TEST/jupyter-notebooks/book/outputs",
 			);
+			expect(clearDryRun.method,).toBe("DELETE",);
 		},);
 		expect(mutationRequests,).toBe(0,);
 	});
@@ -431,7 +434,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 				scope: "project",
 				target: tmpDir,
 			},);
-			expect(installed,).toEqual([{
+			expect(installed,).toMatchObject([{
 				agent: "omp",
 				path: join(tmpDir, ".omp", "skills", "dataiku-dss", "SKILL.md",),
 				via: "flag",
@@ -915,29 +918,54 @@ describe("CLI agent-readiness mutation contracts", () => {
 				expect(failure.stderr,).toBe("",);
 				const report = JSON.parse(failure.stdout,) as {
 					applied?: boolean;
+					failed?: number;
+					retryable?: boolean;
+					failureCodes?: Array<Record<string, unknown>>;
 					results?: unknown[];
 					failures?: Array<{
-						error?: string;
-						result?: {
-							state?: string;
-							projectKey?: string;
-							deletePerformed?: boolean | null;
-							remediation?: string;
+						error?: {
+							code?: string;
+							category?: string;
+							exitCode?: number;
+							error?: string;
+							details?: {
+								result?: {
+									state?: string;
+									projectKey?: string;
+									deletePerformed?: boolean | null;
+									remediation?: string;
+								};
+							};
 						};
 					}>;
 				};
-				expect(report.applied,).toBe(true,);
+				expect(report,).toMatchObject({
+					applied: true,
+					failed: 1,
+					retryable: false,
+					failureCodes: [{
+						index: 0,
+						code: "long_running_failure",
+						category: "dss",
+						exitCode: 4,
+						retryable: false,
+					},],
+				},);
 				expect(report.results ?? [],).toEqual([],);
 				expect(report.failures,).toHaveLength(1,);
-				expect(report.failures?.[0]?.error,).toContain(
-					"failed long-running result: FUTURE_STILL_RUNNING",
-				);
-				expect(report.failures?.[0]?.result,).toMatchObject({
+				expect(report.failures?.[0]?.error,).toMatchObject({
+					code: "long_running_failure",
+					category: "dss",
+					exitCode: 4,
+					error: expect.stringContaining("failed long-running result: FUTURE_STILL_RUNNING",),
+				},);
+				const result = report.failures?.[0]?.error?.details?.result;
+				expect(result,).toMatchObject({
 					state: "FUTURE_STILL_RUNNING",
 					projectKey: "TEST",
 					deletePerformed: false,
 				},);
-				expect(report.failures?.[0]?.result?.remediation,).toContain(
+				expect(result?.remediation,).toContain(
 					"retry only with a future whose terminal result reports this project",
 				);
 			},);

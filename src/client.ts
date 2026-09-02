@@ -11,6 +11,7 @@ import {
 	ClientValidationError,
 	DataikuError,
 	type DataikuRetryMetadata,
+	NON_JSON_RESPONSE_MARKER,
 } from "./errors.js";
 
 import { AnalysesResource, } from "./resources/analyses.js";
@@ -729,7 +730,7 @@ export class DataikuClient {
 			throw new DataikuError(
 				res.status,
 				res.statusText || "Invalid JSON response",
-				`Expected JSON response body but got non-JSON content: ${summary}`,
+				`${NON_JSON_RESPONSE_MARKER}: ${summary}`,
 				undefined,
 				this.requestIdFromHeaders(res.headers,),
 			);

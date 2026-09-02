@@ -1,3 +1,4 @@
+import { DataikuError, } from "../errors.js";
 import { JobSummaryArraySchema, } from "../schemas.js";
 import type { BuildMode, JobSummary, JobWaitResult, } from "../schemas.js";
 import { BaseResource, } from "./base.js";
@@ -33,6 +34,17 @@ export interface JobLogSummary {
 	lines: string[];
 	progress?: JobLogProgress;
 }
+
+/** Why a requested job log could not be retrieved. */
+export type JobLogUnavailableReason = "not_found" | "error";
+
+/** Result of a completed job wait, including log-unavailable metadata. */
+export type JobWaitOutcome = JobWaitResult & {
+	logSummary?: JobLogSummary;
+	logUnavailable?: JobLogUnavailableReason;
+	/** True when the job itself no longer exists on the server. */
+	removed?: boolean;
+};
 
 export interface JobBuildTarget {
 	id: string;
@@ -333,7 +345,7 @@ export class JobsResource extends BaseResource {
 	async buildAndWaitOutputs(
 		targets: JobBuildTarget[],
 		opts?: JobBuildAndWaitOptions,
-	): Promise<JobWaitResult & { logSummary?: JobLogSummary; }> {
+	): Promise<JobWaitOutcome> {
 		const { jobId, } = await this.buildOutputs(targets, opts,);
 		return this.wait(jobId, {
 			activity: opts?.activity,
@@ -355,7 +367,7 @@ export class JobsResource extends BaseResource {
 	async buildAndWait(
 		targetId: string,
 		opts?: JobBuildAndWaitOptions,
-	): Promise<JobWaitResult & { logSummary?: JobLogSummary; }> {
+	): Promise<JobWaitOutcome> {
 		return this.buildAndWaitOutputs([{
 			id: targetId,
 			type: opts?.targetType,
@@ -368,6 +380,14 @@ export class JobsResource extends BaseResource {
 	 *
 	 * Adaptive polling doubles the interval every 3 polls when
 	 * `pollIntervalMs` is not explicitly set.
+	 *
+	 * A terminal state observed from the status endpoint is authoritative:
+	 * when log retrieval fails afterwards (e.g. `not_found` because logs were
+	 * purged or the job was removed), `wait` still returns the terminal
+	 * outcome instead of throwing, with `logUnavailable` holding the machine-
+	 * readable reason and `removed` set once the job itself is probed and
+	 * confirmed gone. Explicit `includeLogs`/`summary` requests stay honest:
+	 * `log`/`logSummary` are only present when logs were actually retrieved.
 	 *
 	 * On timeout, returns `{ success: false, ... }` rather than throwing.
 	 */
@@ -384,7 +404,7 @@ export class JobsResource extends BaseResource {
 			timeoutMs?: number;
 			projectKey?: string;
 		},
-	): Promise<JobWaitResult & { logSummary?: JobLogSummary; }> {
+	): Promise<JobWaitOutcome> {
 		const projectEnc = this.enc(opts?.projectKey,);
 		const jobEnc = encodeURIComponent(jobId,);
 		const baseIntervalMs = Math.max(1, opts?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,);
@@ -420,17 +440,38 @@ export class JobsResource extends BaseResource {
 
 				let log: string | undefined;
 				let logSummary: JobLogSummary | undefined;
+				let logUnavailable: JobLogUnavailableReason | undefined;
+				let removed: boolean | undefined;
+
 				if (opts?.includeLogs || opts?.summary) {
-					const rawLog = await this.log(jobId, {
-						activity: opts.activity,
-						maxLogLines: opts.summary ? 0 : opts.maxLogLines,
-						logId: opts.logId,
-						projectKey: opts.projectKey,
-					},);
-					const filteredLog = filterJobLog(rawLog, opts.logFilter,);
-					if (opts.includeLogs) log = limitJobLog(filteredLog, opts.maxLogLines,);
-					if (opts.summary) {
-						logSummary = summarizeJobLog(state, filteredLog, opts.maxLogLines ?? 20, elapsedMs,);
+					try {
+						const rawLog = await this.log(jobId, {
+							activity: opts.activity,
+							maxLogLines: opts.summary ? 0 : opts.maxLogLines,
+							logId: opts.logId,
+							projectKey: opts.projectKey,
+						},);
+						const filteredLog = filterJobLog(rawLog, opts.logFilter,);
+						if (opts.includeLogs) log = limitJobLog(filteredLog, opts.maxLogLines,);
+						if (opts.summary) {
+							logSummary = summarizeJobLog(
+								state,
+								filteredLog,
+								opts.maxLogLines ?? 20,
+								elapsedMs,
+							);
+						}
+					} catch (error) {
+						if (error instanceof DataikuError) {
+							// A terminal outcome observed from the status endpoint is
+							// authoritative; failed log retrieval must not fail the wait.
+							logUnavailable = error.category === "not_found" ? "not_found" : "error";
+							if (logUnavailable === "not_found") {
+								removed = await this.probeJobRemoved(projectEnc, jobEnc,);
+							}
+						} else {
+							throw error;
+						}
 					}
 				}
 
@@ -449,6 +490,8 @@ export class JobsResource extends BaseResource {
 					},
 					...(log !== undefined ? { log, } : {}),
 					...(logSummary !== undefined ? { logSummary, } : {}),
+					...(logUnavailable !== undefined ? { logUnavailable, } : {}),
+					...(removed !== undefined ? { removed, } : {}),
 				};
 			}
 
@@ -477,6 +520,21 @@ export class JobsResource extends BaseResource {
 				adaptiveEnabled: adaptivePolling,
 			},);
 			await sleep(Math.min(nextDelayMs, timeout - elapsedMs,),);
+		}
+	}
+
+	/**
+	 * Probe whether a job still exists. Returns `true` when the server reports
+	 * it as not found, `false` when it is still visible, and `undefined` when
+	 * the probe outcome is ambiguous.
+	 */
+	private async probeJobRemoved(projectEnc: string, jobEnc: string,): Promise<boolean | undefined> {
+		try {
+			await this.client.get(`/public/api/projects/${projectEnc}/jobs/${jobEnc}/`,);
+			return false;
+		} catch (error) {
+			if (error instanceof DataikuError && error.category === "not_found") return true;
+			return undefined;
 		}
 	}
 

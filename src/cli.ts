@@ -33,7 +33,6 @@ import {
 import { cleanupLedgerEntry, } from "./cli/helpers/cleanup.js";
 import {
 	commandFailureExitCode,
-	commandFailureMessage,
 	CommandResultFailure,
 	flushCliWarnings,
 	isFailedWaitResult,
@@ -236,6 +235,11 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 		try {
 			const parsed = parseArgs(entry.cleanup.argv,);
 			const [resource, action, ...args] = parsed.positional;
+			Object.assign(currentCommandContext, {
+				resource,
+				action,
+				projectKey: parsed.flags["project-key"] as string | undefined,
+			},);
 			if (
 				!resource || !action || !isAllowedCleanupAction(resource, action,)
 				|| !commands[resource]?.[action]
@@ -270,13 +274,18 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 				const failure = {
 					index,
 					cleanup: entry.cleanup,
-					error: commandFailureMessage(result,),
-					result,
+					error: buildErrorReport(new CommandResultFailure(result, 4,),),
 				};
 				failures.push(failure,);
 				if (flags["continue-on-error"] !== true) {
 					return {
-						result: { applied: true, steps, results: applied, failures, },
+						result: {
+							applied: true,
+							steps,
+							results: applied,
+							failures,
+							...summarizeCleanupFailures(failures,),
+						},
 						exitCode: 2,
 					};
 				}
@@ -287,19 +296,31 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 			const failure = {
 				index,
 				cleanup: entry.cleanup,
-				error: error instanceof Error ? error.message : String(error,),
+				error: buildErrorReport(error,),
 			};
 			failures.push(failure,);
 			if (flags["continue-on-error"] !== true) {
 				return {
-					result: { applied: true, steps, results: applied, failures, },
+					result: {
+						applied: true,
+						steps,
+						results: applied,
+						failures,
+						...summarizeCleanupFailures(failures,),
+					},
 					exitCode: 2,
 				};
 			}
 		}
 	}
 	return {
-		result: { applied: true, steps, results: applied, failures, },
+		result: {
+			applied: true,
+			steps,
+			results: applied,
+			failures,
+			...summarizeCleanupFailures(failures,),
+		},
 		exitCode: failures.length > 0 ? 2 : 0,
 	};
 }
@@ -1101,6 +1122,13 @@ function assertCleanupLedgerSupported(
 	if (!supportsCleanupLedger(resource, action,)) {
 		throw new UsageError(`--record-cleanup is not supported for ${resource} ${action}.`,);
 	}
+	if (resource === "workspace" && action === "create" && flags["stdin"] === true) {
+		throw new UsageError(
+			"workspace create cannot combine --record-cleanup with --stdin because the cleanup identifier cannot be replayed from a consumed stream.",
+			"conflicting_input_sources",
+			"Use --data or --data-file so the workspaceKey remains available for the cleanup ledger.",
+		);
+	}
 }
 
 /**
@@ -1179,7 +1207,20 @@ async function recordCleanupLedgerEntry(
 	const ledgerPath = flags["record-cleanup"];
 	if (typeof ledgerPath !== "string" || flags["dry-run"] === true) return;
 	const entry = cleanupLedgerEntry(resource, action, args, flags, result, projectKey,);
-	if (entry) await appendCleanupLedgerEntry(ledgerPath, entry, client.getBaseUrl(),);
+	if (entry) {
+		await appendCleanupLedgerEntry(ledgerPath, entry, client.getBaseUrl(),);
+		return;
+	}
+	const record = result !== null && typeof result === "object" && !Array.isArray(result,)
+		? result as Record<string, unknown>
+		: {};
+	if (record.skipped !== undefined || record.cleanupEligible === false) return;
+	throw new ClientValidationError(
+		`Mutation completed but no cleanup entry could be derived for ${resource} ${action}.`,
+		"ambiguous_outcome",
+		"Inspect the created object and remove it manually; do not assume the requested cleanup ledger contains it.",
+		{ resource, action, ledgerPath, },
+	);
 }
 
 async function runBatch(flags: Record<string, string | boolean>,): Promise<{
@@ -1391,11 +1432,15 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 	}
 
 	const ok = firstFailureExit === undefined;
+	const failureSummary = summarizeFailureEnvelopes(
+		results.flatMap((step,) => step.error ? [{ index: step.index, error: step.error, },] : []),
+	);
 	return {
 		result: {
 			ok,
 			total: steps.length,
 			completed: results.filter((step,) => step.ok !== null).length,
+			...failureSummary,
 			steps: results,
 		},
 		exitCode: ok ? 0 : firstFailureExit ?? 2,
@@ -1417,6 +1462,51 @@ interface ErrorReportEnvelope {
 	status?: number;
 	retryable?: boolean;
 	details?: Record<string, unknown>;
+}
+
+interface FailureSummary {
+	failed: number;
+	retryable: boolean;
+	hasRetryableFailures: boolean;
+	failureCodes: Array<{
+		index: number;
+		code: StableErrorCode;
+		category: ErrorReportEnvelope["category"];
+		exitCode: number;
+		retryable: boolean;
+	}>;
+}
+
+function summarizeFailureEnvelopes(
+	failures: Array<{ index: number; error: ErrorReportEnvelope; }>,
+): FailureSummary {
+	const failureCodes = failures.map(({ index, error, },) => ({
+		index,
+		code: error.code,
+		category: error.category,
+		exitCode: error.exitCode,
+		retryable: error.retryable === true,
+	}));
+	return {
+		failed: failures.length,
+		retryable: failures.length > 0 && failureCodes.every((failure,) => failure.retryable),
+		hasRetryableFailures: failureCodes.some((failure,) => failure.retryable),
+		failureCodes,
+	};
+}
+
+function summarizeCleanupFailures(failures: Array<Record<string, unknown>>,): FailureSummary {
+	return summarizeFailureEnvelopes(failures.flatMap((failure,) => {
+		const index = failure.index;
+		const error = failure.error;
+		return typeof index === "number"
+				&& error !== null
+				&& typeof error === "object"
+				&& !Array.isArray(error,)
+				&& (error as Record<string, unknown>).type === "error"
+			? [{ index, error: error as ErrorReportEnvelope, },]
+			: [];
+	},),);
 }
 
 function rawFlagValue(argv: string[], flagName: string,): string | undefined {
@@ -1518,10 +1608,49 @@ function requestIdFromBody(body: string,): string | undefined {
 
 const MISSING_PROJECT_KEY_ERROR_PREFIX = "projectKey is required";
 
+function isAmbiguousMutationFailure(
+	err: unknown,
+	context: { resource?: string; action?: string; },
+): err is DataikuError {
+	if (!(err instanceof DataikuError)) return false;
+	const method = err.retry?.method.toUpperCase();
+	if (!method || method === "GET" || method === "HEAD") return false;
+	if (err.status !== 0 && err.status < 500) return false;
+	const entry = context.resource && context.action
+		? cachedCommandRegistry()[context.resource]?.[context.action]
+		: undefined;
+	return entry?.sideEffect === "write" && entry.idempotency === "none";
+}
+
+const MAX_FAILURE_RESULT_BYTES = 64 * 1024;
+
+function boundedFailureResult(result: unknown,): Record<string, unknown> {
+	let serialized: string | undefined;
+	try {
+		serialized = JSON.stringify(result,);
+	} catch {
+		return { result: "[unserializable command result]", resultTruncated: true, };
+	}
+	if (
+		serialized === undefined || Buffer.byteLength(serialized, "utf8",) <= MAX_FAILURE_RESULT_BYTES
+	) {
+		return { result, };
+	}
+	return {
+		resultPreview: Buffer.from(serialized, "utf8",).subarray(0, MAX_FAILURE_RESULT_BYTES,).toString(
+			"utf8",
+		),
+		resultBytes: Buffer.byteLength(serialized, "utf8",),
+		resultTruncated: true,
+	};
+}
+
 function errorExitCode(err: unknown,): number {
 	if (err instanceof CommandResultFailure) return err.exitCode;
+	if (err instanceof ClientValidationError && err.code === "assertion_failed") return 4;
 	if (err instanceof ClientValidationError && err.code === "ambiguous_outcome") return 2;
 	if (err instanceof UsageError || err instanceof ClientValidationError) return 1;
+	if (isAmbiguousMutationFailure(err, rawCommandContext(),)) return 2;
 	if (err instanceof DataikuError) return err.category === "transient" ? 3 : 2;
 	if (err instanceof Error && err.message.startsWith(MISSING_PROJECT_KEY_ERROR_PREFIX,)) return 1;
 	return 2;
@@ -1530,7 +1659,10 @@ function errorExitCode(err: unknown,): number {
 function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 	const context = rawCommandContext();
 	const exitCode = errorExitCode(err,);
-	if (err instanceof ClientValidationError && err.code === "ambiguous_outcome") {
+	if (
+		err instanceof ClientValidationError
+		&& (err.code === "ambiguous_outcome" || err.code === "assertion_failed")
+	) {
 		return {
 			type: "error",
 			ok: false,
@@ -1538,6 +1670,7 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			code: err.code,
 			category: "dss",
 			exitCode,
+			retryable: false,
 			...(err.hint ? { hint: err.hint, } : {}),
 			...(err.details ? { details: err.details, } : {}),
 			...context,
@@ -1567,7 +1700,29 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			code: err.code,
 			category: "dss",
 			exitCode: err.exitCode,
-			details: { result: err.result, },
+			details: boundedFailureResult(err.result,),
+			...context,
+		};
+	}
+	if (isAmbiguousMutationFailure(err, context,)) {
+		const method = err.retry?.method.toUpperCase() ?? "mutation";
+		return {
+			type: "error",
+			ok: false,
+			error: `The ${method} request failed after dispatch; the mutation outcome is unknown.`,
+			code: "ambiguous_outcome",
+			category: "dss",
+			exitCode: 2,
+			hint: "Read the target state and verify whether the mutation took effect before retrying.",
+			status: err.status,
+			retryable: false,
+			requestId: err.requestId ?? requestIdFromBody(err.body,),
+			details: {
+				dssCategory: err.category,
+				statusText: canonicalStatusText(err.status,),
+				idempotency: "none",
+				...(err.retry ? { retry: err.retry, } : {}),
+			},
 			...context,
 		};
 	}

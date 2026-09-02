@@ -3,6 +3,7 @@ export type DataikuErrorCategory =
 	| "forbidden"
 	| "validation"
 	| "transient"
+	| "unexpected_response"
 	| "unknown";
 
 export type StableErrorCode =
@@ -22,6 +23,7 @@ export type StableErrorCode =
 	| "command_result_failure"
 	| "assertion_failed"
 	| "ambiguous_outcome"
+	| "unexpected_response"
 	| "internal_error";
 
 export function dataikuErrorCode(category: DataikuErrorCategory,): StableErrorCode {
@@ -34,6 +36,8 @@ export function dataikuErrorCode(category: DataikuErrorCategory,): StableErrorCo
 			return "validation_failed";
 		case "transient":
 			return "transient";
+		case "unexpected_response":
+			return "unexpected_response";
 		case "unknown":
 			return "internal_error";
 	}
@@ -64,11 +68,21 @@ const CANONICAL_STATUS_TEXT: Record<number, string> = {
 	401: "Unauthorized",
 	403: "Forbidden",
 	404: "Not Found",
+	405: "Method Not Allowed",
+	406: "Not Acceptable",
 	408: "Request Timeout",
 	409: "Conflict",
+	410: "Gone",
+	412: "Precondition Failed",
+	413: "Payload Too Large",
+	415: "Unsupported Media Type",
+	416: "Range Not Satisfiable",
+	418: "I'm a Teapot",
 	422: "Unprocessable Entity",
 	425: "Too Early",
+	426: "Upgrade Required",
 	429: "Too Many Requests",
+	451: "Unavailable For Legal Reasons",
 	500: "Internal Server Error",
 	501: "Not Implemented",
 	502: "Bad Gateway",
@@ -98,6 +112,13 @@ export class ClientValidationError extends Error {
 		this.details = details;
 	}
 }
+
+/**
+ * Message prefix the client stamps on a 2xx body that is not JSON. The
+ * classifier recognizes exactly this prefix, so the parse-failure path and the
+ * taxonomy stay in sync as one contract.
+ */
+export const NON_JSON_RESPONSE_MARKER = "Expected JSON response body but got non-JSON content";
 
 const TLS_CERTIFICATE_HINT =
 	"TLS certificate verification failed. Trust the DSS/corporate CA with --ca-cert PATH or NODE_EXTRA_CA_CERTS; use --insecure only for temporary troubleshooting.";
@@ -214,6 +235,22 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 			category: "transient",
 			retryable: true,
 			retryHint: "Network/transport failure. Retry with backoff and verify DSS URL reachability.",
+		};
+	}
+
+	// A 2xx response carrying a non-JSON body is a response-contract violation,
+	// not a transport fault: HTTP succeeded, but an intermediary (proxy, SSO or
+	// login page, HTML gateway) answered in place of the DSS API. Only the client's
+	// own parse-failure marker produces this prefix.
+	if (
+		status >= 200 && status < 300
+		&& lowerBody.startsWith(NON_JSON_RESPONSE_MARKER.toLowerCase(),)
+	) {
+		return {
+			category: "unexpected_response",
+			retryable: false,
+			retryHint:
+				"DSS returned a non-JSON response to a JSON API request (typically a proxy, gateway, or login page). Verify the DSS URL and that no intermediary serves HTML; do not retry unchanged.",
 		};
 	}
 
@@ -376,6 +413,18 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 			retryable: true,
 			retryHint:
 				"Retry with exponential backoff. If it persists, check DSS availability and upstream proxies.",
+		};
+	}
+
+	// Any remaining HTTP error status is an API-contract mismatch: the endpoint,
+	// resource, or DSS feature/version does not support this request. It is
+	// non-retryable — retrying unchanged cannot succeed.
+	if (status >= 400) {
+		return {
+			category: "unexpected_response",
+			retryable: false,
+			retryHint:
+				"The DSS API rejected the request with an unrecognized HTTP status. Verify the endpoint, resource, and DSS feature/version availability; do not retry unchanged.",
 		};
 	}
 

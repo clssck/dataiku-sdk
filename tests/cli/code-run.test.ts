@@ -38,7 +38,13 @@ describe("code run command", () => {
 	}
 
 	function codeRunServer(
-		opts: { outcome: string; log: string; neverFinish?: boolean; failRunStep?: boolean; },
+		opts: {
+			outcome: string;
+			log: string;
+			neverFinish?: boolean;
+			failRunStep?: boolean;
+			failDelete?: boolean;
+		},
 		capture: CodeRunCapture,
 	) {
 		return async (req: IncomingMessage, res: ServerResponse,): Promise<void> => {
@@ -79,6 +85,11 @@ describe("code run command", () => {
 			}
 			if (req.method === "DELETE" && /\/scenarios\/[^/]+$/.test(p,)) {
 				capture.deleted = true;
+				if (opts.failDelete) {
+					res.statusCode = 500;
+					res.end(`{"message":"delete boom"}`,);
+					return;
+				}
 				res.statusCode = 204;
 				res.end();
 				return;
@@ -186,6 +197,47 @@ describe("code run command", () => {
 		expect(capture.deleted,).toBe(true,);
 	});
 
+	it("bounds failed --full-log result details", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		const scriptPath = join(tmpdir(), `dss-coderun-large-fail-${Date.now()}.py`,);
+		const hugeLine = "X".repeat(100_000,);
+		writeFileSync(scriptPath, "raise RuntimeError('large')\n",);
+		try {
+			await withCliServer(
+				codeRunServer({ outcome: "FAILED", log: processLog([hugeLine,],), }, capture,),
+				async (url,) => {
+					const failure = await dssFailure([
+						"code",
+						"run",
+						"--file",
+						scriptPath,
+						"--full-log",
+						"--max-log-bytes",
+						"200000",
+					], { env: cliEnv(url,), },);
+					expect(failure.code,).toBe(4,);
+					const report = JSON.parse(failure.stdout,) as {
+						details: {
+							resultTruncated: boolean;
+							resultBytes: number;
+							resultPreview: string;
+						};
+					};
+					expect(typeof report.details.resultBytes,).toBe("number",);
+					expect(report.details,).toMatchObject({
+						resultTruncated: true,
+						resultPreview: expect.any(String,),
+					},);
+					expect(Buffer.byteLength(failure.stdout, "utf8",),).toBeLessThan(70_000,);
+					expect(failure.stdout,).not.toContain(hugeLine,);
+				},
+			);
+		} finally {
+			rmSync(scriptPath, { force: true, },);
+		}
+		expect(capture.deleted,).toBe(true,);
+	});
+
 	it("maps --env to an explicit code-env selection", async () => {
 		const capture: CodeRunCapture = { created: false, deleted: false, };
 		await withCliServer(
@@ -207,9 +259,14 @@ describe("code run command", () => {
 		await withCliServer(
 			codeRunServer({ outcome: "SUCCESS", log: processLog(["x",],), }, capture,),
 			async (url,) => {
-				await dssWithInput(["code", "run", "--stdin", "--keep",], "print(1)\n", {
-					env: cliEnv(url,),
-				},);
+				const { stdout, stderr, } = await dssWithInput(
+					["code", "run", "--stdin", "--keep",],
+					"print(1)\n",
+					{ env: cliEnv(url,), },
+				);
+				expect(stderr,).toBe("",);
+				const r = JSON.parse(stdout,) as { cleanup?: { status: string; }; };
+				expect(r.cleanup,).toEqual({ status: "kept", },);
 			},
 		);
 		expect(capture.created,).toBe(true,);
@@ -238,6 +295,9 @@ describe("code run command", () => {
 					expect(failure.code,).toBe(4,);
 					expect(failure.stderr,).toBe("",);
 					expect(failure.stdout,).toContain("TIMEOUT",);
+					// Timeout evidence survives into the failure report details.
+					expect(failure.stdout,).toContain('"timedOut":true',);
+					expect(failure.stdout,).toContain('"timeoutMs":2000',);
 				},
 			);
 		} finally {
@@ -288,6 +348,128 @@ describe("code run command", () => {
 			const r = JSON.parse(stdout,) as { output: string; };
 			expect(r.output,).toBe(`real output\n${OUT_END}\nafter fake end`,);
 		},);
+	});
+
+	it("rejects negative and fractional --timeout before any DSS request", async () => {
+		let requests = 0;
+		await withCliServer((
+			_req,
+			_res,
+		) => {
+			requests += 1;
+		}, async (url,) => {
+			for (const bad of ["-2000", "-1", "1.5", "0.5",]) {
+				const scriptPath = join(tmpdir(), `dss-coderun-badtimeout-${Date.now()}.py`,);
+				writeFileSync(scriptPath, "print(1)\n",);
+				try {
+					const failure = await dssFailure(["code", "run", "--file", scriptPath, "--timeout", bad,], {
+						env: cliEnv(url,),
+					},);
+					expect(failure.code,).toBe(1,);
+					expect(failure.stderr,).toBe("",);
+					const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+					expect(report,).toMatchObject({
+						code: "invalid_flag_value",
+						category: "usage",
+						exitCode: 1,
+					},);
+					expect(String(report.error,),).toContain("--timeout",);
+					expect(String(report.error,),).toContain(bad,);
+				} finally {
+					rmSync(scriptPath, { force: true, },);
+				}
+			}
+		},);
+		expect(requests,).toBe(0,);
+	});
+
+	it("rejects negative and fractional --max-log-bytes before any DSS request", async () => {
+		let requests = 0;
+		await withCliServer((
+			_req,
+			_res,
+		) => {
+			requests += 1;
+		}, async (url,) => {
+			for (const bad of ["-1", "1.5", "0.25",]) {
+				const scriptPath = join(tmpdir(), `dss-coderun-badbytes-${Date.now()}.py`,);
+				writeFileSync(scriptPath, "print(1)\n",);
+				try {
+					const failure = await dssFailure(
+						["code", "run", "--file", scriptPath, "--max-log-bytes", bad,],
+						{ env: cliEnv(url,), },
+					);
+					expect(failure.code,).toBe(1,);
+					expect(failure.stderr,).toBe("",);
+					const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+					expect(report,).toMatchObject({
+						code: "invalid_flag_value",
+						category: "usage",
+						exitCode: 1,
+					},);
+					expect(String(report.error,),).toContain("--max-log-bytes",);
+					expect(String(report.error,),).toContain(bad,);
+				} finally {
+					rmSync(scriptPath, { force: true, },);
+				}
+			}
+		},);
+		expect(requests,).toBe(0,);
+	});
+
+	it("reports a failed scenario cleanup instead of swallowing it", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		await withCliServer(
+			codeRunServer({ outcome: "SUCCESS", log: processLog(["x",],), failDelete: true, }, capture,),
+			async (url,) => {
+				const { stdout, stderr, } = await dssWithInput(["code", "run", "--stdin",], "print(1)\n", {
+					env: cliEnv(url,),
+				},);
+				const r = JSON.parse(stdout,) as {
+					cleanup?: { status: string; error?: string; };
+				};
+				expect(r.cleanup?.status,).toBe("failed",);
+				expect(r.cleanup?.error,).toContain("delete boom",);
+				const warning = JSON.parse(stderr.trim(),) as {
+					type: string;
+					warnings: Array<{ type: string; scenarioId?: string; }>;
+				};
+				expect(warning.type,).toBe("warning",);
+				expect(warning.warnings[0]?.type,).toBe("code_run_cleanup_failed",);
+				expect(warning.warnings[0]?.scenarioId,).toBeString();
+			},
+		);
+		expect(capture.deleted,).toBe(true,);
+	});
+
+	it("reports cleanup failure even when the run step errors", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		const scriptPath = join(tmpdir(), `dss-coderun-bothfail-${Date.now()}.py`,);
+		writeFileSync(scriptPath, "print(1)\n",);
+		try {
+			await withCliServer(
+				codeRunServer({ outcome: "SUCCESS", log: "", failRunStep: true, failDelete: true, }, capture,),
+				async (url,) => {
+					const failure = await dssFailure(["code", "run", "--file", scriptPath,], {
+						env: cliEnv(url,),
+					},);
+					// The primary error taxonomy is preserved (DSS 500 -> not usage).
+					expect(failure.code,).not.toBe(0,);
+					expect(failure.code,).not.toBe(1,);
+					// The cleanup failure stays observable on stderr.
+					const warning = JSON.parse(failure.stderr.trim(),) as {
+						type: string;
+						warnings: Array<{ type: string; scenarioId?: string; error?: string; }>;
+					};
+					expect(warning.type,).toBe("warning",);
+					expect(warning.warnings[0]?.type,).toBe("code_run_cleanup_failed",);
+					expect(warning.warnings[0]?.scenarioId,).toBeString();
+				},
+			);
+		} finally {
+			rmSync(scriptPath, { force: true, },);
+		}
+		expect(capture.deleted,).toBe(true,);
 	});
 
 	it("rejects positional args and conflicting sources", async () => {

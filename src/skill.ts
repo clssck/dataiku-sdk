@@ -1,3 +1,4 @@
+import { createHash, } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -136,13 +137,36 @@ export function findWorkspaceRoot(startDir: string,): string {
 	return startDir;
 }
 
-// ---------------------------------------------------------------------------
-// Skill installation
-// ---------------------------------------------------------------------------
+export type SkillStatus = "missing" | "stale" | "current";
+
 export interface InstallResult {
 	agent: string;
 	path: string;
 	via: DetectedAgent["via"];
+	/** Deterministic state of the destination file relative to the canonical skill content. */
+	status: SkillStatus;
+	/** Whether an install run would (or did) write the destination file. */
+	changed: boolean;
+	/** SHA-256 hex of the canonical skill bytes this installation writes. */
+	expectedSha256: string;
+	/** SHA-256 hex of the destination file when it exists; absent when status is "missing". */
+	actualSha256?: string;
+}
+
+function sha256Hex(value: string | Buffer,): string {
+	return createHash("sha256",).update(value,).digest("hex",);
+}
+
+function skillState(
+	target: string,
+	expectedSha256: string,
+): Pick<InstallResult, "status" | "actualSha256"> {
+	if (!fs.existsSync(target,)) return { status: "missing", };
+	const actualSha256 = sha256Hex(fs.readFileSync(target,),);
+	return {
+		status: actualSha256 === expectedSha256 ? "current" : "stale",
+		actualSha256,
+	};
 }
 
 export function planSkillInstalls(
@@ -159,7 +183,17 @@ export function planSkillInstalls(
 			? path.join(opts.cwd, def.projectPath,)
 			: undefined;
 		if (!dir) continue;
-		results.push({ agent: id, path: path.join(dir, def.filename,), via, },);
+		const target = path.join(dir, def.filename,);
+		const expectedSha256 = sha256Hex(def.content(),);
+		const state = skillState(target, expectedSha256,);
+		results.push({
+			agent: id,
+			path: target,
+			via,
+			...state,
+			changed: state.status !== "current",
+			expectedSha256,
+		},);
 	}
 
 	return results;
@@ -173,9 +207,21 @@ export function installSkill(
 
 	for (const result of results) {
 		const def = AGENTS[result.agent];
-		if (!def) continue;
-		fs.mkdirSync(path.dirname(result.path,), { recursive: true, },);
-		fs.writeFileSync(result.path, def.content(), "utf-8",);
+		if (!def || !result.changed) continue;
+		const content = def.content();
+		const dir = path.dirname(result.path,);
+		fs.mkdirSync(dir, { recursive: true, },);
+		const tmpPath = path.join(
+			dir,
+			`.${path.basename(result.path,)}.tmp-${process.pid}-${Date.now().toString(36,)}`,
+		);
+		fs.writeFileSync(tmpPath, content, "utf-8",);
+		try {
+			fs.renameSync(tmpPath, result.path,);
+		} catch (error) {
+			fs.rmSync(tmpPath, { force: true, },);
+			throw error;
+		}
 	}
 
 	return results;

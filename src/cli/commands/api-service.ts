@@ -1,6 +1,20 @@
+import { ClientValidationError, } from "../../errors.js";
+import { stableHash, } from "../../utils/stable-hash.js";
 import { requiredJsonInput, } from "../coerce.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
+
+function validateExpectHash(value: string | boolean | undefined,): string | undefined {
+	if (value === undefined || value === false) return undefined;
+	if (typeof value !== "string" || !/^[0-9a-fA-F]{64}$/.test(value,)) {
+		throw new ClientValidationError(
+			"Expected API service settings hash must be a 64-character SHA-256 hex digest.",
+			"validation_failed",
+			"Run this update with --dry-run and capture currentHash before retrying.",
+		);
+	}
+	return value;
+}
 
 export const apiServiceCommands: Record<string, CommandMeta> = {
 	list: {
@@ -28,22 +42,53 @@ export const apiServiceCommands: Record<string, CommandMeta> = {
 		examples: ["dss api-service get-settings my-service",],
 	},
 	"save-settings": {
-		handler: (c, a, f,) => {
-			requireArgs(
-				a,
-				1,
-				"dss api-service save-settings <serviceId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
-			);
+		handler: async (c, a, f,) => {
+			const usage =
+				"dss api-service save-settings <serviceId> (--data JSON|--data-file PATH|--stdin) [--expect-hash SHA256] [--dry-run] [--project-key KEY]";
+			requireArgs(a, 1, usage,);
 			const body = requiredJsonInput(
 				f,
 				"--data, --data-file, or --stdin is required (service settings).",
 			);
-			return c.apiServices.saveSettings(a[0], body, f["project-key"] as string | undefined,);
+			const projectKey = f["project-key"] as string | undefined;
+			const expectHash = validateExpectHash(f["expect-hash"],);
+			if (f["dry-run"] === true) {
+				const current = await c.apiServices.getSettings(a[0], projectKey,);
+				const currentHash = stableHash(current,);
+				if (expectHash !== undefined && currentHash !== expectHash.toLowerCase()) {
+					throw new ClientValidationError(
+						`The API service ${JSON.stringify(a[0],)} changed since it was read.`,
+						"validation_failed",
+						"Re-read the service settings and retry with the current hash value.",
+						{
+							serviceId: a[0],
+							expectedHash: expectHash.toLowerCase(),
+							actualHash: currentHash,
+						},
+					);
+				}
+				return {
+					dryRun: true,
+					action: "save-settings",
+					resource: "api-service",
+					serviceId: a[0],
+					current,
+					next: body,
+					currentHash,
+					nextHash: stableHash(body,),
+					...(expectHash !== undefined
+						? { expectHash: expectHash.toLowerCase(), provenanceVerified: true, }
+						: {}),
+				};
+			}
+			const saved = await c.apiServices.saveSettings(a[0], body, projectKey, { expectHash, },);
+			return { saved: a[0], ...saved, };
 		},
 		usage:
-			"dss api-service save-settings <serviceId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
-		description: "Save an API service's settings.",
-		examples: ["dss api-service save-settings my-service --data-file service.json",],
+			"dss api-service save-settings <serviceId> (--data JSON|--data-file PATH|--stdin) [--expect-hash SHA256] [--dry-run] [--project-key KEY]",
+		description:
+			"Replace an API service's settings wholesale (explicit replacement: the supplied object is PUT as-is, so fetch get-settings first). --expect-hash refuses the write when the stored settings changed since they were fetched; --dry-run reports current, next, and both hashes without writing.",
+		examples: ["dss api-service save-settings my-service --data-file service.json --dry-run",],
 	},
 	"add-prediction-endpoint": {
 		handler: async (c, a, f,) => {
@@ -102,13 +147,23 @@ export const apiServiceCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss api-service create-package <serviceId> <packageId> [--project-key KEY]",
+				"dss api-service create-package <serviceId> <packageId> [--release-notes TEXT] [--project-key KEY]",
 			);
-			return c.apiServices.createPackage(a[0], a[1], f["project-key"] as string | undefined,);
+			return c.apiServices.createPackage(
+				a[0],
+				a[1],
+				f["project-key"] as string | undefined,
+				typeof f["release-notes"] === "string" ? { releaseNotes: f["release-notes"], } : {},
+			);
 		},
-		usage: "dss api-service create-package <serviceId> <packageId> [--project-key KEY]",
-		description: "Build a deployable package from the current service state.",
-		examples: ["dss api-service create-package my-service v1",],
+		usage:
+			"dss api-service create-package <serviceId> <packageId> [--release-notes TEXT] [--project-key KEY]",
+		description:
+			"Build a deployable package from the current service state; --release-notes forwards the documented releaseNotes query parameter.",
+		examples: [
+			"dss api-service create-package my-service v1",
+			"dss api-service create-package my-service v1 --release-notes='Adds churn endpoint'",
+		],
 	},
 	"delete-package": {
 		handler: async (c, a, f,) => {
@@ -154,12 +209,24 @@ export const apiServiceCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss api-service publish-package <serviceId> <packageId> [--project-key KEY]",
+				"dss api-service publish-package <serviceId> <packageId> [--published-service-id ID] [--project-key KEY]",
 			);
-			return c.apiServices.publishPackage(a[0], a[1], f["project-key"] as string | undefined,);
+			return c.apiServices.publishPackage(
+				a[0],
+				a[1],
+				f["project-key"] as string | undefined,
+				typeof f["published-service-id"] === "string"
+					? { publishedServiceId: f["published-service-id"], }
+					: {},
+			);
 		},
-		usage: "dss api-service publish-package <serviceId> <packageId> [--project-key KEY]",
-		description: "Publish a package to the API Deployer.",
-		examples: ["dss api-service publish-package my-service v1",],
+		usage:
+			"dss api-service publish-package <serviceId> <packageId> [--published-service-id ID] [--project-key KEY]",
+		description:
+			"Publish a package to the API Deployer; --published-service-id forwards the documented publishedServiceId query parameter (a new published service is created when no match exists; the service's own id is the server-side default).",
+		examples: [
+			"dss api-service publish-package my-service v1",
+			"dss api-service publish-package my-service v1 --published-service-id=prod-churn",
+		],
 	},
 };
