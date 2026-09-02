@@ -163,13 +163,19 @@ function jobLogLines(log: string,): string[] {
 	return log.split(/\r?\n/,).map((line,) => line.trimEnd());
 }
 
+/**
+ * DSS tags recipe subprocess output by reader thread: `[null-out-N]` carries
+ * the child's stdout and `[null-err-N]` its stderr. The bare words are kept
+ * for hand-written or non-DSS log formats.
+ */
 function lineMatchesLogFilter(line: string, filter: JobLogFilter,): boolean {
 	const normalized = line.toLowerCase();
 	switch (filter) {
 		case "stdout":
-			return normalized.includes("stdout",) || line.startsWith(">>> ",);
+			return normalized.includes("[null-out-",) || normalized.includes("stdout",)
+				|| line.startsWith(">>> ",);
 		case "stderr":
-			return normalized.includes("stderr",);
+			return normalized.includes("[null-err-",) || normalized.includes("stderr",);
 		case "errors":
 			return /\b(error|failed|failure|exception|traceback)\b/i.test(line,);
 		case "user":
@@ -467,9 +473,12 @@ export class JobsResource extends BaseResource {
 
 				if (opts?.includeLogs || opts?.summary) {
 					try {
+						// Fetch unlimited lines (still byte-bounded by log()) so the
+						// filter runs over the whole retained log; the line limit is
+						// applied to the filtered result below.
 						const rawLog = await this.log(jobId, {
 							activity: opts.activity,
-							maxLogLines: opts.summary ? 0 : opts.maxLogLines,
+							maxLogLines: 0,
 							logId: opts.logId,
 							projectKey: opts.projectKey,
 						},);

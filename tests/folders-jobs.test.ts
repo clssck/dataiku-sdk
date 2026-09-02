@@ -305,6 +305,28 @@ describe("JobsResource.log", () => {
 			expect(lines[1],).toBe("line 600",);
 		},);
 	});
+
+	it("selects recipe subprocess stdout and stderr by DSS reader-thread tags", async () => {
+		const dssLog = [
+			"[2026/09/02-14:34:01.000] [FRT-76-FlowRunnable] [INFO] [dku.flow.python] act.x - Starting execution of user's Python code",
+			"[2026/09/02-14:34:01.500] [null-err-85] [INFO] [dku.utils]  - 2026-09-02 14:34:01,499 INFO Setup complete, ready to execute Python code",
+			"[2026/09/02-14:34:01.801] [null-out-84] [INFO] [dku.utils]  - OK polars 1.44.1 rows 3",
+			"[2026/09/02-14:34:02.000] [null-err-85] [INFO] [dku.utils]  - Traceback (most recent call last):",
+			"[2026/09/02-14:34:02.466] [ActivityExecutor-66] [INFO] [dku.flow.activity] running x - Activity is successful",
+		].join("\n",);
+		await withDataikuServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(dssLog,);
+		}, async (client,) => {
+			expect(await client.jobs.log("job-py", { logFilter: "stdout", },),).toBe(
+				"[2026/09/02-14:34:01.801] [null-out-84] [INFO] [dku.utils]  - OK polars 1.44.1 rows 3",
+			);
+			const stderr = (await client.jobs.log("job-py", { logFilter: "stderr", },)).split("\n",);
+			expect(stderr,).toHaveLength(2,);
+			expect(stderr.every((line,) => line.includes("[null-err-85]",)),).toBe(true,);
+		},);
+	});
 });
 
 describe("JobsResource.wait", () => {
@@ -366,6 +388,43 @@ describe("JobsResource.wait", () => {
 			"GET /public/api/projects/TEST/jobs/job-1/",
 			"GET /public/api/projects/TEST/jobs/job-1/log/?activity=build",
 		],);
+	});
+
+	it("applies the log filter before the line limit so early stdout survives a small tail", async () => {
+		const dssLog = [
+			"[2026/09/02-14:34:01.801] [null-out-84] [INFO] [dku.utils]  - OK polars 1.44.1 rows 3",
+			...Array.from(
+				{ length: 20, },
+				(_v, i,) =>
+					`[2026/09/02-14:34:02.${
+						String(i,).padStart(3, "0",)
+					}] [ActivityExecutor-66] [INFO] [dku.flow.activity] backend line ${i}`,
+			),
+		].join("\n",);
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (url.pathname === "/public/api/projects/TEST/jobs/job-filter/") {
+				sendJson(res, {
+					baseStatus: { def: { id: "job-filter", type: "DATASET_BUILD", }, state: "DONE", },
+					globalState: { done: 1, failed: 0, running: 0, total: 1, },
+				},);
+				return;
+			}
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(dssLog,);
+		}, async (client,) => {
+			const result = await client.jobs.wait("job-filter", {
+				includeLogs: true,
+				logFilter: "stdout",
+				maxLogLines: 5,
+				pollIntervalMs: 1,
+				timeoutMs: 5_000,
+			},);
+			expect(result.log,).toBe(
+				"[2026/09/02-14:34:01.801] [null-out-84] [INFO] [dku.utils]  - OK polars 1.44.1 rows 3",
+			);
+		},);
 	});
 
 	it("summarizes Dataiku Python progress counters from terminal logs", async () => {
