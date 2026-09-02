@@ -154,6 +154,26 @@ describe("DataikuClient bounded response bodies", () => {
 		},);
 	});
 
+	it("getTextTailLimited stays bounded across many one-byte chunks", async () => {
+		const body = Array.from(
+			{ length: 20_000, },
+			(_, index,) => String.fromCharCode(97 + index % 26,),
+		).join("",);
+		await withDataikuServer(async (_req, res,) => {
+			res.statusCode = 200;
+			res.flushHeaders();
+			for (const character of body) {
+				res.write(character,);
+				await new Promise<void>((resolvePromise,) => setImmediate(resolvePromise,));
+			}
+			res.end();
+		}, async (client,) => {
+			const { text, truncated, } = await client.getTextTailLimited("/tiny-chunks", 64,);
+			expect(truncated,).toBe(true,);
+			expect(text,).toBe(body.slice(-64,),);
+		},);
+	});
+
 	it("getTextTailLimited never emits replacement characters when cutting multibyte text", async () => {
 		// é = 2 bytes, € = 3 bytes, 😀 = 4 bytes (9-byte multibyte prefix).
 		const body = "é€😀".repeat(200,);

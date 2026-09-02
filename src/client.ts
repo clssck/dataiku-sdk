@@ -902,9 +902,8 @@ export class DataikuClient {
 		if (!res.body) return { text: "", truncated: false, };
 
 		const reader = res.body.getReader();
-		const pending: Uint8Array[] = [];
-		const emptyChunk = new Uint8Array(0,);
-		let head = 0;
+		const ring = new Uint8Array(limit,);
+		let writeOffset = 0;
 		let retainedBytes = 0;
 		let truncated = false;
 		const startedAt = Date.now();
@@ -919,35 +918,47 @@ export class DataikuClient {
 					this.requestTimeoutMs,
 				);
 				if (done) break;
-				pending.push(value,);
-				retainedBytes += value.byteLength;
-				let toDrop = retainedBytes - limit;
-				let dropped = false;
-				while (toDrop > 0 && head < pending.length) {
-					dropped = true;
-					const headChunk = pending[head];
-					if (headChunk.byteLength <= toDrop) {
-						toDrop -= headChunk.byteLength;
-						retainedBytes -= headChunk.byteLength;
-						pending[head] = emptyChunk;
-						head += 1;
-					} else {
-						// Copy the retained piece: `subarray` would keep the whole
-						// source chunk alive, defeating the memory bound.
-						pending[head] = headChunk.slice(toDrop,);
-						retainedBytes -= toDrop;
-						toDrop = 0;
-					}
+				if (limit === 0) {
+					truncated = value.byteLength > 0;
+					if (truncated) break;
+					continue;
 				}
-				if (!truncated && dropped) truncated = true;
-				if (limit === 0 && truncated) break;
+
+				if (value.byteLength >= limit) {
+					ring.set(value.subarray(value.byteLength - limit,),);
+					truncated = truncated || retainedBytes > 0 || value.byteLength > limit;
+					retainedBytes = limit;
+					writeOffset = 0;
+					continue;
+				}
+
+				const firstLength = Math.min(value.byteLength, limit - writeOffset,);
+				ring.set(value.subarray(0, firstLength,), writeOffset,);
+				const remainingLength = value.byteLength - firstLength;
+				if (remainingLength > 0) {
+					ring.set(value.subarray(firstLength,),);
+				}
+				writeOffset = (writeOffset + value.byteLength) % limit;
+				truncated = truncated || retainedBytes + value.byteLength > limit;
+				retainedBytes = Math.min(limit, retainedBytes + value.byteLength,);
 			}
 		} finally {
 			void reader.cancel().catch(() => {},);
 		}
 
-		const chunks = head > 0 ? pending.slice(head,) : pending;
-		const collected = concatBytes(chunks, retainedBytes,);
+		let collected: Uint8Array;
+		if (retainedBytes === 0) {
+			collected = new Uint8Array(0,);
+		} else if (retainedBytes < limit) {
+			collected = ring.slice(0, retainedBytes,);
+		} else if (writeOffset === 0) {
+			collected = ring;
+		} else {
+			collected = new Uint8Array(retainedBytes,);
+			const suffixLength = limit - writeOffset;
+			collected.set(ring.subarray(writeOffset,),);
+			collected.set(ring.subarray(0, writeOffset,), suffixLength,);
+		}
 		// A byte cut inside a multi-byte sequence can leave continuation bytes at
 		// the start (and possibly the end) of the tail; drop both so the decoded
 		// text never starts or ends with a U+FFFD replacement character.
