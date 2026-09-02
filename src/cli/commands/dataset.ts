@@ -390,6 +390,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 				outputPath: f["output"] as string | undefined,
 				projectKey: f["project-key"] as string | undefined,
 				limit: num(f["limit"], "--limit",),
+				rawData: f["raw-data"] === true,
 			},);
 			if (result.truncated) {
 				enqueueCliWarning({
@@ -417,10 +418,14 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			}
 			return result;
 		},
-		usage: "dss dataset download <name> [--output PATH] [--limit N] [--project-key KEY]",
+		usage: "dss dataset download <name> [--output PATH] [--limit N] [--raw-data] [--project-key KEY]",
 		description:
-			"Download up to --limit rows (default 100k) as CSV; returns { path, rows, truncated, limit }. When truncated, a dataset_download_truncated warning is written to stderr; when --output is omitted, a dataset_download_default_location warning names the file's path in the working directory so the write is never silent.",
-		examples: ["dss dataset download orders", "dss dataset download orders --output ./data/",],
+			"Download up to --limit rows (default 100k) as CSV and return { path, rows, truncated, limit }. Formula-like cells are neutralized for spreadsheets; --raw-data preserves exact bytes. Warnings report truncation and the default output path.",
+		examples: [
+			"dss dataset download orders",
+			"dss dataset download orders --output ./data/",
+			"dss dataset download orders --raw-data",
+		],
 	},
 	create: {
 		handler: async (c, _a, f,) => {

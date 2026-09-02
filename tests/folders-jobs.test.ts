@@ -284,6 +284,27 @@ describe("JobsResource.log", () => {
 			),).resolves.toBe("public api stdout\n",);
 		},);
 	});
+
+	it("bounds oversized logs to the tail and line-limits from the retained bytes", async () => {
+		const fullLog = Array.from({ length: 600, }, (_value, index,) => `line ${index + 1}`,).join(
+			"\n",
+		);
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			expect(req.method,).toBe("GET",);
+			expect(url.pathname,).toBe("/public/api/projects/TEST/jobs/job-tail/log/",);
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(fullLog,);
+		}, async (client,) => {
+			const log = await client.jobs.log("job-tail", { maxLogBytes: 200, maxLogLines: 2, },);
+			const lines = log.split("\n",);
+			expect(log.length,).toBeLessThan(fullLog.length,);
+			expect(lines,).toHaveLength(2,);
+			expect(lines[0],).toBe("line 599",);
+			expect(lines[1],).toBe("line 600",);
+		},);
+	});
 });
 
 describe("JobsResource.wait", () => {

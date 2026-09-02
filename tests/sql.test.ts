@@ -1,6 +1,7 @@
 import { describe, expect, it, } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
+import { DataikuClient, } from "../src/client.js";
 import { ClientValidationError, DataikuError, } from "../src/errors.js";
 import { SqlResource, } from "../src/resources/sql.js";
 
@@ -27,6 +28,26 @@ class TestHttpClient {
 			throw new DataikuError(res.status, res.statusText, await res.text(),);
 		}
 		return res.text();
+	}
+
+	getMaxResponseBodyBytes(): number {
+		return Number.MAX_SAFE_INTEGER;
+	}
+
+	async getTextLimited(
+		path: string,
+		maxBytes: number,
+	): Promise<{ text: string; truncated: boolean; }> {
+		const res = await fetch(`${this.baseUrl}${path}`,);
+		if (!res.ok) {
+			throw new DataikuError(res.status, res.statusText, await res.text(),);
+		}
+		const bytes = new Uint8Array(await res.arrayBuffer(),);
+		const limit = Math.max(0, Math.floor(maxBytes,),);
+		if (bytes.byteLength <= limit) {
+			return { text: new TextDecoder().decode(bytes,), truncated: false, };
+		}
+		return { text: new TextDecoder().decode(bytes.subarray(0, limit,),), truncated: true, };
 	}
 
 	private async parseJsonResponse<T,>(res: Response,): Promise<T> {
@@ -321,6 +342,93 @@ describe("SqlResource", () => {
 			await expect(sql.query({ query: "SELECT task_name FROM tasks", },),).rejects.toThrow(
 				"SQL query failed: COLUMN_NOT_FOUND: line 1:8: Column 'task_name' cannot be resolved",
 			);
+		},);
+	});
+});
+
+/**
+ * Harness that exercises SqlResource against the real DataikuClient so the
+ * body caps and deadlines take effect.
+ */
+async function withSqlDataikuServer(
+	handler: (req: IncomingMessage, res: ServerResponse,) => Promise<void> | void,
+	run: (sql: SqlResource,) => Promise<void>,
+	maxResponseBodyBytes = 512,
+): Promise<void> {
+	const server = createServer((req, res,) => {
+		void Promise.resolve(handler(req, res,),).catch(() => {
+			// A cancelled body may make the server-side write fail; that is
+			// expected in overflow tests and must not crash the test.
+		},);
+	},);
+	await new Promise<void>((resolvePromise, rejectPromise,) => {
+		server.listen(0, "127.0.0.1", (error?: Error,) => {
+			if (error) {
+				rejectPromise(error,);
+				return;
+			}
+			resolvePromise();
+		},);
+	},);
+
+	const { port, } = server.address() as AddressInfo;
+	const client = new DataikuClient({
+		url: `http://127.0.0.1:${String(port,)}`,
+		apiKey: "test",
+		projectKey: "TEST",
+		maxResponseBodyBytes,
+	},);
+	const sql = new SqlResource(client,);
+	try {
+		await run(sql,);
+	} finally {
+		await new Promise<void>((resolvePromise, rejectPromise,) => {
+			server.close((error,) => {
+				if (error) {
+					rejectPromise(error,);
+					return;
+				}
+				resolvePromise();
+			},);
+		},);
+	}
+}
+
+describe("SqlResource bounded bodies", () => {
+	it("streamResults parses bodies within the client's response limit", async () => {
+		await withSqlDataikuServer(async (req, res,) => {
+			expect(req.url,).toBe("/public/api/sql/queries/q-ok/stream?format=json",);
+			res.setHeader("content-type", "application/json",);
+			res.end("[[1],[2]]",);
+		}, async (sql,) => {
+			expect(await sql.streamResults("q-ok",),).toEqual([[1,], [2,],],);
+		},);
+	});
+
+	it("streamResults rejects oversized result sets instead of parsing them", async () => {
+		const oversized = JSON.stringify(
+			Array.from({ length: 200, }, (_v, i,) => [i, String(i,),],),
+		); // ~4 KB, well above the 512-byte harness cap
+		await withSqlDataikuServer(async (req, res,) => {
+			expect(req.url,).toBe("/public/api/sql/queries/q-big/stream?format=json",);
+			res.setHeader("content-type", "application/json",);
+			res.end(oversized,);
+		}, async (sql,) => {
+			const failure = await sql.streamResults("q-big",).catch((error: unknown,) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as DataikuError).status,).toBe(0,);
+			expect((failure as Error).message,).toContain("exceeded the 512-byte response limit",);
+		},);
+	});
+
+	it("finishStreaming rejects oversized status bodies", async () => {
+		await withSqlDataikuServer(async (req, res,) => {
+			expect(req.url,).toBe("/public/api/sql/queries/q-fin/finish-streaming",);
+			res.end(`status ${"x".repeat(2_000,)}`,);
+		}, async (sql,) => {
+			const failure = await sql.finishStreaming("q-fin",).catch((error: unknown,) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as Error).message,).toContain("exceeded the 512-byte response limit",);
 		},);
 	});
 });

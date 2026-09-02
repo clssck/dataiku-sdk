@@ -331,3 +331,43 @@ describe("CLI dataset validation", () => {
 		expect(uploadCount,).toBe(0,);
 	});
 });
+
+describe("CLI dataset download export sanitation", () => {
+	const tsv = "=name\tcity\n=1+2\tParis\n";
+
+	it("writes spreadsheet-safe exports by default and exact bytes with --raw-data", async () => {
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dss-dataset-download-sanitize-",),);
+		const safePath = path.join(tempDir, "safe.csv",);
+		const rawPath = path.join(tempDir, "raw.csv",);
+		try {
+			await withCliServer((_req, res,) => {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+				res.end(tsv,);
+			}, async (url,) => {
+				const { stdout: safeOut, } = await dss([
+					"dataset",
+					"download",
+					"orders",
+					"--output",
+					safePath,
+				], { env: cliEnv(url,), },);
+				expect(JSON.parse(safeOut,),).toMatchObject({ path: safePath, rows: 1, },);
+				expect(fs.readFileSync(safePath, "utf8",),).toBe("'=name,city\n'=1+2,Paris\n",);
+
+				const { stdout: rawOut, } = await dss([
+					"dataset",
+					"download",
+					"orders",
+					"--output",
+					rawPath,
+					"--raw-data",
+				], { env: cliEnv(url,), },);
+				expect(JSON.parse(rawOut,),).toMatchObject({ path: rawPath, rows: 1, },);
+				expect(fs.readFileSync(rawPath, "utf8",),).toBe("=name,city\n=1+2,Paris\n",);
+			},);
+		} finally {
+			await fs.promises.rm(tempDir, { recursive: true, force: true, },);
+		}
+	});
+});

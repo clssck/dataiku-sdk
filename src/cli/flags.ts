@@ -47,6 +47,7 @@ export const BOOLEAN_FLAGS = new Set([
 	"no-add-to-python-path",
 	"delete-directory",
 	"peek",
+	"raw-data",
 	"all",
 ],);
 

@@ -37,6 +37,57 @@ const MAX_JSON_MEMBER_BYTES = 16 * 1024 * 1024;
 /** Upper bound for residue text scanning of individual members. */
 const MAX_RESIDUE_SCAN_BYTES = 1024 * 1024;
 
+/**
+ * Safety budgets applied by {@link inspectProjectArchive} while reading a
+ * project archive. A small malicious archive must not be able to exhaust
+ * CPU or memory during the pre-upload local inspection, so every limit is
+ * enforced: members whose central-directory record declares a compressed
+ * size or expanded/compressed ratio above budget are never streamed,
+ * per-member and aggregate expanded-byte overruns destroy the member
+ * stream immediately, and archives with too many members are reported
+ * without opening any member stream. All limits are per-inspection
+ * configuration: pass a partial object as `overrides` to adjust only what
+ * you need, otherwise the exported defaults apply.
+ */
+export interface ProjectArchiveInspectionLimits {
+	/** Maximum number of central-directory members. Default: 100000. */
+	maxMembers: number;
+	/** Maximum declared compressed bytes of one member. Default: 4 GiB. */
+	maxCompressedBytesPerMember: number;
+	/** Maximum expanded bytes streamed from one member. Default: 4 GiB. */
+	maxExpandedBytesPerMember: number;
+	/**
+	 * Maximum declared expanded-to-compressed ratio of one member (zip-bomb
+	 * guard, computed from the central-directory record before streaming).
+	 * Default: 1000. Legitimate archives with members compressing better
+	 * than this need a higher limit to be inspected.
+	 */
+	maxCompressionRatio: number;
+	/** Maximum total expanded bytes across all streamed members. Default: 16 GiB. */
+	maxTotalExpandedBytes: number;
+}
+
+export const PROJECT_ARCHIVE_DEFAULT_LIMITS: Readonly<ProjectArchiveInspectionLimits> = Object
+	.freeze({
+		maxMembers: 100_000,
+		maxCompressedBytesPerMember: 4 * 1024 * 1024 * 1024,
+		maxExpandedBytesPerMember: 4 * 1024 * 1024 * 1024,
+		maxCompressionRatio: 1_000,
+		maxTotalExpandedBytes: 16 * 1024 * 1024 * 1024,
+	},);
+
+/** Merge per-call overrides onto the exported default inspection limits. */
+function effectiveLimits(
+	overrides: Partial<ProjectArchiveInspectionLimits>,
+): ProjectArchiveInspectionLimits {
+	const merged: ProjectArchiveInspectionLimits = { ...PROJECT_ARCHIVE_DEFAULT_LIMITS, };
+	for (const key of Object.keys(overrides,) as (keyof ProjectArchiveInspectionLimits)[]) {
+		const value = overrides[key];
+		if (value !== undefined) merged[key] = value;
+	}
+	return merged;
+}
+
 export type ProjectArchiveIssueSeverity = "error" | "warning";
 
 export interface ProjectArchiveIssue {
@@ -66,6 +117,13 @@ interface StreamedMember {
 	content: Buffer[] | undefined;
 	/** True when accumulation stopped because the byte cap was reached. */
 	truncated: boolean;
+	/**
+	 * False when the member stream ran to completion. `"member"` when the
+	 * per-member expanded-byte budget was crossed, `"aggregate"` when the
+	 * aggregate expanded-byte budget was crossed: the stream was destroyed
+	 * immediately and its partial data is neither CRC- nor size-verifiable.
+	 */
+	aborted: false | "member" | "aggregate";
 }
 
 function plainRecord(value: unknown,): Record<string, unknown> | undefined {
@@ -141,16 +199,31 @@ function isUnsafeMemberPath(name: string,): boolean {
  * own verification is bypassed for data-descriptor records (bit 3 set), so the
  * manual `Bun.hash.crc32` computation covers every record uniformly.
  *
- * When `accumulate` is set, buffered content never exceeds `maxBytes`: the
- * buffer is dropped as soon as the cap is reached while the member is still
- * streamed in full, so CRC/size verification stays complete and the size
+ * When `accumulate` is set, buffered content never exceeds `bufferMaxBytes`:
+ * the buffer is dropped as soon as the cap is reached while the member is
+ * still streamed in full, so CRC/size verification stays complete and the size
  * mismatch (if the declared size lied) is still reported.
+ *
+ * The safety budgets bound decompression itself, not just buffering: once the
+ * per-member expanded-byte budget (`expandedBytes`) or the aggregate
+ * expanded-byte budget (`totalExpandedBytes`, tracked across members in
+ * `tally`) is crossed, the member stream is destroyed immediately and no
+ * further decompression or hashing happens. The caller must not compare the
+ * partial CRC/size result, which is why the result carries `aborted`.
  */
 function streamMember(
 	zip: StreamZip,
 	entry: StreamZip.ZipEntry,
 	accumulate: boolean,
-	maxBytes = Number.POSITIVE_INFINITY,
+	bufferMaxBytes: number,
+	limits: {
+		/** Per-member expanded-byte cap; crossing it destroys the stream. */
+		expandedBytes: number;
+		/** Aggregate expanded-byte cap across all members. */
+		totalExpandedBytes: number;
+		/** Running total of expanded bytes across every streamed member. */
+		tally: { expandedBytes: number; };
+	},
 ): Promise<StreamedMember> {
 	const { promise, resolve, reject, } = Promise.withResolvers<StreamedMember>();
 	zip.stream(entry, (err, stm,) => {
@@ -164,13 +237,27 @@ function streamMember(
 		let bytes = 0;
 		let crc = 0;
 		let truncated = false;
+		let aborted: false | "member" | "aggregate" = false;
 		const content: Buffer[] | undefined = accumulate ? [] : undefined;
+		const abort = (reason: "member" | "aggregate",) => {
+			aborted = reason;
+			stream.destroy();
+			resolve({ bytes, crc, content: undefined, truncated, aborted, },);
+		};
 		stream.on("data", (chunk: Buffer | string,) => {
+			if (aborted) return;
 			const buffer = typeof chunk === "string" ? Buffer.from(chunk,) : chunk;
 			bytes += buffer.length;
+			limits.tally.expandedBytes += buffer.length;
+			if (limits.tally.expandedBytes > limits.totalExpandedBytes) {
+				return abort("aggregate",);
+			}
+			if (bytes > limits.expandedBytes) {
+				return abort("member",);
+			}
 			crc = Bun.hash.crc32(buffer, crc,) >>> 0;
 			if (!content || truncated) return;
-			if (bytes > maxBytes) {
+			if (bytes > bufferMaxBytes) {
 				truncated = true;
 				content.length = 0;
 				return;
@@ -178,14 +265,19 @@ function streamMember(
 			content.push(buffer,);
 		},);
 		stream.on("end", () => {
+			if (aborted) return;
 			resolve({
 				bytes,
 				crc,
 				content: truncated ? undefined : content,
 				truncated,
+				aborted: false,
 			},);
 		},);
 		stream.on("error", (streamErr,) => {
+			// A stream destroyed by a budget breach may surface a late error;
+			// the result was already resolved and the partial data is unusable.
+			if (aborted) return;
 			reject(streamErr,);
 		},);
 	},);
@@ -359,6 +451,20 @@ function residueIssue(member: string, counts: ResidueCounts,): ProjectArchiveIss
 	};
 }
 
+/** Deterministic issue ordering: severity, then code, member, message. */
+function sortIssues(issues: ProjectArchiveIssue[],): ProjectArchiveIssue[] {
+	issues.sort((a, b,) => {
+		const severityOrder = a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1;
+		return (
+			severityOrder
+			|| a.code.localeCompare(b.code,)
+			|| (a.member ?? "").localeCompare(b.member ?? "",)
+			|| a.message.localeCompare(b.message,)
+		);
+	},);
+	return issues;
+}
+
 /**
  * Inspect a DSS project export ZIP archive without extracting anything to
  * disk: enumerate every central-directory record, validate member paths
@@ -368,10 +474,21 @@ function residueIssue(member: string, counts: ResidueCounts,): ProjectArchiveIss
  * the generic dangling-reference/orphan-member graph checks. Identity,
  * history and machine-specific residue is reported only as warnings carrying
  * member paths and pattern counts, never matched values.
+ *
+ * Safety budgets (see {@link ProjectArchiveInspectionLimits}) bound every
+ * amount of work: archives with more members than `maxMembers` are reported
+ * without opening any member stream, members whose central-directory record
+ * declares a compressed size or compression ratio above budget are skipped
+ * without being read, and per-member/aggregate expanded-byte overruns
+ * destroy the member stream immediately. Pass a partial limits object as
+ * `overrides` to customize the budgets for a single inspection; importers
+ * use the exported defaults.
  */
 export async function inspectProjectArchive(
 	filePath: string,
+	overrides: Partial<ProjectArchiveInspectionLimits> = {},
 ): Promise<ProjectArchiveInspection> {
+	const limits = effectiveLimits(overrides,);
 	let sizeBytes = 0;
 	let statError: ProjectArchiveIssue | undefined;
 	try {
@@ -432,6 +549,24 @@ export async function inspectProjectArchive(
 	}
 
 	try {
+		// The member-count budget bounds inspection work per archive. When it
+		// is exceeded no member stream is opened: the archive reports a single
+		// error and cannot be imported.
+		if (records.length > limits.maxMembers) {
+			issues.push({
+				severity: "error",
+				code: "member_count_exceeded",
+				message:
+					`archive contains ${records.length} members, above the inspection limit of ${limits.maxMembers}`,
+			},);
+			return {
+				filePath,
+				sizeBytes,
+				memberCount: records.length,
+				valid: false,
+				issues,
+			};
+		}
 		const memberCounts = new Map<string, number>();
 		for (const entry of records) {
 			memberCounts.set(entry.name, (memberCounts.get(entry.name,) ?? 0) + 1,);
@@ -458,6 +593,8 @@ export async function inspectProjectArchive(
 
 		const manifestJson = new Map<string, unknown>();
 		const recipes = new Map<string, unknown>();
+		const tally = { expandedBytes: 0, };
+		let aggregateAborted = false;
 		for (const entry of records) {
 			if (!entry.isFile) continue;
 			const name = entry.name;
@@ -485,11 +622,39 @@ export async function inspectProjectArchive(
 				|| name.startsWith(`${BUNDLED_DATA_ROOT}/`,)
 				|| name.startsWith(`${UPLOADS_ROOT}/`,))
 				&& entry.size <= MAX_RESIDUE_SCAN_BYTES;
+			// Budgets computed from the central-directory record abort before
+			// any decompression work: a member whose declared compressed size
+			// or expanded/compressed ratio is above budget is never streamed.
+			if (entry.compressedSize > limits.maxCompressedBytesPerMember) {
+				issues.push({
+					severity: "error",
+					code: "member_compressed_size_exceeded",
+					message:
+						`member ${name}: declared compressed size exceeds the inspection limit and was not read`,
+					member: name,
+				},);
+				continue;
+			}
+			if (
+				entry.compressedSize > 0
+				&& entry.size / entry.compressedSize > limits.maxCompressionRatio
+			) {
+				issues.push({
+					severity: "error",
+					code: "member_compression_ratio_exceeded",
+					message:
+						`member ${name}: declared compression ratio exceeds the inspection limit and was not read`,
+					member: name,
+				},);
+				continue;
+			}
 			let streamed: StreamedMember | undefined;
 			try {
 				// The buffering cap applies to actual streamed bytes, not the
 				// declared size: a member can declare a small size and still
 				// inflate arbitrarily, which must not be buffered unbounded.
+				// The expanded-byte budgets bound decompression itself and
+				// destroy the member stream the moment one is crossed.
 				streamed = await streamMember(
 					zip,
 					entry,
@@ -499,6 +664,11 @@ export async function inspectProjectArchive(
 						: scanCandidate
 						? MAX_RESIDUE_SCAN_BYTES
 						: Number.POSITIVE_INFINITY,
+					{
+						expandedBytes: limits.maxExpandedBytesPerMember,
+						totalExpandedBytes: limits.maxTotalExpandedBytes,
+						tally,
+					},
 				);
 			} catch (streamErr) {
 				streamed = undefined;
@@ -527,6 +697,30 @@ export async function inspectProjectArchive(
 				}
 			}
 			if (!streamed) continue;
+			if (streamed.aborted) {
+				issues.push(
+					streamed.aborted === "aggregate"
+						? {
+							severity: "error",
+							code: "aggregate_inflation_limit_exceeded",
+							message:
+								`member ${name}: aggregate expanded bytes exceed the inspection budget; remaining members were not inspected`,
+							member: name,
+						}
+						: {
+							severity: "error",
+							code: "member_inflation_limit_exceeded",
+							message:
+								`member ${name}: data exceeds the per-member expanded-byte inspection budget and was not fully inspected`,
+							member: name,
+						},
+				);
+				if (streamed.aborted === "aggregate") {
+					aggregateAborted = true;
+					break;
+				}
+				continue;
+			}
 			if (streamed.bytes !== entry.size) {
 				issues.push({
 					severity: "error",
@@ -585,6 +779,20 @@ export async function inspectProjectArchive(
 				}
 			}
 		}
+		// Once the aggregate expanded-byte budget is crossed, remaining
+		// members were not inspected: report the budget issue and stop, so no
+		// manifest/graph conclusion is drawn from the partial inspection.
+		if (aggregateAborted) {
+			sortIssues(issues,);
+			return {
+				filePath,
+				sizeBytes,
+				memberCount: records.length,
+				sourceProjectKey: undefined,
+				valid: false,
+				issues,
+			};
+		}
 		let sourceProjectKey: string | undefined;
 		let manifestDatasetNames: Set<string> | undefined;
 		const manifestMember = manifestJson.get(MANIFEST_MEMBER,);
@@ -640,15 +848,7 @@ export async function inspectProjectArchive(
 		checkRecipeReferences(recipes, datasetNames, nonDatasetNames, issues,);
 		checkOrphanMembers(records, recipeNames, anchored, issues,);
 
-		issues.sort((a, b,) => {
-			const severityOrder = a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1;
-			return (
-				severityOrder
-				|| a.code.localeCompare(b.code,)
-				|| (a.member ?? "").localeCompare(b.member ?? "",)
-				|| a.message.localeCompare(b.message,)
-			);
-		},);
+		sortIssues(issues,);
 
 		return {
 			filePath,
@@ -677,8 +877,9 @@ export async function inspectProjectArchive(
  */
 export async function assertImportableProjectArchive(
 	filePath: string,
+	overrides: Partial<ProjectArchiveInspectionLimits> = {},
 ): Promise<ProjectArchiveInspection> {
-	const inspection = await inspectProjectArchive(filePath,);
+	const inspection = await inspectProjectArchive(filePath, overrides,);
 	const errorCount = inspection.issues.filter((issue,) => issue.severity === "error").length;
 	if (errorCount > 0) {
 		throw new ClientValidationError(

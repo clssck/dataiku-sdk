@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as nodePath from "node:path";
 import { Readable, Transform, } from "node:stream";
 import { pipeline, } from "node:stream/promises";
+import { StringDecoder, } from "node:string_decoder";
 import { createGzip, } from "node:zlib";
 import { ClientValidationError, DataikuError, } from "../errors.js";
 import {
@@ -81,7 +82,66 @@ export interface UploadDatasetFileResult {
 // Helpers: TSV → CSV streaming conversion
 // ---------------------------------------------------------------------------
 
-function csvEscape(field: string,): string {
+/**
+ * Decoded-byte budgets for the streaming TSV parser. Each budget fails closed
+ * — the response is cancelled and any partial download removed — so a dataset
+ * holding one oversized field, an unterminated quoted row, or a huge response
+ * can never accumulate unbounded memory or CPU before row limits apply.
+ */
+const TSV_MAX_FIELD_BYTES = 16 * 1024 * 1024; // 16 MiB per decoded field
+const TSV_MAX_ROW_BYTES = 64 * 1024 * 1024; // 64 MiB per decoded row
+const TSV_MAX_RESPONSE_BYTES = 16 * 1024 * 1024 * 1024; // 16 GiB per decoded response
+
+interface TsvLimits {
+	maxFieldBytes: number;
+	maxRowBytes: number;
+	maxResponseBytes: number;
+}
+
+function formatLimitBytes(bytes: number,): string {
+	if (bytes >= 1024 * 1024 * 1024) return `${bytes / (1024 * 1024 * 1024)} GiB`;
+	if (bytes >= 1024 * 1024) return `${bytes / (1024 * 1024)} MiB`;
+	return `${bytes} B`;
+}
+
+function tsvLimitError(what: "field" | "row" | "response", limit: number,): DataikuError {
+	return new DataikuError(
+		0,
+		"Dataset TSV Limit",
+		`Dataset TSV ${what} exceeded ${
+			formatLimitBytes(limit,)
+		}; streaming was aborted to guard against unbounded memory use.`,
+	);
+}
+
+/** Characters that evaluate a spreadsheet cell as a formula. */
+const FORMULA_SIGILS = "=+-@";
+
+/**
+ * True when the first effective character of `field` — the first character
+ * that is not leading whitespace/control — is a spreadsheet formula sigil.
+ * Spreadsheet applications evaluate such cells even when CSV-quoted, so an
+ * untrusted dataset producer could plant formulas that execute on open.
+ */
+function hasFormulaPrefix(field: string,): boolean {
+	for (let i = 0; i < field.length; i++) {
+		const code = field.charCodeAt(i,);
+		if (code <= 0x20 || (code >= 0x7f && code <= 0x9f)) continue;
+		return FORMULA_SIGILS.includes(field[i],);
+	}
+	return false;
+}
+
+/**
+ * Escape one TSV field for CSV output. In spreadsheet-safe mode (the default
+ * for dataset downloads) a field whose first effective character is a formula
+ * sigil gets a leading apostrophe so spreadsheet importers show text instead
+ * of executing it; `rawData: true` (CLI `--raw-data`) preserves exact bytes.
+ */
+function csvEscape(field: string, spreadsheetSafe: boolean,): string {
+	if (spreadsheetSafe && hasFormulaPrefix(field,)) {
+		field = `'${field}`;
+	}
 	if (
 		field.includes(",",)
 		|| field.includes('"',)
@@ -99,15 +159,52 @@ interface TsvStreamState {
 	currentRow: string[];
 	inQuotes: boolean;
 	pendingQuoteInQuotes: boolean;
+	fieldBytes: number;
+	rowBytes: number;
+	responseBytes: number;
+	limits: TsvLimits;
 }
 
-function createTsvStreamState(): TsvStreamState {
+function createTsvStreamState(
+	limits: TsvLimits = {
+		maxFieldBytes: TSV_MAX_FIELD_BYTES,
+		maxRowBytes: TSV_MAX_ROW_BYTES,
+		maxResponseBytes: TSV_MAX_RESPONSE_BYTES,
+	},
+): TsvStreamState {
 	return {
 		currentField: "",
 		currentRow: [],
 		inQuotes: false,
 		pendingQuoteInQuotes: false,
+		fieldBytes: 0,
+		rowBytes: 0,
+		responseBytes: 0,
+		limits,
 	};
+}
+
+/** Append decoded field data, bounding field/row bytes and failing closed. */
+function appendFieldText(state: TsvStreamState, text: string,): void {
+	if (text.length === 0) return;
+	const bytes = Buffer.byteLength(text, "utf-8",);
+	state.fieldBytes += bytes;
+	state.rowBytes += bytes;
+	if (state.fieldBytes > state.limits.maxFieldBytes) {
+		throw tsvLimitError("field", state.limits.maxFieldBytes,);
+	}
+	if (state.rowBytes > state.limits.maxRowBytes) {
+		throw tsvLimitError("row", state.limits.maxRowBytes,);
+	}
+	state.currentField += text;
+}
+
+/** Close a field at a tab/newline delimiter and reset the field byte count. */
+function endField(state: TsvStreamState,): void {
+	state.currentRow.push(state.currentField,);
+	state.currentField = "";
+	state.fieldBytes = 0;
+	state.rowBytes += 1; // count the delimiter byte
 }
 
 function consumeTsvChunk(
@@ -115,89 +212,120 @@ function consumeTsvChunk(
 	state: TsvStreamState,
 	onRow: (row: string[],) => void,
 ): void {
+	// Response budget: bound total decoded bytes regardless of row structure.
+	state.responseBytes += Buffer.byteLength(text, "utf-8",);
+	if (state.responseBytes > state.limits.maxResponseBytes) {
+		throw tsvLimitError("response", state.limits.maxResponseBytes,);
+	}
+
 	let i = 0;
 
 	if (state.pendingQuoteInQuotes) {
 		state.pendingQuoteInQuotes = false;
 		const first = text[0];
 		if (first === '"') {
-			state.currentField += '"';
+			appendFieldText(state, '"',);
 			i = 1;
 		} else if (first === "\t" || first === "\n" || first === "\r") {
 			state.inQuotes = false;
 		} else if (first !== undefined) {
 			// Ambiguous terminal quote from previous chunk; keep it as data.
-			state.currentField += '"';
+			appendFieldText(state, '"',);
 		}
 	}
 
-	for (; i < text.length; i++) {
-		const ch = text[i];
-
+	while (i < text.length) {
 		if (state.inQuotes) {
-			if (ch === '"') {
-				const next = text[i + 1];
-				if (next === '"') {
-					state.currentField += '"';
-					i++;
-					continue;
-				}
-				if (next === undefined) {
-					state.pendingQuoteInQuotes = true;
-					continue;
-				}
-				if (next === "\t" || next === "\n" || next === "\r") {
-					state.inQuotes = false;
-					continue;
-				}
-				// Quote in the middle of quoted field text — keep it literal.
-				state.currentField += '"';
+			const quoteIdx = text.indexOf('"', i,);
+			if (quoteIdx === -1) {
+				appendFieldText(state, text.slice(i,),);
+				break;
+			}
+			if (quoteIdx > i) appendFieldText(state, text.slice(i, quoteIdx,),);
+			const next = text[quoteIdx + 1];
+			if (next === '"') {
+				appendFieldText(state, '"',);
+				i = quoteIdx + 2;
 				continue;
 			}
-			state.currentField += ch;
+			if (next === undefined) {
+				state.pendingQuoteInQuotes = true;
+				break;
+			}
+			if (next === "\t" || next === "\n" || next === "\r") {
+				state.inQuotes = false;
+				i = quoteIdx + 1;
+				continue;
+			}
+			// Quote in the middle of quoted field text — keep it literal.
+			appendFieldText(state, '"',);
+			i = quoteIdx + 1;
 			continue;
 		}
 
-		if (ch === '"' && state.currentField.length === 0) {
-			state.inQuotes = true;
+		// Scan ahead in whole runs to the next structural character, so field
+		// data is appended in slices instead of one character at a time.
+		let special = -1;
+		for (let j = i; j < text.length; j++) {
+			const ch = text[j];
+			if (ch === '"' || ch === "\t" || ch === "\n" || ch === "\r") {
+				special = j;
+				break;
+			}
+		}
+		const runEnd = special === -1 ? text.length : special;
+		if (runEnd > i) {
+			appendFieldText(state, text.slice(i, runEnd,),);
+			i = runEnd;
+		}
+		if (special === -1) break;
+		const ch = text[special];
+		if (ch === '"') {
+			if (state.currentField.length === 0) {
+				state.inQuotes = true;
+			} else {
+				// Quote in the middle of unquoted field text — keep it literal.
+				appendFieldText(state, '"',);
+			}
+			i = special + 1;
 			continue;
 		}
 		if (ch === "\t") {
-			state.currentRow.push(state.currentField,);
-			state.currentField = "";
+			endField(state,);
+			i = special + 1;
 			continue;
 		}
 		if (ch === "\n") {
-			state.currentRow.push(state.currentField,);
-			state.currentField = "";
+			endField(state,);
+			i = special + 1;
 			const row = state.currentRow;
 			state.currentRow = [];
+			state.rowBytes = 0;
 			onRow(row,);
 			continue;
 		}
-		if (ch === "\r") {
-			continue;
-		}
-
-		state.currentField += ch;
+		// "\r" — carriage return: skipped, as in the original parser.
+		i = special + 1;
 	}
 }
 
 function flushTsvStream(state: TsvStreamState, onRow: (row: string[],) => void,): void {
 	if (state.pendingQuoteInQuotes) {
-		state.currentField += '"';
+		appendFieldText(state, '"',);
 		state.pendingQuoteInQuotes = false;
 	}
 	if (state.currentField.length === 0 && state.currentRow.length === 0) return;
 	state.currentRow.push(state.currentField,);
 	state.currentField = "";
+	state.fieldBytes = 0;
 	const row = state.currentRow;
 	state.currentRow = [];
+	state.rowBytes = 0;
 	onRow(row,);
 }
 
-function rowToCsv(row: string[],): string {
-	return row.map((field,) => csvEscape(field,)).join(",",);
+function rowToCsv(row: string[], spreadsheetSafe: boolean,): string {
+	return row.map((field,) => csvEscape(field, spreadsheetSafe,)).join(",",);
 }
 
 function isBlankRow(row: string[],): boolean {
@@ -270,6 +398,7 @@ async function collectPreviewRows(
 	onHeader?: (headerRow: string[],) => void,
 ): Promise<{ columns: string[]; rows: string[][]; truncated: boolean; }> {
 	const state = createTsvStreamState();
+	const decoder = new StringDecoder("utf-8",);
 	let columns: string[] | undefined;
 	const rows: string[][] = [];
 	let done = false;
@@ -306,12 +435,21 @@ async function collectPreviewRows(
 			if (remainingMs <= 0) throw buildStreamTimeoutError(timeoutMs, "preview",);
 			const result = await readChunkWithTimeout(reader, remainingMs, timeoutMs, "preview",);
 			if (result.done) break;
-			consumeTsvChunk(Buffer.from(result.value,).toString("utf-8",), state, handleRow,);
+			consumeTsvChunk(decoder.write(result.value,), state, handleRow,);
 		}
 
-		if (!done) flushTsvStream(state, handleRow,);
+		if (!done) {
+			const tail = decoder.end();
+			if (tail !== "") consumeTsvChunk(tail, state, handleRow,);
+			flushTsvStream(state, handleRow,);
+		}
 
 		return { columns: columns ?? [], rows, truncated, };
+	} catch (error) {
+		// Fail closed on TSV byte-limit overflow: cancel the response instead
+		// of retaining partial decoded data.
+		void reader.cancel().catch(() => {},);
+		throw error;
 	} finally {
 		reader.releaseLock();
 	}
@@ -329,6 +467,7 @@ async function collectTsvRowCount(
 	timeoutMs: number,
 ): Promise<{ count: number; bounded: boolean; }> {
 	const state = createTsvStreamState();
+	const decoder = new StringDecoder("utf-8",);
 	let headerSeen = false;
 	let count = 0;
 	let bounded = false;
@@ -371,12 +510,21 @@ async function collectTsvRowCount(
 				"row count assertion",
 			);
 			if (result.done) break;
-			consumeTsvChunk(Buffer.from(result.value,).toString("utf-8",), state, handleRow,);
+			consumeTsvChunk(decoder.write(result.value,), state, handleRow,);
 		}
 
-		if (!bounded) flushTsvStream(state, handleRow,);
+		if (!bounded) {
+			const tail = decoder.end();
+			if (tail !== "") consumeTsvChunk(tail, state, handleRow,);
+			flushTsvStream(state, handleRow,);
+		}
 
 		return { count, bounded, };
+	} catch (error) {
+		// Fail closed on TSV byte-limit overflow: cancel the response instead
+		// of continuing to consume unbounded decoded data.
+		void reader.cancel().catch(() => {},);
+		throw error;
 	} finally {
 		reader.releaseLock();
 	}
@@ -386,8 +534,10 @@ function tsvToCsvTransform(
 	maxDataRows: number,
 	stats: { rows: number; truncated: boolean; },
 	onHeader?: (headerRow: string[],) => void,
+	spreadsheetSafe = true,
 ): Transform {
 	const state = createTsvStreamState();
+	const decoder = new StringDecoder("utf-8",);
 	const maxRows = Math.max(1, maxDataRows,);
 	let headerSeen = false;
 	let done = false;
@@ -400,7 +550,7 @@ function tsvToCsvTransform(
 			headerSeen = true;
 			columnCount = row.length;
 			onHeader?.(row,);
-			push(`${rowToCsv(row,)}\n`,);
+			push(`${rowToCsv(row, spreadsheetSafe,)}\n`,);
 			return;
 		}
 		if (isBlankRow(row,) && columnCount !== 1) return;
@@ -409,7 +559,7 @@ function tsvToCsvTransform(
 			done = true;
 			return;
 		}
-		push(`${rowToCsv(row,)}\n`,);
+		push(`${rowToCsv(row, spreadsheetSafe,)}\n`,);
 		stats.rows += 1;
 	};
 
@@ -419,17 +569,39 @@ function tsvToCsvTransform(
 				callback();
 				return;
 			}
-			consumeTsvChunk(
-				chunk.toString("utf-8",),
-				state,
-				(row,) => handleRow(row, (line,) => this.push(line,),),
-			);
+			try {
+				consumeTsvChunk(
+					decoder.write(chunk,),
+					state,
+					(row,) => handleRow(row, (line,) => this.push(line,),),
+				);
+			} catch (error) {
+				// Byte-limit overflow: destroy the transform so the pipeline
+				// cancels the response and the partial file is removed.
+				callback(error instanceof Error ? error : new Error(String(error,),),);
+				return;
+			}
 			if (done) this.push(null,);
 			callback();
 		},
 		flush(callback,) {
-			if (!done) {
+			if (done) {
+				callback();
+				return;
+			}
+			try {
+				const tail = decoder.end();
+				if (tail !== "") {
+					consumeTsvChunk(
+						tail,
+						state,
+						(row,) => handleRow(row, (line,) => this.push(line,),),
+					);
+				}
 				flushTsvStream(state, (row,) => handleRow(row, (line,) => this.push(line,),),);
+			} catch (error) {
+				callback(error instanceof Error ? error : new Error(String(error,),),);
+				return;
 			}
 			callback();
 		},
@@ -682,6 +854,10 @@ export class DatasetsResource extends BaseResource {
 	 *
 	 * If `validateColumns` is provided, the first TSV row (header) is checked
 	 * against the column names. Mismatches emit a warning via onValidationWarning.
+	 *
+	 * The stream is byte-bounded (16 MiB per field, 64 MiB per row, 16 GiB per
+	 * response): an oversized field or unterminated quoted row aborts the
+	 * preview, cancels the response, and fails with a DataikuError.
 	 */
 	async preview(
 		datasetName: string,
@@ -740,6 +916,10 @@ export class DatasetsResource extends BaseResource {
 	 * fully scanned. Returns the observed count together with `exact` (false when
 	 * the probe cap was reached, i.e. the count is a lower bound) and whether the
 	 * count satisfies the assertion.
+	 *
+	 * Streaming is byte-bounded (16 MiB per field, 64 MiB per row, 16 GiB per
+	 * response); oversized fields abort the count, cancel the response, and
+	 * fail with a DataikuError.
 	 */
 	async assertRowCount(
 		datasetName: string,
@@ -785,6 +965,16 @@ export class DatasetsResource extends BaseResource {
 	 * (default 100k). Returns the written path, the number of data rows written,
 	 * whether the dataset had more rows than the cap (truncated), and the limit
 	 * used — so callers can detect truncation instead of silently getting a sample.
+	 *
+	 * Exported cells are spreadsheet-safe by default: headers/values whose
+	 * first effective character is a spreadsheet formula sigil (`=`, `+`, `-`,
+	 * `@`, including leading whitespace/control variants) are neutralized with
+	 * a leading apostrophe so the file never executes formulas on open. Pass
+	 * `rawData: true` to preserve exact bytes.
+	 *
+	 * Streaming is byte-bounded (16 MiB per field, 64 MiB per row, 16 GiB per
+	 * response); on overflow the response is cancelled, the error is thrown,
+	 * and any partially written download file is removed.
 	 */
 	async download(
 		datasetName: string,
@@ -793,6 +983,8 @@ export class DatasetsResource extends BaseResource {
 			projectKey?: string;
 			validateColumns?: { name: string; }[];
 			limit?: number;
+			/** Preserve exact cell bytes (no spreadsheet-safe formula neutralization), default false. */
+			rawData?: boolean;
 		},
 	): Promise<{ path: string; rows: number; truncated: boolean; limit: number; }> {
 		const limit = Math.max(1, opts?.limit ?? 100_000,);
@@ -820,15 +1012,22 @@ export class DatasetsResource extends BaseResource {
 		const shouldGzip = filePath.endsWith(".gz",);
 		const stats = { rows: 0, truncated: false, };
 		const nodeStream = Readable.fromWeb(res.body as unknown as import("stream/web").ReadableStream,);
-		const csvTransform = tsvToCsvTransform(limit, stats, onHeader,);
+		const csvTransform = tsvToCsvTransform(limit, stats, onHeader, opts?.rawData !== true,);
 		fs.mkdirSync(nodePath.dirname(filePath,), { recursive: true, },);
 		const fileOut = fs.createWriteStream(filePath,);
 
-		if (shouldGzip) {
-			const gzip = createGzip();
-			await pipeline(nodeStream, csvTransform, gzip, fileOut,);
-		} else {
-			await pipeline(nodeStream, csvTransform, fileOut,);
+		try {
+			if (shouldGzip) {
+				const gzip = createGzip();
+				await pipeline(nodeStream, csvTransform, gzip, fileOut,);
+			} else {
+				await pipeline(nodeStream, csvTransform, fileOut,);
+			}
+		} catch (error) {
+			// A failed export (byte-limit overflow, network error) must never
+			// leave a partial file that looks like a complete download.
+			fs.rmSync(filePath, { force: true, },);
+			throw error;
 		}
 
 		return { path: filePath, rows: stats.rows, truncated: stats.truncated, limit, };

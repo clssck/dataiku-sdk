@@ -19,6 +19,12 @@ interface TestMember {
 	data: Uint8Array;
 	crc?: number;
 	size?: number;
+	/**
+	 * Declared compressed size written to the central-directory record. The
+	 * stored bytes still match `data`; the declaration can lie, exactly like
+	 * a crafted archive, to exercise the declared-size safety budgets.
+	 */
+	compressedSize?: number;
 }
 
 function u16le(value: number,): Uint8Array {
@@ -62,6 +68,7 @@ function buildZip(members: TestMember[],): Uint8Array {
 		const name = encodeUtf8(member.name,);
 		const declaredCrc = member.crc ?? crc32(member.data,);
 		const declaredSize = member.size ?? member.data.length;
+		const declaredCompressed = member.compressedSize ?? member.data.length;
 		locals.push(
 			concatBytes(
 				u32le(SIG_LOCAL,),
@@ -93,7 +100,7 @@ function buildZip(members: TestMember[],): Uint8Array {
 				u16le(0,), // mod time
 				u16le(0,), // mod date
 				u32le(declaredCrc >>> 0,),
-				u32le(member.data.length,),
+				u32le(declaredCompressed,),
 				u32le(declaredSize >>> 0,),
 				u16le(name.length,),
 				u16le(0,), // extra length
@@ -589,5 +596,118 @@ describe("inspectProjectArchive", () => {
 
 		expect(report.valid,).toBe(false,);
 		expect(issueCodes(report,),).toContain("manifest_too_large",);
+	});
+
+	it("aborts a member stream when the per-member expanded budget is exceeded", async () => {
+		const filePath = await writeZip([
+			{ name: "export-manifest.json", data: manifestJson(), },
+			{ name: "project_config/tags.json", data: new Uint8Array(64 * 1024,).fill(0x61,), },
+			{
+				name: "project_config/datasets/bad.json",
+				data: encodeUtf8("{}",),
+				crc: 0xdeadbeef,
+			},
+		],);
+		const report = await inspectProjectArchive(filePath, {
+			maxExpandedBytesPerMember: 1024,
+		},);
+
+		expect(report.valid,).toBe(false,);
+		expect(issueCodes(report,),).toContain("member_inflation_limit_exceeded",);
+		const overflow = report.issues.find(
+			(issue,) => issue.code === "member_inflation_limit_exceeded",
+		);
+		expect(overflow?.member,).toBe("project_config/tags.json",);
+		// The destroyed partial stream must not produce CRC/size false alarms:
+		// the only CRC issue belongs to the later bad.json member, which also
+		// proves traversal continues after a per-member abort.
+		expect(issueCodes(report,),).not.toContain("member_size_mismatch",);
+		const crcIssue = report.issues.find(
+			(issue,) => issue.code === "member_crc_mismatch",
+		);
+		expect(crcIssue?.member,).toBe("project_config/datasets/bad.json",);
+		await expect(
+			assertImportableProjectArchive(filePath, { maxExpandedBytesPerMember: 1024, },),
+		).rejects.toThrow(ClientValidationError,);
+	});
+
+	it("stops inspecting further members once the aggregate expanded budget is exceeded", async () => {
+		const filePath = await writeZip([
+			{ name: "export-manifest.json", data: manifestJson(), },
+			{ name: "project_config/tags.json", data: new Uint8Array(8 * 1024,).fill(0x61,), },
+			{
+				name: "project_config/datasets/bad.json",
+				data: encodeUtf8("{}",),
+				crc: 0xdeadbeef,
+			},
+		],);
+		const report = await inspectProjectArchive(filePath, {
+			maxExpandedBytesPerMember: 1024 * 1024,
+			maxTotalExpandedBytes: 4096,
+		},);
+
+		expect(report.valid,).toBe(false,);
+		expect(issueCodes(report,),).toContain("aggregate_inflation_limit_exceeded",);
+		// The member that crossed the aggregate budget is aborted without a
+		// size/CRC false alarm, and later members are never streamed.
+		expect(issueCodes(report,),).not.toContain("member_crc_mismatch",);
+		expect(issueCodes(report,),).not.toContain("member_size_mismatch",);
+		// No manifest/graph conclusions are drawn from a partial inspection.
+		expect(issueCodes(report,),).not.toContain("manifest_missing",);
+	});
+
+	it("rejects archives whose member count exceeds the budget without streaming them", async () => {
+		const filePath = await writeZip([
+			{ name: "export-manifest.json", data: manifestJson(), },
+			{ name: "project_config/datasets/ds_one.json", data: encodeUtf8("{}",), },
+			{ name: "project_config/datasets/ds_two.json", data: encodeUtf8("{}",), },
+		],);
+		const report = await inspectProjectArchive(filePath, { maxMembers: 2, },);
+
+		expect(report.valid,).toBe(false,);
+		expect(report.memberCount,).toBe(3,);
+		expect(issueCodes(report,),).toEqual(["member_count_exceeded",],);
+	});
+
+	it("skips streaming members whose declared compression ratio exceeds the budget", async () => {
+		const filePath = await writeZip([
+			{ name: "export-manifest.json", data: manifestJson(), },
+			{
+				name: "project_config/datasets/bomb.json",
+				data: new Uint8Array(64 * 1024,).fill(0x61,),
+				compressedSize: 100,
+			},
+		],);
+		const report = await inspectProjectArchive(filePath, { maxCompressionRatio: 100, },);
+
+		expect(report.valid,).toBe(false,);
+		expect(issueCodes(report,),).toContain("member_compression_ratio_exceeded",);
+		const ratioIssue = report.issues.find(
+			(issue,) => issue.code === "member_compression_ratio_exceeded",
+		);
+		expect(ratioIssue?.member,).toBe("project_config/datasets/bomb.json",);
+		// The member was never streamed, so no integrity false alarms.
+		expect(issueCodes(report,),).not.toContain("member_crc_mismatch",);
+		expect(issueCodes(report,),).not.toContain("member_size_mismatch",);
+		expect(issueCodes(report,),).not.toContain("member_size_limit_exceeded",);
+	});
+
+	it("skips streaming members whose declared compressed size exceeds the budget", async () => {
+		const filePath = await writeZip([
+			{ name: "export-manifest.json", data: manifestJson(), },
+			{
+				name: "project_config/tags.json",
+				data: encodeUtf8("{}",),
+				compressedSize: 2 * 1024 * 1024,
+			},
+		],);
+		const report = await inspectProjectArchive(filePath, {
+			maxCompressedBytesPerMember: 1024 * 1024,
+		},);
+
+		expect(report.valid,).toBe(false,);
+		expect(issueCodes(report,),).toContain("member_compressed_size_exceeded",);
+		expect(issueCodes(report,),).not.toContain("member_crc_mismatch",);
+		expect(issueCodes(report,),).not.toContain("member_size_mismatch",);
 	});
 });

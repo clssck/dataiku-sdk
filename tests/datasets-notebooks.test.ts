@@ -301,6 +301,156 @@ describe("DatasetsResource.download", () => {
 	});
 });
 
+describe("DatasetsResource TSV stream bounds", () => {
+	const oversizedField = "x".repeat(16 * 1024 * 1024 + 9,);
+
+	it("fails closed on preview when a field exceeds the decoded-byte limit", async () => {
+		await withTestServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+			res.end(`name\tcity\nAlice\t${oversizedField}\n`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const error = await client.datasets.preview("sample", { maxRows: 2, },).catch(
+				(caught: unknown,) => caught,
+			);
+			expect(error,).toBeInstanceOf(DataikuError,);
+			expect((error as Error).message,).toContain("TSV field exceeded",);
+		},);
+	});
+
+	it("fails closed on assert-count when an oversized field arrives", async () => {
+		await withTestServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+			res.end(`name\n${oversizedField}\n`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const error = await client.datasets.assertRowCount("sample", 5,).catch(
+				(caught: unknown,) => caught,
+			);
+			expect(error,).toBeInstanceOf(DataikuError,);
+			expect((error as Error).message,).toContain("TSV field exceeded",);
+		},);
+	});
+
+	it("removes the partial download and fails closed on an unterminated quoted field", async () => {
+		await withTestServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+			res.end(`name\tcity\n"${oversizedField}`,);
+		}, async (url,) => {
+			const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+			const outputPath = path.join(tempDir, "sample.csv",);
+			try {
+				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+				const error = await client.datasets.download("sample", { outputPath, },).catch(
+					(caught: unknown,) => caught,
+				);
+				expect(error,).toBeInstanceOf(DataikuError,);
+				expect((error as Error).message,).toContain("TSV field exceeded",);
+				expect(fs.existsSync(outputPath,),).toBe(false,);
+			} finally {
+				fs.rmSync(tempDir, { recursive: true, force: true, },);
+			}
+		},);
+	});
+
+	it("preserves multi-byte characters split across response chunks in preview", async () => {
+		const resource = new DatasetsResource({
+			resolveProjectKey: (projectKey?: string,) => projectKey ?? "TEST",
+			getRequestTimeoutMs: () => 30_000,
+			stream: async () => ({
+				body: new ReadableStream<Uint8Array>({
+					start(controller,) {
+						// "café" is split between the 0xC3 and 0xA9 bytes so the
+						// decoder state must survive the chunk boundary.
+						controller.enqueue(new TextEncoder().encode("name\tcity\ncaf",),);
+						controller.enqueue(new Uint8Array([0xc3,],),);
+						controller.enqueue(new Uint8Array([0xa9,],),);
+						controller.enqueue(new TextEncoder().encode("\tParis\n",),);
+						controller.close();
+					},
+				},),
+			}),
+		} as unknown as DataikuClient,);
+
+		const preview = await resource.preview("sample", { maxRows: 1, projectKey: "TEST", },);
+		expect(preview,).toEqual({
+			columns: [{ name: "name", }, { name: "city", },],
+			rows: [["café", "Paris",],],
+			rowCount: 1,
+			truncated: false,
+			limit: 1,
+		},);
+	});
+
+	it("preserves multi-byte characters split across response chunks in downloads", async () => {
+		const resource = new DatasetsResource({
+			resolveProjectKey: (projectKey?: string,) => projectKey ?? "TEST",
+			stream: async () => ({
+				body: new ReadableStream<Uint8Array>({
+					start(controller,) {
+						controller.enqueue(new TextEncoder().encode("name\tcity\ncaf",),);
+						controller.enqueue(new Uint8Array([0xc3,],),);
+						controller.enqueue(new Uint8Array([0xa9,],),);
+						controller.enqueue(new TextEncoder().encode("\tParis\n",),);
+						controller.close();
+					},
+				},),
+			}),
+		} as unknown as DataikuClient,);
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+		const outputPath = path.join(tempDir, "sample.csv",);
+		try {
+			await resource.download("sample", { outputPath, projectKey: "TEST", },);
+			expect(fs.readFileSync(outputPath, "utf8",),).toBe("name,city\ncafé,Paris\n",);
+		} finally {
+			fs.rmSync(tempDir, { recursive: true, force: true, },);
+		}
+	});
+});
+
+describe("DatasetsResource spreadsheet-safe export", () => {
+	const tsv = "=name\t+sum\t-x\t@tag\n x\t=A\t@B\t=1+2\n\x01=ctrl\t=a,b\tplain\n";
+
+	function downloadBoth(): Promise<{ raw: string; safe: string; }> {
+		const results = { raw: "", safe: "", };
+		return withTestServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+			res.end(tsv,);
+		}, async (url,) => {
+			const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+			try {
+				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+				const safePath = path.join(tempDir, "safe.csv",);
+				await client.datasets.download("sample", { outputPath: safePath, },);
+				results.safe = fs.readFileSync(safePath, "utf8",);
+				const rawPath = path.join(tempDir, "raw.csv",);
+				await client.datasets.download("sample", { outputPath: rawPath, rawData: true, },);
+				results.raw = fs.readFileSync(rawPath, "utf8",);
+			} finally {
+				fs.rmSync(tempDir, { recursive: true, force: true, },);
+			}
+		},).then(() => results);
+	}
+
+	it("neutralizes formula sigils in headers and cells by default", async () => {
+		const { safe, } = await downloadBoth();
+		expect(safe,).toBe(
+			"'=name,'+sum,'-x,'@tag\n x,'=A,'@B,'=1+2\n'\u0001=ctrl,\"'=a,b\",plain\n",
+		);
+	});
+
+	it("keeps exact bytes with rawData", async () => {
+		const { raw, } = await downloadBoth();
+		expect(raw,).toBe(
+			'=name,+sum,-x,@tag\n x,=A,@B,=1+2\n\u0001=ctrl,"=a,b",plain\n',
+		);
+	});
+});
+
 describe("DatasetsResource.create", () => {
 	it("uses a non-root project path for managed filesystem datasets", async () => {
 		let createBody: Record<string, unknown> | undefined;

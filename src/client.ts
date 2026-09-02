@@ -59,6 +59,14 @@ const MAX_RETRY_ATTEMPTS_CAP = 10;
 const BASE_DELAY_MS = 2_000;
 const MAX_BACKOFF_DELAY_MS = 30_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+/**
+ * Default cap on bytes buffered from a single response body by the text/JSON
+ * consumers (getText, postText, parseJsonResponse). Bodies larger than this
+ * are rejected with a DataikuError after the stream is cancelled; raw
+ * streaming methods (stream, postStream) are unaffected.
+ */
+const DEFAULT_MAX_BUFFERED_BODY_BYTES = 50 * 1024 * 1024;
+const RESPONSE_TOO_LARGE_STATUS_TEXT = "Response Too Large";
 
 /* ------------------------------------------------------------------ */
 /*  Config                                                             */
@@ -103,6 +111,12 @@ export interface DataikuClientConfig {
 	requestTimeoutMs?: number;
 	/** Max retry attempts for idempotent requests (default 4, capped at 10) */
 	retryMaxAttempts?: number;
+	/**
+	 * Maximum bytes buffered from a single response body by the text/JSON
+	 * consumer methods (default 50 MiB). Responses larger than this are
+	 * rejected with a DataikuError after the stream is cancelled.
+	 */
+	maxResponseBodyBytes?: number;
 	/** Emit HTTP request/response trace events. Defaults to JSONL on stderr when verbose is true. */
 	verbose?: boolean;
 	onTrace?: (event: DataikuClientTraceEvent,) => void;
@@ -180,6 +194,59 @@ function trimToUtf8Boundary(bytes: Uint8Array,): Uint8Array {
 	return continuation + 1 < expected ? bytes.subarray(0, i,) : bytes;
 }
 
+/**
+ * Drop leading UTF-8 continuation bytes. A UTF-8 character never *starts*
+ * with a continuation byte, so any leading continuation bytes are the remains
+ * of a character split by a byte cut at the start of the retained range.
+ * Dropping them keeps the decoded text free of replacement characters.
+ */
+function trimFromUtf8BoundaryStart(bytes: Uint8Array,): Uint8Array {
+	let i = 0;
+	while (i < bytes.length && (bytes[i] & 0xC0) === 0x80) {
+		i++;
+	}
+	return i > 0 ? bytes.subarray(i,) : bytes;
+}
+
+function buildBodyReadTimeoutError(timeoutMs: number,): DataikuError {
+	return new DataikuError(
+		0,
+		"Request Timeout",
+		`Request timed out after ${timeoutMs}ms while reading the response body.`,
+	);
+}
+
+/**
+ * Read the next chunk of a response body under a hard deadline.
+ * When `remainingMs` elapses, the stream is cancelled and the caller's
+ * promise rejects with a DataikuError, so a stalled body cannot hang the
+ * buffered consumers after headers already arrived.
+ */
+async function readChunkWithDeadline(
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+	remainingMs: number,
+	timeoutMs: number,
+): Promise<Bun.ReadableStreamDefaultReadResult<Uint8Array>> {
+	const { promise, resolve, reject, } = Promise.withResolvers<
+		Bun.ReadableStreamDefaultReadResult<Uint8Array>
+	>();
+	const timer = setTimeout(() => {
+		void reader.cancel(buildBodyReadTimeoutError(timeoutMs,),).catch(() => {},);
+		reject(buildBodyReadTimeoutError(timeoutMs,),);
+	}, remainingMs,);
+	reader.read().then(
+		(result,) => {
+			clearTimeout(timer,);
+			resolve(result,);
+		},
+		(error,) => {
+			clearTimeout(timer,);
+			reject(error,);
+		},
+	);
+	return promise;
+}
+
 function buildRetryMetadata(
 	method: string,
 	enabled: boolean,
@@ -251,6 +318,7 @@ export class DataikuClient {
 	private readonly apiKey: string;
 	private readonly defaultProjectKey: string | undefined;
 	private readonly requestTimeoutMs: number;
+	private readonly maxResponseBodyBytes: number;
 	private readonly retryMaxAttempts: number;
 	private readonly verbose: boolean;
 	private readonly tlsOptions: FetchTlsOptions | undefined;
@@ -427,6 +495,7 @@ export class DataikuClient {
 		this.apiKey = apiKey;
 		this.defaultProjectKey = config?.projectKey?.trim() || undefined;
 		this.requestTimeoutMs = config?.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+		this.maxResponseBodyBytes = config?.maxResponseBodyBytes ?? DEFAULT_MAX_BUFFERED_BODY_BYTES;
 
 		const rawMax = config?.retryMaxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
 		this.retryMaxAttempts = Math.min(Math.max(1, rawMax,), MAX_RETRY_ATTEMPTS_CAP,);
@@ -447,6 +516,14 @@ export class DataikuClient {
 
 	getRequestTimeoutMs(): number {
 		return this.requestTimeoutMs;
+	}
+
+	/**
+	 * The configured maximum number of bytes buffered from a single response
+	 * body by the text/JSON consumer methods (default 50 MiB).
+	 */
+	getMaxResponseBodyBytes(): number {
+		return this.maxResponseBodyBytes;
 	}
 
 	/* ---- public: project key resolution ---- */
@@ -485,14 +562,28 @@ export class DataikuClient {
 		return { data, meta: this.responseMeta(res.headers,), };
 	}
 
+	/**
+	 * GET returning the entire text body. The body is buffered with a hard
+	 * byte cap (`maxResponseBodyBytes`, default 50 MiB) and read under the
+	 * request deadline: a response exceeding the cap throws a DataikuError
+	 * instead of being silently truncated, and a stalled body times out.
+	 */
 	async getText(path: string,): Promise<string> {
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "GET",
 			headers: this.getAnyHeaders(),
 		},);
-		return res.text();
+		const { text, truncated, } = await this.readBoundedBodyText(res, this.maxResponseBodyBytes,);
+		if (truncated) throw this.buildResponseTooLargeError(res, this.maxResponseBodyBytes,);
+		return text;
 	}
 
+	/**
+	 * GET returning at most the first `maxBytes` bytes of a text body.
+	 * When the response exceeds the cap the stream is cancelled, only the
+	 * collected prefix is returned and `truncated` is true. The read runs
+	 * under the request deadline: a stalled body throws a DataikuError.
+	 */
 	async getTextLimited(
 		path: string,
 		maxBytes: number,
@@ -502,43 +593,26 @@ export class DataikuClient {
 			method: "GET",
 			headers: this.getAnyHeaders(),
 		},);
+		return this.readBoundedBodyText(res, limit,);
+	}
 
-		if (!res.body) return { text: "", truncated: false, };
-
-		const reader = res.body.getReader();
-		const chunks: Uint8Array[] = [];
-		let bytesRead = 0;
-		let truncated = false;
-
-		try {
-			while (bytesRead < limit) {
-				const { done, value, } = await reader.read();
-				if (done) break;
-				const room = limit - bytesRead;
-				if (value.byteLength > room) {
-					chunks.push(value.slice(0, room,),);
-					bytesRead += room;
-					truncated = true;
-					break;
-				}
-				chunks.push(value,);
-				bytesRead += value.byteLength;
-			}
-			if (!truncated && bytesRead >= limit) {
-				// Buffer filled exactly on a chunk boundary; peek whether more data remains.
-				const { done, } = await reader.read();
-				if (!done) truncated = true;
-			}
-		} finally {
-			await reader.cancel();
-		}
-
-		const collected = concatBytes(chunks, bytesRead,);
-		// On truncation, drop any trailing partial UTF-8 character so the decoded
-		// text never re-encodes beyond the byte cap (a stream-flush would otherwise
-		// emit a 3-byte replacement char for a split multibyte sequence).
-		const usable = truncated ? trimToUtf8Boundary(collected,) : collected;
-		return { text: new TextDecoder().decode(usable,), truncated, };
+	/**
+	 * GET returning at most the last `maxBytes` bytes of a text body.
+	 * When the response exceeds the cap, earlier bytes are discarded, only
+	 * the tail is kept and `truncated` is true — so callers that need the end
+	 * of a large document (e.g. job logs) stay bounded without losing the most
+	 * recent content. The read runs under the request deadline.
+	 */
+	async getTextTailLimited(
+		path: string,
+		maxBytes: number,
+	): Promise<{ text: string; truncated: boolean; }> {
+		const limit = Math.max(0, Math.floor(maxBytes,),);
+		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
+			method: "GET",
+			headers: this.getAnyHeaders(),
+		},);
+		return this.readBodyTextTail(res, limit,);
 	}
 
 	/**
@@ -565,13 +639,19 @@ export class DataikuClient {
 		return this.parseJsonResponse<T>(res,);
 	}
 
+	/**
+	 * POST returning the text body, under the same bounded buffering rules as
+	 * {@link getText} (byte cap `maxResponseBodyBytes`, request deadline).
+	 */
 	async postText(path: string, body?: unknown,): Promise<string> {
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "POST",
 			headers: this.getHeaders(),
 			body: body !== undefined ? JSON.stringify(body,) : undefined,
 		},);
-		return res.text();
+		const { text, truncated, } = await this.readBoundedBodyText(res, this.maxResponseBodyBytes,);
+		if (truncated) throw this.buildResponseTooLargeError(res, this.maxResponseBodyBytes,);
+		return text;
 	}
 
 	async postStream(path: string, body?: unknown,): Promise<Response> {
@@ -718,7 +798,8 @@ export class DataikuClient {
 	}
 
 	private async parseJsonResponse<T,>(res: Response,): Promise<T> {
-		const text = await res.text();
+		const { text, truncated, } = await this.readBoundedBodyText(res, this.maxResponseBodyBytes,);
+		if (truncated) throw this.buildResponseTooLargeError(res, this.maxResponseBodyBytes,);
 		// SAFETY: Empty 2xx responses from DSS are surfaced to callers as undefined
 		// cast to T. This keeps existing call sites stable, but callers that rely on
 		// an object shape must guard explicitly before dereferencing the result.
@@ -735,6 +816,155 @@ export class DataikuClient {
 				this.requestIdFromHeaders(res.headers,),
 			);
 		}
+	}
+
+	/* ---- private: bounded response body reading ---- */
+
+	/**
+	 * Read at most `maxBytes` of a 2xx response body as UTF-8 text.
+	 *
+	 * The body is consumed with the request deadline still active (measured
+	 * from the first read): a stalled body throws a DataikuError instead of
+	 * hanging. When the stream yields more than the cap, the reader cancels the
+	 * body and returns the collected prefix with `truncated: true`; truncated
+	 * text is trimmed to a UTF-8 character boundary so it never decodes beyond
+	 * the byte cap.
+	 */
+	private async readBoundedBodyText(
+		res: Response,
+		maxBytes: number,
+	): Promise<{ text: string; truncated: boolean; }> {
+		const limit = Math.max(0, Math.floor(maxBytes,),);
+		if (!res.body) return { text: "", truncated: false, };
+
+		const reader = res.body.getReader();
+		const chunks: Uint8Array[] = [];
+		let bytesRead = 0;
+		let truncated = false;
+		const startedAt = Date.now();
+
+		try {
+			while (bytesRead < limit) {
+				const remainingMs = this.requestTimeoutMs - (Date.now() - startedAt);
+				if (remainingMs <= 0) throw buildBodyReadTimeoutError(this.requestTimeoutMs,);
+				const { done, value, } = await readChunkWithDeadline(
+					reader,
+					remainingMs,
+					this.requestTimeoutMs,
+				);
+				if (done) break;
+				const room = limit - bytesRead;
+				if (value.byteLength > room) {
+					chunks.push(value.slice(0, room,),);
+					bytesRead += room;
+					truncated = true;
+					break;
+				}
+				chunks.push(value,);
+				bytesRead += value.byteLength;
+			}
+			if (!truncated && bytesRead >= limit) {
+				// Buffer filled exactly on a chunk boundary; peek whether more data remains.
+				const remainingMs = this.requestTimeoutMs - (Date.now() - startedAt);
+				if (remainingMs <= 0) throw buildBodyReadTimeoutError(this.requestTimeoutMs,);
+				const { done, } = await readChunkWithDeadline(
+					reader,
+					remainingMs,
+					this.requestTimeoutMs,
+				);
+				if (!done) truncated = true;
+			}
+		} finally {
+			void reader.cancel().catch(() => {},);
+		}
+
+		const collected = concatBytes(chunks, bytesRead,);
+		// On truncation, drop any trailing partial UTF-8 character so the decoded
+		// text never re-encodes beyond the byte cap (a stream-flush would otherwise
+		// emit a 3-byte replacement char for a split multibyte sequence).
+		const usable = truncated ? trimToUtf8Boundary(collected,) : collected;
+		return { text: new TextDecoder().decode(usable,), truncated, };
+	}
+
+	/**
+	 * Read a 2xx response body keeping only the last `maxBytes` bytes.
+	 * Earlier bytes are discarded as the stream advances, so memory stays
+	 * bounded by the cap plus one chunk even for arbitrarily large bodies.
+	 * Returns `truncated: true` when bytes had to be dropped. Bytes that fall
+	 * in the middle of a UTF-8 character are dropped from both ends so the
+	 * decoded text never contains a replacement character.
+	 */
+	private async readBodyTextTail(
+		res: Response,
+		maxBytes: number,
+	): Promise<{ text: string; truncated: boolean; }> {
+		const limit = Math.max(0, Math.floor(maxBytes,),);
+		if (!res.body) return { text: "", truncated: false, };
+
+		const reader = res.body.getReader();
+		const pending: Uint8Array[] = [];
+		const emptyChunk = new Uint8Array(0,);
+		let head = 0;
+		let retainedBytes = 0;
+		let truncated = false;
+		const startedAt = Date.now();
+
+		try {
+			while (true) {
+				const remainingMs = this.requestTimeoutMs - (Date.now() - startedAt);
+				if (remainingMs <= 0) throw buildBodyReadTimeoutError(this.requestTimeoutMs,);
+				const { done, value, } = await readChunkWithDeadline(
+					reader,
+					remainingMs,
+					this.requestTimeoutMs,
+				);
+				if (done) break;
+				pending.push(value,);
+				retainedBytes += value.byteLength;
+				let toDrop = retainedBytes - limit;
+				let dropped = false;
+				while (toDrop > 0 && head < pending.length) {
+					dropped = true;
+					const headChunk = pending[head];
+					if (headChunk.byteLength <= toDrop) {
+						toDrop -= headChunk.byteLength;
+						retainedBytes -= headChunk.byteLength;
+						pending[head] = emptyChunk;
+						head += 1;
+					} else {
+						// Copy the retained piece: `subarray` would keep the whole
+						// source chunk alive, defeating the memory bound.
+						pending[head] = headChunk.slice(toDrop,);
+						retainedBytes -= toDrop;
+						toDrop = 0;
+					}
+				}
+				if (!truncated && dropped) truncated = true;
+				if (limit === 0 && truncated) break;
+			}
+		} finally {
+			void reader.cancel().catch(() => {},);
+		}
+
+		const chunks = head > 0 ? pending.slice(head,) : pending;
+		const collected = concatBytes(chunks, retainedBytes,);
+		// A byte cut inside a multi-byte sequence can leave continuation bytes at
+		// the start (and possibly the end) of the tail; drop both so the decoded
+		// text never starts or ends with a U+FFFD replacement character.
+		const usable = truncated
+			? trimToUtf8Boundary(trimFromUtf8BoundaryStart(collected,),)
+			: collected;
+		return { text: new TextDecoder().decode(usable,), truncated, };
+	}
+
+	private buildResponseTooLargeError(res: Response, limit: number,): DataikuError {
+		return new DataikuError(
+			res.status,
+			RESPONSE_TOO_LARGE_STATUS_TEXT,
+			`Response body exceeded the ${limit}-byte limit; the body was cancelled after ${limit} bytes.`,
+			undefined,
+			this.requestIdFromHeaders(res.headers,),
+		);
 	}
 
 	/* ---- private: retry loop ---- */

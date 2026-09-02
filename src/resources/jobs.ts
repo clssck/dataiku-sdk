@@ -7,6 +7,12 @@ const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const MAX_POLL_INTERVAL_MS = 10_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_LOG_LINES = 500;
+/**
+ * Default bytes retained from a job log body (default 10 MiB). Logs larger
+ * than this are downloaded bounded: only the most recent `maxLogBytes` bytes
+ * are kept, so a collaborator-influenced log cannot exhaust client memory.
+ */
+const DEFAULT_MAX_LOG_BYTES = 10 * 1024 * 1024;
 
 const TERMINAL_STATES = new Set([
 	"DONE",
@@ -275,7 +281,13 @@ export class JobsResource extends BaseResource {
 	/**
 	 * Retrieve job log text.
 	 * Returns the last `maxLogLines` lines (default 500) from the tail.
-	 * Use `0` or `-1` to return the full log without truncation.
+	 * Use `0` or `-1` to return the log without line truncation.
+	 *
+	 * The download is byte-bounded and deadline-covered: at most `maxLogBytes`
+	 * (default 10 MiB) of the *most recent* log output is retained, so a
+	 * collaborator-influenced oversized log cannot exhaust client memory while
+	 * the line limit previously only applied after a full unbounded download.
+	 * Logs up to the cap are returned in full.
 	 */
 	async log(
 		jobId: string,
@@ -284,6 +296,7 @@ export class JobsResource extends BaseResource {
 			logId?: string;
 			logFilter?: JobLogFilter;
 			maxLogLines?: number;
+			maxLogBytes?: number;
 			projectKey?: string;
 		},
 	): Promise<string> {
@@ -291,11 +304,15 @@ export class JobsResource extends BaseResource {
 		const query = opts?.activity ? `?activity=${encodeURIComponent(opts.activity,)}` : "";
 		// DSS cat-activity-log URLs require a browser session; API-key callers must use the public log endpoint.
 		const path = `/public/api/projects/${this.enc(opts?.projectKey,)}/jobs/${jobEnc}/log/${query}`;
-		const log = await this.client.getText(path,);
-		return limitJobLog(filterJobLog(log, opts?.logFilter,), opts?.maxLogLines,);
+		const maxLogBytes = Math.max(1, opts?.maxLogBytes ?? DEFAULT_MAX_LOG_BYTES,);
+		const { text, } = await this.client.getTextTailLimited(path, maxLogBytes,);
+		return limitJobLog(filterJobLog(text, opts?.logFilter,), opts?.maxLogLines,);
 	}
 
-	async logFromUrl(logUrl: string, opts?: { maxLogLines?: number; },): Promise<string> {
+	async logFromUrl(
+		logUrl: string,
+		opts?: { maxLogLines?: number; maxLogBytes?: number; },
+	): Promise<string> {
 		const parsed = new URL(logUrl, "http://dss.local",);
 		const projectKey = parsed.searchParams.get("projectKey",) ?? undefined;
 		const jobId = parsed.searchParams.get("jobId",) ?? undefined;
@@ -305,7 +322,12 @@ export class JobsResource extends BaseResource {
 				"Log URL must include projectKey, jobId, and activityId query parameters.",
 			);
 		}
-		return this.log(jobId, { activity, projectKey, maxLogLines: opts?.maxLogLines, },);
+		return this.log(jobId, {
+			activity,
+			projectKey,
+			maxLogLines: opts?.maxLogLines,
+			maxLogBytes: opts?.maxLogBytes,
+		},);
 	}
 
 	/**

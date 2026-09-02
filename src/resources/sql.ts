@@ -3,6 +3,12 @@ import type { SqlQueryResponse, SqlQueryResult, } from "../schemas.js";
 import { BaseResource, } from "./base.js";
 
 const UNSUPPORTED_SQL_DATASET_CONNECTION_DETAIL = "neither of sql nor hdfs type";
+/**
+ * Cap on the finish-streaming status text behind the client's response body
+ * limit: the payload is a short status message, so any larger body is a
+ * misbehaving endpoint and must not be buffered further.
+ */
+const MAX_SQL_FINISH_TEXT_BYTES = 1024 * 1024;
 
 type SqlQueryOptions = {
 	query: string;
@@ -160,10 +166,27 @@ export class SqlResource extends BaseResource {
 
 	/**
 	 * Stream results of a started query as parsed JSON (array of arrays).
+	 *
+	 * The result body is buffered under the client's response body limit
+	 * (default 50 MiB, `maxResponseBodyBytes`) and the request deadline. A
+	 * response exceeding the limit is cancelled and rejected instead of being
+	 * parsed — otherwise a collaborator-controlled result set (or a stalled
+	 * stream) could exhaust client memory or hang unbounded.
 	 */
 	async streamResults(queryId: string,): Promise<unknown[][]> {
 		const id = encodeURIComponent(queryId,);
-		const text = await this.client.getText(`/public/api/sql/queries/${id}/stream?format=json`,);
+		const maxBytes = this.client.getMaxResponseBodyBytes();
+		const { text, truncated, } = await this.client.getTextLimited(
+			`/public/api/sql/queries/${id}/stream?format=json`,
+			maxBytes,
+		);
+		if (truncated) {
+			throw new DataikuError(
+				0,
+				"Response Too Large",
+				`SQL stream results exceeded the ${maxBytes}-byte response limit and were not parsed.`,
+			);
+		}
 		return JSON.parse(text,) as unknown[][];
 	}
 
@@ -173,7 +196,18 @@ export class SqlResource extends BaseResource {
 	 */
 	async finishStreaming(queryId: string,): Promise<void> {
 		const id = encodeURIComponent(queryId,);
-		const text = await this.client.getText(`/public/api/sql/queries/${id}/finish-streaming`,);
+		const maxBytes = Math.min(this.client.getMaxResponseBodyBytes(), MAX_SQL_FINISH_TEXT_BYTES,);
+		const { text, truncated, } = await this.client.getTextLimited(
+			`/public/api/sql/queries/${id}/finish-streaming`,
+			maxBytes,
+		);
+		if (truncated) {
+			throw new DataikuError(
+				0,
+				"Response Too Large",
+				`SQL finish-streaming response exceeded the ${maxBytes}-byte response limit.`,
+			);
+		}
 		if (text.length > 0) {
 			throw new Error(`SQL query ${queryId} failed: ${text}`,);
 		}
