@@ -4,6 +4,7 @@ import { validateCredentials, } from "../auth.js";
 import { getCredentialsPath, saveCredentials, } from "../config.js";
 import { DataikuError, } from "../errors.js";
 import { APP_MANIFEST_CONCURRENCY_CONTROL, } from "../resources/applications.js";
+import { encodeGitReferencePath, validateGitReferencePath, } from "../resources/project-git.js";
 import {
 	encodeLibraryPath,
 	PROJECT_LIBRARY_CONCURRENCY_CONTROL,
@@ -64,7 +65,7 @@ import { BOOLEAN_FLAGS, FLAG_ALIASES, KNOWN_LONG_FLAGS, SHORT_FLAGS, } from "./f
 import { flowZoneColor, flowZoneMoveItems, flowZoneName, } from "./helpers/flow-zone.js";
 import { recipeBackupPath, recipeRunShouldWait, } from "./helpers/recipe.js";
 import { encodedProjectEndpointForPlan, planResult, } from "./output.js";
-import { resolveTlsSettings, } from "./runtime.js";
+import { resolveLoginCredentials, } from "./runtime.js";
 import type {
 	CommandFlagChoice,
 	CommandMeta,
@@ -132,23 +133,7 @@ export const AUTH_ACTIONS: Record<string, {
 }> = {
 	login: {
 		handler: async (flags,) => {
-			const tlsSettings = resolveTlsSettings(flags,);
-			const useEnv = dataikuEnvironmentEnabled();
-			const url = typeof flags["url"] === "string"
-				? flags["url"]
-				: useEnv
-				? process.env.DATAIKU_URL ?? ""
-				: "";
-			const apiKey = typeof flags["api-key"] === "string"
-				? flags["api-key"]
-				: useEnv
-				? process.env.DATAIKU_API_KEY ?? ""
-				: "";
-			const projectKey = typeof flags["project-key"] === "string"
-				? flags["project-key"]
-				: useEnv
-				? process.env.DATAIKU_PROJECT_KEY
-				: undefined;
+			const { url, apiKey, projectKey, tlsSettings, } = resolveLoginCredentials(flags,);
 
 			if (!url || !apiKey) {
 				throw new UsageError(
@@ -2143,12 +2128,6 @@ function projectGitEndpoint(projectKey: string | undefined, suffix: string,): st
 
 function projectGitFutureEndpoint(jobId: string,): string {
 	return `${PROJECT_GIT_API_ROOT}/futures/${encodeURIComponent(jobId,)}`;
-}
-
-/** Encode a library reference path per segment, mirroring the resource helper. */
-function encodeGitReferencePath(pathValue: string,): string {
-	const normalized = pathValue.replace(/^\/+/, "",).replace(/\/+$/, "",);
-	return normalized.split("/",).map((segment,) => encodeURIComponent(segment,)).join("/",);
 }
 
 /**
@@ -4537,7 +4516,7 @@ export function commandPlanShape(
 			};
 		}
 		case "project-git.set-library": {
-			const targetPath = id;
+			const targetPath = validateGitReferencePath(id,);
 			return {
 				method: "PUT",
 				endpoint: projectGitEndpoint(
@@ -4555,7 +4534,7 @@ export function commandPlanShape(
 			};
 		}
 		case "project-git.remove-library": {
-			const targetPath = id;
+			const targetPath = validateGitReferencePath(id,);
 			return {
 				method: "DELETE",
 				endpoint: projectGitEndpoint(
@@ -4573,7 +4552,7 @@ export function commandPlanShape(
 			};
 		}
 		case "project-git.reset-library": {
-			const targetPath = id;
+			const targetPath = validateGitReferencePath(id,);
 			return {
 				method: "POST",
 				endpoint: projectGitEndpoint(projectKey, "/lib-git-refs/action/reset",),
@@ -4583,7 +4562,7 @@ export function commandPlanShape(
 			};
 		}
 		case "project-git.push-library": {
-			const targetPath = id;
+			const targetPath = validateGitReferencePath(id,);
 			const message = requiredPlanFlag(flags, "message", entry.usage,);
 			return {
 				method: "POST",

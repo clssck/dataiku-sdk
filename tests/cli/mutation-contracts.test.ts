@@ -1482,6 +1482,45 @@ describe("machine contract: project-git mutation plans", () => {
 		);
 	});
 
+	it("rejects . and .. library target paths at plan time", () => {
+		const setFlags = {
+			"project-key": "P",
+			repository: "git@github.com:acme/utils.git",
+			checkout: "v2",
+		};
+		for (const path of ["lib/../utils", "libs/./x", "../utils", "libs//utils", "", "/",]) {
+			expect(() => plan("set-library", [path,], setFlags,)).toThrow(
+				"Git library reference path",
+			);
+			expect(() => plan("remove-library", [path,], { "project-key": "P", },)).toThrow(
+				"Git library reference path",
+			);
+			expect(() => plan("reset-library", [path,], { "project-key": "P", },)).toThrow(
+				"Git library reference path",
+			);
+			expect(
+				() => plan("push-library", [path,], { "project-key": "P", message: "m", },),
+			).toThrow("Git library reference path",);
+		}
+	});
+
+	it("strips only outer slashes from planned library target paths", () => {
+		const set = plan("set-library", ["/lib/utils/",], {
+			"project-key": "P",
+			repository: "git@github.com:acme/utils.git",
+			checkout: "v2",
+		},);
+		expect(set.endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/lib-git-refs/lib/utils",
+		);
+		expect(set.library,).toBe("lib/utils",);
+		const removed = plan("remove-library", ["/lib/utils/",], { "project-key": "P", },);
+		expect(removed.endpoint,).toBe(
+			"/dip/publicapi/projects/P/git/lib-git-refs/lib/utils?deleteDirectory=false",
+		);
+		expect(removed.library,).toBe("lib/utils",);
+	});
+
 	it("advertises the future wait for library calls and pins future-abort", () => {
 		const add = plan("add-library", ["lib/utils",], {
 			"project-key": "P",

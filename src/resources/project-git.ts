@@ -145,10 +145,52 @@ function sleep(ms: number,): Promise<void> {
 	return promise;
 }
 
-function encodePathSegments(path: string,): string {
+function gitReferencePathError(path: string, message: string,): ClientValidationError {
+	return new ClientValidationError(
+		message,
+		"validation_failed",
+		"Use a Git library reference path relative to the project library root: '/' -separated segment names, with no '.' or '..' segments.",
+		{ path, },
+	);
+}
+
+/**
+ * Validate and canonicalize a Git library reference path. This is the single
+ * validator used by both SDK dispatch and CLI mutation planning.
+ *
+ * Strip only the permitted outer '/' separators, then require nonempty
+ * ordinary segments: no empty segments and no '.' or '..' segments. A hostile
+ * path therefore cannot change which API resource a dispatcher's URL
+ * normalization would otherwise select.
+ */
+export function validateGitReferencePath(path: string,): string {
+	if (typeof path !== "string" || path.trim() === "") {
+		throw gitReferencePathError(path, "A Git library reference path is required.",);
+	}
 	const normalized = path.replace(/^\/+/, "",).replace(/\/+$/, "",);
-	if (!normalized) throw new ClientValidationError("A Git reference path is required.",);
-	return normalized
+	if (normalized === "") {
+		throw gitReferencePathError(path, "A Git library reference path is required.",);
+	}
+	for (const segment of normalized.split("/",)) {
+		if (segment === "") {
+			throw gitReferencePathError(
+				path,
+				"A Git library reference path must not contain empty segments (consecutive or repeated '/').",
+			);
+		}
+		if (segment === "." || segment === "..") {
+			throw gitReferencePathError(
+				path,
+				"A Git library reference path must not contain '.' or '..' segments.",
+			);
+		}
+	}
+	return normalized;
+}
+
+/** Validate a Git library reference path and URL-encode it per segment. */
+export function encodeGitReferencePath(path: string,): string {
+	return validateGitReferencePath(path,)
 		.split("/",)
 		.map((segment,) => encodeURIComponent(segment,))
 		.join("/",);
@@ -576,9 +618,10 @@ export class ProjectGitResource extends BaseResource {
 		const secrets = [options.password,].filter(
 			(secret,): secret is string => secret !== undefined && secret !== "",
 		);
+		const encodedPath = encodeGitReferencePath(gitReferencePath,);
 		const raw = await this.request(
 			"PUT",
-			`${this.libraryPath(projectKey,)}/${encodePathSegments(gitReferencePath,)}`,
+			`${this.libraryPath(projectKey,)}/${encodedPath}`,
 			{
 				repository,
 				login: options.login ?? null,
@@ -599,7 +642,7 @@ export class ProjectGitResource extends BaseResource {
 	): Promise<void> {
 		await this.request(
 			"DELETE",
-			`${this.libraryPath(projectKey,)}/${encodePathSegments(gitReferencePath,)}${
+			`${this.libraryPath(projectKey,)}/${encodeGitReferencePath(gitReferencePath,)}${
 				this.query({ deleteDirectory, },)
 			}`,
 		);
@@ -610,8 +653,9 @@ export class ProjectGitResource extends BaseResource {
 		projectKey: string,
 		gitReferencePath: string,
 	): Promise<ProjectGitFutureResponse> {
+		const gitRef = validateGitReferencePath(gitReferencePath,);
 		const raw = await this.request("POST", `${this.libraryPath(projectKey,)}/action/reset`, {
-			gitRef: gitReferencePath,
+			gitRef,
 		},);
 		return this.client.safeParse(
 			ProjectGitFutureResponseSchema,
@@ -626,8 +670,9 @@ export class ProjectGitResource extends BaseResource {
 		gitReferencePath: string,
 		commitMessage: string,
 	): Promise<ProjectGitFutureResponse> {
+		const gitRef = validateGitReferencePath(gitReferencePath,);
 		const raw = await this.request("POST", `${this.libraryPath(projectKey,)}/action/push`, {
-			gitRef: gitReferencePath,
+			gitRef,
 			commitMessage,
 		},);
 		return this.client.safeParse(

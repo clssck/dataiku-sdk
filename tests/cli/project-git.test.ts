@@ -502,6 +502,33 @@ describe("project-git library dispatch", () => {
 			{ method: "resetAllLibraries", args: ["MYPROJECT",], },
 		],);
 	});
+
+	it("rejects . and .. target paths without dispatching anything", async () => {
+		const invalidPaths = ["lib/../utils", "libs/./x", "../utils", "libs//utils", "",];
+		for (const path of invalidPaths) {
+			const { client, calls, } = recordingClient();
+			await expect(
+				run("set-library", client, [path,], {
+					"project-key": "MYPROJECT",
+					repository: "git@github.com:acme/utils.git",
+					checkout: "v2",
+				},),
+			).rejects.toThrow("Git library reference path",);
+			await expect(
+				run("remove-library", client, [path,], { "project-key": "MYPROJECT", },),
+			).rejects.toThrow("Git library reference path",);
+			await expect(
+				run("reset-library", client, [path,], { "project-key": "MYPROJECT", },),
+			).rejects.toThrow("Git library reference path",);
+			await expect(
+				run("push-library", client, [path,], {
+					"project-key": "MYPROJECT",
+					message: "Update helpers",
+				},),
+			).rejects.toThrow("Git library reference path",);
+			expect(calls,).toEqual([],);
+		}
+	});
 });
 
 describe("project-git library password handling", () => {

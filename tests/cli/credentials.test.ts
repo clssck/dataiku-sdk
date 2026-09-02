@@ -215,6 +215,179 @@ describe("CLI .env loading", () => {
 	});
 });
 
+describe("CLI credential provenance binding", () => {
+	it("refuses to pair a project .env URL with a saved API key", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-provenance-saved-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			let attackerHits = 0;
+			await withCliServer((_req, res,) => {
+				attackerHits += 1;
+				sendJson(res, [{ projectKey: "ATTACKER", name: "Never reached", },],);
+			}, async (attackerUrl,) => {
+				mkdirSync(join(tmpDir, "config",), { recursive: true, },);
+				writeFileSync(
+					join(tmpDir, "config", "credentials.json",),
+					`${
+						JSON.stringify(
+							{ url: "https://user-dss.example", apiKey: "saved-key", projectKey: "SAVED", },
+							null,
+							2,
+						)
+					}\n`,
+				);
+				writeFileSync(join(tmpDir, ".env",), `DATAIKU_URL=${attackerUrl}\n`,);
+				const failure = await dssFailure(["project", "list",], {
+					cwd: tmpDir,
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: join(tmpDir, "config",),
+					},
+				},);
+				expect(failure.code,).toBe(1,);
+				expect(attackerHits,).toBe(0,);
+				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+				expect(report,).toMatchObject({
+					type: "error",
+					ok: false,
+					code: "conflicting_input_sources",
+					category: "usage",
+					resource: "project",
+					action: "list",
+					exitCode: 1,
+				},);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("refuses to pair a project .env URL with an API key from the environment", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-provenance-env-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			let attackerHits = 0;
+			await withCliServer((_req, res,) => {
+				attackerHits += 1;
+				sendJson(res, [{ projectKey: "ATTACKER", name: "Never reached", },],);
+			}, async (attackerUrl,) => {
+				writeFileSync(join(tmpDir, ".env",), `DATAIKU_URL=${attackerUrl}\n`,);
+				const failure = await dssFailure(["project", "list",], {
+					cwd: tmpDir,
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: join(tmpDir, "config",),
+						DATAIKU_API_KEY: "user-key",
+					},
+				},);
+				expect(failure.code,).toBe(1,);
+				expect(attackerHits,).toBe(0,);
+				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+				expect(report,).toMatchObject({ code: "conflicting_input_sources", category: "usage", },);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("refuses to pair a project .env TLS setting with credentials from elsewhere", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-provenance-tls-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			let hits = 0;
+			await withCliServer((_req, res,) => {
+				hits += 1;
+				sendJson(res, [{ projectKey: "TLS", name: "Never reached", },],);
+			}, async (serverUrl,) => {
+				writeFileSync(join(tmpDir, ".env",), "NODE_TLS_REJECT_UNAUTHORIZED=0\n",);
+				const failure = await dssFailure(["project", "list",], {
+					cwd: tmpDir,
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: join(tmpDir, "config",),
+						DATAIKU_URL: serverUrl,
+						DATAIKU_API_KEY: "user-key",
+					},
+				},);
+				expect(failure.code,).toBe(1,);
+				expect(hits,).toBe(0,);
+				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+				expect(report,).toMatchObject({ code: "conflicting_input_sources", category: "usage", },);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("keeps URL+API key from the same project .env working", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-provenance-pair-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await withCliServer((_req, res,) => {
+				sendJson(res, [{ projectKey: "PAIR", name: "Both from .env", },],);
+			}, async (url,) => {
+				writeFileSync(
+					join(tmpDir, ".env",),
+					`DATAIKU_URL=${url}\nDATAIKU_API_KEY=pair-key\n`,
+				);
+				const { stdout, stderr, } = await dss(["project", "list",], {
+					cwd: tmpDir,
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: join(tmpDir, "config",),
+					},
+				},);
+				expect(stderr,).toBe("",);
+				expect(JSON.parse(stdout,),).toEqual([{ projectKey: "PAIR", name: "Both from .env", },],);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("DATAIKU_DISABLE_ENV ignores a URL-only project .env and uses saved credentials", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-provenance-disabled-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await withCliServer((_req, res,) => {
+				sendJson(res, [{ projectKey: "SAVED", name: "From saved credentials", },],);
+			}, async (savedUrl,) => {
+				mkdirSync(join(tmpDir, "config",), { recursive: true, },);
+				writeFileSync(
+					join(tmpDir, "config", "credentials.json",),
+					`${
+						JSON.stringify(
+							{ url: savedUrl, apiKey: "saved-key", projectKey: "SAVED", },
+							null,
+							2,
+						)
+					}\n`,
+				);
+				writeFileSync(join(tmpDir, ".env",), "DATAIKU_URL=http://attacker.invalid\n",);
+				const { stdout, stderr, } = await dss(["project", "list",], {
+					cwd: tmpDir,
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: join(tmpDir, "config",),
+						DATAIKU_DISABLE_ENV: "1",
+					},
+				},);
+				expect(stderr,).toBe("",);
+				expect(JSON.parse(stdout,),).toEqual([
+					{ projectKey: "SAVED", name: "From saved credentials", },
+				],);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+});
+
 describe("CLI explicit empty credential errors", () => {
 	it("empty --url emits a JSON error envelope", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-missing-url-${Date.now()}`,);

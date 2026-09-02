@@ -231,3 +231,130 @@ describe("CLI auth commands", () => {
 		}
 	});
 });
+
+describe("CLI auth login credential provenance", () => {
+	it("refuses a project .env URL paired with an environment API key, without a request", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-provenance-url-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			let attackerHits = 0;
+			await withCliServer((_req, res,) => {
+				attackerHits += 1;
+				sendJson(res, {},);
+			}, async (attackerUrl,) => {
+				writeFileSync(join(tmpDir, ".env",), `DATAIKU_URL=${attackerUrl}\n`,);
+				const failure = await dssFailure(["auth", "login",], {
+					cwd: tmpDir,
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: tmpDir,
+						DATAIKU_API_KEY: "user-key",
+					},
+				},);
+				expect(failure.code,).toBe(1,);
+				expect(attackerHits,).toBe(0,);
+				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+				expect(report,).toMatchObject({
+					type: "error",
+					ok: false,
+					code: "conflicting_input_sources",
+					category: "usage",
+					resource: "auth",
+					action: "login",
+					exitCode: 1,
+				},);
+				expect(readFileExists(join(tmpDir, "credentials.json",),),).toBe(false,);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("refuses a project .env URL paired with a --api-key flag, without a request", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-provenance-flag-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			let attackerHits = 0;
+			await withCliServer((_req, res,) => {
+				attackerHits += 1;
+				sendJson(res, {},);
+			}, async (attackerUrl,) => {
+				writeFileSync(join(tmpDir, ".env",), `DATAIKU_URL=${attackerUrl}\n`,);
+				const failure = await dssFailure(["auth", "login", "--api-key", "flag-key",], {
+					cwd: tmpDir,
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: tmpDir,
+					},
+				},);
+				expect(failure.code,).toBe(1,);
+				expect(attackerHits,).toBe(0,);
+				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+				expect(report,).toMatchObject({ code: "conflicting_input_sources", category: "usage", },);
+				expect(readFileExists(join(tmpDir, "credentials.json",),),).toBe(false,);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("refuses a project .env TLS setting with explicit flags, without a request", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-provenance-tls-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			let hits = 0;
+			await withCliServer((_req, res,) => {
+				hits += 1;
+				sendJson(res, {},);
+			}, async (url,) => {
+				writeFileSync(join(tmpDir, ".env",), "NODE_TLS_REJECT_UNAUTHORIZED=0\n",);
+				const failure = await dssFailure(["auth", "login", "--url", url, "--api-key", "flag-key",], {
+					cwd: tmpDir,
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: tmpDir,
+					},
+				},);
+				expect(failure.code,).toBe(1,);
+				expect(hits,).toBe(0,);
+				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+				expect(report,).toMatchObject({ code: "conflicting_input_sources", category: "usage", },);
+				expect(readFileExists(join(tmpDir, "credentials.json",),),).toBe(false,);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("allows auth login when the project .env supplies URL and API key together", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-provenance-pair-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await withCliServer((_req, res,) => {
+				sendJson(res, [{ projectKey: "LOGIN", name: "Login target", },],);
+			}, async (url,) => {
+				writeFileSync(
+					join(tmpDir, ".env",),
+					`DATAIKU_URL=${url}\nDATAIKU_API_KEY=login-key\n`,
+				);
+				const { stdout, stderr, } = await dss(["auth", "login",], {
+					cwd: tmpDir,
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: tmpDir,
+					},
+				},);
+				expect(stderr,).toBe("",);
+				const report = JSON.parse(stdout,) as Record<string, unknown>;
+				expect(report,).toMatchObject({ saved: true, },);
+				expect(readFileExists(join(tmpDir, "credentials.json",),),).toBe(true,);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+});

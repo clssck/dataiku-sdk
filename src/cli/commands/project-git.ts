@@ -1,3 +1,4 @@
+import { validateGitReferencePath, } from "../../resources/project-git.js";
 import type { ProjectGitActionResult, } from "../../schemas.js";
 import { num, parseBooleanOption, requiredStringFlag, } from "../coerce.js";
 import { CommandResultFailure, } from "../output.js";
@@ -582,11 +583,12 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 	"set-library": {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, SET_LIBRARY_USAGE,);
+			const targetPath = validateGitReferencePath(a[0],);
 			const password = libraryPassword(f,);
 			return sanitizeProjectGitOutput(
 				await c.projectGit.setLibrary(
 					requiredStringFlag(f, "project-key", SET_LIBRARY_USAGE,),
-					a[0],
+					targetPath,
 					{
 						repository: requiredStringFlag(f, "repository", SET_LIBRARY_USAGE,),
 						pathInGitRepository: optionalStringFlag(f, "path-in-repository",),
@@ -608,14 +610,15 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 	"remove-library": {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, REMOVE_LIBRARY_USAGE,);
+			const targetPath = validateGitReferencePath(a[0],);
 			const deleteDirectory = parseBooleanOption(f["delete-directory"], "--delete-directory",)
 				?? false;
 			await c.projectGit.removeLibrary(
 				requiredStringFlag(f, "project-key", REMOVE_LIBRARY_USAGE,),
-				a[0],
+				targetPath,
 				deleteDirectory,
 			);
-			return { removed: a[0], resource: "project-git-library", deleteDirectory, };
+			return { removed: targetPath, resource: "project-git-library", deleteDirectory, };
 		},
 		usage: REMOVE_LIBRARY_USAGE,
 		description:
@@ -627,7 +630,7 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, RESET_LIBRARY_USAGE,);
 			return c.projectGit.resetLibrary(
 				requiredStringFlag(f, "project-key", RESET_LIBRARY_USAGE,),
-				a[0],
+				validateGitReferencePath(a[0],),
 			);
 		},
 		usage: RESET_LIBRARY_USAGE,
@@ -640,7 +643,7 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, PUSH_LIBRARY_USAGE,);
 			return c.projectGit.pushLibrary(
 				requiredStringFlag(f, "project-key", PUSH_LIBRARY_USAGE,),
-				a[0],
+				validateGitReferencePath(a[0],),
 				requiredStringFlag(f, "message", PUSH_LIBRARY_USAGE,),
 			);
 		},

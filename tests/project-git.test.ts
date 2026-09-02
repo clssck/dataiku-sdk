@@ -725,6 +725,69 @@ describe("ProjectGitResource libraries", () => {
 		);
 	});
 
+	it("rejects dot segments, empty segments, and empty library reference paths before sending", async () => {
+		let requests = 0;
+		await withServer(
+			(req, res,) => {
+				requests += 1;
+				sendJson(res, {},);
+			},
+			async (url,) => {
+				const git = new ProjectGitResource(createClient(url,),);
+				const options = {
+					repository: "ssh://git@host/lib.git",
+					checkout: "main",
+				};
+				for (
+					const path of [
+						"../lib",
+						"libs/../other",
+						"libs/./py",
+						"..",
+						"libs//py",
+						"",
+						"/",
+						"///",
+					]
+				) {
+					await expect(git.setLibrary("PROJ", path, options,),).rejects.toThrow(
+						"Git library reference path",
+					);
+					await expect(git.removeLibrary("PROJ", path,),).rejects.toThrow(
+						"Git library reference path",
+					);
+					await expect(git.resetLibrary("PROJ", path,),).rejects.toThrow(
+						"Git library reference path",
+					);
+					await expect(git.pushLibrary("PROJ", path, "update lib",),).rejects.toThrow(
+						"Git library reference path",
+					);
+				}
+				expect(requests,).toBe(0,);
+			},
+		);
+	});
+
+	it("strips only outer slashes from a library reference path before encoding", async () => {
+		await withServer(
+			(_req, res,) => sendJson(res, {},),
+			async (url, records,) => {
+				const git = new ProjectGitResource(createClient(url,),);
+				await git.setLibrary("PROJ", "/libs/py lib/", {
+					repository: "ssh://git@host/lib.git",
+					checkout: "main",
+				},);
+				expect(last(records,).url,).toBe(
+					"/dip/publicapi/projects/PROJ/git/lib-git-refs/libs/py%20lib",
+				);
+				await git.removeLibrary("PROJ", "/libs/py lib/",);
+				expect(last(records,).url,).toBe(
+					"/dip/publicapi/projects/PROJ/git/lib-git-refs/libs/py%20lib?deleteDirectory=false",
+				);
+			},
+		);
+	});
+
 	it("resets and pushes single libraries with gitRef and commitMessage bodies", async () => {
 		await withServer(
 			(_req, res,) => sendJson(res, { jobId: "j2", },),

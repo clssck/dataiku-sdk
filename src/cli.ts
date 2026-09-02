@@ -41,7 +41,11 @@ import {
 	setOutputFieldProjection,
 	writeCommandResult,
 } from "./cli/output.js";
-import { currentCommandContext, resolveCredentials, resolveTlsSettings, } from "./cli/runtime.js";
+import {
+	currentCommandContext,
+	resolveCredentials,
+	resolveLoginCredentials,
+} from "./cli/runtime.js";
 import {
 	COMMANDS_RUN_HINT,
 	missingActionError,
@@ -887,23 +891,7 @@ function runInstallSkill(flags: Record<string, string | boolean>,): Record<strin
 const META_PLAN_EXIT_CODES: Record<string, number> = { usage: 1, error: 2, transient: 3, };
 
 function authLoginPlan(flags: Record<string, string | boolean>,): Record<string, unknown> {
-	const tlsSettings = resolveTlsSettings(flags,);
-	const useEnv = dataikuEnvironmentEnabled();
-	const url = typeof flags["url"] === "string"
-		? flags["url"]
-		: useEnv
-		? process.env.DATAIKU_URL ?? ""
-		: "";
-	const apiKey = typeof flags["api-key"] === "string"
-		? flags["api-key"]
-		: useEnv
-		? process.env.DATAIKU_API_KEY ?? ""
-		: "";
-	const projectKey = typeof flags["project-key"] === "string"
-		? flags["project-key"]
-		: useEnv
-		? process.env.DATAIKU_PROJECT_KEY
-		: undefined;
+	const { url, apiKey, projectKey, tlsSettings, } = resolveLoginCredentials(flags,);
 
 	if (!url || !apiKey) {
 		throw new UsageError(
