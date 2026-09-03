@@ -890,12 +890,15 @@ describe("recipe set-payload backup hardening", () => {
 				};
 				expect(result.backupCreated,).toBe(true,);
 				expect(lstatSync(backupDir,).isSymbolicLink(),).toBe(false,);
-				expect(statSync(backupDir,).mode & 0o777,).toBe(0o700,);
-				expect(statSync(join(baseDir, "nested", ".dss-backups",),).mode & 0o777,).toBe(
-					0o700,
-				);
-				expect(statSync(join(baseDir, "nested",),).mode & 0o777,).toBe(0o700,);
-				expect(statSync(result.backupPath,).mode & 0o777,).toBe(0o600,);
+				if (process.platform !== "win32") {
+					// POSIX mode bits are meaningless on Windows (stat reports 0666).
+					expect(statSync(backupDir,).mode & 0o777,).toBe(0o700,);
+					expect(statSync(join(baseDir, "nested", ".dss-backups",),).mode & 0o777,).toBe(
+						0o700,
+					);
+					expect(statSync(join(baseDir, "nested",),).mode & 0o777,).toBe(0o700,);
+					expect(statSync(result.backupPath,).mode & 0o777,).toBe(0o600,);
+				}
 			},);
 			expect(JSON.parse(putBody!,).payload,).toBe("print('updated')\n",);
 		} finally {
@@ -957,7 +960,7 @@ describe("recipe set-payload backup hardening", () => {
 			writeRecipeBackup(backupPath, "first",);
 			expect(() => writeRecipeBackup(backupPath, "second",)).toThrow(/already exists/,);
 			expect(readFileSync(backupPath, "utf-8",),).toBe("first",);
-			expect(statSync(backupPath,).mode & 0o777,).toBe(0o600,);
+			if (process.platform !== "win32") expect(statSync(backupPath,).mode & 0o777,).toBe(0o600,);
 		} finally {
 			rmSync(baseDir, { recursive: true, force: true, },);
 		}
