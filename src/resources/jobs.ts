@@ -165,17 +165,22 @@ function jobLogLines(log: string,): string[] {
 
 /**
  * DSS tags recipe subprocess output by reader thread: `[null-out-N]` carries
- * the child's stdout and `[null-err-N]` its stderr. The bare words are kept
- * for hand-written or non-DSS log formats.
+ * the child's stdout and `[null-err-N]` its stderr. The legacy fallback is an
+ * explicit `stdout:` / `stderr:` record prefix (hand-written or non-DSS logs);
+ * a bare substring match would also select backend metadata such as the
+ * process wrapper's `pipes {"stdout": ...}` line and crowd out real output.
  */
+const LEGACY_STDOUT_RECORD = /^\s*stdout:/i;
+const LEGACY_STDERR_RECORD = /^\s*stderr:/i;
+
 function lineMatchesLogFilter(line: string, filter: JobLogFilter,): boolean {
 	const normalized = line.toLowerCase();
 	switch (filter) {
 		case "stdout":
-			return normalized.includes("[null-out-",) || normalized.includes("stdout",)
+			return normalized.includes("[null-out-",) || LEGACY_STDOUT_RECORD.test(line,)
 				|| line.startsWith(">>> ",);
 		case "stderr":
-			return normalized.includes("[null-err-",) || normalized.includes("stderr",);
+			return normalized.includes("[null-err-",) || LEGACY_STDERR_RECORD.test(line,);
 		case "errors":
 			return /\b(error|failed|failure|exception|traceback)\b/i.test(line,);
 		case "user":

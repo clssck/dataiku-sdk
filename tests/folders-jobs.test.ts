@@ -307,10 +307,17 @@ describe("JobsResource.log", () => {
 	});
 
 	it("selects recipe subprocess stdout and stderr by DSS reader-thread tags", async () => {
+		// The wrapper metadata line mentions both pipe names but is neither
+		// child stdout nor stderr; it must not be selected by either filter.
+		const wrapperLine =
+			'[2026/09/02-14:34:00.900] [FRT-76-FlowRunnable] [INFO] [dku.security.process] act.x - Data read from wrapper: {"pid":1,"pipes":{"stdin":"/j/.stdin","stdout":"/j/.stdout","stderr":"/j/.stderr"}}';
 		const dssLog = [
 			"[2026/09/02-14:34:01.000] [FRT-76-FlowRunnable] [INFO] [dku.flow.python] act.x - Starting execution of user's Python code",
+			wrapperLine,
 			"[2026/09/02-14:34:01.500] [null-err-85] [INFO] [dku.utils]  - 2026-09-02 14:34:01,499 INFO Setup complete, ready to execute Python code",
 			"[2026/09/02-14:34:01.801] [null-out-84] [INFO] [dku.utils]  - OK polars 1.44.1 rows 3",
+			"stdout: legacy record",
+			"stderr: legacy record",
 			"[2026/09/02-14:34:02.000] [null-err-85] [INFO] [dku.utils]  - Traceback (most recent call last):",
 			"[2026/09/02-14:34:02.466] [ActivityExecutor-66] [INFO] [dku.flow.activity] running x - Activity is successful",
 		].join("\n",);
@@ -319,12 +326,14 @@ describe("JobsResource.log", () => {
 			res.setHeader("Content-Type", "text/plain",);
 			res.end(dssLog,);
 		}, async (client,) => {
-			expect(await client.jobs.log("job-py", { logFilter: "stdout", },),).toBe(
+			expect((await client.jobs.log("job-py", { logFilter: "stdout", },)).split("\n",),).toEqual([
 				"[2026/09/02-14:34:01.801] [null-out-84] [INFO] [dku.utils]  - OK polars 1.44.1 rows 3",
-			);
+				"stdout: legacy record",
+			],);
 			const stderr = (await client.jobs.log("job-py", { logFilter: "stderr", },)).split("\n",);
-			expect(stderr,).toHaveLength(2,);
-			expect(stderr.every((line,) => line.includes("[null-err-85]",)),).toBe(true,);
+			expect(stderr,).toHaveLength(3,);
+			expect(stderr,).not.toContain(wrapperLine,);
+			expect(stderr,).toContain("stderr: legacy record",);
 		},);
 	});
 });
