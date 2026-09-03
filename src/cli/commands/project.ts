@@ -57,6 +57,11 @@ export const projectCommands: Record<string, CommandMeta> = {
 				includeRaw: f["include-raw"] === true,
 				render: flowRenderFormat(f["render"],),
 			},),
+		validate: (_a, f,) => {
+			flowRenderFormat(f["render"],);
+			num(f["max-nodes"], "--max-nodes",);
+			num(f["max-edges"], "--max-edges",);
+		},
 		usage:
 			"dss project map [--max-nodes N] [--max-edges N] [--include-raw] [--render ascii|mermaid] [--project-key KEY]",
 		description: "Get an analyzed flow map with zones, layers, components, and diagnostics.",

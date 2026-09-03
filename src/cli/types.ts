@@ -35,6 +35,12 @@ export interface CommandRegistryOverride {
 export interface CommandMeta extends CommandRegistryOverride {
 	handler: CommandHandler;
 	localHandler?: LocalCommandHandler;
+	/**
+	 * Pure, DSS-free argument validation run before credentials are resolved,
+	 * so a bad flag value is reported as its own usage error even when no
+	 * credentials are configured, instead of being masked by a missing-URL error.
+	 */
+	validate?: (args: string[], flags: Record<string, string | boolean>,) => void;
 	usage: string;
 	description?: string;
 	examples?: string[];

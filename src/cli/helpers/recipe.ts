@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { tmpdir, } from "node:os";
 import {
 	join,
 	parse as parsePath,
@@ -34,27 +35,61 @@ export function recipeBackupPath(recipeName: string, backupDir: string,): string
 }
 
 /**
+ * Split a backup directory into a trusted base and the untrusted tail that is
+ * verified component by component.
+ *
+ * Only two prefixes are trusted, and only after canonicalisation: the
+ * invocation directory (the CLI already reads its `.env`) and the OS temp
+ * directory. Canonicalising absorbs OS-level links the user never named —
+ * macOS `/var -> /private/var`, Windows 8.3 temp aliases — while every
+ * component the user's path introduces beneath that prefix is still walked
+ * with `lstat`, which is where a planted `.dss-backups` symlink lives. A path
+ * under neither prefix is walked in full from its volume root.
+ */
+function splitBackupDir(absolute: string,): { base: string; tail: string[]; } {
+	for (const trusted of [process.cwd(), tmpdir(),]) {
+		let canonical: string;
+		try {
+			canonical = fs.realpathSync(trusted,);
+		} catch {
+			continue;
+		}
+		const literal = resolvePath(trusted,);
+		const bases = literal === canonical ? [canonical,] : [literal, canonical,];
+		for (const candidateBase of bases) {
+			const rel = relativePath(candidateBase, absolute,);
+			if (rel === "" || rel.startsWith("..",) || parsePath(rel,).root) continue;
+			return { base: canonical, tail: rel.split(sep,).filter((part,) => part.length > 0), };
+		}
+	}
+	const { root, } = parsePath(absolute,);
+	return {
+		base: root,
+		tail: relativePath(root, absolute,).split(sep,).filter((part,) => part.length > 0),
+	};
+}
+
+/**
  * Prepare the backup directory as an owner-only, symlink-free directory.
  *
- * Every existing component is checked with `lstat` and must be a real directory
- * — `mkdir { recursive: true, }` would silently traverse a symlink planted
- * along the path (e.g. `.dss-backups` pointing at an attacker-chosen home) and
- * create with ambient permissions. Missing components are created one at a time
- * with mode 0700, and the final directory is clamped to 0700 through a
- * no-follow descriptor so the verification cannot be raced by a swap.
+ * Every untrusted component is checked with `lstat` and must be a real
+ * directory — `mkdir { recursive: true, }` would silently traverse a symlink
+ * planted along the path (e.g. `.dss-backups` pointing at an attacker-chosen
+ * home) and create with ambient permissions. Missing components are created
+ * one at a time with mode 0700, and the final directory is clamped to 0700
+ * through a no-follow descriptor so the verification cannot be raced by a swap.
  */
 export function ensureRecipeBackupDir(backupDir: string,): void {
 	const absolute = resolvePath(backupDir,);
-	const { root, } = parsePath(absolute,);
-	const parts = relativePath(root, absolute,).split(sep,).filter((part,) => part.length > 0);
-	if (parts.length === 0) {
+	if (parsePath(absolute,).root === absolute) {
 		throw new UsageError(
 			`Recipe backup directory "${backupDir}" is the filesystem root. Choose a dedicated backup directory.`,
 			"usage_error",
 		);
 	}
-	let current = root;
-	for (const part of parts) {
+	const { base, tail, } = splitBackupDir(absolute,);
+	let current = base;
+	for (const part of tail) {
 		current = join(current, part,);
 		let stats: fs.Stats;
 		try {
@@ -76,9 +111,10 @@ export function ensureRecipeBackupDir(backupDir: string,): void {
 			);
 		}
 	}
+	const target = current;
 	let dirFd: number;
 	try {
-		dirFd = fs.openSync(absolute, RECIPE_BACKUP_DIR_OPEN_FLAGS,);
+		dirFd = fs.openSync(target, RECIPE_BACKUP_DIR_OPEN_FLAGS,);
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code;
 		if (code === "ELOOP" || code === "ENOTDIR") {
@@ -90,11 +126,14 @@ export function ensureRecipeBackupDir(backupDir: string,): void {
 		throw error;
 	}
 	try {
-		fs.fchmodSync(dirFd, RECIPE_BACKUP_DIR_MODE,);
+		// Windows has no POSIX directory modes and fchmod on a directory
+		// descriptor fails with EPERM; the owner-only guarantee there comes from
+		// the user profile ACLs, so only the identity verification below applies.
+		if (process.platform !== "win32") fs.fchmodSync(dirFd, RECIPE_BACKUP_DIR_MODE,);
 		const verified = fs.fstatSync(dirFd,);
 		if (!verified.isDirectory()) {
 			throw new UsageError(
-				`Recipe backup path "${absolute}" is not a directory.`,
+				`Recipe backup path "${target}" is not a directory.`,
 				"usage_error",
 			);
 		}

@@ -991,6 +991,34 @@ describe("recipe set-payload backup hardening", () => {
 		}
 	});
 
+	it("ensureRecipeBackupDir tolerates an OS-level symlink above the temp directory but not inside the named path", () => {
+		// macOS: tmpdir() is /var/folders/... and /var -> /private/var. Model that
+		// by pointing TMPDIR at a symlink to a real directory.
+		if (process.platform === "win32") return;
+		const realTmp = mkdtempSync(join(tmpdir(), "dss-cli-backup-realtmp-",),);
+		const linkedTmp = `${realTmp}-link`;
+		symlinkSync(realTmp, linkedTmp,);
+		const previousTmpdir = process.env.TMPDIR;
+		process.env.TMPDIR = linkedTmp;
+		try {
+			const backupDir = join(linkedTmp, "nested", ".dss-backups", "recipes",);
+			expect(() => ensureRecipeBackupDir(backupDir,)).not.toThrow();
+			expect(lstatSync(join(realTmp, "nested", ".dss-backups", "recipes",),).isDirectory(),).toBe(
+				true,
+			);
+
+			symlinkSync(join(realTmp, "nested",), join(realTmp, "planted",),);
+			expect(() => ensureRecipeBackupDir(join(linkedTmp, "planted", "recipes",),)).toThrow(
+				/symlink/,
+			);
+		} finally {
+			if (previousTmpdir === undefined) delete process.env.TMPDIR;
+			else process.env.TMPDIR = previousTmpdir;
+			rmSync(linkedTmp, { force: true, },);
+			rmSync(realTmp, { recursive: true, force: true, },);
+		}
+	});
+
 	it("ensureRecipeBackupDir refuses the filesystem root as backup directory", () => {
 		expect(() => ensureRecipeBackupDir("/",)).toThrow(/filesystem root/,);
 	});

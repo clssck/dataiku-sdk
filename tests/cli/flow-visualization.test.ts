@@ -1,5 +1,6 @@
 import { describe, expect, it, } from "bun:test";
-import { cliEnv, dss, dssFailure, sendJson, withCliServer, } from "./_harness.js";
+import { mkdtempSync, } from "node:fs";
+import { cliEnv, dss, dssFailure, join, sendJson, tmpdir, withCliServer, } from "./_harness.js";
 
 const flowGraph = {
 	nodes: {
@@ -180,9 +181,20 @@ describe("CLI flow visualization", () => {
 		},);
 	});
 
-	it("rejects unsupported project map render formats locally", async () => {
-		const failure = await dssFailure(["project", "map", "--render", "svg",],);
+	it("rejects unsupported project map render formats locally, before credentials", async () => {
+		// Hermetic: no .env, no DATAIKU_* vars, no saved credentials. The usage
+		// error must win over "Missing Dataiku URL".
+		const failure = await dssFailure(["project", "map", "--render", "svg",], {
+			env: {
+				...process.env,
+				DSS_CONFIG_DIR: mkdtempSync(join(tmpdir(), "dss-cli-render-",),),
+				DATAIKU_DISABLE_ENV: "1",
+				DATAIKU_URL: "",
+				DATAIKU_API_KEY: "",
+			},
+		},);
 		expect(failure.code,).toBe(1,);
+		expect(JSON.parse(failure.stdout,),).toMatchObject({ code: "invalid_enum", },);
 		expect(failure.stdout,).toContain("--render must be ascii or mermaid",);
 	});
 });

@@ -1847,6 +1847,7 @@ async function main(): Promise<void> {
 		writeCommandResult(result,);
 		return;
 	}
+	actionMeta.validate?.(args, flags,);
 
 	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
 	currentCommandContext.projectKey = projectKey;
