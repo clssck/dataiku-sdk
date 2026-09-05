@@ -475,8 +475,8 @@ export class DataikuClient {
 	constructor(config?: DataikuClientConfig,) {
 		const envUrl = process.env["DATAIKU_URL"]?.trim();
 		const envApiKey = process.env["DATAIKU_API_KEY"]?.trim();
-		const url = config?.url?.trim() || envUrl;
-		const apiKey = config?.apiKey?.trim() || envApiKey;
+		const url = config === undefined ? envUrl : config.url?.trim();
+		const apiKey = config === undefined ? envApiKey : config.apiKey?.trim();
 		if (!url || !apiKey) {
 			throw new Error(
 				"Dataiku URL and API key are required: pass {url, apiKey} or set DATAIKU_URL/DATAIKU_API_KEY",
