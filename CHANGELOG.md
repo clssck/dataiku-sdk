@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Validate live case selections before provisioning, preserve authentication/transport preflight errors, include live files in regular quality gates, and share CSV settings with statically required recipe row expectations.
+- Add a separate, self-provisioning `test:live` runner with persistent setup/run/clean, focused cases, optional capability profiles, guarded ownership journals, deterministic fixtures and explicit registry coverage reports.
+
 - Normalize explicit boolean flag values and aliases before dispatch; share plan/dry-run resolution across direct, batch, and local commands.
 - Bound stalled streaming body reads without imposing a total-duration limit on healthy archive transfers; use backpressure-aware file streaming and publish archive/folder outputs only after completion, preserving existing files on failure.
 - Report unreadable JSON/text input files as structured usage errors rather than internal failures.

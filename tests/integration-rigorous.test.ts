@@ -12,7 +12,11 @@ import {
 	describeMutatingProjectIntegration,
 	describeProjectIntegration,
 	dssRaw,
+	getLiveManifest,
+	liveMode,
 	parseJsonOutput,
+	resolveStorageConnection,
+	selectSafeDataset,
 	uniqueTestName,
 } from "./integration-harness.js";
 import {
@@ -60,10 +64,12 @@ afterAll(() => {
 	}
 },);
 
-function commandWithProject(entry: ReadOnlyCommandCase,): string[] {
+async function commandWithProject(entry: ReadOnlyCommandCase,): Promise<string[]> {
 	if (!entry.requiresProject) return entry.args;
 	if (entry.args.includes("--project-key",)) return entry.args;
-	return [...entry.args, "--project-key", process.env.DATAIKU_PROJECT_KEY!,];
+	const projectKey = process.env.DATAIKU_PROJECT_KEY
+		?? (await getLiveManifest())?.projectKey;
+	return [...entry.args, "--project-key", projectKey!,];
 }
 
 function parseCliJson(result: DssRawResult, label: string,): unknown {
@@ -353,9 +359,22 @@ describeIntegration("Rigorous integration: CLI discoverability and local validat
 
 describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () => {
 	it("discovers fixture candidates for live smoke tests", async () => {
-		const fixtures = await rigorousFixtures();
-		expect(fixtures.projectKey, "fixtures projectKey",).toBe(process.env.DATAIKU_PROJECT_KEY,);
-		expect(fixtures.fixtures, "fixtures block",).toBeDefined();
+		const liveManifest = await getLiveManifest();
+		const fixtures = liveManifest
+			? ({
+				projectKey: liveManifest.projectKey,
+				fixtures: {},
+				safeDataset: { name: Object.values(liveManifest.fixtures.datasets,)[0] ?? null, },
+				safeManagedFolder: null,
+				safeJupyterNotebook: liveManifest.fixtures.notebookName
+					? { name: liveManifest.fixtures.notebookName, }
+					: null,
+				unsafe: {},
+			} satisfies RigorousFixtures)
+			: await rigorousFixtures();
+		expect(fixtures.projectKey, "fixtures projectKey",).toBe(
+			process.env.DATAIKU_PROJECT_KEY ?? liveManifest?.projectKey,
+		);
 		if (!fixtures.safeDataset) {
 			addFinding({
 				id: "fixtures-no-safe-dataset",
@@ -399,7 +418,7 @@ describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () 
 				},);
 			}
 
-			const args = commandWithProject(entry,);
+			const args = await commandWithProject(entry,);
 			const jsonResult = await dssRaw(args,);
 			const cliJson = parseCliJson(jsonResult, entry.id,);
 			expectResultShape(cliJson, entry.resultShape, `${entry.id} result shape`,);
@@ -408,9 +427,9 @@ describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () 
 		if (entry.sdkParity) {
 			it(`compares ${entry.id} SDK and CLI stable fields`, async () => {
 				const client = createClient();
-				const args = commandWithProject(entry,);
+				const args = await commandWithProject(entry,);
 				const cliJson = parseCliJson(await dssRaw(args,), `${entry.id} cli`,);
-				const sdkJson = await sdkValue(entry.sdkParity, client,);
+				const sdkJson = await sdkValue(entry.sdkParity!, client,);
 
 				if (entry.resultShape === "array") {
 					expect(Array.isArray(sdkJson,), `${entry.id} sdk array`,).toBe(true,);
@@ -455,7 +474,20 @@ describeIntegration("Rigorous integration: gated unproven SDK coverage", () => {
 		let sqlConnection = process.env.DATAIKU_SQL_CONNECTION;
 		const sqlDatasetFullName = process.env.DATAIKU_SQL_DATASET_FULL_NAME;
 		const cleanup = createCleanupStack();
-
+		if (liveMode) {
+			addFinding({
+				id: "sql-live-fixture-not-configured",
+				category: "resource-gap",
+				status: "skipped",
+				severity: "medium",
+				observed:
+					"SQL live coverage is refused under DATAIKU_LIVE_MANIFEST: admin connection creation is a global mutation.",
+				expected:
+					"SQL-compatible read-only fixture configured via DATAIKU_SQL_CONNECTION/DATAIKU_SQL_DATASET_FULL_NAME outside the self-provisioned legacy run.",
+				cleanupVerified: true,
+			},);
+			return;
+		}
 		if (process.env.RUN_DATAIKU_SQL_LIVE !== "1") {
 			addFinding({
 				id: "sql-live-fixture-not-configured",
@@ -538,6 +570,19 @@ describeIntegration("Rigorous integration: gated unproven SDK coverage", () => {
 	}, 120_000,);
 
 	it("uses disposable notebook fixtures for no-loss mutation coverage", async () => {
+		if (liveMode) {
+			addFinding({
+				id: "notebook-mutation-needs-mutating-gate",
+				category: "automation-risk",
+				status: "skipped",
+				severity: "medium",
+				observed:
+					"Notebook CRUD mutates the shared project namespace and is refused under DATAIKU_LIVE_MANIFEST; live mutation coverage owns disposable notebooks in dedicated modules.",
+				expected: "Notebook mutation tests only run when mutating integration is explicitly enabled.",
+				cleanupVerified: true,
+			},);
+			return;
+		}
 		if (process.env.RUN_DATAIKU_INTEGRATION_MUTATING !== "1") {
 			addFinding({
 				id: "notebook-mutation-needs-mutating-gate",
@@ -639,8 +684,6 @@ describeIntegration("Rigorous integration: gated unproven SDK coverage", () => {
 				"notebook delete-jupyter",
 			) as { deleted?: string; };
 			expect(deleteJupyter.deleted,).toBe(cliJupyterName,);
-			jupyterToDelete.delete(cliJupyterName,);
-
 			addFinding({
 				id: "jupyter-unload-needs-running-session",
 				category: "resource-gap",
@@ -651,10 +694,8 @@ describeIntegration("Rigorous integration: gated unproven SDK coverage", () => {
 				expected: "unloadJupyter is live-tested only against a disposable running notebook session.",
 				cleanupVerified: true,
 			},);
+			const sqlNotebookConnection = await resolveStorageConnection(client,);
 
-			const sqlNotebookConnection = process.env.DATAIKU_TEST_SQL_NOTEBOOK_CONNECTION
-				?? process.env.DATAIKU_SQL_CONNECTION
-				?? "filesystem_managed";
 			const sdkSqlId = await createDisposableSqlNotebook(client, sqlNotebookConnection,);
 			sqlToDelete.add(sdkSqlId,);
 			const sdkSqlOriginal = await client.notebooks.getSql(sdkSqlId,);
@@ -721,14 +762,15 @@ describeIntegration("Rigorous integration: gated unproven SDK coverage", () => {
 	}, 180_000,);
 
 	it("guards admin code-env lifecycle behind an explicit admin gate", async () => {
-		if (process.env.RUN_DATAIKU_ADMIN_MUTATING !== "1") {
+		if (liveMode || process.env.RUN_DATAIKU_ADMIN_MUTATING !== "1") {
 			addFinding({
 				id: "code-env-mutation-admin-gated",
 				category: "automation-risk",
 				status: "skipped",
 				severity: "medium",
-				observed:
-					"Code-env mutators are global/admin operations and require RUN_DATAIKU_ADMIN_MUTATING=1.",
+				observed: liveMode
+					? "Code-env lifecycle is a global/admin mutation and is refused under DATAIKU_LIVE_MANIFEST."
+					: "Code-env mutators are global/admin operations and require RUN_DATAIKU_ADMIN_MUTATING=1.",
 				expected:
 					"A disposable code environment is created only under an explicit admin mutation gate.",
 				cleanupVerified: true,
@@ -797,6 +839,7 @@ describeIntegration("Rigorous integration: gated unproven SDK coverage", () => {
 describeMutatingProjectIntegration("Rigorous integration: safe mutating workflows", () => {
 	it("round-trips temporary flow zones and moves only disposable flow objects", async () => {
 		const client = createClient();
+		const storageConnection = await resolveStorageConnection(client,);
 		const cleanup = createCleanupStack();
 		let zoneId: string | undefined;
 		let secondZoneId: string | undefined;
@@ -821,7 +864,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			try {
 				await client.datasets.create({
 					datasetName,
-					connection: "filesystem_managed",
+					connection: storageConnection,
 					dsType: "Filesystem",
 				},);
 				cleanup.defer(async () => {
@@ -941,7 +984,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				"wiki delete dry-run",
 			) as Record<string, unknown>;
 			expect(wikiDeleteDryRun.dryRun,).toBe(true,);
-			expect((await client.wiki.get(articleId!,)).article.id,).toBe(articleId,);
+			expect((await client.wiki.get(articleId!,)).article.id,).toBe(articleId!,);
 			parseCliJson(await dssRaw(["wiki", "delete", articleId!,],), "wiki delete",);
 			const deletedArticleId = articleId;
 			articleId = undefined;
@@ -968,7 +1011,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				"dashboard delete dry-run",
 			) as Record<string, unknown>;
 			expect(dashboardDeleteDryRun.dryRun,).toBe(true,);
-			expect((await client.dashboards.get(dashboardId!,)).id,).toBe(dashboardId,);
+			expect((await client.dashboards.get(dashboardId!,)).id,).toBe(dashboardId!,);
 			const renamedDashboard = await client.dashboards.update(dashboardId!, {
 				name: `${dashboardName}_renamed`,
 			},);
@@ -994,6 +1037,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 
 	it("round-trips disposable insights and data quality rules through SDK and CLI", async () => {
 		const client = createClient();
+		const storageConnection = await resolveStorageConnection(client,);
 		const cleanup = createCleanupStack();
 		let insightId: string | undefined;
 		let dataQualityRule: { datasetName: string; ruleId: string; } | undefined;
@@ -1063,7 +1107,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			try {
 				await client.datasets.create({
 					datasetName,
-					connection: "filesystem_managed",
+					connection: storageConnection,
 					dsType: "Filesystem",
 				},);
 				dataQualityDatasetName = datasetName;
@@ -1199,6 +1243,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 
 	it("builds disposable dataset jobs through SDK and CLI planning", async () => {
 		const client = createClient();
+		const storageConnection = await resolveStorageConnection(client,);
 		const cleanup = createCleanupStack();
 		let datasetName: string | undefined;
 
@@ -1207,7 +1252,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			try {
 				await client.datasets.create({
 					datasetName,
-					connection: "filesystem_managed",
+					connection: storageConnection,
 					dsType: "Filesystem",
 				},);
 				cleanup.defer(async () => {
@@ -1296,8 +1341,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			expect(abortDryRun.dryRun,).toBe(true,);
 			expect(abortDryRun.id,).toBe(buildAndWait.jobId,);
 
-			const abortFixtures = await rigorousFixtures();
-			const abortInputDataset = fixtureString(abortFixtures.safeDataset, ["name", "id",],)
+			const abortInputDataset = await selectSafeDataset()
 				?? datasetName!;
 			const abortRecipeName = uniqueTestName("sdk_cli_it_abort_recipe",);
 			const abortOutputDataset = uniqueTestName("sdk_cli_it_abort_output",);
@@ -1314,8 +1358,8 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				type: "python",
 				name: abortRecipeName,
 				inputDatasets: [abortInputDataset,],
+				outputConnection: storageConnection,
 				outputDataset: abortOutputDataset,
-				outputConnection: "filesystem_managed",
 				payload: abortPayload,
 			},);
 			expect(abortRecipe.recipeName,).toBe(abortRecipeName,);
@@ -1411,14 +1455,15 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 	}, 180_000,);
 
 	it("guards variable round-trip behind explicit variable mutation gate", async () => {
-		if (process.env.RUN_DATAIKU_INTEGRATION_VARIABLES !== "1") {
+		if (liveMode || process.env.RUN_DATAIKU_INTEGRATION_VARIABLES !== "1") {
 			addFinding({
 				id: "variables-roundtrip-extra-gated",
 				category: "automation-risk",
 				status: "skipped",
 				severity: "medium",
-				observed:
-					"Variable deletion requires whole-variable replacement; test is gated by RUN_DATAIKU_INTEGRATION_VARIABLES=1 to avoid clobbering concurrent edits.",
+				observed: liveMode
+					? "Variable round-trip replaces the whole variable map and is refused under DATAIKU_LIVE_MANIFEST to avoid clobbering concurrent edits in the shared project."
+					: "Variable deletion requires whole-variable replacement; test is gated by RUN_DATAIKU_INTEGRATION_VARIABLES=1 to avoid clobbering concurrent edits.",
 				expected: "A variable unset/patch endpoint would allow safer cleanup.",
 				suggestedAction: "Add `variable unset KEY` or SDK patch/delete support if DSS supports it.",
 			},);
@@ -1452,13 +1497,14 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 
 	it("round-trips files through a disposable managed folder", async () => {
 		const client = createClient();
+		const storageConnection = await resolveStorageConnection(client,);
 		const folderName = uniqueTestName("sdk_cli_it_folder",);
 		let folderId: string | undefined;
 		try {
 			const folder = await client.folders.create({
 				name: folderName,
 				type: "Filesystem",
-				connection: "filesystem_managed",
+				connection: storageConnection,
 			},);
 			folderId = folder.id;
 			expect(folderId, "created folder id",).toBeTruthy();

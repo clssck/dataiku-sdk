@@ -8,6 +8,7 @@ import {
 	dss,
 	parseJsonOutput,
 	parseTlsRejectUnauthorized,
+	selectSafeDataset,
 	uniqueTestName,
 } from "./integration-harness.js";
 
@@ -48,7 +49,7 @@ describeProjectIntegration("Dataiku playground integration: read-only SDK resour
 		const client = createClient();
 
 		const project = await client.projects.get();
-		expect(project.projectKey,).toBe(process.env.DATAIKU_PROJECT_KEY,);
+		expect(project.projectKey,).toBe(process.env.DATAIKU_PROJECT_KEY!,);
 		expect(await client.projects.metadata(),).toBeDefined();
 		expect(await client.projects.flow(),).toBeDefined();
 		expect(await client.projects.map({ maxNodes: 25, maxEdges: 50, },),).toBeDefined();
@@ -96,7 +97,8 @@ describeProjectIntegration("Dataiku playground integration: read-only SDK resour
 		expect(Array.isArray(dashboards,),).toBe(true,);
 		expect(Array.isArray(insights,),).toBe(true,);
 		expect(wikiSettings,).toHaveProperty("projectKey",);
-		const firstDatasetName = datasets.find((dataset,) => typeof dataset.name === "string")?.name;
+		const firstDatasetName = await selectSafeDataset()
+			?? datasets.find((dataset,) => typeof dataset.name === "string")?.name;
 		if (firstDatasetName) {
 			expect(Array.isArray(await client.dataQuality.listRules(firstDatasetName,),),).toBe(true,);
 			expect(await client.dataQuality.statusByPartition(firstDatasetName,),).toBeDefined();
@@ -108,9 +110,9 @@ describeProjectIntegration("Dataiku playground integration: read-only SDK resour
 
 describeProjectIntegration("Dataiku playground integration: read-only CLI commands", () => {
 	it("runs resource list/info commands against the configured project", async () => {
-		const datasetName = (await createClient().datasets.list()).find((dataset,) =>
-			typeof dataset.name === "string"
-		)?.name;
+		const client = createClient();
+		const datasetName = await selectSafeDataset()
+			?? (await client.datasets.list()).find((dataset,) => typeof dataset.name === "string")?.name;
 		const commands: string[][] = [
 			["project", "get",],
 			["project", "metadata",],

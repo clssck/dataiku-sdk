@@ -1,0 +1,10 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true
+	},
+	"include": [
+		"scripts/live-suite.ts",
+		"tests/live-*.ts"
+	]
+}

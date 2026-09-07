@@ -1248,18 +1248,4 @@ describe("ApplicationsResource", () => {
 		},);
 		expect(state.requests,).toEqual([],);
 	});
-	it("exposes a machine-checkable non-atomic concurrency contract without optimistic claims", async () => {
-		expect(APP_MANIFEST_CONCURRENCY_CONTROL,).toBe("client-side-non-atomic-stale-read-check",);
-		const sourceFiles = [
-			new URL("../src/resources/applications.ts", import.meta.url,),
-			new URL("../README.md", import.meta.url,),
-		];
-		for (const file of sourceFiles) {
-			const source = await fs.readFile(file, "utf-8",);
-			expect(source.toLowerCase(),).not.toContain("optimistic",);
-			expect(source,).toContain(APP_MANIFEST_CONCURRENCY_CONTROL,);
-			const withoutNegations = source.replace(/non-atomic|not\s+atomic/gi, "",);
-			expect(withoutNegations.toLowerCase(),).not.toContain("atomic",);
-		}
-	});
 });

@@ -23,6 +23,75 @@ Bun is the only supported runtime and the package manager. Examples below assume
 `--no-env-file` disables Bun's automatic preloading only; the CLI still applies its documented `.env` handling unless `DATAIKU_DISABLE_ENV=1` is set.
 `dss version` reports whether the running code came from `source` or `dist`, the runtime (always `bun`), the packaged build revision when available, and `staleBuild` when that revision differs from the checkout. Release builds generate `dist/build-metadata.json`; source snapshots without Git metadata still build but report no build revision.
 
+## Self-provisioning live tests
+
+From a checkout, `test:live` is a separate Bun script, not a `dss` command. It reads
+the existing `.env` without changing it and needs project-creation access plus a
+writable managed storage connection. No imported tutorials are required.
+
+```sh
+bun run test:live setup
+bun run test:live run --case core.dataset.baseline
+bun run test:live run --case "core.recipe.*"
+bun run test:live run                 # all core cases + migrated integration suites
+bun run test:live run --profile ml --case "ml.*"
+bun run test:live status
+bun run test:live clean               # delete only this lab, including its root project
+# CI: setup + run + cleanup, even when cases fail
+bun run test:live all
+```
+
+`setup` is idempotent for a ready lab; `run` reuses its datasets, graph and collaboration
+fixtures. Cases use temporary resources or restore baseline values. Cases accept exact
+IDs, comma-separated lists, repeated `--case`, and trailing-prefix `*` matching; quote
+wildcards. Selected runs omit the legacy suites. Unknown, setup-only or inactive-profile
+selections fail before credentials, state creation or provisioning; `--case` is valid only
+for `run`/`all`. `run` refuses
+an incomplete or cleaned lab rather than silently rebuilding it. Clean failed setup
+before provisioning a replacement. Authentication and transport failures retain their
+original errors; they are not evidence that the lab is missing.
+
+Core fixtures include deterministic CSVs with nulls, duplicates, Unicode and quoting;
+server-provisioned managed datasets; sync, Prepare, join, fuzzy-join, grouping and Python
+recipes; folders, scenarios, variables, wiki, notebooks, dashboards, insights, libraries,
+metrics and quality rules. Project export/import/duplicate cases use separate owned
+projects. Managed dataset types, paths and recipe output schemas come from DSS rather
+than tutorial-specific connection guesses.
+
+Profiles add to core: `ml` trains and deploys a small decision tree and checks clustering;
+`applications` requires `DATAIKU_LIVE_APP_TEMPLATE_ID`; `infrastructure` requires
+`DATAIKU_SQL_CONNECTION` or `DATAIKU_SQL_DATASET_FULL_NAME` for read-only SQL. Missing
+prerequisites are recorded as **blocked**, never passed. Required blocked cases exit
+nonzero; optional blocked cases remain visible in reports. Global administration,
+external Git mutations and unsupported capabilities are not silently exercised.
+
+State is ignored by Git under `.live-tests/<server-hash>/`. Use `--state-dir PATH` for
+another lab or `--manifest PATH` to select an existing manifest for `run`, `clean` or
+`status` (not `setup`/`all`). Keep the manifest and
+`cleanup.jsonl`: cleanup requires exact project identities and creation-incarnation
+hashes, never a prefix sweep. A changed server/project identity or unconfirmed creation
+fails closed; investigate its journal before manual recovery. Locks prevent concurrent
+lab runs; after an uncatchable process kill, confirm its recorded process is gone before
+removing a stale lock. Interrupting a run preserves the lab; `all` attempts cleanup.
+
+Each iteration retains logs and `report.json` with cases, timing, executed actions,
+capability reasons, coverage and external-project metadata integrity. `clean` retains
+`cleanup-report.json`. Treat local reports and exported archives as private project
+data. Coverage is an explicit inventory of every registered action, not a claim that
+every action has a live test: unexercised actions remain **uncovered**. Add cases through
+the typed catalogue in `tests/live-cases.ts`, `LiveContext.check` and guarded helpers,
+then update `tests/live-coverage.ts` when the
+registry changes; catalogue drift fails the offline gate. Plan/dry-run calls do not count
+as executed live coverage.
+
+Regular `bun run check` and `bun run lint` include the live runner and fixtures.
+For focused verification:
+
+```sh
+bun run check:live
+bun test tests/live-context.test.ts tests/live-runner.test.ts tests/live-coverage.test.ts
+```
+
 ## CLI contract
 
 The complete agent-facing contract — stdout JSON discipline, stderr JSONL diagnostics, the error
