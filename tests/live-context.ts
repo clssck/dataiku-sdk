@@ -219,7 +219,6 @@ export function assertLiveCommandScope(
 	if (entry.requiresProject && !owned(selectedProject,)) {
 		throw new Error(`Project is not bound to this run: ${selectedProject}`,);
 	}
-	if (executionMode(flags,).plan) return;
 	if (resource === "project" && ["create", "duplicate", "import", "delete",].includes(action,)) {
 		if (flags.data !== undefined || flags["data-file"] !== undefined) {
 			throw new Error("Project lifecycle JSON options need a dedicated scoped harness",);
@@ -260,6 +259,7 @@ export function assertLiveCommandScope(
 		}
 		return;
 	}
+	if (executionMode(flags,).plan) return;
 	if (resource === "project-git" && entry.mutatesDss) {
 		throw new Error("Git mutations require an isolated remote harness",);
 	}
@@ -365,10 +365,14 @@ export class LiveRunContext implements LiveContext {
 				!identity?.incarnation || projectIncarnationHash(selected, details,) !== identity.incarnation
 			) throw new Error(`Project incarnation changed before mutation: ${selected}`,);
 		}
-		if (entry?.producesLocalFile && typeof parsed.flags["output"] === "string") {
-			const output = path.resolve(LIVE_ROOT, parsed.flags["output"],);
-			if (!output.startsWith(this.dir + path.sep,)) {
-				throw new Error("Live output must stay inside the run directory",);
+		if (entry?.producesLocalFile) {
+			for (const flag of ["output", "output-file",]) {
+				const value = parsed.flags[flag];
+				if (typeof value !== "string") continue;
+				const output = path.resolve(LIVE_ROOT, value,);
+				if (!output.startsWith(this.dir + path.sep,)) {
+					throw new Error("Live output must stay inside the run directory",);
+				}
 			}
 		}
 		const started = Date.now();

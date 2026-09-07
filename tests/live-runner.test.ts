@@ -404,7 +404,12 @@ describe("failed cleanup recovery", () => {
 					res,
 					req.url?.endsWith("/projects/",) || req.url?.endsWith("/projects",)
 						? [{ projectKey: key, },]
-						: { projectKey: key, name: "replacement", owner: "ci", creationTag: { lastModifiedOn: 2, }, },
+						: {
+							projectKey: key,
+							name: `replacement-${methods.length}`,
+							owner: "ci",
+							creationTag: { lastModifiedOn: 2, },
+						},
 				);
 			}, async url => {
 				const labDir = path.join(dir, "lab",);
@@ -428,12 +433,17 @@ describe("failed cleanup recovery", () => {
 					stdout: "pipe",
 					stderr: "pipe",
 				},);
-				await Promise.all([new Response(child.stdout,).text(), new Response(child.stderr,).text(),],);
+				const [, stderr,] = await Promise.all([
+					new Response(child.stdout,).text(),
+					new Response(child.stderr,).text(),
+				],);
 				expect(await child.exited,).toBe(1,);
 				expect(methods.every(method => method === "GET"),).toBe(true,);
 				const report = JSON.parse(await fs.readFile(path.join(dir, "cleanup-report.json",), "utf8",),);
 				expect(report.cleanup.status,).toBe("failed",);
-				expect(report.integrity.verified,).toBe(true,);
+				expect(report.integrity.verified,).toBe(false,);
+				expect(report.integrity.changed,).toEqual([key,],);
+				expect(stderr,).toContain(report.cleanup.errors[0],);
 				const saved = JSON.parse(await fs.readFile(manifestPath, "utf8",),);
 				expect(saved.setupComplete,).toBe(false,);
 				expect(saved.projects[0].state,).toBe("bound",);

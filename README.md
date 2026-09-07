@@ -79,7 +79,10 @@ removing a stale lock. Interrupting a run preserves the lab; `all` attempts clea
 Each iteration retains logs and `report.json` with cases, timing, executed actions,
 capability reasons, coverage and external-project metadata integrity. `clean` retains
 `cleanup-report.json`, including deletion failures; starting teardown invalidates lab
-readiness even if cleanup only partially succeeds. Treat local reports and exported archives as private project
+readiness even if cleanup only partially succeeds. If cleanup and integrity verification
+both fail, the cleanup error remains primary and the report preserves both results.
+Planned lifecycle commands retain ownership checks; local outputs stay inside the lab
+for both `--output` and `--output-file`. Treat local reports and exported archives as private project
 data. Coverage is an explicit inventory of every registered action, not a claim that
 every action has a live test: unexercised actions remain **uncovered**. Add cases through
 the typed catalogue in `tests/live-cases.ts`, `LiveContext.check` and guarded helpers,

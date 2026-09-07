@@ -1230,12 +1230,13 @@ async function runCleanVerb(
 			integrity.verified ? "yes" : "NO"
 		}\n`,
 	);
+	// The report retains both failures; the deletion error remains the primary diagnostic.
+	if (cleanupError) throw cleanupError;
 	if (!integrity.verified) {
 		throw new Error(
 			"External project integrity changed during cleanup; inspect cleanup-report.json",
 		);
 	}
-	if (cleanupError) throw cleanupError;
 	if (fresh.cleanup.status === "failed") {
 		throw new Error(`Live cleanup failed: ${fresh.cleanup.errors.join("; ",)}`,);
 	}

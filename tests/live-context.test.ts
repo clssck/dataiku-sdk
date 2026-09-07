@@ -5,6 +5,7 @@ import { join, } from "node:path";
 import { projectIncarnationHash, } from "../src/utils/project-incarnation.js";
 import { sendJson, withCliServer, } from "./cli/_harness.js";
 import {
+	assertLiveCommandScope,
 	initializeLiveManifest,
 	LiveRunContext,
 	loadLiveManifest,
@@ -47,6 +48,48 @@ function details(key: string, tag: number,) {
 }
 
 describe("live sandbox ownership", () => {
+	it("checks lifecycle ownership even for nonexecuting plans", async () => {
+		await fixture("http://127.0.0.1:1", async ctx => {
+			expect(() =>
+				assertLiveCommandScope(
+					["project", "delete", "USER_WORK", "--plan",],
+					ctx.manifest,
+					ctx.projectKey,
+				)
+			).toThrow();
+			expect(() =>
+				assertLiveCommandScope(
+					[
+						"project",
+						"delete",
+						ctx.projectKey,
+						"--expect-project-incarnation",
+						ctx.manifest.projects[0]!.incarnation!,
+						"--plan",
+					],
+					ctx.manifest,
+					ctx.projectKey,
+				)
+			).not.toThrow();
+		},);
+	});
+	it("confines the SQL output-file spelling before launching even a plan", async () => {
+		await fixture("http://127.0.0.1:1", async ctx => {
+			await expect(
+				ctx.run([
+					"sql",
+					"query",
+					"SELECT 1",
+					"--connection",
+					"offline",
+					"--output-file",
+					join(ctx.dir, "..", "outside.json",),
+					"--plan",
+				],),
+			).rejects.toThrow();
+			expect(ctx.manifest.commands,).toEqual([],);
+		},);
+	});
 	it("stops an active CLI child and preserves its failure journal without credentials", async () => {
 		let started!: () => void;
 		const pending = new Promise<void>(resolve => {
