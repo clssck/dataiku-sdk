@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import { ClientValidationError, } from "../../errors.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { jsonInput, parseBooleanOption, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -124,12 +125,12 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 			const payload: Record<string, unknown> = { ...(settings ?? { pages: [], }), name, };
 			if (listed !== undefined) payload.listed = listed;
 			const pk = f["project-key"] as string | undefined;
-			if (f["if-not-exists"] === true || f["dry-run"] === true) {
+			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const existing = (await c.dashboards.list(pk,)).find((dashboard,) => dashboard.name === name);
-				if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("dashboard", existing.id, "exists", { current: existing, },);
 				}
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "create",
@@ -170,7 +171,7 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 			if (name === undefined && listed === undefined && !data) {
 				throw new UsageError("--name, --listed, --data, --data-file, or --stdin is required.",);
 			}
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.dashboards.get(a[0], f["project-key"] as string | undefined,);
 				const next = deepMerge(current as unknown as Record<string, unknown>, data ?? {},);
 				if (name !== undefined) next.name = name;
@@ -193,10 +194,10 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss dashboard delete <id>",);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.dashboards.get(a[0], pk,));
 				if (!current) return skipResult("dashboard", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "dashboard", id: a[0], current, };
 				}
 			}

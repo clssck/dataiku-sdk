@@ -250,6 +250,20 @@ function selectSingleSource(
 	return provided[0];
 }
 
+function readInputText(path: string, flag: string,): string {
+	try {
+		return readFileSync(path, "utf-8",);
+	} catch (error) {
+		const cause = (error as NodeJS.ErrnoException).code;
+		throw new UsageError(
+			`Could not read ${flag} file: ${path}`,
+			"validation_failed",
+			"Verify that the path names an existing, readable file.",
+			{ flag, path, ...(cause ? { cause, } : {}), },
+		);
+	}
+}
+
 function resolveJsonSourceText(
 	flags: Record<string, string | boolean>,
 	kind: "object" | "any",
@@ -265,7 +279,7 @@ function resolveJsonSourceText(
 	if (source === "data-file") {
 		const fileValue = flags["data-file"];
 		if (typeof fileValue === "string") {
-			const jsonText = readFileSync(fileValue, "utf-8",);
+			const jsonText = readInputText(fileValue, "--data-file",);
 			return kind === "object"
 				? parseJsonObject(jsonText, fileValue,)
 				: parseJsonValue(jsonText, fileValue,);
@@ -334,7 +348,7 @@ export function textInput(flags: Record<string, string | boolean>,): string | un
 	if (source === undefined) return undefined;
 	if (source === "file") {
 		const fileValue = flags["file"];
-		if (typeof fileValue === "string") return readFileSync(fileValue, "utf-8",);
+		if (typeof fileValue === "string") return readInputText(fileValue, "--file",);
 	}
 	const contentValue = flags["content"];
 	if (typeof contentValue === "string") return contentValue;

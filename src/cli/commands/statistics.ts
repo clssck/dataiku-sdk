@@ -1,5 +1,6 @@
 import type { DataikuClient, } from "../../client.js";
 import { requiredJsonInput, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, planResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
@@ -88,7 +89,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 				"--data, --data-file, or --stdin is required (worksheet definition).",
 			);
 			const projectKey = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return statisticsPlan("create-worksheet", {
 					method: "POST",
 					endpoint: statisticsWorksheetsEndpoint(c, a[0], projectKey,),
@@ -117,7 +118,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 				"--data, --data-file, or --stdin is required (worksheet definition).",
 			);
 			const projectKey = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return statisticsPlan("update-worksheet", {
 					method: "PUT",
 					endpoint: statisticsWorksheetEndpoint(c, a[0], a[1], projectKey,),
@@ -140,7 +141,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 				"dss statistics delete-worksheet <dataset> <worksheetId> [--dry-run] [--project-key KEY]",
 			);
 			const projectKey = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return statisticsPlan("delete-worksheet", {
 					method: "DELETE",
 					endpoint: statisticsWorksheetEndpoint(c, a[0], a[1], projectKey,),
@@ -162,7 +163,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 				"dss statistics run-worksheet <dataset> <worksheetId> [--dry-run] [--project-key KEY]",
 			);
 			const projectKey = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return statisticsPlan("run-worksheet", {
 					method: "POST",
 					endpoint: `${statisticsWorksheetEndpoint(c, a[0], a[1], projectKey,)}/actions/run-card`,
@@ -188,7 +189,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 				"--data, --data-file, or --stdin is required (card settings).",
 			);
 			const projectKey = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return statisticsPlan("run-card", {
 					method: "POST",
 					endpoint: `${statisticsWorksheetEndpoint(c, a[0], a[1], projectKey,)}/actions/run-card`,
@@ -216,7 +217,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 				"--data, --data-file, or --stdin is required (computation settings).",
 			);
 			const projectKey = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return statisticsPlan("run-computation", {
 					method: "POST",
 					endpoint: `${statisticsWorksheetEndpoint(c, a[0], a[1], projectKey,)}/actions/run-computation`,

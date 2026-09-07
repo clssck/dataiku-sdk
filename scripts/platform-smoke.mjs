@@ -82,15 +82,20 @@ try {
 	const skillPath = path.join(skillTarget, ".claude", "skills", "dataiku-dss", "SKILL.md",);
 	assert(skillResult.installed?.[0]?.path === skillPath, "skill installer returned the wrong path",);
 	const skill = fs.readFileSync(skillPath, "utf8",);
-	assert(
-		skill.includes("bun --no-env-file ./bin/dss.js",),
-		"skill omits the Bun checkout launcher",
-	);
-	assert(skill.includes("PowerShell",), "skill omits PowerShell environment syntax",);
-	assert(
-		skill.includes("Windows Command Prompt",),
-		"skill omits Command Prompt environment syntax",
-	);
+	for (const match of skill.matchAll(/\]\((references\/[^)]+)\)/g,)) {
+		const relativePath = match[1];
+		const installedReference = fs.readFileSync(path.join(path.dirname(skillPath,), relativePath,),);
+		const packagedReference = fs.readFileSync(
+			path.join(installDir, "node_modules", "dataiku-sdk", "skills", "dataiku-dss", relativePath,),
+		);
+		assert(
+			installedReference.equals(packagedReference,),
+			"installed skill reference differs from packaged bytes: " + relativePath,
+		);
+	}
+	for (const file of skillResult.installed[0].files) {
+		assert(fs.existsSync(file.path,), "bundled skill file is missing: " + file.path,);
+	}
 
 	const failure = Bun.spawnSync([process.execPath, "--no-env-file", cli, "not-a-resource",], {
 		cwd: installDir,

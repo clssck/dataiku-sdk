@@ -1,4 +1,5 @@
 import { requiredStringFlag, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
@@ -29,7 +30,7 @@ export const modelEvaluationStoreCommands: Record<string, CommandMeta> = {
 			const name = requiredStringFlag(f, "name", usage,);
 			const projectKey = f["project-key"] as string | undefined;
 			const options = { name, projectKey, };
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "create",
@@ -73,10 +74,10 @@ export const modelEvaluationStoreCommands: Record<string, CommandMeta> = {
 				"dss model-evaluation-store delete <storeId> [--if-exists] [--dry-run] [--project-key KEY]",
 			);
 			const projectKey = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.modelEvaluationStores.get(a[0], projectKey,));
 				if (!current) return skipResult("model-evaluation-store", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "delete",

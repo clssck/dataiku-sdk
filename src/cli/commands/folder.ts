@@ -1,6 +1,7 @@
 import type { DataikuClient, } from "../../client.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { jsonInput, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import {
 	addTransientTargetContext,
 	encodedProjectEndpoint,
@@ -43,13 +44,13 @@ export const folderCommands: Record<string, CommandMeta> = {
 				path: f["path"] as string | undefined,
 				projectKey: pk,
 			};
-			if (f["if-not-exists"] === true || f["dry-run"] === true) {
+			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const list = await c.folders.list(pk,);
 				const existing = list.find((folder,) => folder.name === name);
-				if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("folder", existing.id ?? name, "exists", { current: existing, },);
 				}
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "create",
@@ -100,7 +101,7 @@ export const folderCommands: Record<string, CommandMeta> = {
 			}
 			const pk = f["project-key"] as string | undefined;
 			const folderId = await resolveFolderId(c, a[0], f,);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.folders.get(folderId, pk,);
 				const next = deepMerge(current as unknown as Record<string, unknown>, data,);
 				return {
@@ -129,10 +130,10 @@ export const folderCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, "dss folder delete <name-or-id>",);
 			const pk = f["project-key"] as string | undefined;
 			const folderId = await resolveFolderId(c, a[0], f,);
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.folders.get(folderId, pk,));
 				if (!current) return skipResult("folder", folderId, "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "delete",
@@ -194,7 +195,7 @@ export const folderCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 3, "dss folder upload <name-or-id> <path> <localPath>",);
 			const pk = f["project-key"] as string | undefined;
 			const folderId = await resolveFolderId(c, a[0], f,);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "upload",
@@ -221,7 +222,7 @@ export const folderCommands: Record<string, CommandMeta> = {
 	"delete-file": {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 2, "dss folder delete-file <name-or-id> <path>",);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return { dryRun: true, action: "delete-file", resource: "folder", folder: a[0], path: a[1], };
 			}
 			await c.folders.deleteFile(

@@ -16,6 +16,7 @@ import {
 	splitCsvFlag,
 	stableHash,
 } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { moveCreatedItemsToZone, resolveFlowZoneIdFromFlags, } from "../helpers/flow-zone.js";
 import {
 	ensureRecipeBackupDir,
@@ -154,7 +155,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				summary: f["summary"] === true,
 				wait,
 			};
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const outputs = await c.recipes.resolveRunOutputs(a[0], {
 					partition: options.partition,
 					projectKey: pk,
@@ -186,12 +187,12 @@ export const recipeCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss recipe delete <name>",);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() =>
 					c.recipes.get(a[0], { projectKey: pk, includePayload: true, },)
 				);
 				if (!current) return skipResult("recipe", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "recipe", name: a[0], current, };
 				}
 			}
@@ -298,13 +299,13 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			const zoneMove = zoneId && name
 				? [{ objectId: name, objectType: "RECIPE" as const, },]
 				: undefined;
-			if ((f["if-not-exists"] === true || f["dry-run"] === true) && name) {
+			if ((f["if-not-exists"] === true || executionMode(f,).dryRun) && name) {
 				const list = await c.recipes.list(pk,);
 				const existing = list.find((r,) => r.name === name);
-				if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("recipe", name, "exists", { current: existing, },);
 				}
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "create",
@@ -316,7 +317,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 					};
 				}
 			}
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "create",
@@ -400,7 +401,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				);
 			}
 			const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "clone",
@@ -477,7 +478,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				);
 			}
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.recipes.get(a[0], { projectKey: pk, includePayload: true, },);
 				const currentRecipe = current.recipe as Record<string, unknown>;
 				const next = {
@@ -528,7 +529,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			}
 			const nextItems = [...items, { ref: a[1], deps: [], },];
 			const inputs = nextItems.map(recipeInputItemRef,).filter((ref,): ref is string => Boolean(ref,));
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "add-input",
@@ -578,7 +579,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			}
 			const nextItems = items.filter((item,) => recipeInputItemRef(item,) !== a[1]);
 			const inputs = nextItems.map(recipeInputItemRef,).filter((ref,): ref is string => Boolean(ref,));
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "remove-input",
@@ -659,7 +660,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				projectKey: pk,
 				includePayload: true,
 			},);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "set-payload",
@@ -717,7 +718,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			const next = f["payload-only"] === true || !restoredRecipe
 				? { ...current, payload, }
 				: { ...current, recipe: restoredRecipe, payload, };
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "restore",

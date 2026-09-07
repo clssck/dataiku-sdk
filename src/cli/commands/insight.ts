@@ -1,5 +1,6 @@
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { json, jsonInput, parseBooleanOption, textInput, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -40,17 +41,17 @@ export const insightCommands: Record<string, CommandMeta> = {
 			if (listed !== undefined) prototype.listed = listed;
 			if (params !== undefined) prototype.params = params;
 			const pk = f["project-key"] as string | undefined;
-			if (f["if-not-exists"] === true || f["dry-run"] === true) {
+			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const existing = name
 					? (await c.insights.list(pk,)).find((insight,) => insight.name === name)
 					: undefined;
-				if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("insight", existing.id, "exists", { current: existing, },);
 				}
-				if (f["if-not-exists"] === true && !name && f["dry-run"] !== true) {
+				if (f["if-not-exists"] === true && !name && !executionMode(f,).dryRun) {
 					throw new UsageError("--if-not-exists requires --name for insight create.",);
 				}
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "create",
@@ -104,7 +105,7 @@ export const insightCommands: Record<string, CommandMeta> = {
 					"--name, --listed, --params, --content, --file, --data, --data-file, or --stdin is required.",
 				);
 			}
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.insights.get(a[0], f["project-key"] as string | undefined,);
 				const next = deepMerge(current as unknown as Record<string, unknown>, data ?? {},);
 				if (name !== undefined) next.name = name;
@@ -146,10 +147,10 @@ export const insightCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss insight delete <id>",);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.insights.get(a[0], pk,));
 				if (!current) return skipResult("insight", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "insight", id: a[0], current, };
 				}
 			}

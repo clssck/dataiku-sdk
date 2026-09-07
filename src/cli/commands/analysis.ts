@@ -1,4 +1,5 @@
 import { requiredStringFlag, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
@@ -25,7 +26,7 @@ export const analysisCommands: Record<string, CommandMeta> = {
 			const inputDataset = requiredStringFlag(f, "input-dataset", usage,);
 			const projectKey = f["project-key"] as string | undefined;
 			const options = { inputDataset, projectKey, };
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "create",
@@ -51,10 +52,10 @@ export const analysisCommands: Record<string, CommandMeta> = {
 				"dss analysis delete <analysisId> [--if-exists] [--dry-run] [--project-key KEY]",
 			);
 			const projectKey = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.analyses.get(a[0], projectKey,));
 				if (!current) return skipResult("analysis", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "analysis", id: a[0], current, };
 				}
 			}

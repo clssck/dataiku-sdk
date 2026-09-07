@@ -2,6 +2,7 @@ import { createHash, } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath, } from "node:url";
 
 // ---------------------------------------------------------------------------
 // Agent definitions
@@ -31,13 +32,17 @@ const SKILL_URLS = [
 	new URL("../../skills/dataiku-dss/SKILL.md", import.meta.url,),
 ];
 
-function skillContent(): string {
+function skillDirectory(): URL {
 	for (const skillUrl of SKILL_URLS) {
-		if (fs.existsSync(skillUrl,)) return fs.readFileSync(skillUrl, "utf-8",);
+		if (fs.existsSync(skillUrl,)) return new URL("./", skillUrl,);
 	}
 	throw new Error(
 		`Bundled Dataiku skill not found. Checked: ${SKILL_URLS.map((url,) => url.pathname).join(", ",)}`,
 	);
+}
+
+function skillContent(): string {
+	return fs.readFileSync(new URL("SKILL.md", skillDirectory(),), "utf-8",);
 }
 
 export const AGENTS: Record<string, AgentDef> = {
@@ -139,18 +144,28 @@ export function findWorkspaceRoot(startDir: string,): string {
 
 export type SkillStatus = "missing" | "stale" | "current";
 
+export interface InstalledSkillFile {
+	relativePath: string;
+	path: string;
+	status: SkillStatus;
+	changed: boolean;
+	expectedSha256: string;
+	actualSha256?: string;
+}
+
 export interface InstallResult {
 	agent: string;
 	path: string;
 	via: DetectedAgent["via"];
-	/** Deterministic state of the destination file relative to the canonical skill content. */
+	/** Missing entrypoint, incomplete/different bundle, or entirely current bundle. */
 	status: SkillStatus;
-	/** Whether an install run would (or did) write the destination file. */
+	/** Whether any bundled file would (or did) change. Unmanaged files are preserved. */
 	changed: boolean;
-	/** SHA-256 hex of the canonical skill bytes this installation writes. */
+	/** SHA-256 of the canonical SKILL.md entrypoint, not the whole bundle. */
 	expectedSha256: string;
-	/** SHA-256 hex of the destination file when it exists; absent when status is "missing". */
+	/** Hash of the existing entrypoint; absent when that file is missing. */
 	actualSha256?: string;
+	files: InstalledSkillFile[];
 }
 
 function sha256Hex(value: string | Buffer,): string {
@@ -160,7 +175,7 @@ function sha256Hex(value: string | Buffer,): string {
 function skillState(
 	target: string,
 	expectedSha256: string,
-): Pick<InstallResult, "status" | "actualSha256"> {
+): Pick<InstalledSkillFile, "status" | "actualSha256"> {
 	if (!fs.existsSync(target,)) return { status: "missing", };
 	const actualSha256 = sha256Hex(fs.readFileSync(target,),);
 	return {
@@ -169,13 +184,35 @@ function skillState(
 	};
 }
 
-export function planSkillInstalls(
+/** Load the packaged tree, keeping portable relative paths in the report. */
+function skillFiles(): Map<string, Buffer> {
+	const root = fileURLToPath(skillDirectory(),);
+	const files = new Map<string, Buffer>();
+	function visit(relativeDir: string,): void {
+		const dir = path.join(root, relativeDir,);
+		for (
+			const entry of fs.readdirSync(dir, { withFileTypes: true, },).sort((a, b,) =>
+				a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+			)
+		) {
+			const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+			if (entry.isDirectory()) visit(relativePath,);
+			else if (entry.isFile()) {
+				files.set(relativePath, fs.readFileSync(path.join(root, relativePath,),),);
+			} else throw new Error(`Unsupported bundled skill entry: ${relativePath}`,);
+		}
+	}
+	visit("",);
+	return files;
+}
+
+function skillInstallPlan(
 	agents: DetectedAgent[],
 	opts: { global: boolean; cwd: string; },
+	bundle: Map<string, Buffer>,
 ): InstallResult[] {
 	const home = os.homedir();
 	const results: InstallResult[] = [];
-
 	for (const { id, def, via, } of agents) {
 		const dir = opts.global
 			? def.globalPath(home,)
@@ -183,46 +220,73 @@ export function planSkillInstalls(
 			? path.join(opts.cwd, def.projectPath,)
 			: undefined;
 		if (!dir) continue;
-		const target = path.join(dir, def.filename,);
-		const expectedSha256 = sha256Hex(def.content(),);
-		const state = skillState(target, expectedSha256,);
+		const files: InstalledSkillFile[] = [];
+		for (const [sourcePath, source,] of bundle) {
+			const relativePath = sourcePath === "SKILL.md" ? def.filename : sourcePath;
+			const target = path.join(dir, relativePath,);
+			const expectedSha256 = sha256Hex(sourcePath === "SKILL.md" ? def.content() : source,);
+			const state = skillState(target, expectedSha256,);
+			files.push({
+				relativePath,
+				path: target,
+				...state,
+				changed: state.status !== "current",
+				expectedSha256,
+			},);
+		}
+		const entrypoint = files.find((file,) => file.relativePath === def.filename)!;
+		const changed = files.some((file,) => file.changed);
 		results.push({
 			agent: id,
-			path: target,
+			path: entrypoint.path,
 			via,
-			...state,
-			changed: state.status !== "current",
-			expectedSha256,
+			status: entrypoint.status === "missing" ? "missing" : changed ? "stale" : "current",
+			changed,
+			expectedSha256: entrypoint.expectedSha256,
+			...(entrypoint.actualSha256 !== undefined ? { actualSha256: entrypoint.actualSha256, } : {}),
+			files,
 		},);
 	}
-
 	return results;
+}
+
+export function planSkillInstalls(
+	agents: DetectedAgent[],
+	opts: { global: boolean; cwd: string; },
+): InstallResult[] {
+	return skillInstallPlan(agents, opts, skillFiles(),);
+}
+
+function writeSkillFile(file: InstalledSkillFile, content: string | Buffer,): void {
+	if (!file.changed) return;
+	const dir = path.dirname(file.path,);
+	fs.mkdirSync(dir, { recursive: true, },);
+	const tmpPath = path.join(
+		dir,
+		`.${path.basename(file.path,)}.tmp-${process.pid}-${Date.now().toString(36,)}`,
+	);
+	try {
+		fs.writeFileSync(tmpPath, content,);
+		fs.renameSync(tmpPath, file.path,);
+	} finally {
+		fs.rmSync(tmpPath, { force: true, },);
+	}
 }
 
 export function installSkill(
 	agents: DetectedAgent[],
 	opts: { global: boolean; cwd: string; },
 ): InstallResult[] {
-	const results = planSkillInstalls(agents, opts,);
-
+	const bundle = skillFiles();
+	const results = skillInstallPlan(agents, opts, bundle,);
 	for (const result of results) {
-		const def = AGENTS[result.agent];
-		if (!def || !result.changed) continue;
-		const content = def.content();
-		const dir = path.dirname(result.path,);
-		fs.mkdirSync(dir, { recursive: true, },);
-		const tmpPath = path.join(
-			dir,
-			`.${path.basename(result.path,)}.tmp-${process.pid}-${Date.now().toString(36,)}`,
-		);
-		fs.writeFileSync(tmpPath, content, "utf-8",);
-		try {
-			fs.renameSync(tmpPath, result.path,);
-		} catch (error) {
-			fs.rmSync(tmpPath, { force: true, },);
-			throw error;
+		if (!result.changed) continue;
+		const def = agents.find((agent,) => agent.id === result.agent)!.def;
+		// Publish referenced files first; never expose a new entrypoint with missing references.
+		for (const file of result.files) {
+			if (file.relativePath !== def.filename) writeSkillFile(file, bundle.get(file.relativePath,)!,);
 		}
+		writeSkillFile(result.files.find((file,) => file.relativePath === def.filename)!, def.content(),);
 	}
-
 	return results;
 }

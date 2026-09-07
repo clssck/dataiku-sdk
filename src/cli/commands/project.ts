@@ -5,6 +5,7 @@ import { inspectProjectArchive, } from "../../utils/project-archive.js";
 import type { ProjectArchiveInspection, } from "../../utils/project-archive.js";
 import { projectIncarnationHash, } from "../../utils/project-incarnation.js";
 import { jsonInput, num, requiredJsonInput, requiredStringFlag, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { CommandResultFailure, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -105,7 +106,7 @@ export const projectCommands: Record<string, CommandMeta> = {
 				);
 			}
 			const guarded = f["if-exists"] === true
-				|| f["dry-run"] === true
+				|| executionMode(f,).dryRun
 				|| expectedIncarnation !== undefined;
 			if (!guarded) {
 				// Purely user-requested delete without any guard flag: keep the
@@ -151,7 +152,7 @@ export const projectCommands: Record<string, CommandMeta> = {
 				}
 				throw error;
 			}
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					deleted: false,
 					dryRun: true,

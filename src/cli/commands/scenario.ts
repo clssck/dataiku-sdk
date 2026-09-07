@@ -1,5 +1,6 @@
 import { scenarioUpdatePreview, } from "../../resources/scenarios.js";
 import { jsonInput, num, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -29,7 +30,7 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
 				timeoutMs: num(f["timeout"], "--timeout",),
 			};
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "run",
@@ -62,7 +63,7 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
 				timeoutMs: num(f["timeout"], "--timeout",),
 			};
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "run-and-wait",
@@ -100,10 +101,10 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss scenario delete <id>",);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.scenarios.get(a[0], { projectKey: pk, },));
 				if (!current) return skipResult("scenario", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "scenario", id: a[0], current, };
 				}
 			}
@@ -124,13 +125,13 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 				scenarioType: f["type"] as "step_based" | "custom_python" | undefined,
 				projectKey: pk,
 			};
-			if (f["if-not-exists"] === true || f["dry-run"] === true) {
+			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const list = await c.scenarios.list(pk,);
 				const existing = list.find((s,) => s.id === a[0]);
-				if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("scenario", a[0], "exists", { current: existing, },);
 				}
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "create",
@@ -165,7 +166,7 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 				);
 			}
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.scenarios.get(a[0], { projectKey: pk, },);
 				const preview = scenarioUpdatePreview(current as unknown as Record<string, unknown>, data,);
 				return {

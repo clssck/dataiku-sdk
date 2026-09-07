@@ -10,6 +10,7 @@ import {
 	num,
 	plainRecord,
 } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -318,7 +319,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 				targetType: jobBuildTargetTypeFromFlags(f,),
 				timeoutMs: num(f["timeout"], "--timeout",),
 			};
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "build",
@@ -358,7 +359,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 				summary: f["summary"] === true,
 				targetType: jobBuildTargetTypeFromFlags(f,),
 			};
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "build-and-wait",
@@ -446,7 +447,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss job abort <id>",);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "abort",

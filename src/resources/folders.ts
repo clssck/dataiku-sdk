@@ -6,6 +6,7 @@ import {
 	FolderSummaryArraySchema,
 } from "../schemas.js";
 import { deepMerge, } from "../utils/deep-merge.js";
+import { writeResponseToFile, } from "../utils/response-file.js";
 import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
 import { resolveAdminManagedStorageConnection, } from "./connections.js";
@@ -115,7 +116,7 @@ export class FoldersResource extends BaseResource {
 		if (!res.body) throw new Error("folders.download response did not include a body",);
 		const dest = opts?.localPath
 			?? nodePath.resolve(process.cwd(), inferDownloadFileName(normalizedPath,),);
-		await Bun.write(dest, new Response(res.body,), { createPath: false, },);
+		await writeResponseToFile(dest, res,);
 		return dest;
 	}
 

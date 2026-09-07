@@ -18,7 +18,7 @@ interface TokenBudget {
 }
 
 const TOKEN_BUDGETS = {
-	skill: { baseline: 4_126, maxTokens: 4_300, },
+	skill: { baseline: 851, maxTokens: 1_000, },
 	agentContract: { baseline: 3_015, maxTokens: 3_200, },
 	commandsRunDefault: { baseline: 1_037, maxTokens: 1_200, },
 	registryExportStdout: { baseline: 17, maxTokens: 40, },

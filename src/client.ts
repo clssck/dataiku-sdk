@@ -107,7 +107,7 @@ export interface DataikuClientConfig {
 	apiKey: string;
 	/** Default project key — used when a resource method omits projectKey */
 	projectKey?: string;
-	/** Per-request timeout in milliseconds (default 30 000) */
+	/** Request/header timeout and buffered-body budget; idle timeout per raw stream read (default 30 000 ms). */
 	requestTimeoutMs?: number;
 	/** Max retry attempts for idempotent requests (default 4, capped at 10) */
 	retryMaxAttempts?: number;
@@ -220,7 +220,7 @@ function buildBodyReadTimeoutError(timeoutMs: number,): DataikuError {
  * Read the next chunk of a response body under a hard deadline.
  * When `remainingMs` elapses, the stream is cancelled and the caller's
  * promise rejects with a DataikuError, so a stalled body cannot hang the
- * buffered consumers after headers already arrived.
+ * consumers after headers already arrived.
  */
 async function readChunkWithDeadline(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -655,11 +655,12 @@ export class DataikuClient {
 	}
 
 	async postStream(path: string, body?: unknown,): Promise<Response> {
-		return this.fetchWithRetry(`${this.baseUrl}${path}`, {
+		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "POST",
 			headers: { ...this.getAnyHeaders(), "Content-Type": "application/json", },
 			body: body !== undefined ? JSON.stringify(body,) : undefined,
 		},);
+		return this.withBodyDeadline(res,);
 	}
 
 	async put<T = unknown,>(path: string, body: unknown,): Promise<T> {
@@ -712,10 +713,49 @@ export class DataikuClient {
 	}
 
 	async stream(path: string,): Promise<Response> {
-		return this.fetchWithRetry(`${this.baseUrl}${path}`, {
+		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "GET",
 			headers: this.getAnyHeaders(),
 		},);
+		return this.withBodyDeadline(res,);
+	}
+
+	/** Bound each pending read, not total transfer time; preserve large downloads and backpressure. */
+	private withBodyDeadline(res: Response,): Response {
+		if (!res.body) return res;
+		const reader = res.body.getReader();
+		const timeoutMs = this.requestTimeoutMs;
+		const body = new ReadableStream<Uint8Array>({
+			async pull(controller,) {
+				try {
+					const { done, value, } = await readChunkWithDeadline(reader, timeoutMs, timeoutMs,);
+					if (done) {
+						controller.close();
+						reader.releaseLock();
+					} else {
+						controller.enqueue(value,);
+					}
+				} catch (error) {
+					controller.error(error,);
+					void reader.cancel(error,).catch(() => {},);
+				}
+			},
+			cancel(reason,) {
+				void reader.cancel(reason,).catch(() => {},);
+			},
+		},);
+		const response = new Response(body, {
+			status: res.status,
+			statusText: res.statusText,
+			headers: res.headers,
+		},);
+		// ResponseInit has no fields for these fetch response properties.
+		Object.defineProperties(response, {
+			url: { value: res.url, },
+			redirected: { value: res.redirected, },
+			type: { value: res.type, },
+		},);
+		return response;
 	}
 
 	/* ---- private: headers ---- */

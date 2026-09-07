@@ -1,4 +1,5 @@
 import { num, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { planResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
@@ -38,7 +39,7 @@ export const futureCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss future abort <id>",);
 			const id = a[0];
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return planResult("future", "abort", {
 					method: "POST",
 					endpoint: `/public/api/futures/${encodeURIComponent(id,)}/abort`,

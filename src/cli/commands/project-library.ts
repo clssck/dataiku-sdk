@@ -9,6 +9,7 @@ import {
 	validateLibraryPath,
 } from "../../resources/project-library.js";
 import { numFlag, readStdinText, sha256Hex, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, planResult, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -171,7 +172,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			);
 			const pk = f["project-key"] as string | undefined;
 			validateLibraryPath(a[0],);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return projectLibraryPlan("create-file", {
 					method: "POST",
 					endpoint: projectLibraryContentsEndpoint(c, pk, a[0],),
@@ -202,7 +203,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			);
 			const pk = f["project-key"] as string | undefined;
 			validateLibraryPath(a[0],);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return projectLibraryPlan("create-folder", {
 					method: "POST",
 					endpoint: projectLibraryFolderEndpoint(c, pk, a[0],),
@@ -234,7 +235,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			const pk = f["project-key"] as string | undefined;
 			const expectSha256 = expectSha256FromFlags(f,);
 			validateLibraryPath(a[0],);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return projectLibraryPlan("put", {
 					method: "POST",
 					endpoint: projectLibraryContentsEndpoint(c, pk, a[0],),
@@ -305,7 +306,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, "dss project-library delete <path> [--dry-run] [--project-key KEY]",);
 			const pk = f["project-key"] as string | undefined;
 			validateLibraryPath(a[0],);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return projectLibraryPlan("delete", {
 					method: "DELETE",
 					endpoint: projectLibraryContentsEndpoint(c, pk, a[0],),
@@ -329,7 +330,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			const pk = f["project-key"] as string | undefined;
 			const validPath = validateLibraryPath(a[0],);
 			const validName = validateLibraryName(a[1],);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return projectLibraryPlan("rename", {
 					method: "POST",
 					endpoint: projectLibraryActionEndpoint(c, pk, "rename/",),
@@ -354,7 +355,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			const pk = f["project-key"] as string | undefined;
 			const validPath = validateLibraryPath(a[0],);
 			const destination = validateLibraryDestinationPath(a[1],);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return projectLibraryPlan("move", {
 					method: "POST",
 					endpoint: projectLibraryActionEndpoint(c, pk, "move",),

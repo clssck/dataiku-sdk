@@ -2,6 +2,7 @@ import { ClientValidationError, } from "../../errors.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { stableHash, } from "../../utils/stable-hash.js";
 import { num, requiredJsonInput, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
 
@@ -59,7 +60,7 @@ export const webappCommands: Record<string, CommandMeta> = {
 			);
 			const projectKey = f["project-key"] as string | undefined;
 			const expectHash = validateExpectHash(f["expect-hash"],);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.webapps.getSettings(a[0], projectKey,);
 				const currentHash = stableHash(current,);
 				if (expectHash !== undefined && currentHash !== expectHash.toLowerCase()) {

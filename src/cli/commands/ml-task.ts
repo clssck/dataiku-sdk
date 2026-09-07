@@ -1,4 +1,5 @@
 import { requiredJsonInput, requiredStringFlag, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -171,7 +172,7 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 				testDatasetRef: optionalStringFlag(f, "test-dataset",),
 				projectKey: f["project-key"] as string | undefined,
 			};
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "deploy",
@@ -197,7 +198,7 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 				"dss ml-task delete <analysisId> <mlTaskId> [--dry-run] [--project-key KEY]",
 			);
 			const projectKey = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "delete",

@@ -11,6 +11,7 @@ import {
 	requiredStringFlag,
 	stringField,
 } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import {
 	appPermissionsHash,
 	appPermissionsVerificationError,
@@ -467,7 +468,7 @@ export const appCommands: Record<string, CommandMeta> = {
 				to: requiredStringFlag(f, "to", CREATE_SUCCESSOR_USAGE,),
 				...(f["name"] !== undefined ? { name: f["name"] as string, } : {}),
 				copyPermissions: parseBooleanOption(f["copy-permissions"], "--copy-permissions",) ?? false,
-				dryRun: parseBooleanOption(f["dry-run"], "--dry-run",) ?? false,
+				dryRun: executionMode(f,).dryRun,
 				timeoutMs: num(f["timeout"], "--timeout",),
 				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
 			}, CREATE_SUCCESSOR_USAGE,);
@@ -559,7 +560,7 @@ export const appCommands: Record<string, CommandMeta> = {
 				...(version !== undefined ? { version, } : {}),
 				...(versionNotes !== undefined ? { versionNotes, } : {}),
 				...(f["expect-hash"] !== undefined ? { expectHash: f["expect-hash"] as string, } : {}),
-				dryRun: parseBooleanOption(f["dry-run"], "--dry-run",) ?? false,
+				dryRun: executionMode(f,).dryRun,
 			}, f["project-key"] as string | undefined,);
 			if (result.outcome === "indeterminate") {
 				// The PUT may or may not have landed. Fail nonzero without
@@ -939,7 +940,7 @@ export const appCommands: Record<string, CommandMeta> = {
 				c.getBaseUrl(),
 				currentProjectIncarnationHash,
 			);
-			const dryRun = parseBooleanOption(f["dry-run"], "--dry-run",) ?? false;
+			const dryRun = executionMode(f,).dryRun;
 			const before = await c.projects.getPermissions(projectKey,);
 			await assertProjectIncarnationHash(c, projectKey, snapshot.projectIncarnationHash,);
 			const beforeHash = appPermissionsHash(before,);

@@ -2,6 +2,7 @@ import { buildDatasetCloneSettings, } from "../../resources/datasets.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { compareStrings, stableHash, } from "../../utils/stable-hash.js";
 import { jsonInput, num, schemaColumnsInput, unknownJsonInput, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { datasetSourceSummary, } from "../helpers/dataset.js";
 import { moveCreatedItemsToZone, resolveFlowZoneIdFromFlags, } from "../helpers/flow-zone.js";
 import { enqueueCliWarning, readIfExists, skipResult, } from "../output.js";
@@ -243,7 +244,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, usage,);
 			const columns = schemaColumnsInput(f, usage,);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.datasets.schema(a[0], pk,);
 				return {
 					dryRun: true,
@@ -448,13 +449,13 @@ export const datasetCommands: Record<string, CommandMeta> = {
 				projectKey: pk,
 			};
 			const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
-			if (f["if-not-exists"] === true || f["dry-run"] === true) {
+			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const list = await c.datasets.list(pk,);
 				const existing = list.find((d,) => d.name === name);
-				if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("dataset", name, "exists", { current: existing, },);
 				}
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "create",
@@ -501,7 +502,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			const current = await c.datasets.get(a[0], pk,);
 			const next = buildDatasetCloneSettings(current, a[1], pk ?? c.resolveProjectKey(pk,), opts,);
 			const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "clone",
@@ -534,10 +535,10 @@ export const datasetCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss dataset delete <name>",);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.datasets.get(a[0], pk,));
 				if (!current) return skipResult("dataset", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "dataset", name: a[0], current, };
 				}
 			}
@@ -558,7 +559,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 				);
 			}
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.datasets.get(a[0], pk,);
 				const next = deepMerge(current as unknown as Record<string, unknown>, data,);
 				return { dryRun: true, action: "update", resource: "dataset", name: a[0], current, next, };

@@ -15,22 +15,6 @@ import {
 	withCliServer,
 } from "./_harness.js";
 
-describe("CLI --timeout flag", () => {
-	it("passes timeout to client", async () => {
-		let receivedRequest = false;
-		await withCliServer((req, res,) => {
-			receivedRequest = true;
-			sendJson(res, [],);
-		}, async (url,) => {
-			const { stdout, } = await dss(["project", "list", "--timeout", "5000",], {
-				env: cliEnv(url,),
-			},);
-			expect(JSON.parse(stdout,),).toEqual([],);
-			expect(receivedRequest,).toBe(true,);
-		},);
-	});
-});
-
 describe("CLI --version flag", () => {
 	for (const flag of ["--version", "-V",]) {
 		it(`dss ${flag} prints version JSON to stdout`, async () => {
@@ -213,5 +197,95 @@ describe("CLI flag value parsing", () => {
 			},);
 			expect(JSON.parse(stdout,),).toBe(fullLog,);
 		},);
+	});
+});
+
+describe("explicit boolean execution modes", () => {
+	it("plans direct and batch operations without sending mutation requests", async () => {
+		const calls: string[] = [];
+		await withCliServer((req, res,) => {
+			calls.push(req.method!,);
+			sendJson(res, {},);
+		}, async (url,) => {
+			const env = cliEnv(url,);
+			const direct = await dss(["project", "delete", "TEST", "--explain=true", "--drop-data=true",], {
+				env,
+			},);
+			const plan = JSON.parse(direct.stdout,);
+			expect(plan.plan,).toBe(true,);
+			const combined = await dss(["project", "delete", "TEST", "--plan=true", "--dryrun=true",], {
+				env,
+			},);
+			expect(JSON.parse(combined.stdout,),).toMatchObject({ plan: true, plannedAndDryRun: true, },);
+			expect(plan.endpoint,).toContain("clearManagedDatasets=true",);
+			const batch = await dss([
+				"batch",
+				"--dry-run=true",
+				"--data",
+				JSON.stringify([["project", "delete", "TEST",],],),
+			], { env, },);
+			expect(JSON.parse(batch.stdout,).dryRun,).toBe(true,);
+			expect(calls,).toEqual([],);
+		},);
+	});
+	it("honors explicit false and rejects invalid booleans before sending requests", async () => {
+		const calls: string[] = [];
+		await withCliServer((req, res,) => {
+			calls.push(req.method + " " + req.url,);
+			sendJson(res, {},);
+		}, async (url,) => {
+			const env = cliEnv(url,);
+			const invalid = await dssFailure(["project", "delete", "TEST", "--plan=maybe",], { env, },);
+			expect(invalid.code,).toBe(1,);
+			expect(JSON.parse(invalid.stdout,),).toMatchObject({
+				code: "invalid_enum",
+				category: "usage",
+			},);
+			expect(calls,).toEqual([],);
+			await dss([
+				"project",
+				"delete",
+				"TEST",
+				"--plan",
+				"--plan=false",
+				"--dry-run=false",
+				"--drop-data=false",
+			], { env, },);
+			expect(calls,).toEqual([
+				"DELETE /public/api/projects/TEST?clearManagedDatasets=false&clearOutputManagedFolders=false&clearJobAndScenarioLogs=true&wait=true",
+			],);
+		},);
+	});
+});
+
+describe("unreadable payload sources", () => {
+	it("classifies missing JSON and text files as correctable input errors", async () => {
+		const dir = join(tmpdir(), `dss-input-errors-${Date.now()}`,);
+		mkdirSync(dir, { recursive: true, },);
+		try {
+			const file = join(dir, "missing",);
+			const json = await dssFailure(["batch", "--data-file", file,],);
+			const text = await dssFailure([
+				"wiki",
+				"create",
+				"--name",
+				"Article",
+				"--file",
+				file,
+				"--plan",
+				"--project-key",
+				"TEST",
+			],);
+			for (const failure of [json, text,]) {
+				expect(failure.code,).toBe(1,);
+				expect(JSON.parse(failure.stdout,),).toMatchObject({
+					code: "validation_failed",
+					category: "usage",
+					details: { path: file, cause: "ENOENT", },
+				},);
+			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
 	});
 });

@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, } from "node:fs";
 import { ClientValidationError, } from "../../errors.js";
 import { stableHash, } from "../../utils/stable-hash.js";
 import { json, jsonInput, num, numFlag, parseBooleanOption, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { enqueueCliWarning, isNotFoundError, readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -215,13 +216,13 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			}
 			const params = codeEnvParams(f,);
 			const wait = codeEnvWait(f,);
-			if (f["if-not-exists"] === true || f["dry-run"] === true) {
+			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const existing = (await c.codeEnvs.list({ envLang, },))
 					.find((env,) => env.envName === a[1]);
-				if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("code-env", a[1], "exists", { envLang, current: existing, },);
 				}
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "create",
@@ -269,7 +270,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			}
 			const expectHash = validateExpectHash(f["expect-hash"],);
 			const definitionHash = stableHash(definition,);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await readIfExists(() => c.codeEnvs.getDefinition(envLang, a[1],));
 				const currentHash = current ? stableHash(current,) : undefined;
 				if (expectHash !== undefined && currentHash !== expectHash) {
@@ -311,7 +312,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 				"--install-core-packages",
 			);
 			const expectHash = validateExpectHash(f["expect-hash"],);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "set-packages",
@@ -350,7 +351,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 				versionToUpdate,
 				wait,
 			};
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "update-packages",
@@ -375,7 +376,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			const envLang = requireEnvLang(a[0], usage,);
 			const wait = codeEnvWait(f,);
 			const envVersion = typeof f["env-version"] === "string" ? f["env-version"] : undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "update-images",
@@ -408,7 +409,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 				);
 			}
 			const wait = codeEnvWait(f,);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "set-jupyter",
@@ -432,7 +433,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			const wait = codeEnvWait(f,);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await readIfExists(() => c.codeEnvs.get(envLang, a[1],));
 				if (!current) return skipResult("code-env", a[1], "missing", { envLang, },);
 				return {

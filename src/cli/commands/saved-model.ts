@@ -1,3 +1,4 @@
+import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
@@ -54,7 +55,7 @@ export const savedModelCommands: Record<string, CommandMeta> = {
 				"dss saved-model set-active <modelId> <versionId> [--dry-run] [--project-key KEY]",
 			);
 			const projectKey = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "set-active",
@@ -82,10 +83,10 @@ export const savedModelCommands: Record<string, CommandMeta> = {
 				"dss saved-model delete <modelId> [--if-exists] [--dry-run] [--project-key KEY]",
 			);
 			const projectKey = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.savedModels.get(a[0], projectKey,));
 				if (!current) return skipResult("saved-model", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "saved-model", id: a[0], current, };
 				}
 			}

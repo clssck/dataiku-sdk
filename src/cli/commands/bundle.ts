@@ -1,3 +1,4 @@
+import { writeResponseToFile, } from "../../utils/response-file.js";
 import { json, parseBooleanOption, } from "../coerce.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -58,7 +59,7 @@ export const bundleCommands: Record<string, CommandMeta> = {
 			if (!res.body) {
 				throw new Error("bundles.downloadExportedArchive response did not include a body",);
 			}
-			const bytes = await Bun.write(out, new Response(res.body,), { createPath: false, },);
+			const bytes = await writeResponseToFile(out, res,);
 			return { path: out, bytes, };
 		},
 		usage: "dss bundle download-exported <bundleId> --output PATH [--project-key KEY]",

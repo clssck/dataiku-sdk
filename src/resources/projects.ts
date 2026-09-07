@@ -1,4 +1,5 @@
 import { ClientValidationError, DataikuError, } from "../errors.js";
+import { writeResponseToFile, } from "../utils/response-file.js";
 
 import {
 	ProjectDetailsSchema,
@@ -173,12 +174,6 @@ export interface FlowMapResult {
 	raw?: unknown;
 }
 
-type DataikuClientHttpInternals = {
-	baseUrl: string;
-	apiKey: string;
-	fetchWithRetry(url: string, init: RequestInit,): Promise<Response>;
-};
-
 export type ProjectLifecycleSettings = Record<string, unknown>;
 
 export type ProjectDuplicationMode = "MINIMAL" | "SHARING" | "FULL" | "NONE" | (string & {});
@@ -269,23 +264,6 @@ const PROJECT_IMPORT_AMBIGUOUS_REMEDIATION =
 	"Import processing left DSS state indeterminate. Inspect the archive with `dss project inspect-archive <file>` and the live projects with `dss project list` before retrying the import.";
 
 export class ProjectsResource extends BaseResource {
-	private httpInternals(): DataikuClientHttpInternals {
-		return this.client as unknown as DataikuClientHttpInternals;
-	}
-
-	private async postStream(path: string, body: unknown,): Promise<Response> {
-		const http = this.httpInternals();
-		return http.fetchWithRetry(`${http.baseUrl}${path}`, {
-			method: "POST",
-			headers: {
-				Authorization: `Bearer ${http.apiKey}`,
-				Accept: "*/*",
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify(body,),
-		},);
-	}
-
 	/** Create a new project. */
 	async createProject(
 		projectKey: string,
@@ -346,13 +324,13 @@ export class ProjectsResource extends BaseResource {
 		filePath: string,
 		options?: ProjectExportOptions,
 	): Promise<void> {
-		const res = await this.postStream(
+		const res = await this.client.postStream(
 			`/public/api/projects/${encodeURIComponent(projectKey,)}/export`,
 			options ?? {},
 		);
 		if (!res.body) throw new Error("projects.exportArchive response did not include a body",);
 
-		await Bun.write(filePath, new Response(res.body,), { createPath: false, },);
+		await writeResponseToFile(filePath, res,);
 	}
 
 	/** Upload a project archive and return its temporary import handle. */

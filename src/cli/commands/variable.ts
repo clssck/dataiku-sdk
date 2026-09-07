@@ -1,4 +1,5 @@
 import { json, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import type { CommandMeta, } from "../types.js";
 import { UsageError, } from "../usage.js";
 
@@ -17,7 +18,7 @@ export const variableCommands: Record<string, CommandMeta> = {
 			if (standard === undefined && local === undefined) {
 				throw new UsageError("--standard and/or --local is required.",);
 			}
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.variables.get(pk,);
 				const next = f["replace"] === true
 					? { standard: standard ?? {}, local: local ?? {}, }

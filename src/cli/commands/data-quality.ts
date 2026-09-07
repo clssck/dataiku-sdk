@@ -1,5 +1,6 @@
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { num, parseBooleanOption, requiredJsonInput, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -54,22 +55,22 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 				: typeof config.displayName === "string"
 				? config.displayName
 				: undefined;
-			if (f["if-not-exists"] === true || f["dry-run"] === true) {
+			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const existing = identity
 					? (await c.dataQuality.listRules(a[0], pk,)).find((rule,) =>
 						rule.id === identity || rule.displayName === identity
 					)
 					: undefined;
-				if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("data-quality", identity ?? existing.id, "exists", {
 						dataset: a[0],
 						current: existing,
 					},);
 				}
-				if (f["if-not-exists"] === true && !identity && f["dry-run"] !== true) {
+				if (f["if-not-exists"] === true && !identity && !executionMode(f,).dryRun) {
 					throw new UsageError("--if-not-exists requires rule id or displayName in the rule JSON.",);
 				}
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "create-rule",
@@ -102,7 +103,7 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 2, "dss data-quality update-rule <dataset> <rule-id> --data JSON",);
 			const data = requiredJsonInput(f, "--data, --data-file, or --stdin is required.",);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.dataQuality.getRule(
 					a[0],
 					a[1],
@@ -135,10 +136,10 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 2, "dss data-quality delete-rule <dataset> <rule-id>",);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.dataQuality.getRule(a[0], a[1], pk,));
 				if (!current) return skipResult("data-quality", a[1], "missing", { dataset: a[0], },);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "delete-rule",
@@ -267,7 +268,7 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 				projectKey: pk,
 				timeoutMs: num(f["timeout"], "--timeout",),
 			};
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const params = new URLSearchParams();
 				params.set("partition", options.partition?.trim() ? options.partition : "NP",);
 				if (options.ruleId !== undefined) params.set("ruleId", options.ruleId,);

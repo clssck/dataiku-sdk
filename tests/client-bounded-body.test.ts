@@ -218,4 +218,39 @@ describe("DataikuClient bounded response bodies", () => {
 			expect(await res.text(),).toBe(body,);
 		},);
 	});
+
+	for (const method of ["stream", "postStream",] as const) {
+		it(method + " rejects a stalled body after headers", async () => {
+			await withDataikuServer((_req, res,) => {
+				res.writeHead(200, { "Content-Type": "application/octet-stream", },);
+				res.write("first chunk",);
+			}, async (client,) => {
+				const res = await client[method]("/stalled",);
+				try {
+					await res.arrayBuffer();
+					throw new Error("expected stalled read to fail",);
+				} catch (error) {
+					expect(error,).toBeInstanceOf(DataikuError,);
+					expect((error as DataikuError).status,).toBe(0,);
+				}
+			}, { requestTimeoutMs: 100, },);
+		},);
+	}
+
+	it("streams a healthy transfer beyond the timeout without buffering or truncation", async () => {
+		await withDataikuServer(async (_req, res,) => {
+			res.writeHead(206, { "Content-Type": "application/octet-stream", "X-Stream": "intact", },);
+			res.write("one",);
+			await Bun.sleep(120,);
+			res.write("two",);
+			await Bun.sleep(120,);
+			res.end("three",);
+		}, async (client,) => {
+			const res = await client.stream("/long",);
+			expect(res.status,).toBe(206,);
+			expect(res.headers.get("x-stream",),).toBe("intact",);
+			expect(res.url,).toBe(client.getBaseUrl() + "/long",);
+			expect(await res.text(),).toBe("onetwothree",);
+		}, { requestTimeoutMs: 200, maxResponseBodyBytes: 1, },);
+	});
 });

@@ -1,6 +1,8 @@
 import { ClientValidationError, } from "../../errors.js";
+import { writeResponseToFile, } from "../../utils/response-file.js";
 import { stableHash, } from "../../utils/stable-hash.js";
 import { requiredJsonInput, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -52,7 +54,7 @@ export const apiServiceCommands: Record<string, CommandMeta> = {
 			);
 			const projectKey = f["project-key"] as string | undefined;
 			const expectHash = validateExpectHash(f["expect-hash"],);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.apiServices.getSettings(a[0], projectKey,);
 				const currentHash = stableHash(current,);
 				if (expectHash !== undefined && currentHash !== expectHash.toLowerCase()) {
@@ -102,7 +104,7 @@ export const apiServiceCommands: Record<string, CommandMeta> = {
 				type: "STD_PREDICTION",
 				modelRef: a[2],
 			};
-			if (f["dry-run"] === true) return endpoint;
+			if (executionMode(f,).dryRun) return endpoint;
 			return c.apiServices.addPredictionEndpoint(
 				a[0],
 				a[1],
@@ -196,7 +198,7 @@ export const apiServiceCommands: Record<string, CommandMeta> = {
 			if (!res.body) {
 				throw new Error("apiServices.downloadPackageArchive response did not include a body",);
 			}
-			const bytes = await Bun.write(out, new Response(res.body,), { createPath: false, },);
+			const bytes = await writeResponseToFile(out, res,);
 			return { path: out, bytes, };
 		},
 		usage:

@@ -27,8 +27,9 @@ Bun is the only supported runtime and the package manager. Examples below assume
 
 The complete agent-facing contract — stdout JSON discipline, stderr JSONL diagnostics, the error
 envelope, exit codes, `--fields` projection, command discovery, and planning/safety rules — is the
-canonical skill at [`skills/dataiku-dss/SKILL.md`](skills/dataiku-dss/SKILL.md); keep that file as
-the single source of truth for agent integrations and for the `dss install-skill` payload. Human
+skill bundle rooted at [`skills/dataiku-dss/SKILL.md`](skills/dataiku-dss/SKILL.md). The short
+entrypoint routes agents to focused references; the installed command registry remains the source
+of truth for command syntax and schemas. Human
 essentials: exactly one compact JSON value on stdout per command (void success is `{ok:true}`),
 failures as one structured JSON error object on stdout with a nonzero exit code, stderr reserved
 for JSONL diagnostics only, and exit codes `0` success / `1` usage error / `2` DSS or internal
@@ -46,8 +47,7 @@ dss commands run --output commands.json
 dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility
 ```
 
-`dss commands run` prints the compact resource/action summary; registry entries (~220k tokens
-exported) never dump to stdout — they travel only via `--output PATH`. See the canonical skill for
+`dss commands run` prints the compact resource/action summary; registry entries never dump to stdout — they travel only via `--output PATH`. See the canonical skill for
 the full `--fields` projection rules and planning workflow.
 
 ## Agent skill installation
@@ -61,7 +61,7 @@ dss install-skill --global --agent omp
 
 `--list-agents` only reports targetable agents; it does not write files. Auto-detection checks supported agent binaries/config directories (`claude`, `codex`, `cursor`, `pi`, `omp`). Passing `--agent NAME` forces one entry and reports `via:"flag"`.
 
-Project installs write `SKILL.md` under the target workspace:
+Project installs write `SKILL.md` and its sibling `references/` directory under the target workspace:
 
 - Claude: `.claude/skills/dataiku-dss/SKILL.md`
 - Codex: `.codex/skills/dataiku-dss/SKILL.md`
@@ -69,16 +69,28 @@ Project installs write `SKILL.md` under the target workspace:
 - Pi: `.pi/skills/dataiku-dss/SKILL.md`
 - OMP: `.omp/skills/dataiku-dss/SKILL.md`
 
-Global installs write under the agent's home config path, for example OMP: `~/.omp/agent/skills/dataiku-dss/SKILL.md`.
+Global installs write under the agent's home config path, for example OMP: `~/.omp/agent/skills/dataiku-dss/SKILL.md`. The reported `target` is the home directory for global installs and the resolved workspace directory for project installs; `installed[].path` names each entrypoint.
 
-Each entry in the `installed` array reports deterministic file state:
+Each entry in the `installed` array reports pre-install bundle state:
 
-- `status`: `missing` (no file at the destination), `stale` (file present but bytes differ from the canonical skill), or `current` (byte-identical to the canonical skill).
-- `changed`: whether the install writes the file — `true` for `missing` and `stale`, `false` for `current`; installs skip byte-identical files and replace missing/stale files through a same-directory temporary file followed by rename.
-- `expectedSha256`: SHA-256 of the canonical skill bytes this SDK ships.
-- `actualSha256`: SHA-256 of the file currently at the destination; present only when the file exists.
+- `status`: `missing` when the entrypoint is absent; `stale` when any bundled file is missing or differs; `current` when every bundled file matches.
+- `changed`: whether any bundled file would (or did) change. Byte-identical files are not rewritten.
+- `expectedSha256` and `actualSha256`: the canonical and existing **entrypoint** hashes. The latter is absent when the entrypoint is missing.
+- `files`: each bundled file's portable `relativePath`, destination `path`, `status`, `changed`, and hashes. Missing or stale references are detected even when `SKILL.md` itself is current.
 
-`--dry-run` and `--plan` never write; they report the same `status`/`changed`/hash fields so you can see which copies a real install would refresh — a `stale` copy is detected and would be refreshed, while a `current` copy is already byte-identical and needs no refresh.
+`--dry-run` and `--plan` never write. Real installs replace changed files through same-directory temporary files and rename, writing references before the entrypoint. Atomicity is per file, not a bundle-wide transaction. Unrelated files in the destination are preserved.
+
+### Token-efficient skill structure
+
+The entrypoint contains bootstrap/discovery, output interpretation, and universal safety rules. Seven focused files under [references/](skills/dataiku-dss/references/) cover authentication, discovery, mutations, application releases, flow maps, coding, and troubleshooting. All are linked directly from `SKILL.md` with task-specific read conditions; agents should not preload the whole directory.
+
+The entrypoint measured **851 o200k_base tokens**, down from **4,272** (about **80% less** per activation). The existing token-budget test caps it at 1,000 tokens. Reference content consumes context only when read. The published package and all five agent installers ship the same complete bundle.
+
+This uses progressive disclosure from the [Agent Skills specification](https://agentskills.io/specification) and [Anthropic's authoring guidance](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices): concise metadata/instructions, direct relative reference links, and domain-focused documents. No scripts or assets are needed here; generated command metadata is queried from the CLI rather than duplicated in the skill.
+
+Boolean flags accept bare flags or explicit `=true`/`=false` values, including aliases. Invalid boolean values fail before dispatch. Direct, batch, and local commands share execution-mode resolution; `--plan --dry-run` returns a plan with `plannedAndDryRun:true` when both modes are supported. Unreadable JSON/text payload files produce `validation_failed` usage errors (exit 1) with the flag, path, and filesystem cause.
+
+For raw streaming downloads, `--request-timeout MS` bounds each pending body read, not the total transfer duration: large progressing transfers remain supported. Buffered text/JSON consumers retain their bounded body-read budget. Request retries do not replay partially consumed streams. Project, bundle, and API-service archives and managed-folder downloads are written to private temporary files beside the destination, then renamed on success. Failures leave no partial output and preserve any existing destination.
 
 ## Credentials
 

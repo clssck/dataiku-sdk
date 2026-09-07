@@ -1,4 +1,5 @@
 import { jsonInput, num, parseBooleanOption, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, requireNoArgs, UsageError, } from "../usage.js";
@@ -30,10 +31,10 @@ export const notebookCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss notebook delete-jupyter <name>",);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.notebooks.getJupyter(a[0], pk,));
 				if (!current) return skipResult("jupyter-notebook", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "jupyter-notebook", name: a[0], current, };
 				}
 			}
@@ -48,7 +49,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss notebook clear-jupyter-outputs <name>",);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				// The real mutation is a single server-side DELETE of the
 				// outputs endpoint, so the dry run can only report the current
 				// content (read-only) and the exact request that would run; the
@@ -89,7 +90,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			const pk = f["project-key"] as string | undefined;
 			if (f["all"] === true) {
 				requireNoArgs(a, "dss notebook unload-jupyter --all [--dry-run] [--project-key KEY]",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					const planned = [];
 					for (const notebook of await c.notebooks.listJupyter(pk, { active: true, },)) {
 						for (const session of await c.notebooks.listJupyterSessions(notebook.name, pk,)) {
@@ -119,7 +120,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 				return { unloaded, resource: "jupyter-notebook", all: true, };
 			}
 			requireArgs(a, 2, "dss notebook unload-jupyter <name> <sessionId>",);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const sessions = await c.notebooks.listJupyterSessions(a[0], pk,);
 				const current = sessions.find((session,) => session.sessionId === a[1]);
 				return {
@@ -167,10 +168,10 @@ export const notebookCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss notebook delete-sql <id>",);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.notebooks.getSql(a[0], pk,));
 				if (!current) return skipResult("sql-notebook", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "sql-notebook", id: a[0], current, };
 				}
 			}
@@ -204,7 +205,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 				);
 			}
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await readIfExists(() => c.notebooks.getJupyter(a[0], pk,));
 				return {
 					dryRun: true,
@@ -244,7 +245,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 				);
 			}
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await readIfExists(() => c.notebooks.getSql(a[0], pk,));
 				return {
 					dryRun: true,
@@ -280,7 +281,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 				numRunsToRetain: num(f["retain"], "--retain",),
 				projectKey: pk,
 			};
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.notebooks.getSqlHistory(a[0], pk,);
 				return {
 					dryRun: true,

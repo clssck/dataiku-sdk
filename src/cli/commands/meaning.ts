@@ -1,4 +1,5 @@
 import { jsonInput, requiredJsonInput, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { isNotFoundError, planResult, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
@@ -54,7 +55,7 @@ export const meaningCommands: Record<string, CommandMeta> = {
 			);
 			const body = jsonInput(f,) ?? {};
 			const payload = meaningCreatePayload(a[0], a[1], a[2], body,);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return planResult("meaning", "create", {
 					asyncKind: "none",
 					method: "POST",
@@ -84,7 +85,7 @@ export const meaningCommands: Record<string, CommandMeta> = {
 				f,
 				"--data, --data-file, or --stdin is required (meaning definition).",
 			);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return planResult("meaning", "update", {
 					asyncKind: "none",
 					method: "PUT",
@@ -105,7 +106,7 @@ export const meaningCommands: Record<string, CommandMeta> = {
 	delete: {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss meaning delete <meaningId>",);
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await c.meanings.get(a[0],).catch((error,) => {
 					if (
 						isNotFoundError(error,)
@@ -116,7 +117,7 @@ export const meaningCommands: Record<string, CommandMeta> = {
 					throw error;
 				},);
 				if (!current) return skipResult("meaning", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return planResult("meaning", "delete", {
 						asyncKind: "none",
 						method: "DELETE",

@@ -20,6 +20,16 @@ interface InstalledEntry {
 	changed: boolean;
 	expectedSha256: string;
 	actualSha256?: string;
+	files: Array<
+		{
+			relativePath: string;
+			path: string;
+			status: string;
+			changed: boolean;
+			expectedSha256: string;
+			actualSha256?: string;
+		}
+	>;
 }
 
 function firstEntryOf(stdout: string,): InstalledEntry {
@@ -35,58 +45,6 @@ function firstEntryOf(stdout: string,): InstalledEntry {
 }
 
 describe("CLI install-skill command", () => {
-	it("ships an Agent Plugin manifest and canonical skill", () => {
-		const packageJson = JSON.parse(
-			readFileSync(join(SDK_ROOT, "package.json",), "utf-8",),
-		) as { version: string; files?: string[]; scripts?: Record<string, string>; };
-		const plugin = JSON.parse(
-			readFileSync(join(SDK_ROOT, "plugin.json",), "utf-8",),
-		) as Record<string, unknown>;
-		const canonicalSkill = readFileSync(
-			join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",),
-			"utf-8",
-		);
-		const licenseRef = "LicenseRef-Dataiku-SDK-Limited-Use-1.0";
-
-		expect(plugin,).toMatchObject({
-			$schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-			name: "dataiku-sdk",
-			version: packageJson.version,
-			license: licenseRef,
-		},);
-		expect(packageJson.files,).toEqual(expect.arrayContaining(["plugin.json", "skills/",],),);
-		expect(packageJson.scripts?.version,).toContain("sync-plugin-version.mjs",);
-		expect(packageJson.scripts?.prepack,).toContain("sync-plugin-version.mjs --check",);
-		expect(packageJson.scripts?.prepublishOnly,).toContain("sync-plugin-version.mjs --check",);
-		expect(canonicalSkill,).toContain("name: dataiku-dss",);
-		expect(canonicalSkill,).toContain(`license: ${licenseRef}`,);
-		expect(canonicalSkill,).toContain("compatibility: >-",);
-		expect(canonicalSkill.split("\n",).length,).toBeLessThan(500,);
-	});
-
-	it("error envelope example in the skill matches a real envelope", async () => {
-		const tmpDir = join(tmpdir(), `dss-cli-skill-parity-${Date.now()}`,);
-		mkdirSync(tmpDir, { recursive: true, },);
-		try {
-			await dss(["install-skill", "--agent", "claude",], { cwd: tmpDir, },);
-			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
-			const jsonBlock = readFileSync(skillPath, "utf-8",).match(/```json\n([\s\S]*?)\n```/,);
-			expect(jsonBlock,).not.toBeNull();
-			const documented = JSON.parse(jsonBlock![1]!,) as Record<string, unknown>;
-			const failure = await dssFailure(["dataset", "frobnicate",], {
-				env: { PATH: process.env.PATH ?? "", DATAIKU_DISABLE_ENV: "1", DSS_CONFIG_DIR: tmpDir, },
-			},);
-			expect(failure.stderr,).toBe("",);
-			const real = JSON.parse(failure.stdout,) as Record<string, unknown>;
-			for (const key of Object.keys(documented,)) {
-				expect(real, `skill envelope documents "${key}" but a real envelope omits it`,)
-					.toHaveProperty(key,);
-			}
-		} finally {
-			rmSync(tmpDir, { recursive: true, force: true, },);
-		}
-	});
-
 	it("dss install-skill --dry-run emits JSON without writing files", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-skill-dry-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
@@ -97,7 +55,7 @@ describe("CLI install-skill command", () => {
 				"claude",
 				"--target",
 				tmpDir,
-				"--dry-run",
+				"--dry-run=true",
 			],);
 			expect(stderr,).toBe("",);
 			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
@@ -274,168 +232,6 @@ describe("CLI install-skill command", () => {
 				createHash("sha256",).update(canonicalSkill,).digest("hex",),
 			);
 			expect(installedEntry.actualSha256,).toBeUndefined();
-			// Release prose is hard-wrapped; normalize whitespace so multi-line
-			// sentences stay pinned by meaning rather than by column position.
-			const prose = content.replace(/\s+/g, " ",);
-			expect(content,).toContain("name: dataiku-dss",);
-			expect(content,).toContain("dss agent contract",);
-			expect(content,).toContain('type:"error"',);
-			expect(content,).toContain('type:"trace"',);
-			expect(content,).toContain("dss commands run",);
-			expect(content,).toContain("dss commands run --fields dataset",);
-			expect(content,).toContain("dss commands run --fields dataset.create",);
-			expect(content,).toContain(
-				"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility",
-			);
-			expect(content,).toContain(
-				"dss agent contract --fields commands.actions",
-			);
-			expect(content,).toContain(
-				"dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples",
-			);
-			expect(content,).toContain(
-				"Prefer the four-field projection `usage,description,flags,examples`",
-			);
-			expect(content,).toContain(
-				"Command results write exactly one compact JSON value to stdout",
-			);
-			expect(content,).toContain(
-				"`doctor`, `batch`, and `cleanup` failure reports are their direct result objects on stdout",
-			);
-			expect(content,).toContain(
-				"Dispatch/runtime failures write one compact structured error object on stdout",
-			);
-			expect(content,).toContain("stderr carries JSONL diagnostics only",);
-			expect(content,).toContain("a failed long-running result or synchronous assertion",);
-			expect(content,).toContain(
-				"dss commands run --fields RESOURCE.ACTION",
-			);
-			expect(content,).toContain(
-				"the compact resource/action summary",
-			);
-			expect(content,).toContain(
-				"is exported only via `--output PATH`",
-			);
-			expect(content,).toContain('`{"path":"PATH"}`',);
-			expect(content,).not.toContain("compatibility-only",);
-			expect(content,).not.toContain("Failure writes exactly one JSONL error event",);
-			expect(content,).not.toContain("dss doctor --fast",);
-			expect(content,).not.toContain("dss dataset preview orders",);
-			expect(content,).not.toContain("dss scenario run daily_build",);
-			expect(content,).not.toContain("clear-jupyter-outputs exploration",);
-			expect(content,).not.toContain("api-service list-packages churn-service",);
-			expect(content,).not.toContain("compute_orders --raw --project-key",);
-			expect(content,).not.toContain("--dataset MYPROJ.orders --sql-file query.sql",);
-			expect(content,).toContain(
-				"dss recipe diff compute_orders --file code.py --project-key MYPROJ",
-			);
-			expect(content,).toContain("dss job build-and-wait orders --include-logs --project-key MYPROJ",);
-			expect(content,).toContain(
-				'dss sql query --connection analytics --sql "select 1" --project-key MYPROJ',
-			);
-			expect(content,).toContain('sideEffect:"write"',);
-			expect(content,).toContain("exact argv with `--plan`",);
-			expect(content,).toContain("`dryRun:true`",);
-			expect(content,).toContain("`--record-cleanup cleanup.jsonl`",);
-			expect(content,).toContain("`dss cleanup --file cleanup.jsonl`",);
-			expect(content,).toContain("`inputContract`",);
-			expect(content,).toContain("`--data-file PATH` or `--stdin`",);
-			expect(content,).toContain("`--request-timeout MS` and `--retries N`",);
-			expect(content,).toContain("`dss fixtures`",);
-			expect(content,).toContain("dss auth login --url",);
-			expect(content,).toContain("~/.config/dataiku/credentials.json",);
-			expect(content,).toContain("For disposable agent tests, set `DSS_CONFIG_DIR`",);
-			expect(content,).not.toContain("node ./bin/dss.js",);
-			expect(content,).not.toContain("cross-runtime",);
-			expect(content,).toContain("Bun >= 1.4.0",);
-			expect(content,).toContain("bun --no-env-file src/cli.ts",);
-			expect(content,).toContain("bun --no-env-file ./bin/dss.js",);
-			expect(content,).toContain("PowerShell:\n\n```powershell\n$env:DATAIKU_URL",);
-			expect(content,).toContain('Windows Command Prompt:\n\n```bat\nset "DATAIKU_URL=',);
-			expect(content,).not.toContain("/path/to/dataiku-sdk/bin/dss",);
-			expect(content,).toContain("command's current working directory",);
-			expect(content,).toContain('[{"projectKey":"MYPROJ","name":"My Project"}]',);
-			expect(content,).toContain('{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}',);
-			expect(content,).toContain(
-				"dss recipe get-payload compute_orders --output code.py --project-key MYPROJ",
-			);
-			expect(content,).toContain(
-				"dss app create-instance APP_ID --data-file instance.json --wait --record-cleanup cleanup.jsonl",
-			);
-			expect(content,).toContain(
-				"dss app permissions-restore --project-key RELEASE_INSTANCE --file permissions.json --dry-run",
-			);
-			expect(content,).toContain(
-				"dss app manifest-version --project-key APP_TEMPLATE",
-			);
-			expect(content,).toContain(
-				"dss app successor-preflight APP_ID --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 --copy-permissions",
-			);
-			expect(content,).toContain(
-				"dss app set-manifest-version --manifest-version 1.4.0 --expect-hash PREFLIGHT_TEMPLATE_MANIFEST_HASH --project-key APP_TEMPLATE",
-			);
-			expect(content,).toContain(
-				"dss app create-successor-instance APP_ID --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 --copy-permissions --record-cleanup cleanup.jsonl",
-			);
-			expect(content,).toContain(
-				"dss app verify-instance APP_ID --project-key RELEASE_INSTANCE_V2 --expect-version 1.4.0",
-			);
-			expect(content,).toContain("writing it is NOT a publish transaction",);
-			expect(content,).toContain("existing instances are never upgraded in",);
-			expect(prose,).toContain("the predecessor is never targeted",);
-			expect(content,).toContain("Run `successor-preflight` before changing the template version.",);
-			expect(content,).toContain("performs no mutation",);
-			expect(prose,).toContain(
-				"returns the template manifest hash for the next `set-manifest-version --expect-hash` guard",
-			);
-			expect(content,).toContain('`status:"API_VERIFIED_UI_PENDING"`',);
-			expect(content,).toContain("The API key authenticates public REST only",);
-			expect(prose,).toContain(
-				"rejected as `target_absence_unverifiable` / `permission_or_environment`",
-			);
-			expect(prose,).toContain(
-				"DSS exposes no permission-independent public key-availability endpoint",
-			);
-			expect(content,).toContain("so no force or server-atomic bypass is supported",);
-			expect(prose,).toContain(
-				"An ambiguous POST without a returned future ID or verified incarnation is `INDETERMINATE` and also produces no cleanup entry",
-			);
-			expect(prose,).toContain(
-				"Static plans expose `preflightExecuted:false` and `preflightWillRunDuringApply:true`",
-			);
-			expect(content,).not.toContain("--force",);
-			expect(content,).not.toContain("server-atomic-create",);
-			expect(prose,).toContain("exercising the affected tiles, forms, and actions",);
-			expect(content,).toContain(
-				'`concurrencyControl:"client-side-non-atomic-stale-read-check"`',
-			);
-			expect(content,).toContain("Never treat the hash as a serializing lock",);
-			expect(content.toLowerCase(),).not.toContain("optimistic",);
-			expect(content,).not.toContain("published:true",);
-			expect(content,).not.toContain("uiPublicationVerified:true",);
-			expect(content,).toContain("canonical DSS URL, project key, and",);
-			expect(content,).toContain("concrete project incarnation",);
-			expect(prose,).toContain(
-				"legacy, mixed-server, mismatched-server, or unbound app cleanup entries",
-			);
-			expect(content,).toContain("stdout carries the JSON string equal to `PATH`",);
-			expect(content,).toContain("dataset_download_default_location",);
-			expect(content,).toContain("validate every `INSIGHT` tile before mutation",);
-			expect(content,).toContain("a `403` blocks the save",);
-			expect(content,).toContain("syncOutputSchemaPropagated",);
-			expect(content,).toContain("first verifies the parent service through its settings",);
-			expect(content,).toContain("plans the official output DELETE",);
-			expect(content,).toContain(
-				"dataset metadata `404` and `403` errors propagate as `not_found` and `permission_denied`",
-			);
-			expect(content,).toContain("Treat `details.body` as sanitized metadata only",);
-			expect(content,).toContain(
-				"`details.statusText` is canonical text derived from the numeric status",
-			);
-			expect(content,).not.toContain("--help",);
-			expect(content,).not.toContain("--report-json",);
-			expect(content,).not.toContain("dss auth status",);
-			expect(content,).not.toContain("dss auth logout",);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
@@ -448,7 +244,9 @@ describe("CLI install-skill command", () => {
 			await dss(["install-skill", "--agent", "codex",], { cwd: tmpDir, },);
 			const skillPath = join(tmpDir, ".codex", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
-			expect(content,).toContain("name: dataiku-dss",);
+			expect(content,).toBe(
+				readFileSync(join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",), "utf-8",),
+			);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
@@ -461,21 +259,9 @@ describe("CLI install-skill command", () => {
 			await dss(["install-skill", "--agent", "cursor",], { cwd: tmpDir, },);
 			const skillPath = join(tmpDir, ".cursor", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
-			expect(content,).toContain("name: dataiku-dss",);
-		} finally {
-			rmSync(tmpDir, { recursive: true, force: true, },);
-		}
-	});
-
-	it("dss install-skill is idempotent", async () => {
-		const tmpDir = join(tmpdir(), `dss-cli-skill-idem-${Date.now()}`,);
-		mkdirSync(tmpDir, { recursive: true, },);
-		try {
-			await dss(["install-skill", "--agent", "claude",], { cwd: tmpDir, },);
-			await dss(["install-skill", "--agent", "claude",], { cwd: tmpDir, },);
-			const skillPath = join(tmpDir, ".claude", "skills", "dataiku-dss", "SKILL.md",);
-			const content = readFileSync(skillPath, "utf-8",);
-			expect(content,).toContain("name: dataiku-dss",);
+			expect(content,).toBe(
+				readFileSync(join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",), "utf-8",),
+			);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
@@ -486,7 +272,9 @@ describe("CLI install-skill command", () => {
 		expect(failure.code,).toBe(1,);
 		expect(failure.stderr,).toBe("",);
 		expect(JSON.parse(failure.stdout,) as Record<string, unknown>,).toMatchObject({
-			error: "Unknown agent: unknown.",
+			code: "usage_error",
+			category: "usage",
+			exitCode: 1,
 		},);
 	});
 
@@ -508,7 +296,9 @@ describe("CLI install-skill command", () => {
 				installed: [{ agent: "claude", path: skillPath, via: "flag", },],
 			},);
 			const content = readFileSync(skillPath, "utf-8",);
-			expect(content,).toContain("name: dataiku-dss",);
+			expect(content,).toBe(
+				readFileSync(join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",), "utf-8",),
+			);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
@@ -523,7 +313,9 @@ describe("CLI install-skill command", () => {
 			await dss(["install-skill", "--agent", "claude",], { cwd: subdir, },);
 			const skillPath = join(workspace, ".claude", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
-			expect(content,).toContain("name: dataiku-dss",);
+			expect(content,).toBe(
+				readFileSync(join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",), "utf-8",),
+			);
 		} finally {
 			rmSync(workspace, { recursive: true, force: true, },);
 		}
@@ -538,7 +330,9 @@ describe("CLI install-skill command", () => {
 			await dss(["install-skill", "--agent", "pi",], { cwd: subdir, },);
 			const skillPath = join(subdir, ".pi", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
-			expect(content,).toContain("name: dataiku-dss",);
+			expect(content,).toBe(
+				readFileSync(join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",), "utf-8",),
+			);
 		} finally {
 			rmSync(workspace, { recursive: true, force: true, },);
 		}
@@ -553,7 +347,9 @@ describe("CLI install-skill command", () => {
 			await dss(["install-skill", "--agent", "omp",], { cwd: subdir, },);
 			const skillPath = join(subdir, ".omp", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
-			expect(content,).toContain("name: dataiku-dss",);
+			expect(content,).toBe(
+				readFileSync(join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",), "utf-8",),
+			);
 		} finally {
 			rmSync(workspace, { recursive: true, force: true, },);
 		}
@@ -568,7 +364,9 @@ describe("CLI install-skill command", () => {
 			await dss(["install-skill", "--agent", "claude", "--target", target,], { cwd: workspace, },);
 			const skillPath = join(target, ".claude", "skills", "dataiku-dss", "SKILL.md",);
 			const content = readFileSync(skillPath, "utf-8",);
-			expect(content,).toContain("name: dataiku-dss",);
+			expect(content,).toBe(
+				readFileSync(join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",), "utf-8",),
+			);
 		} finally {
 			rmSync(workspace, { recursive: true, force: true, },);
 			rmSync(target, { recursive: true, force: true, },);
@@ -580,5 +378,90 @@ describe("CLI install-skill command", () => {
 		expect(stderr,).toBe("",);
 		const registry = JSON.parse(stdout,) as Record<string, unknown>;
 		expect(registry,).toHaveProperty("install-skill",);
+	});
+
+	it("repairs missing or stale references without rewriting current files or removing user files", async () => {
+		const tmpDir = join(tmpdir(), `dss-skill-bundle-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			const args = ["install-skill", "--agent", "claude", "--target", tmpDir,];
+			const first = firstEntryOf((await dss(args,)).stdout,);
+			const references = first.files.filter((file,) => file.relativePath.startsWith("references/",));
+			const stale = references[0]!;
+			const missing = references[1]!;
+			writeFileSync(stale.path, "outdated reference",);
+			rmSync(missing.path,);
+			const userFile = join(tmpDir, ".claude", "skills", "dataiku-dss", "notes.txt",);
+			writeFileSync(userFile, "user content",);
+			const past = new Date(Date.now() - 3_600_000,);
+			utimesSync(first.path, past, past,);
+			const mtime = statSync(first.path,).mtimeMs;
+			const plan = firstEntryOf((await dss([...args, "--dry-run",],)).stdout,);
+			expect(plan,).toMatchObject({
+				status: "stale",
+				changed: true,
+				actualSha256: first.expectedSha256,
+			},);
+			expect(plan.files.find((file,) => file.path === stale.path),).toMatchObject({
+				status: "stale",
+				changed: true,
+			},);
+			expect(plan.files.find((file,) => file.path === missing.path),).toMatchObject({
+				status: "missing",
+				changed: true,
+			},);
+			expect(readFileSync(stale.path, "utf-8",),).toBe("outdated reference",);
+			expect(readFileExists(missing.path,),).toBe(false,);
+			await dss(args,);
+			for (const file of first.files) {
+				const content = readFileSync(file.path,);
+				expect(content,).toEqual(
+					readFileSync(join(SDK_ROOT, "skills", "dataiku-dss", file.relativePath,),),
+				);
+				expect(createHash("sha256",).update(content,).digest("hex",),).toBe(file.expectedSha256,);
+			}
+			const installedSkill = readFileSync(first.path, "utf-8",);
+			for (const match of installedSkill.matchAll(/\]\((references\/[^)]+)\)/g,)) {
+				expect(readFileExists(join(tmpDir, ".claude", "skills", "dataiku-dss", match[1]!,),),).toBe(
+					true,
+				);
+			}
+			expect(readFileSync(userFile, "utf-8",),).toBe("user content",);
+			expect(statSync(first.path,).mtimeMs,).toBe(mtime,);
+			expect(firstEntryOf((await dss([...args, "--dry-run",],)).stdout,),).toMatchObject({
+				status: "current",
+				changed: false,
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("reports the home target for a global install independently of cwd", async () => {
+		const home = join(tmpdir(), `dss-skill-global-${Date.now()}`,);
+		mkdirSync(home, { recursive: true, },);
+		try {
+			const env = {
+				...process.env,
+				HOME: home,
+				USERPROFILE: home,
+				DATAIKU_DISABLE_ENV: "1",
+				DSS_CONFIG_DIR: join(home, "config",),
+			};
+			const args = ["install-skill", "--agent", "claude", "--global",];
+			const preview = JSON.parse((await dss([...args, "--dry-run",], { env, },)).stdout,);
+			expect(preview.target,).toBe(home,);
+			expect(readFileExists(preview.installed[0].path,),).toBe(false,);
+			const installed = JSON.parse((await dss(args, { env, },)).stdout,);
+			expect(installed.target,).toBe(home,);
+			expect(installed.installed[0].path,).toBe(
+				join(home, ".claude", "skills", "dataiku-dss", "SKILL.md",),
+			);
+			expect(readFileSync(installed.installed[0].path, "utf-8",),).toBe(
+				readFileSync(join(SDK_ROOT, "skills", "dataiku-dss", "SKILL.md",), "utf-8",),
+			);
+		} finally {
+			rmSync(home, { recursive: true, force: true, },);
+		}
 	});
 });

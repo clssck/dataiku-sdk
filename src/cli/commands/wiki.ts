@@ -1,5 +1,6 @@
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { jsonInput, textInput, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -32,12 +33,12 @@ export const wikiCommands: Record<string, CommandMeta> = {
 			if (!name) throw new UsageError("--name is required. Usage: dss wiki create --name NAME",);
 			const content = textInput(f,);
 			const pk = f["project-key"] as string | undefined;
-			if (f["if-not-exists"] === true || f["dry-run"] === true) {
+			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const existing = (await c.wiki.list(pk,)).find((article,) => article.article.name === name);
-				if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("wiki", existing.article.id, "exists", { current: existing, },);
 				}
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "create",
@@ -83,7 +84,7 @@ export const wikiCommands: Record<string, CommandMeta> = {
 					"--name, --content, --file, --data, --data-file, or --stdin is required.",
 				);
 			}
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.wiki.get(a[0], f["project-key"] as string | undefined,);
 				const next = deepMerge(current as unknown as Record<string, unknown>, data ?? {},);
 				if (name !== undefined) {
@@ -113,10 +114,10 @@ export const wikiCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss wiki delete <id-or-name>",);
 			const pk = f["project-key"] as string | undefined;
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.wiki.get(a[0], pk,));
 				if (!current) return skipResult("wiki", a[0], "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "wiki", article: a[0], current, };
 				}
 			}

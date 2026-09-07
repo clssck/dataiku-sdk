@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import * as fs from "node:fs/promises";
+import { homedir, } from "node:os";
+import { resolve, } from "node:path";
 import { num, unknownJsonInput, } from "./cli/coerce.js";
 import { commands, } from "./cli/commands/index.js";
 import {
@@ -24,6 +26,7 @@ import {
 import { runDoctor, runFixtures, } from "./cli/doctor.js";
 import { dataikuEnvironmentEnabled, loadEnvFile, } from "./cli/env.js";
 import {
+	executionMode,
 	FLAG_ALIASES,
 	isNegativeNumberToken,
 	parseArgs,
@@ -457,7 +460,7 @@ function validateSupportedCommandFlags(
 			);
 		}
 	}
-	if (flags["dry-run"] === true && !entry.dryRun) {
+	if (executionMode(flags,).dryRun && !entry.dryRun) {
 		throw new UsageError(
 			`--dry-run is not supported for ${resource} ${action}.`,
 			"unknown_flag",
@@ -711,7 +714,7 @@ async function validateBatchStep(
 function batchStepNeedsClient(argv: string[],): boolean {
 	try {
 		const { positional, flags, } = parseArgs(argv,);
-		if (flags["plan"] === true) return false;
+		if (executionMode(flags,).plan) return false;
 		const resource = positional[0];
 		if (!resource) return false;
 		const isMetaCommand = META_COMMAND_RESOURCES[resource] === true;
@@ -792,7 +795,7 @@ function validateBatchStepMode(argv: string[], index: number,): void {
 	} catch {
 		return;
 	}
-	if (flags["plan"] !== true && flags["dry-run"] !== true) return;
+	if (!executionMode(flags,).plan && !executionMode(flags,).dryRun) return;
 	const resource = positional[0];
 	const action = positional[1];
 	if (!resource) return;
@@ -803,14 +806,14 @@ function validateBatchStepMode(argv: string[], index: number,): void {
 	if (!meta) return;
 	const entry = cachedCommandRegistry()[resource]?.[action ?? ""];
 	if (!entry) return;
-	if (flags["plan"] === true && !entry.flags.some((flag,) => flag.name === "plan")) {
+	if (executionMode(flags,).plan && !entry.flags.some((flag,) => flag.name === "plan")) {
 		throw new UsageError(
 			`Batch step ${index} requests --plan, which is not supported for ${resource} ${action}.`,
 			"unknown_flag",
 			"Remove --plan from the step; only mutating commands support --plan.",
 		);
 	}
-	if (flags["dry-run"] === true && !entry.dryRun) {
+	if (executionMode(flags,).dryRun && !entry.dryRun) {
 		throw new UsageError(
 			`Batch step ${index} requests --dry-run, which is not supported for ${resource} ${action}.`,
 			"unknown_flag",
@@ -864,27 +867,31 @@ function runInstallSkill(flags: Record<string, string | boolean>,): Record<strin
 	}
 
 	const scope = isGlobal ? "global" : "project";
-	const cwd = targetDir ?? (isGlobal ? process.cwd() : findWorkspaceRoot(process.cwd(),));
+	const cwd = isGlobal
+		? homedir()
+		: targetDir
+		? resolve(targetDir,)
+		: findWorkspaceRoot(process.cwd(),);
 	const installed = planSkillInstalls(targets, { global: isGlobal, cwd, },);
 
-	if (flags["plan"] === true) {
+	if (executionMode(flags,).plan) {
 		return planResult("install-skill", "run", {
 			identifiers: { scope, target: cwd, },
 			payload: { installed, },
 			idempotency: "none",
 			asyncKind: "none",
 			exitCodesOnFailure: { usage: 1, error: 2, transient: 3, },
-			plannedAndDryRun: flags["dry-run"] === true,
+			plannedAndDryRun: executionMode(flags,).dryRun,
 		},);
 	}
 
 	return {
 		scope,
 		target: cwd,
-		installed: flags["dry-run"] === true
+		installed: executionMode(flags,).dryRun
 			? installed
 			: installSkill(targets, { global: isGlobal, cwd, },),
-		...(flags["dry-run"] === true ? { dryRun: true, } : {}),
+		...(executionMode(flags,).dryRun ? { dryRun: true, } : {}),
 	};
 }
 
@@ -937,7 +944,7 @@ function cleanupPlan(flags: Record<string, string | boolean>,): Record<string, u
 		idempotency: "none",
 		asyncKind: "none",
 		exitCodesOnFailure: META_PLAN_EXIT_CODES,
-		plannedAndDryRun: flags["dry-run"] === true,
+		plannedAndDryRun: executionMode(flags,).dryRun,
 	},);
 }
 
@@ -959,12 +966,12 @@ function batchPlan(flags: Record<string, string | boolean>,): Record<string, unk
 		payload: {
 			steps: steps.map((argv,) => redactArgv(argv,)),
 			continueOnError: flags["continue-on-error"] === true,
-			dryRun: flags["dry-run"] === true,
+			dryRun: executionMode(flags,).dryRun,
 		},
 		idempotency: "none",
 		asyncKind: "none",
 		exitCodesOnFailure: BATCH_PLAN_EXIT_CODES,
-		plannedAndDryRun: flags["dry-run"] === true,
+		plannedAndDryRun: executionMode(flags,).dryRun,
 	},);
 }
 
@@ -996,7 +1003,7 @@ async function runMetaCommand(
 				"auth only supports 'login'. To check credentials/connectivity, run 'dss doctor'.",
 			);
 		}
-		if (flags["plan"] === true) {
+		if (executionMode(flags,).plan) {
 			return { action, result: authLoginPlan(flags,), exitCode: 0, };
 		}
 		return { action, result: await authMeta.handler(flags,), exitCode: 0, };
@@ -1069,7 +1076,7 @@ async function runMetaCommand(
 			throw unknownActionError("cleanup", action, ["run",],);
 		}
 		currentCommandContext.action = action ?? "run";
-		if (flags["plan"] === true) {
+		if (executionMode(flags,).plan) {
 			return { action: "run", result: cleanupPlan(flags,), exitCode: 0, };
 		}
 		const { result, exitCode, } = await runCleanup(flags,);
@@ -1087,7 +1094,7 @@ async function runMetaCommand(
 			throw unknownActionError("batch", action, ["run",],);
 		}
 		currentCommandContext.action = action ?? "run";
-		if (flags["plan"] === true) {
+		if (executionMode(flags,).plan) {
 			return { action: "run", result: batchPlan(flags,), exitCode: 0, };
 		}
 		const { result, exitCode, } = await runBatch(flags,);
@@ -1106,7 +1113,7 @@ function assertCleanupLedgerSupported(
 	action: string,
 	flags: Record<string, string | boolean>,
 ): void {
-	if (typeof flags["record-cleanup"] !== "string" || flags["dry-run"] === true) return;
+	if (typeof flags["record-cleanup"] !== "string" || executionMode(flags,).dryRun) return;
 	if (!supportsCleanupLedger(resource, action,)) {
 		throw new UsageError(`--record-cleanup is not supported for ${resource} ${action}.`,);
 	}
@@ -1129,7 +1136,7 @@ async function preflightCleanupLedgerForFlags(
 	client: DataikuClient,
 	flags: Record<string, string | boolean>,
 ): Promise<void> {
-	if (flags["dry-run"] === true) return;
+	if (executionMode(flags,).dryRun) return;
 	const ledgerPath = flags["record-cleanup"];
 	if (typeof ledgerPath !== "string") return;
 	if (ledgerPath.trim().length === 0) {
@@ -1193,7 +1200,7 @@ async function recordCleanupLedgerEntry(
 	projectKey: string | undefined,
 ): Promise<void> {
 	const ledgerPath = flags["record-cleanup"];
-	if (typeof ledgerPath !== "string" || flags["dry-run"] === true) return;
+	if (typeof ledgerPath !== "string" || executionMode(flags,).dryRun) return;
 	const entry = cleanupLedgerEntry(resource, action, args, flags, result, projectKey,);
 	if (entry) {
 		await appendCleanupLedgerEntry(ledgerPath, entry, client.getBaseUrl(),);
@@ -1225,7 +1232,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 	}
 	const steps = parseBatchSteps(payload,);
 
-	if (flags["dry-run"] === true) {
+	if (executionMode(flags,).dryRun) {
 		const batchProjectKey = typeof flags["project-key"] === "string"
 			? flags["project-key"]
 			: dataikuEnvironmentEnabled()
@@ -1369,7 +1376,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 				const meta = resourceActions[action];
 				if (!meta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
 				validateSupportedCommandFlags(resource, action, stepFlags,);
-				if (stepFlags["plan"] === true) {
+				if (executionMode(stepFlags,).plan) {
 					result = buildMutationPlan(resource, action, meta, positional.slice(2,), stepFlags,);
 				} else {
 					if (!client) {
@@ -1835,7 +1842,7 @@ async function main(): Promise<void> {
 	validateSupportedCommandFlags(resource, action, flags,);
 
 	const args = positional.slice(2,);
-	if (flags["plan"] === true) {
+	if (executionMode(flags,).plan) {
 		const plan = buildMutationPlan(resource, action, actionMeta, args, flags,);
 		writeCommandResult(plan,);
 		return;

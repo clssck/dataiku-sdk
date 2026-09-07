@@ -61,7 +61,13 @@ import { commands, } from "./commands/index.js";
 import { projectLibraryPutPayload, } from "./commands/project-library.js";
 import { resolveSqlQueryInvocation, } from "./commands/sql.js";
 import { dataikuEnvironmentEnabled, } from "./env.js";
-import { BOOLEAN_FLAGS, FLAG_ALIASES, KNOWN_LONG_FLAGS, SHORT_FLAGS, } from "./flags.js";
+import {
+	BOOLEAN_FLAGS,
+	executionMode,
+	FLAG_ALIASES,
+	KNOWN_LONG_FLAGS,
+	SHORT_FLAGS,
+} from "./flags.js";
 import { flowZoneColor, flowZoneMoveItems, flowZoneName, } from "./helpers/flow-zone.js";
 import { recipeBackupPath, recipeRunShouldWait, } from "./helpers/recipe.js";
 import { encodedProjectEndpointForPlan, planResult, } from "./output.js";
@@ -4122,7 +4128,7 @@ export function commandPlanShape(
 				},)
 			}`;
 			const guarded = flags["if-exists"] === true
-				|| flags["dry-run"] === true
+				|| executionMode(flags,).dryRun
 				|| expectedProjectIncarnation !== undefined;
 			if (!guarded) {
 				return {
@@ -4139,7 +4145,7 @@ export function commandPlanShape(
 					provided: true,
 					expectedHash: expectedProjectIncarnation,
 				};
-			if (flags["dry-run"] === true) {
+			if (executionMode(flags,).dryRun) {
 				return {
 					method: "GET",
 					endpoint: projectProbe,
@@ -4624,7 +4630,7 @@ export function buildMutationPlan(
 		asyncKind: entry.async,
 		exitCodesOnFailure: exitCodesOnFailure(entry,),
 		idempotency: entry.idempotency,
-		plannedAndDryRun: flags["dry-run"] === true,
+		plannedAndDryRun: executionMode(flags,).dryRun,
 	},);
 }
 /**

@@ -2,6 +2,7 @@ import { ClientValidationError, } from "../../errors.js";
 import type { FlowZoneItemInput, } from "../../resources/flow-zones.js";
 import type { FlowZone, } from "../../schemas.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
+import { executionMode, } from "../flags.js";
 import {
 	ensureFlowZonePlanTarget,
 	findFlowZoneForPlan,
@@ -92,13 +93,13 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 				color: flowZoneColor(f["color"],),
 				projectKey: pk,
 			};
-			if (f["if-not-exists"] === true || f["dry-run"] === true) {
+			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const list = await c.flowZones.list(pk,);
 				const existing = list.find((zone,) => zone.name === name);
-				if (existing && f["if-not-exists"] === true && f["dry-run"] !== true) {
+				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("flow-zone", existing.id, "exists", { current: existing, },);
 				}
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return {
 						dryRun: true,
 						action: "create",
@@ -133,7 +134,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 				color: flowZoneColor(f["color"],),
 				projectKey: pk,
 			};
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				const current = await c.flowZones.get(zoneId, pk,);
 				const next = deepMerge(current as unknown as Record<string, unknown>, patch,);
 				return { dryRun: true, action: "update", resource: "flow-zone", id: zoneId, current, next, };
@@ -149,12 +150,12 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, "dss flow-zone delete <id>",);
 			const zoneId = flowZoneId(a[0],);
-			if (f["dry-run"] === true || f["if-exists"] === true) {
+			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() =>
 					c.flowZones.get(zoneId, f["project-key"] as string | undefined,)
 				);
 				if (!current) return skipResult("flow-zone", zoneId, "missing",);
-				if (f["dry-run"] === true) {
+				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "flow-zone", id: zoneId, current, };
 				}
 			}
@@ -184,7 +185,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 				);
 			}
 
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "move",
@@ -252,7 +253,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 				const pruneItems = Array.isArray(step.pruneItems,) ? step.pruneItems : [];
 				return count + pruneItems.length;
 			}, 0,);
-			if (f["dry-run"] === true) {
+			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "organize",
