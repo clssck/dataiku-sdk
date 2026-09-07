@@ -68,6 +68,14 @@ prerequisites are recorded as **blocked**, never passed. Required blocked cases 
 nonzero; optional blocked cases remain visible in reports. Global administration,
 external Git mutations and unsupported capabilities are not silently exercised.
 
+For an admin-only disposable SQL target (verified on the hosted trial), create a uniquely
+named connection with `POST /public/api/admin/connections/` and body
+`{"name":"<unique-name>","type":"JDBC","params":{"driver":"org.sqlite.JDBC","jdbcurl":"jdbc:sqlite::memory:","properties":[]},"usableBy":"ALLOWED","allowedGroups":[],"allowWrite":false,"allowManagedDatasets":false}`.
+Run `DATAIKU_SQL_CONNECTION=<name> bun run test:live all --profile infrastructure --case infrastructure.sql-select`.
+In a `finally` block, verify that the connection still matches the created definition, then
+remove it with `DELETE /public/api/admin/connections/<name>`. `all` cleans the owned projects,
+not this separately created connection. The in-memory database creates no database file.
+
 State is ignored by Git under `.live-tests/<server-hash>/`. Use `--state-dir PATH` for
 another lab or `--manifest PATH` to select an existing manifest for `run`, `clean` or
 `status` (not `setup`/`all`). Keep the manifest and
