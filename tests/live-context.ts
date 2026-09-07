@@ -37,6 +37,9 @@ export const LIVE_CSV_FORMAT = {
 	},
 } as const;
 
+/** The infrastructure profile authorizes only this constant, table-free SQL probe. */
+export const LIVE_SQL_PROBE = "SELECT 1 AS one";
+
 export const LIVE_PROFILES = ["core", "ml", "applications", "infrastructure",] as const;
 export interface LiveFixtures {
 	datasets: Record<string, string>;
@@ -263,6 +266,16 @@ export function assertLiveCommandScope(
 	if (resource === "project-git" && entry.mutatesDss) {
 		throw new Error("Git mutations require an isolated remote harness",);
 	}
+	if (
+		resource === "sql" && action === "query"
+		&& manifest.profiles.includes("infrastructure",)
+		&& args.length === 3 && args[2] === LIVE_SQL_PROBE
+		&& owned(flags["project-key"],) && flags["project-key"] === selectedProject
+		&& Object.keys(flags,).every(flag => ["connection", "dataset", "project-key",].includes(flag,))
+		&& [flags.connection, flags.dataset,].filter(value => typeof value === "string" && value.trim())
+				.length === 1
+		&& (flags.connection === undefined || flags.dataset === undefined)
+	) return;
 	if (entry.mutatesDss && !entry.requiresProject) {
 		throw new Error(
 			`Global mutation is not authorized by a project sandbox: ${resource}.${action}`,
@@ -358,7 +371,10 @@ export class LiveRunContext implements LiveContext {
 			args.push("--project-key", selected,);
 		}
 		assertLiveCommandScope(args, this.manifest, selected,);
-		if (entry?.mutatesDss && entry.requiresProject && !executionMode(parsed.flags,).plan) {
+		if (
+			entry?.mutatesDss && (entry.requiresProject || resource === "sql" && action === "query")
+			&& !executionMode(parsed.flags,).plan
+		) {
 			const identity = this.manifest.projects.find(p => p.key === selected);
 			const details = await this.client.projects.get(selected,);
 			if (

@@ -5,14 +5,16 @@ import * as path from "node:path";
 
 import {
 	evaluateCleanupIntegrity,
+	type LabPointer,
 	layoutFor,
 	parseLiveSuiteArgs,
 	readPointer,
 	verifyLiveRoot,
+	verifyProjectIntegrity,
 } from "../scripts/live-suite.js";
-import type { LabPointer, } from "../scripts/live-suite.js";
 import { DataikuClient, } from "../src/client.js";
 import { DataikuError, } from "../src/errors.js";
+import { stableHash, } from "../src/utils/stable-hash.js";
 import type { LiveManifest, } from "../tests/live-context.js";
 import { sendJson, withCliServer, } from "./cli/_harness.js";
 
@@ -122,6 +124,67 @@ describe("evaluateCleanupIntegrity", () => {
 		expect(report.verified,).toBe(false,);
 		expect(report.missing,).toEqual(["SDK_LIVE_DEF456_MAIN",],);
 		expect(report.deletedOwned,).toEqual([],);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Run-phase integrity: unreadable projects must not collapse into changed/missing
+// ---------------------------------------------------------------------------
+
+function detailsFor(key: string, name = key,) {
+	return { projectKey: key, name, owner: "ci", creationTag: { lastModifiedOn: 1, }, };
+}
+async function run(statuses: Record<string, number>, changed: string[] = [],) {
+	const keys = ["UNCHANGED", ...changed, ...Object.keys(statuses,),];
+	const before = Object.fromEntries(keys.map(key => [key, stableHash(detailsFor(key,),),]),);
+	let report: Awaited<ReturnType<typeof verifyProjectIntegrity>> | undefined;
+	await withCliServer((req, res,) => {
+		const match = /\/public\/api\/projects\/([^/]+)\/?$/.exec(req.url ?? "",);
+		if (!match) {
+			sendJson(res, keys.map(projectKey => ({ projectKey, })),);
+			return;
+		}
+		const key = decodeURIComponent(match[1]!,);
+		if (statuses[key]) {
+			res.writeHead(statuses[key]!, { "Content-Type": "application/json", },);
+			res.end("{}",);
+			return;
+		}
+		sendJson(res, detailsFor(key, changed.includes(key,) ? "mutated" : key,),);
+	}, async url => {
+		report = await verifyProjectIntegrity(
+			new DataikuClient({ url, apiKey: "offline-key", retryMaxAttempts: 1, },),
+			manifestWithProjects([],),
+			before,
+		);
+	},);
+	return report!;
+}
+
+describe("verifyProjectIntegrity", () => {
+	it("verifies unchanged project metadata", async () => {
+		expect(await run({},),).toEqual({
+			verified: true,
+			missing: [],
+			changed: [],
+			unreadable: [],
+			unexplained: [],
+			deletedOwned: [],
+		},);
+	});
+	it("fails closed on unreadable metadata without inventing drift", async () => {
+		const report = await run({ FORBIDDEN: 403, UNAVAILABLE: 500, },);
+		expect(report.verified,).toBe(false,);
+		expect(report.unreadable,).toEqual(["FORBIDDEN", "UNAVAILABLE",],);
+		expect(report.missing,).toEqual([],);
+		expect(report.changed,).toEqual([],);
+	});
+	it("keeps actual drift and disappearance separate from unreadable metadata", async () => {
+		const report = await run({ GONE: 404, FORBIDDEN: 403, UNAVAILABLE: 500, }, ["CHANGED",],);
+		expect(report.verified,).toBe(false,);
+		expect(report.missing,).toEqual(["GONE",],);
+		expect(report.changed,).toEqual(["CHANGED",],);
+		expect(report.unreadable,).toEqual(["FORBIDDEN", "UNAVAILABLE",],);
 	});
 });
 

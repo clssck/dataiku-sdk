@@ -508,6 +508,8 @@ interface IntegrityReport {
 	verified: boolean;
 	missing: string[];
 	changed: string[];
+	/** Projects whose current metadata could not be read; identity remains unknown. */
+	unreadable: string[];
 	unexplained: string[];
 	/** Projects deleted by this run as part of owned-lab teardown. */
 	deletedOwned: string[];
@@ -540,6 +542,7 @@ export function evaluateCleanupIntegrity(
 		verified: missing.length === 0 && changed.length === 0 && unexplained.length === 0,
 		missing,
 		changed,
+		unreadable: [],
 		unexplained,
 		deletedOwned: [...deletedOwned,].filter((key,) => deleted(key,)),
 	};
@@ -550,7 +553,7 @@ export function evaluateCleanupIntegrity(
  * explained only when it appears in beforeProjects or in the manifest's
  * owned-project identities (exact keys).
  */
-async function verifyProjectIntegrity(
+export async function verifyProjectIntegrity(
 	client: DataikuClient,
 	manifest: LiveManifest,
 	beforeProjects: Record<string, string>,
@@ -558,24 +561,27 @@ async function verifyProjectIntegrity(
 	const ownedKeys = new Set(manifest.projects.map((project,) => project.key),);
 	const missing: string[] = [];
 	const changed: string[] = [];
+	const unreadable: string[] = [];
 	const unexplained: string[] = [];
-	const current = new Map<string, string>();
+	// undefined = GET failed (unreadable): the key is retained but carries no
+	// identity, so it can never be compared against a baseline hash.
+	const current = new Map<string, string | undefined>();
 	for (const summary of await client.projects.list()) {
-		let details: unknown;
 		try {
-			details = await client.projects.get(summary.projectKey,);
-		} catch {
-			details = null;
+			current.set(summary.projectKey, stableHash(await client.projects.get(summary.projectKey,),),);
+		} catch (error) {
+			if (error instanceof DataikuError && error.status === 404) continue;
+			current.set(summary.projectKey, undefined,);
+			unreadable.push(summary.projectKey,);
 		}
-		const identity = details === null
-			? "unreadable"
-			: stableHash(details,);
-		current.set(summary.projectKey, identity,);
 	}
 	for (const [key, identity,] of Object.entries(beforeProjects,)) {
-		const live = current.get(key,);
-		if (live === undefined) missing.push(key,);
-		else if (live !== identity) changed.push(key,);
+		if (!current.has(key,)) missing.push(key,);
+		else {
+			const live = current.get(key,);
+			if (live === undefined) continue;
+			if (live !== identity) changed.push(key,);
+		}
 	}
 	for (const key of current.keys()) {
 		if (Object.hasOwn(beforeProjects, key,)) continue;
@@ -583,9 +589,10 @@ async function verifyProjectIntegrity(
 		unexplained.push(key,);
 	}
 	return {
-		verified: missing.length === 0 && changed.length === 0,
+		verified: missing.length === 0 && changed.length === 0 && unreadable.length === 0,
 		missing,
 		changed,
+		unreadable,
 		unexplained,
 		deletedOwned: [],
 	};
@@ -1154,7 +1161,13 @@ async function runRunVerb(
 					durationMs: child.durationMs,
 					error: `case suite exit ${child.code}; legacy exits ${
 						legacy.map(result => result.code).join(",",) || "not selected"
-					}; integrity ${integrity.verified ? "verified" : "failed"}`,
+					}; integrity ${
+						integrity.unreadable.length > 0
+							? `unverified (unreadable projects: ${integrity.unreadable.join(",",)})`
+							: integrity.verified
+							? "verified"
+							: "failed"
+					}`,
 					log: child.logPath,
 				},
 			...Object.fromEntries(

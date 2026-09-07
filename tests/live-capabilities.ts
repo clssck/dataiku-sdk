@@ -7,7 +7,7 @@
 // LiveCapabilityError — never as a mock pass — while genuine command defects
 // remain ordinary failures.
 import type { LiveContext, } from "./live-context.js";
-import { LIVE_CSV_FORMAT, LiveCapabilityError, } from "./live-context.js";
+import { LIVE_CSV_FORMAT, LIVE_SQL_PROBE, LiveCapabilityError, } from "./live-context.js";
 
 /**
  * Read-only prerequisite for the Application scenario. The template id must be
@@ -564,7 +564,7 @@ async function exerciseInfrastructureSql(ctx: LiveContext,): Promise<void> {
 		const result = await ctx.run<JsonRecord>([
 			"sql",
 			"query",
-			"SELECT 1 AS one",
+			LIVE_SQL_PROBE,
 			...target,
 			"--project-key",
 			projectKey,

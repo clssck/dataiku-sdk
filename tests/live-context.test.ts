@@ -48,6 +48,65 @@ function details(key: string, tag: number,) {
 }
 
 describe("live sandbox ownership", () => {
+	it("runs the fixed infrastructure probe through the CLI without authorizing arbitrary SQL", async () => {
+		const queries: unknown[] = [];
+		await withCliServer(async (req, res,) => {
+			if (req.url?.startsWith("/public/api/projects/",)) {
+				sendJson(res, details(req.url.match(/\/projects\/([^/]+)/,)![1]!, 1,),);
+				return;
+			}
+			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+				const chunks: Buffer[] = [];
+				for await (const chunk of req) chunks.push(Buffer.from(chunk,),);
+				queries.push(JSON.parse(Buffer.concat(chunks,).toString(),),);
+				sendJson(res, {
+					queryId: "probe",
+					hasResults: true,
+					schema: [{ name: "one", type: "int", },],
+				},);
+				return;
+			}
+			if (req.url === "/public/api/sql/queries/probe/stream?format=json") {
+				sendJson(res, [[1,],],);
+				return;
+			}
+			if (req.url === "/public/api/sql/queries/probe/finish-streaming") {
+				res.end();
+				return;
+			}
+			res.writeHead(500,);
+			res.end();
+		}, async url => {
+			await fixture(url, async ctx => {
+				const target = ["--connection", "configured-sql", "--project-key", ctx.projectKey,];
+				await expect(ctx.run(["sql", "query", "SELECT 1 AS one", ...target,],),).rejects.toThrow();
+				ctx.manifest.profiles.push("infrastructure",);
+				for (
+					const args of [
+						["sql", "query", "DROP TABLE important", ...target,],
+						["sql", "query", "SELECT 1 AS one", ...target, "--sql", "DELETE FROM important",],
+						["sql", "query", "SELECT 1 AS one", ...target, "--sql-file", "query.sql",],
+						["sql", "query", "SELECT 1 AS one", ...target, "--dataset", "FOREIGN.table",],
+						["sql", "query", "SELECT 1 AS one", "--connection", "configured-sql",],
+					]
+				) await expect(ctx.run(args,),).rejects.toThrow();
+				expect(queries,).toEqual([],);
+				const result = await ctx.run<{ rows: number[][]; }>([
+					"sql",
+					"query",
+					"SELECT 1 AS one",
+					...target,
+				],);
+				expect(result.rows,).toEqual([[1,],],);
+				expect(queries,).toEqual([{
+					query: "SELECT 1 AS one",
+					type: "sql",
+					connection: "configured-sql",
+					projectKey: ctx.projectKey,
+				},],);
+			},);
+		},);
+	});
 	it("checks lifecycle ownership even for nonexecuting plans", async () => {
 		await fixture("http://127.0.0.1:1", async ctx => {
 			expect(() =>

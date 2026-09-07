@@ -61,8 +61,9 @@ than tutorial-specific connection guesses.
 Profiles add to core: `ml` trains and deploys a small decision tree and checks clustering;
 `applications` requires `DATAIKU_LIVE_APP_TEMPLATE_ID`; `infrastructure` requires
 `DATAIKU_SQL_CONNECTION` or `DATAIKU_SQL_DATASET_FULL_NAME` for read-only SQL.
-Known limitation: the configured infrastructure SQL case is currently rejected by
-the sandbox global-mutation guard; it is not a validated working profile. Missing
+The SQL case permits only the fixed, table-free `SELECT 1 AS one` probe with an
+explicit target and an owned project whose incarnation is checked before execution.
+It does not authorize arbitrary SQL, alternate query inputs or global mutations. Missing
 prerequisites are recorded as **blocked**, never passed. Required blocked cases exit
 nonzero; optional blocked cases remain visible in reports. Global administration,
 external Git mutations and unsupported capabilities are not silently exercised.
@@ -77,7 +78,9 @@ lab runs; after an uncatchable process kill, confirm its recorded process is gon
 removing a stale lock. Interrupting a run preserves the lab; `all` attempts cleanup.
 
 Each iteration retains logs and `report.json` with cases, timing, executed actions,
-capability reasons, coverage and external-project metadata integrity. `clean` retains
+capability reasons, coverage and external-project metadata integrity. Unavailable project
+metadata is reported separately in `integrity.unreadable`, not as confirmed drift;
+integrity remains unverified and the run fails until those reads succeed. `clean` retains
 `cleanup-report.json`, including deletion failures; starting teardown invalidates lab
 readiness even if cleanup only partially succeeds. If cleanup and integrity verification
 both fail, the cleanup error remains primary and the report preserves both results.
