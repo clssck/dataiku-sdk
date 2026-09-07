@@ -45,7 +45,7 @@ bun run test:live all
 fixtures. Cases use temporary resources or restore baseline values. Cases accept exact
 IDs, comma-separated lists, repeated `--case`, and trailing-prefix `*` matching; quote
 wildcards. Selected runs omit the legacy suites. Unknown, setup-only or inactive-profile
-selections fail before credentials, state creation or provisioning; `--case` is valid only
+or empty selections fail before credentials, state creation or provisioning; `--case` is valid only
 for `run`/`all`. `run` refuses
 an incomplete or cleaned lab rather than silently rebuilding it. Clean failed setup
 before provisioning a replacement. Authentication and transport failures retain their
@@ -60,7 +60,9 @@ than tutorial-specific connection guesses.
 
 Profiles add to core: `ml` trains and deploys a small decision tree and checks clustering;
 `applications` requires `DATAIKU_LIVE_APP_TEMPLATE_ID`; `infrastructure` requires
-`DATAIKU_SQL_CONNECTION` or `DATAIKU_SQL_DATASET_FULL_NAME` for read-only SQL. Missing
+`DATAIKU_SQL_CONNECTION` or `DATAIKU_SQL_DATASET_FULL_NAME` for read-only SQL.
+Known limitation: the configured infrastructure SQL case is currently rejected by
+the sandbox global-mutation guard; it is not a validated working profile. Missing
 prerequisites are recorded as **blocked**, never passed. Required blocked cases exit
 nonzero; optional blocked cases remain visible in reports. Global administration,
 external Git mutations and unsupported capabilities are not silently exercised.
@@ -76,7 +78,8 @@ removing a stale lock. Interrupting a run preserves the lab; `all` attempts clea
 
 Each iteration retains logs and `report.json` with cases, timing, executed actions,
 capability reasons, coverage and external-project metadata integrity. `clean` retains
-`cleanup-report.json`. Treat local reports and exported archives as private project
+`cleanup-report.json`, including deletion failures; starting teardown invalidates lab
+readiness even if cleanup only partially succeeds. Treat local reports and exported archives as private project
 data. Coverage is an explicit inventory of every registered action, not a claim that
 every action has a live test: unexercised actions remain **uncovered**. Add cases through
 the typed catalogue in `tests/live-cases.ts`, `LiveContext.check` and guarded helpers,

@@ -294,6 +294,11 @@ describe("readPointer", () => {
 });
 
 describe("live selection preflight", () => {
+	it("does not expand an empty explicit selection into a full run", () => {
+		expect(() => parseLiveSuiteArgs(["all", "--case", " , ",],)).toThrow();
+		expect(() => parseLiveSuiteArgs(["run", "--case", "core.*", "--case", "",],)).toThrow();
+		expect(parseLiveSuiteArgs(["all", "--case", "", "--help",],).help,).toBe(true,);
+	});
 	it("rejects unknown, setup-only and inactive-profile selections", () => {
 		for (const id of ["missing.*", "collab.setup.*", "ml.*",]) {
 			expect(() => parseLiveSuiteArgs(["all", "--case", id,],)).toThrow();
@@ -383,6 +388,58 @@ describe("live root preflight", () => {
 					expect(result.cause,).toBeUndefined();
 				}
 			},);
+		}
+	});
+});
+
+describe("failed cleanup recovery", () => {
+	it("retains failure evidence and invalidates readiness when deletion is refused", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "live-clean-failure-",),);
+		const key = "SDK_LIVE_0123456789ABCDEF_ROOT_0";
+		const methods: string[] = [];
+		try {
+			await withCliServer((req, res,) => {
+				methods.push(req.method!,);
+				sendJson(
+					res,
+					req.url?.endsWith("/projects/",) || req.url?.endsWith("/projects",)
+						? [{ projectKey: key, },]
+						: { projectKey: key, name: "replacement", owner: "ci", creationTag: { lastModifiedOn: 2, }, },
+				);
+			}, async url => {
+				const labDir = path.join(dir, "lab",);
+				await fs.mkdir(labDir,);
+				const manifestPath = path.join(labDir, "manifest.json",);
+				const manifest = manifestWithProjects([{ key, state: "bound", },],);
+				manifest.dssUrl = url;
+				manifest.setupComplete = true;
+				await fs.writeFile(manifestPath, JSON.stringify(manifest,),);
+				const child = Bun.spawn([
+					process.execPath,
+					"--no-env-file",
+					"scripts/live-suite.ts",
+					"clean",
+					"--manifest",
+					manifestPath,
+					"--state-dir",
+					dir,
+				], {
+					env: { ...process.env, DATAIKU_URL: url, DATAIKU_API_KEY: "offline-key", },
+					stdout: "pipe",
+					stderr: "pipe",
+				},);
+				await Promise.all([new Response(child.stdout,).text(), new Response(child.stderr,).text(),],);
+				expect(await child.exited,).toBe(1,);
+				expect(methods.every(method => method === "GET"),).toBe(true,);
+				const report = JSON.parse(await fs.readFile(path.join(dir, "cleanup-report.json",), "utf8",),);
+				expect(report.cleanup.status,).toBe("failed",);
+				expect(report.integrity.verified,).toBe(true,);
+				const saved = JSON.parse(await fs.readFile(manifestPath, "utf8",),);
+				expect(saved.setupComplete,).toBe(false,);
+				expect(saved.projects[0].state,).toBe("bound",);
+			},);
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true, },);
 		}
 	});
 });

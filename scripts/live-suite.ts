@@ -89,6 +89,7 @@ function usage(): string {
 export function parseLiveSuiteArgs(argv: string[],): LiveSuiteOptions {
 	let verb: LiveVerb | undefined;
 	const cases: string[] = [];
+	let emptyCase = false;
 	let profile: string | undefined;
 	let manifest: string | undefined;
 	let stateDir: string | undefined;
@@ -110,12 +111,15 @@ export function parseLiveSuiteArgs(argv: string[],): LiveSuiteOptions {
 				if (verb !== undefined) throw new UsageRequestError("Exactly one verb is required",);
 				verb = arg;
 				break;
-			case "--case":
+			case "--case": {
+				const count = cases.length;
 				for (const part of value().split(",",)) {
 					const id = part.trim();
 					if (id) cases.push(id,);
 				}
+				emptyCase ||= cases.length === count;
 				break;
+			}
 			case "--profile": {
 				const name = value();
 				if (!(LIVE_PROFILES as readonly string[]).includes(name,)) {
@@ -141,6 +145,7 @@ export function parseLiveSuiteArgs(argv: string[],): LiveSuiteOptions {
 		}
 	}
 	if (help) return { verb: "status", cases: [], profile: "core", help, manifest, stateDir, };
+	if (emptyCase) throw new UsageRequestError("--case requires at least one case ID or prefix",);
 	if (verb === undefined) {
 		throw new UsageRequestError("A verb is required (setup|run|clean|all|status)",);
 	}
@@ -1203,18 +1208,25 @@ async function runCleanVerb(
 	const beforeCleanup = await snapshotProjectIdentities(client,);
 	// Delete the ENTIRE owned lab: main project included, guarded by the
 	// bound-incarnation checks inside LiveRunContext.deleteProject.
-	await ctx.cleanup();
+	// Once teardown starts, the baseline is no longer reusable, even on partial failure.
+	manifest.setupComplete = false;
+	await ctx.save();
+	let cleanupError: unknown;
+	try {
+		await ctx.cleanup();
+	} catch (error) {
+		cleanupError = error;
+	}
 	const after = await snapshotProjectIdentities(client,);
 	const integrity = evaluateCleanupIntegrity(beforeCleanup, after, manifest,);
 	// Reload after cleanup so the manifest's own cleanup errors survive: never
 	// overwrite a failed cleanup with a success-shaped report.
 	const fresh = await loadLiveManifest(state.layout.manifestPath,);
-	// A cleaned lab is no longer ready: run refuses until a new setup completes.
-	fresh.setupComplete = false;
-	await new LiveRunContext(state.layout.manifestPath, fresh, state.credentials, "run", [],).save();
 	await writeCleanupReport(state, fresh, fresh.cleanup, integrity, Date.now() - started,);
 	process.stdout.write(
-		`clean ${fresh.cleanup.status}: owned projects deleted (main included); external projects unchanged: ${
+		`clean ${fresh.cleanup.status}: ${
+			fresh.projects.filter(project => project.state === "deleted").length
+		}/${fresh.projects.length} owned projects deleted; external projects unchanged: ${
 			integrity.verified ? "yes" : "NO"
 		}\n`,
 	);
@@ -1223,6 +1235,7 @@ async function runCleanVerb(
 			"External project integrity changed during cleanup; inspect cleanup-report.json",
 		);
 	}
+	if (cleanupError) throw cleanupError;
 	if (fresh.cleanup.status === "failed") {
 		throw new Error(`Live cleanup failed: ${fresh.cleanup.errors.join("; ",)}`,);
 	}

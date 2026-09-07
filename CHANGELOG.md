@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Reject empty explicit live case selections rather than accidentally running the full suite.
+- Invalidate live-lab readiness before teardown and retain cleanup failure reports when a project cannot be deleted.
+
 - Validate live case selections before provisioning, preserve authentication/transport preflight errors, include live files in regular quality gates, and share CSV settings with statically required recipe row expectations.
 - Add a separate, self-provisioning `test:live` runner with persistent setup/run/clean, focused cases, optional capability profiles, guarded ownership journals, deterministic fixtures and explicit registry coverage reports.
 
