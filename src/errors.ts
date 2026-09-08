@@ -336,6 +336,8 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 		&& (lowerBody.includes("column_not_found",)
 			|| lowerBody.includes("table_not_found",)
 			|| lowerBody.includes("no_such_table",)
+			|| lowerBody.includes("no such column",)
+			|| lowerBody.includes("no such table",)
 			|| lowerBody.includes("column does not exist",));
 	if (isSqlEngineValidation) {
 		return {
