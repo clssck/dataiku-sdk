@@ -170,9 +170,23 @@ Each entry in the `installed` array reports pre-install bundle state:
 
 The entrypoint contains bootstrap/discovery, output interpretation, and universal safety rules. Seven focused files under [references/](skills/dataiku-dss/references/) cover authentication, discovery, mutations, application releases, flow maps, coding, and troubleshooting. All are linked directly from `SKILL.md` with task-specific read conditions; agents should not preload the whole directory.
 
-The entrypoint measured **851 o200k_base tokens**, down from **4,272** (about **80% less** per activation). The existing token-budget test caps it at 1,000 tokens. Reference content consumes context only when read. The published package and all five agent installers ship the same complete bundle.
+The entrypoint measures **750 o200k_base tokens**, down from **851** in the previous revision (12% less) and **4,272** before progressive disclosure. The token-budget test now caps it at **825** tokens. Claude V5 reconstruction counts fell **1,420 → 1,250** and GLM5 **858 → 752**. Safety rules and all seven reference links remain. Reference content consumes context only when read; all five agent installers ship the complete bundle.
+
+All seven references are token-budgeted (each measured `o200k_base` baseline plus 5% headroom). Per-file baselines live in [the token-budget tests](tests/cli/agent-token-budget.test.ts); run `bun run test:tokens` to check them.
+
+References total **4,179 → 3,545 tokens (15.2% less)**. With the 750-token entrypoint, the whole bundle totals **4,295**; this is a sum of file counts, not a recommendation to preload them. All references shrink across ten encodings; whole-bundle Claude V5 reconstruction **8,200 → 7,362**, GLM5 **4,943 → 4,305**. Runnable examples and safety conditions are retained.
 
 This uses progressive disclosure from the [Agent Skills specification](https://agentskills.io/specification) and [Anthropic's authoring guidance](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices): concise metadata/instructions, direct relative reference links, and domain-focused documents. No scripts or assets are needed here; generated command metadata is queried from the CLI rather than duplicated in the skill.
+
+`bun run test:tokens` enforces the pinned OpenAI `o200k_base` budgets. To also check ten native encodings (OpenAI, Claude, GLM, Qwen, DeepSeek, and Kimi), point the optional development-only gate at an OMP native module:
+
+```bash
+DSS_TOKENIZER_MODULE=/absolute/path/to/oh-my-pi/packages/natives/native/index.js bun run test:tokens
+```
+
+Without this variable, only the native cross-model case is skipped. A configured missing/incompatible module fails rather than estimating tokens. The cross-model gate permits 10% growth over its recorded text baselines for bootstrap and action discovery; the pinned OpenAI gate also enforces the skill ceiling above. Claude counts use ctok reconstructions, not an official tokenizer, and all counts exclude provider message/tool framing. No native dependency is added to the CLI.
+
+Measured full `dataset.create` discovery versus its `usage,description,flags,examples` projection: OpenAI **1,059 → 356**, Claude V5 reconstruction **1,771 → 640**, GLM5 **1,015 → 347** tokens. Use the projection when those fields suffice; fetch the full action when schema details are needed. This is selective disclosure, not lossless compression.
 
 Boolean flags accept bare flags or explicit `=true`/`=false` values, including aliases. Invalid boolean values fail before dispatch. Direct, batch, and local commands share execution-mode resolution; `--plan --dry-run` returns a plan with `plannedAndDryRun:true` when both modes are supported. Unreadable JSON/text payload files produce `validation_failed` usage errors (exit 1) with the flag, path, and filesystem cause.
 

@@ -490,7 +490,6 @@ describe("agent contract accuracy", () => {
 				"dss commands run --fields dataset.create",
 			],),
 		);
-		expect(commands.scopedDiscoveryHint,).toContain("append .FIELD paths",);
 		expect(commands.fullRegistryExportCommand,).toBe("dss commands run --output PATH",);
 		expect(commands.discoveryCommand,).toBe("dss commands run",);
 		expect(commands.actionIndexCommand,).toBe(

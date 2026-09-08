@@ -988,12 +988,12 @@ function unsafeOutputs(
 			condition: "--output or --output-file",
 			kind: "local-file",
 			detail: sensitivePermissions
-				? "Command writes access-control identities and permissions to an owner-only local file."
-				: "Command writes bytes to a local path and returns JSON metadata on stdout.",
+				? "Writes access-control identities and permissions to an owner-only local file."
+				: "Writes a local file; stdout contains JSON metadata.",
 			...(sensitivePermissions
 				? {
 					safeAlternative:
-						"Keep the file owner-only and outside version control unless repository policy explicitly permits committing access-control data.",
+						"Keep owner-only and outside version control unless repository policy explicitly permits committing access-control data.",
 				}
 				: {}),
 		},);
@@ -1557,10 +1557,10 @@ export function inferCleanupHint(resource: string, action: string,): string | un
 	if (resource === "project-git") return undefined;
 	const key = `${resource}.${action}`;
 	if (key === "notebook.save-jupyter") {
-		return "When the save reports created:true, delete with `dss notebook delete-jupyter <name> --if-exists`.";
+		return "If created:true, delete with `dss notebook delete-jupyter <name> --if-exists`.";
 	}
 	if (key === "notebook.save-sql") {
-		return "When the save reports created:true, delete with `dss notebook delete-sql <id> --if-exists`.";
+		return "If created:true, delete with `dss notebook delete-sql <id> --if-exists`.";
 	}
 	if (!(action.startsWith("create",) || action === "clone")) return undefined;
 	if (LEDGER_ONLY_CLEANUP_KEYS[key] === true) return LEDGER_ONLY_CLEANUP_HINT;
@@ -1578,7 +1578,7 @@ export function inferCleanupHint(resource: string, action: string,): string | un
 	if (resource === "data-quality") {
 		return `Delete with \`dss data-quality delete-rule <dataset> <rule-id>${ifExists}\`.`;
 	}
-	return `Delete with \`dss ${resource} delete <id>${ifExists}\` when the created object is disposable.`;
+	return `For disposable creates: \`dss ${resource} delete <id>${ifExists}\`.`;
 }
 
 function buildRegistryEntry(
@@ -1987,7 +1987,7 @@ export function buildAgentContract(): Record<string, unknown> {
 				"dss commands run --fields dataset.create",
 			],
 			scopedDiscoveryHint:
-				"`dss commands run` returns the resource/action summary. --fields RESOURCE returns every action of one resource; --fields RESOURCE.ACTION returns a single registry entry keyed by the dotted path; append .FIELD paths to project nested metadata. Comma-separate paths to select several. Use --output PATH to export the full registry.",
+				"Default: resource/action summary. --fields RESOURCE: all resource entries; RESOURCE.ACTION: one entry keyed by that path; append .FIELD for nested metadata. Comma-separate paths. --output PATH exports the full registry.",
 			actions: commandActionSummary(registry,),
 		},
 		schemas: {
@@ -2004,10 +2004,9 @@ export function buildAgentContract(): Record<string, unknown> {
 				success: "single-json-value",
 				failure: "structured-error-object",
 				failureResultDetailLimitBytes: 65_536,
-				fieldProjection:
-					"Missing --fields paths stay null on stdout and emit field_projection_missing on stderr.",
+				fieldProjection: "Missing --fields paths: null on stdout; field_projection_missing on stderr.",
 				richFailureResults:
-					"doctor/batch/cleanup nonzero outcomes are their own compact result on stdout ({ok:false,...}) with the command's exit code; not re-wrapped.",
+					"doctor/batch/cleanup failures: own compact {ok:false,...} result on stdout and command exit code; no wrapper.",
 			},
 			stderr: {
 				format: "jsonl",
@@ -2025,7 +2024,7 @@ export function buildAgentContract(): Record<string, unknown> {
 		},
 		compatibility: {
 			fieldsAreAdditiveWithinMajor: true,
-			failFastWhenUnsupported: "Check agentContractVersion before planning commands.",
+			failFastWhenUnsupported: "Check agentContractVersion before planning.",
 		},
 	};
 }

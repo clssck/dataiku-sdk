@@ -7,6 +7,7 @@ import {
 	mkdirSync,
 	readFileSync,
 	rmSync,
+	SDK_ROOT,
 	tmpdir,
 	writeFileSync,
 } from "./_harness.js";
@@ -18,7 +19,7 @@ interface TokenBudget {
 }
 
 const TOKEN_BUDGETS = {
-	skill: { baseline: 851, maxTokens: 1_000, },
+	skill: { baseline: 750, maxTokens: 825, },
 	agentContract: { baseline: 3_015, maxTokens: 3_200, },
 	commandsRunDefault: { baseline: 1_037, maxTokens: 1_200, },
 	registryExportStdout: { baseline: 17, maxTokens: 40, },
@@ -54,6 +55,85 @@ function expectWithinBudget(name: string, text: string, budget: TokenBudget,): n
 }
 
 describe("agent-facing token budgets", () => {
+	it("bounds every on-demand skill reference", () => {
+		const baselines = {
+			authentication: 461,
+			discovery: 574,
+			mutations: 602,
+			"app-releases": 642,
+			"flow-maps": 159,
+			coding: 231,
+			troubleshooting: 876,
+		};
+		for (const [name, baseline,] of Object.entries(baselines,)) {
+			const text = readFileSync(
+				join(SDK_ROOT, "skills", "dataiku-dss", "references", `${name}.md`,),
+				"utf8",
+			);
+			expectWithinBudget(name, text, { baseline, maxTokens: Math.ceil(baseline * 1.05,), },);
+		}
+	});
+
+	it.skipIf(!process.env.DSS_TOKENIZER_MODULE,)(
+		"bounds discovery across native model encodings",
+		async () => {
+			// Optional development-only OMP binding; an explicitly configured broken module must fail.
+			const native = await import(process.env.DSS_TOKENIZER_MODULE!) as {
+				countTokens(text: string, encoding: string,): number;
+			};
+			const encodings = [
+				"O200kBase",
+				"Cl100kBase",
+				"ClaudeV3",
+				"ClaudeV47",
+				"ClaudeV5",
+				"ClaudeV5Sonnet",
+				"Qwen3",
+				"DeepSeekV3",
+				"KimiK2",
+				"Glm5",
+			];
+			// Measured 2026-09-08: raw text only, excluding provider message framing.
+			// Claude counters are ctok reconstructions; the newer variants share vocabulary.
+			const cases = [
+				{
+					args: ["agent", "contract",],
+					baseline: [3028, 2923, 3601, 5131, 5131, 5131, 2932, 3305, 2865, 2923,],
+				},
+				{
+					args: ["commands", "run", "--fields", "dataset.create",],
+					baseline: [1059, 1015, 1194, 1771, 1771, 1771, 1019, 1118, 1005, 1015,],
+				},
+				{
+					args: [
+						"commands",
+						"run",
+						"--fields",
+						"dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples",
+					],
+					baseline: [356, 347, 405, 640, 640, 640, 348, 385, 345, 347,],
+				},
+			];
+			for (const { args, baseline, } of cases) {
+				const { stdout, } = await dss(args,);
+				expect(native.countTokens(stdout, "O200kBase",),).toBe(measureAgentText(stdout,).tokens,);
+				for (const [index, encoding,] of encodings.entries()) {
+					const tokens = native.countTokens(stdout, encoding,);
+					const maximum = Math.ceil(baseline[index]! * 1.1,);
+					expect(
+						Number.isSafeInteger(tokens,) && tokens > 0,
+						`${encoding} must return a valid native count`,
+					).toBe(true,);
+					expect(
+						tokens,
+						`${args.join(" ",)} uses ${tokens} ${encoding} tokens; baseline ${
+							baseline[index]
+						}, budget ${maximum}`,
+					).toBeLessThanOrEqual(maximum,);
+				}
+			}
+		},
+	);
 	it("pins the loaded tokenizer to the exact o200k_base model", () => {
 		const fingerprint = assertAgentEncodingPinned();
 		expect(fingerprint.encoding,).toBe("o200k_base",);

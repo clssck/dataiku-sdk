@@ -1,14 +1,15 @@
-# Discovery and output contracts
+# Discovery and output
 
 ## Contract
 
-- Command results write exactly one compact JSON value to stdout; void success is `{ok:true}`. `doctor`, `batch`, and `cleanup` failure reports are their direct result objects on stdout — use the exit code and result fields.
-- Dispatch/runtime failures write one compact structured error object on stdout (`type:"error"`, `ok:false`, `error`, `code`, `category`, `exitCode`) with a nonzero exit code; stderr carries JSONL diagnostics only. Warnings and `--verbose` HTTP traces are JSONL stderr events (`type:"warning"` / `type:"trace"`), flushed before success and failure output, never prose.
-- No prompts, help screens, tables, banners, or prose output are part of the contract. Exit codes: 0 success, 1 usage/configuration error, 2 DSS or internal error, 3 transient/retryable DSS error, 4 a failed long-running result or synchronous assertion.
-- Recipe payload commands write the payload as a JSON string on stdout; with `--output PATH` the exact bytes go to a file and stdout carries the JSON string equal to `PATH`.
-- `--fields a,b,c` projects those fields from object or array-of-objects results; dotted paths (`a.b.c`) drill into nested objects, missing fields become `null`; strings and scalars pass through unchanged.
+- Stdout: exactly one compact JSON value; void success: `{ok:true}`. No prompts, help screens, tables, banners, or prose.
+- Dispatch/runtime failure: stdout error object (`type:"error"`, `ok:false`, `error`, `code`, `category`, `exitCode`), nonzero exit. `doctor`/`batch`/`cleanup` failures instead return direct result objects; inspect exit code and fields.
+- Stderr: JSONL diagnostics only; `type:"warning"` / `type:"trace"` for warnings / `--verbose` HTTP traces, flushed before success or failure output.
+- Exits: 0 success, 1 usage/configuration, 2 DSS/internal, 3 transient/retryable DSS error, 4 failed long-running result/assertion.
+- Recipe payload stdout: JSON string. With `--output PATH`: exact bytes to file, JSON string equal to `PATH` on stdout.
+- General `--fields a,b,c`: object projection, element-wise for object arrays. Dotted paths traverse nested objects; missing fields become `null`; strings/scalars pass through.
 
-## Discover commands
+## Discovery
 
 ```text
 dss commands run
@@ -20,8 +21,10 @@ dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,com
 dss agent contract --fields commands.actions
 ```
 
-`dss commands run` prints the compact resource/action summary — every resource keyed to its action names, about 1k tokens — and never dumps registry entries to stdout. Bootstrap with the scoped `agent contract` call above: those six fields cover protocol/schema compatibility, stream semantics, preferred discovery commands, planning rules, and compatibility guarantees in ~250 tokens; request `schemas` or `commands` only when needed.
+`commands run` defaults to a resource→action-name summary (~1k tokens), never full entries. Bootstrap with the six-field `agent contract` projection above (~250 tokens): protocol/schema compatibility, streams, discovery commands, planning, compatibility guarantees. Fetch `schemas` or `commands` only as needed.
 
-Before choosing command syntax, look the action up in the registry: `--fields RESOURCE.ACTION` returns one complete entry, `--fields RESOURCE` every action of one resource, and appended `.FIELD` paths only the metadata you need. Prefer the four-field projection `usage,description,flags,examples` by default — the smallest self-sufficient starting point for an invocation. Each registry entry is the canonical schema for flags, positional arguments, side effects, auth requirements, output shape, idempotency, dry-run support, structured examples, payload schemas, unsafe outputs, cleanup hints, and exit codes.
+Look up syntax before invoking. `--fields RESOURCE` selects all its entries; `RESOURCE.ACTION` one complete entry; append `.FIELD` for nested metadata. Prefer `usage,description,flags,examples` for initial invocation discovery. Full entries canonically describe flags, positionals, side effects, auth, output, idempotency, dry-run, structured examples, payload schemas, unsafe outputs, cleanup, and exits.
 
-`--fields` takes a comma-separated list, so request several actions in one call. Each key is echoed exactly as requested (`--fields dataset.create` returns `{"dataset.create": {...}}`); an empty `--fields` is a usage error, never a silent full dump. The full registry is exported only via `--output PATH`: `dss commands run --output PATH` writes the registry, or the selected `--fields` subset, as compact JSON to `PATH`, and stdout carries `{"path":"PATH"}` — never the registry itself. An unknown resource or action exits with code 1 and a compact JSON error object on stdout containing the valid options.
+Comma-separate selectors to batch lookups. Keys echo selectors: `--fields dataset.create` → `{"dataset.create":{...}}`. Empty `--fields` fails usage validation, never dumps everything. Unknown resources/actions exit 1 with compact JSON errors listing valid options.
+
+Full registry: `commands run --output PATH` only. With `--fields`, export that subset instead. Files contain compact JSON; stdout is `{"path":"PATH"}`, never registry content.

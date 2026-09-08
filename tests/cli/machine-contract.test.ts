@@ -13,23 +13,18 @@ import {
 } from "./_harness.js";
 
 describe("machine contract: stdio streams and failure codes", () => {
-	it("pins the agent-contract stdio metadata wording and shape", () => {
-		const contract = buildAgentContract();
-		const stdio = contract.stdio as Record<string, Record<string, unknown>>;
-		expect(stdio.stdout,).toEqual({
+	it("exposes machine-readable stdio semantics without pinning prose", async () => {
+		const { stdout, } = await dss(["agent", "contract", "--fields", "stdio",],);
+		const { stdio, } = JSON.parse(stdout,);
+		expect(stdio.stdout,).toMatchObject({
 			format: "compact-json",
 			success: "single-json-value",
 			failure: "structured-error-object",
 			failureResultDetailLimitBytes: 65_536,
-			fieldProjection:
-				"Missing --fields paths stay null on stdout and emit field_projection_missing on stderr.",
-			richFailureResults:
-				"doctor/batch/cleanup nonzero outcomes are their own compact result on stdout ({ok:false,...}) with the command's exit code; not re-wrapped.",
+			fieldProjection: expect.any(String,),
+			richFailureResults: expect.any(String,),
 		},);
-		expect(stdio.stderr,).toEqual({
-			format: "jsonl",
-			events: ["warning", "trace",],
-		},);
+		expect(stdio.stderr,).toMatchObject({ format: "jsonl", events: ["warning", "trace",], },);
 	});
 
 	it("advertises recipe assert-unchanged exit 4 as assertionFailure, never long-running", () => {

@@ -1,24 +1,23 @@
 # Mutation and batch safety
 
-## Planning, safety, and generic inputs
+## Before writes
 
-- Before any registry entry with `sideEffect:"write"`, run the exact argv with `--plan` first. Planning is local: it returns the derived operation without credentials or DSS calls. Check `destructive`, `idempotency`, `async`, `unsafeOutputs`, and `exitCodes` before executing.
-- Use `--dry-run` only when that action's registry entry has `dryRun:true`. `--plan` explains the operation; `--dry-run` exercises the simulation path. Never add an unsupported flag.
-- When a create/upload action advertises `--record-cleanup`, pass `--record-cleanup cleanup.jsonl`. `dss cleanup --file cleanup.jsonl` previews recorded steps in reverse order without mutating DSS; add `--apply` only after checking it.
-- For JSON payload actions, follow `inputContract`, `requiredFlags`, and `requiredOneOf`. Prefer `--data-file PATH` or `--stdin` when advertised over inline `--data`; this preserves exact JSON across shells and keeps large or sensitive payloads out of argv.
-- Authenticated actions advertise `--request-timeout MS` and `--retries N`; `--retries` applies to idempotent GET requests. Long-running actions advertise `--timeout MS`, `--poll-interval MS`, and log limits; use only the flags in that registry entry.
-- Before live mutation tests, use `dss fixtures` to discover compatible test resources instead of guessing project objects.
+- For `sideEffect:"write"`, first run exact argv with `--plan`: local derived operation, no credentials or DSS calls. Check `destructive`, `idempotency`, `async`, `unsafeOutputs`, `exitCodes` before execution.
+- `--plan` explains; `--dry-run` simulates, only when that action advertises `dryRun:true`. Never add unsupported flags.
+- For creates/uploads advertising it, pass `--record-cleanup cleanup.jsonl`. `dss cleanup --file cleanup.jsonl` previews reverse-order steps without mutation; inspect before adding `--apply`.
+- JSON: follow `inputContract`, `requiredFlags`, `requiredOneOf`. Prefer advertised `--data-file PATH` / `--stdin` over inline `--data`: preserve JSON across shells; keep large/sensitive payloads out of argv.
+- Authenticated actions expose `--request-timeout MS`, `--retries N` (idempotent GET only). Long-running actions expose `--timeout MS`, `--poll-interval MS`, log limits. Use only advertised flags.
+- Before live mutation tests, discover compatible resources with `dss fixtures`; never guess project objects.
 
-## Confirming mutations
+## Check results
 
-Mutations print a small JSON ack to stdout and exit 0 on success (e.g. `{"updated":"NAME","resource":"recipe"}`); on failure the error envelope appears on stdout with a non-zero exit. The exit code is the source of truth.
+Success: small JSON ack on stdout, e.g. `{"updated":"NAME","resource":"recipe"}`, exit 0. Failure: stdout error envelope, nonzero exit. Exit code is authoritative.
 
-- For portable multi-step writes, prefer `dss batch` (payload: a JSON array of argv arrays): fail-fast, one envelope with per-step `ok`/`result`/`error`, non-zero exit if any step fails.
-- With separate processes, inspect each exit code and stop before the next step; shell-chaining syntax differs across POSIX shells, PowerShell 5.1/7, and Command Prompt.
-- Never pipe a mutation into a command that prints a fixed string or merges stderr: the helper's exit code can mask a failed mutation as success.
-- Branch on the exit code or the JSON ack on stdout — never a hardcoded label.
+Prefer `dss batch` for portable multi-step writes: JSON array of argv arrays, fail-fast, one envelope with per-step `ok`/`result`/`error`, nonzero if any step fails. For separate processes, check each exit and stop on failure; chaining differs across POSIX, PowerShell 5.1/7, and Command Prompt.
 
-## Common workflows
+Never pipe mutations into fixed-string printers or stderr-merging helpers: their exit can mask failure. Branch on exits or stdout JSON acks, not hardcoded labels.
+
+## Workflows
 
 ```text
 dss version
@@ -30,4 +29,5 @@ dss job build-and-wait orders --include-logs --project-key MYPROJ
 dss sql query --connection analytics --sql "select 1" --project-key MYPROJ
 dss batch --data-file steps.json
 ```
-For fake-DSS smoke tests, return project lists as JSON arrays such as `[{"projectKey":"MYPROJ","name":"My Project"}]` from `/public/api/projects/`; recipe payload commands read `/public/api/projects/<PROJECT>/recipes/<NAME>?includePayload=true` expecting `{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}`.
+
+Fake DSS fixtures: `/public/api/projects/` returns an array, e.g. `[{"projectKey":"MYPROJ","name":"My Project"}]`. `/public/api/projects/<PROJECT>/recipes/<NAME>?includePayload=true` returns `{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}` for recipe payload commands.

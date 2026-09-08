@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Optimize all seven skill references, cutting their combined OpenAI text-token count by 15.2% while preserving runnable examples and safety conditions; add per-reference budgets.
+- Reduce installed-skill tokens by about 12% across model encodings and shorten discovery prose, retaining safety guidance, schema contracts, and reference links; tighten the skill budget to prevent regrowth.
+- Add opt-in cross-model discovery token budgets using an external OMP native module, preserving the mandatory pinned OpenAI gate and adding no production dependency.
 - Preserve request IDs and trusted target/timing metadata when enriching SQL failures.
 - Treat SQLite missing-column and missing-table errors as nonretryable validation failures, including when SQL start retries are explicitly enabled; preserve ambiguous mutation outcomes.
 - Decode bounded HTTP text incrementally to reduce large-response allocations while retaining byte limits, read deadlines, and UTF-8 truncation behavior.
