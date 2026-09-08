@@ -13,6 +13,7 @@
 - `dss sql query ... --dataset PROJECT.NAME` first queries through the dataset. If DSS rejects that connection as neither SQL nor HDFS, the CLI reads dataset metadata and retries with `params.connection` (schema or catalog as the database when available). A readable dataset with no usable connection exits with `validation_failed` and advises `--connection`; dataset metadata `404` and `403` errors propagate as `not_found` and `permission_denied`.
 - `dss sql query ... --start-retries N` opts the query-start POST into transient retries with exponential backoff. A lost response can make DSS execute the SQL more than once, so use it only for repetition-safe SQL; ordinary `--retries N` remains GET-only.
 - `dss sql query` without `--preview` returns full rows on stdout for compatibility; `--preview N` bounds stdout for exploratory reads; `--output PATH` writes full rows to a file instead.
+- SQL `--output` and `--output-file` publish complete JSON atomically after query completion. Failures preserve the existing destination; replacements retain its permission bits, while new files use `0666` filtered by the process umask. Results are still collected in memory before export.
 
 ## Error envelope
 
