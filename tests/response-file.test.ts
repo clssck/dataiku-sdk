@@ -9,10 +9,13 @@ it("uses umask for new exports and preserves existing permission bits", async ()
 	const path = join(dir, "result",);
 	try {
 		await writeResponseToFile(path, new Response("first",), "preserve",);
-		expect((await stat(path,)).mode & 0o777,).toBe(0o666 & ~process.umask(),);
+		if (process.platform !== "win32") {
+			expect((await stat(path,)).mode & 0o777,).toBe(0o666 & ~process.umask(),);
+		}
 		await chmod(path, 0o660,);
+		const originalMode = (await stat(path,)).mode & 0o777;
 		await writeResponseToFile(path, new Response("second",), "preserve",);
-		expect((await stat(path,)).mode & 0o777,).toBe(0o660,);
+		expect((await stat(path,)).mode & 0o777,).toBe(originalMode,);
 		expect(await readFile(path, "utf8",),).toBe("second",);
 	} finally {
 		await rm(dir, { recursive: true, force: true, },);
@@ -25,6 +28,7 @@ it("preserves contents and permissions when an export stream fails", async () =>
 	try {
 		await writeFile(path, "original",);
 		await chmod(path, 0o640,);
+		const originalMode = (await stat(path,)).mode & 0o777;
 		const response = new Response(
 			new ReadableStream({
 				pull(controller,) {
@@ -34,7 +38,7 @@ it("preserves contents and permissions when an export stream fails", async () =>
 		);
 		await expect(writeResponseToFile(path, response, "preserve",),).rejects.toThrow("stream failed",);
 		expect(await readFile(path, "utf8",),).toBe("original",);
-		expect((await stat(path,)).mode & 0o777,).toBe(0o640,);
+		expect((await stat(path,)).mode & 0o777,).toBe(originalMode,);
 		expect(await readdir(dir,),).toEqual(["result",],);
 	} finally {
 		await rm(dir, { recursive: true, force: true, },);
