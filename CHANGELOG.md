@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve request IDs and trusted target/timing metadata when enriching SQL failures.
+
 - Add a separate, self-provisioning `test:live` runner with persistent setup/run/clean, upfront case validation, optional capability profiles, guarded ownership and local outputs, failure-preserving cleanup journals, deterministic fixtures, explicit registry coverage reports, and regular type/lint gates.
 
 - Normalize explicit boolean flag values and aliases before dispatch; share plan/dry-run resolution across direct, batch, and local commands.

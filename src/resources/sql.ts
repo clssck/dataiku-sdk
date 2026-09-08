@@ -120,7 +120,14 @@ function withSqlErrorContext(error: unknown,): never {
 			} catch {
 				body = `SQL query failed: ${detail}\n${error.body}`;
 			}
-			throw new DataikuError(error.status, error.statusText, body, error.retry,);
+			throw new DataikuError(
+				error.status,
+				error.statusText,
+				body,
+				error.retry,
+				error.requestId,
+				{ target: error.trustedTarget, elapsedMs: error.trustedElapsedMs, },
+			);
 		}
 	}
 	throw error;
