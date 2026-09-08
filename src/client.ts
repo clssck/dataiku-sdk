@@ -161,16 +161,6 @@ function shouldRetryMethod(method: string,): boolean {
 	return method.toUpperCase() === "GET";
 }
 
-function concatBytes(chunks: Uint8Array[], total: number,): Uint8Array {
-	const out = new Uint8Array(total,);
-	let offset = 0;
-	for (const chunk of chunks) {
-		out.set(chunk, offset,);
-		offset += chunk.byteLength;
-	}
-	return out;
-}
-
 /**
  * Drop a trailing incomplete UTF-8 multibyte sequence so the bytes end on a
  * character boundary. Guarantees the decoded string re-encodes to no more bytes
@@ -878,7 +868,32 @@ export class DataikuClient {
 		if (!res.body) return { text: "", truncated: false, };
 
 		const reader = res.body.getReader();
-		const chunks: Uint8Array[] = [];
+		const decoder = new TextDecoder();
+		const parts: string[] = [];
+		// Keep the final UTF-8 sequence undecoded until truncation is known.
+		// Four bytes also cover malformed sequences handled by trimToUtf8Boundary.
+		const tail = new Uint8Array(4,);
+		let tailLength = 0;
+		const append = (chunk: Uint8Array,): void => {
+			if (chunk.byteLength >= tail.length) {
+				if (tailLength > 0) {
+					parts.push(decoder.decode(tail.subarray(0, tailLength,), { stream: true, },),);
+				}
+				const end = chunk.byteLength - tail.length;
+				if (end > 0) parts.push(decoder.decode(chunk.subarray(0, end,), { stream: true, },),);
+				tail.set(chunk.subarray(end,),);
+				tailLength = tail.length;
+			} else {
+				const excess = Math.max(0, tailLength + chunk.byteLength - tail.length,);
+				if (excess > 0) {
+					parts.push(decoder.decode(tail.subarray(0, excess,), { stream: true, },),);
+					tail.copyWithin(0, excess, tailLength,);
+					tailLength -= excess;
+				}
+				tail.set(chunk, tailLength,);
+				tailLength += chunk.byteLength;
+			}
+		};
 		let bytesRead = 0;
 		let truncated = false;
 		const startedAt = Date.now();
@@ -895,12 +910,12 @@ export class DataikuClient {
 				if (done) break;
 				const room = limit - bytesRead;
 				if (value.byteLength > room) {
-					chunks.push(value.slice(0, room,),);
+					append(value.subarray(0, room,),);
 					bytesRead += room;
 					truncated = true;
 					break;
 				}
-				chunks.push(value,);
+				append(value,);
 				bytesRead += value.byteLength;
 			}
 			if (!truncated && bytesRead >= limit) {
@@ -918,12 +933,9 @@ export class DataikuClient {
 			void reader.cancel().catch(() => {},);
 		}
 
-		const collected = concatBytes(chunks, bytesRead,);
-		// On truncation, drop any trailing partial UTF-8 character so the decoded
-		// text never re-encodes beyond the byte cap (a stream-flush would otherwise
-		// emit a 3-byte replacement char for a split multibyte sequence).
-		const usable = truncated ? trimToUtf8Boundary(collected,) : collected;
-		return { text: new TextDecoder().decode(usable,), truncated, };
+		const remaining = tail.subarray(0, tailLength,);
+		parts.push(decoder.decode(truncated ? trimToUtf8Boundary(remaining,) : remaining,),);
+		return { text: parts.join("",), truncated, };
 	}
 
 	/**

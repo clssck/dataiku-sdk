@@ -60,4 +60,71 @@ describe("DataikuClient.getTextLimited()", () => {
 		expect(text,).toBe(BODY,);
 		expect(truncated,).toBe(false,);
 	});
+
+	it("decodes split UTF-8 while preserving an interior byte order mark", async () => {
+		const originalFetch = globalThis.fetch;
+		const bytes = new TextEncoder().encode("\uFEFFé€😀abc\uFEFF東京",);
+		try {
+			globalThis.fetch = (async () =>
+				new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller,) {
+							for (const byte of bytes) controller.enqueue(Uint8Array.of(byte,),);
+							controller.close();
+						},
+					},),
+				)) as typeof fetch;
+			expect(await client().getTextLimited("/log", bytes.length,),).toEqual({
+				text: "é€😀abc\uFEFF東京",
+				truncated: false,
+			},);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("trims a truncated malformed UTF-8 tail but replaces it in a complete body", async () => {
+		const originalFetch = globalThis.fetch;
+		const prefix = new TextEncoder().encode("prefix",);
+		const bytes = Uint8Array.of(...prefix, 0xF5, 0x80, 0x5A,);
+		try {
+			globalThis.fetch = (async () =>
+				new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller,) {
+							for (const byte of bytes) controller.enqueue(Uint8Array.of(byte,),);
+							controller.close();
+						},
+					},),
+				)) as typeof fetch;
+			expect(await client().getTextLimited("/log", bytes.length - 1,),).toEqual({
+				text: "prefix",
+				truncated: true,
+			},);
+			expect(await client().getTextLimited("/log", bytes.length,),).toEqual({
+				text: "prefix\uFFFD\uFFFDZ",
+				truncated: false,
+			},);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+	it("does not flush a split character past a truncated byte cap", async () => {
+		const originalFetch = globalThis.fetch;
+		const chunks = [Uint8Array.of(0x61, 0xF0,), Uint8Array.of(0x9F,), Uint8Array.of(0x98, 0x80,),];
+		try {
+			globalThis.fetch = (async () =>
+				new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller,) {
+							for (const chunk of chunks) controller.enqueue(chunk,);
+							controller.close();
+						},
+					},),
+				)) as typeof fetch;
+			expect(await client().getTextLimited("/log", 3,),).toEqual({ text: "a", truncated: true, },);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
 });
