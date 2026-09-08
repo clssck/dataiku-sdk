@@ -1703,81 +1703,100 @@ function buildRegistryEntry(
 	};
 }
 
-export function buildCommandRegistry(): Record<string, Record<string, CommandRegistryEntry>> {
+export function buildCommandRegistry(
+	resourceFilter?: string,
+): Record<string, Record<string, CommandRegistryEntry>> {
 	const registry: Record<string, Record<string, CommandRegistryEntry>> = {};
 	for (const [resource, actions,] of Object.entries(commands,)) {
+		if (resourceFilter !== undefined && resource !== resourceFilter) continue;
 		registry[resource] = {};
 		for (const [action, meta,] of Object.entries(actions,)) {
 			registry[resource][action] = buildRegistryEntry(resource, action, meta,);
 		}
 	}
-	registry.commands = {
-		run: buildRegistryEntry("commands", "run", {
-			handler: async () => undefined,
-			usage: COMMANDS_USAGE,
-			description: COMMANDS_DESCRIPTION,
-			examples: COMMANDS_EXAMPLES,
-		},),
-	};
-	registry.agent = {
-		contract: buildRegistryEntry("agent", "contract", {
-			handler: async () => undefined,
-			usage: AGENT_CONTRACT_USAGE,
-			description: AGENT_CONTRACT_DESCRIPTION,
-			examples: AGENT_CONTRACT_EXAMPLES,
-		},),
-	};
-	registry.version = {
-		run: buildRegistryEntry("version", "run", {
-			handler: async () => undefined,
-			usage: VERSION_USAGE,
-			description: VERSION_DESCRIPTION,
-			examples: VERSION_EXAMPLES,
-		},),
-	};
-	registry["install-skill"] = {
-		run: buildRegistryEntry("install-skill", "run", {
-			handler: async () => undefined,
-			usage: INSTALL_SKILL_USAGE,
-			description: INSTALL_SKILL_DESCRIPTION,
-			examples: INSTALL_SKILL_EXAMPLES,
-		},),
-	};
-	registry.cleanup = {
-		run: buildRegistryEntry("cleanup", "run", {
-			handler: async () => undefined,
-			usage: CLEANUP_USAGE,
-			description: CLEANUP_DESCRIPTION,
-			examples: CLEANUP_EXAMPLES,
-		},),
-	};
-	registry.fixtures = {
-		run: buildRegistryEntry("fixtures", "run", {
-			handler: async () => undefined,
-			usage: FIXTURES_USAGE,
-			description: FIXTURES_DESCRIPTION,
-			examples: FIXTURES_EXAMPLES,
-		},),
-	};
-	registry.batch = {
-		run: buildRegistryEntry("batch", "run", {
-			handler: async () => undefined,
-			usage: BATCH_USAGE,
-			description: BATCH_DESCRIPTION,
-			examples: BATCH_EXAMPLES,
-			examplePayload: BATCH_EXAMPLE_PAYLOAD,
-			payloadSchema: { stdin: true, dataFlag: true, dataFileFlag: true, jsonShape: "array", },
-		},),
-	};
-	registry.auth = {};
-	for (const [action, meta,] of Object.entries(AUTH_ACTIONS,)) {
-		registry.auth[action] = buildRegistryEntry("auth", action, {
-			handler: async () => undefined,
-			usage: meta.usage,
-			description: meta.description,
-			examples: meta.examples,
-			requiredFlags: meta.requiredFlags,
-		},);
+	if (resourceFilter === undefined || resourceFilter === "commands") {
+		registry.commands = {
+			run: buildRegistryEntry("commands", "run", {
+				handler: async () => undefined,
+				usage: COMMANDS_USAGE,
+				description: COMMANDS_DESCRIPTION,
+				examples: COMMANDS_EXAMPLES,
+			},),
+		};
+	}
+	if (resourceFilter === undefined || resourceFilter === "agent") {
+		registry.agent = {
+			contract: buildRegistryEntry("agent", "contract", {
+				handler: async () => undefined,
+				usage: AGENT_CONTRACT_USAGE,
+				description: AGENT_CONTRACT_DESCRIPTION,
+				examples: AGENT_CONTRACT_EXAMPLES,
+			},),
+		};
+	}
+	if (resourceFilter === undefined || resourceFilter === "version") {
+		registry.version = {
+			run: buildRegistryEntry("version", "run", {
+				handler: async () => undefined,
+				usage: VERSION_USAGE,
+				description: VERSION_DESCRIPTION,
+				examples: VERSION_EXAMPLES,
+			},),
+		};
+	}
+	if (resourceFilter === undefined || resourceFilter === "install-skill") {
+		registry["install-skill"] = {
+			run: buildRegistryEntry("install-skill", "run", {
+				handler: async () => undefined,
+				usage: INSTALL_SKILL_USAGE,
+				description: INSTALL_SKILL_DESCRIPTION,
+				examples: INSTALL_SKILL_EXAMPLES,
+			},),
+		};
+	}
+	if (resourceFilter === undefined || resourceFilter === "cleanup") {
+		registry.cleanup = {
+			run: buildRegistryEntry("cleanup", "run", {
+				handler: async () => undefined,
+				usage: CLEANUP_USAGE,
+				description: CLEANUP_DESCRIPTION,
+				examples: CLEANUP_EXAMPLES,
+			},),
+		};
+	}
+	if (resourceFilter === undefined || resourceFilter === "fixtures") {
+		registry.fixtures = {
+			run: buildRegistryEntry("fixtures", "run", {
+				handler: async () => undefined,
+				usage: FIXTURES_USAGE,
+				description: FIXTURES_DESCRIPTION,
+				examples: FIXTURES_EXAMPLES,
+			},),
+		};
+	}
+	if (resourceFilter === undefined || resourceFilter === "batch") {
+		registry.batch = {
+			run: buildRegistryEntry("batch", "run", {
+				handler: async () => undefined,
+				usage: BATCH_USAGE,
+				description: BATCH_DESCRIPTION,
+				examples: BATCH_EXAMPLES,
+				examplePayload: BATCH_EXAMPLE_PAYLOAD,
+				payloadSchema: { stdin: true, dataFlag: true, dataFileFlag: true, jsonShape: "array", },
+			},),
+		};
+	}
+	if (resourceFilter === undefined || resourceFilter === "auth") {
+		registry.auth = {};
+		for (const [action, meta,] of Object.entries(AUTH_ACTIONS,)) {
+			registry.auth[action] = buildRegistryEntry("auth", action, {
+				handler: async () => undefined,
+				usage: meta.usage,
+				description: meta.description,
+				examples: meta.examples,
+				requiredFlags: meta.requiredFlags,
+			},);
+		}
 	}
 	return registry;
 }
