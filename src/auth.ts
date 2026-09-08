@@ -1,4 +1,3 @@
-import { DataikuClient, } from "./client.js";
 import { DataikuError, } from "./errors.js";
 
 export interface CredentialValidationResult {
@@ -18,6 +17,7 @@ export async function validateCredentials(
 	options: CredentialValidationOptions = {},
 ): Promise<CredentialValidationResult> {
 	try {
+		const { DataikuClient, } = await import("./client.js");
 		const client = new DataikuClient({
 			url,
 			apiKey,

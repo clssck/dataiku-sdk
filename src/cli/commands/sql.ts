@@ -1,6 +1,7 @@
 import { readFileSync, } from "node:fs";
-import { mkdir, writeFile, } from "node:fs/promises";
+import { mkdir, } from "node:fs/promises";
 import { dirname, resolve, } from "node:path";
+import { writeResponseToFile, } from "../../utils/response-file.js";
 import { readStdinText, stripUtf8Bom, } from "../coerce.js";
 import { enqueueCliWarning, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
@@ -163,7 +164,11 @@ export const sqlCommands: Record<string, CommandMeta> = {
 
 			const outputPath = resolve(outputFile,);
 			await mkdir(dirname(outputPath,), { recursive: true, },);
-			await writeFile(outputPath, `${JSON.stringify(result, null, 2,)}\n`, "utf-8",);
+			await writeResponseToFile(
+				outputPath,
+				new Response(`${JSON.stringify(result, null, 2,)}\n`,),
+				"preserve",
+			);
 			return {
 				queryId: result.queryId,
 				schema: result.schema,

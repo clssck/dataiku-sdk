@@ -584,6 +584,38 @@ describe("CLI execution behavior", () => {
 		},);
 	});
 
+	it("does not replay SQLite schema failures despite explicit start retries", async () => {
+		for (const detail of ["no such column: missing_column", "no such table: missing_table",]) {
+			let startAttempts = 0;
+			await withCliServer((req, res,) => {
+				if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+					startAttempts++;
+					sendJson(res, { message: `[SQLITE_ERROR] SQL error or missing database (${detail})`, }, 500,);
+					return;
+				}
+				res.statusCode = 404;
+				res.end();
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"sql",
+					"query",
+					"SELECT missing_column FROM missing_table",
+					"--connection",
+					"CONN",
+					"--start-retries",
+					"2",
+				], { env: cliEnv(url,), },);
+				expect(startAttempts,).toBe(1,);
+				expect(failure.code,).toBe(2,);
+				expect(JSON.parse(failure.stdout,),).toMatchObject({
+					code: "ambiguous_outcome",
+					retryable: false,
+					details: { dssCategory: "validation", },
+				},);
+			},);
+		}
+	});
+
 	it("retries transient SQL start failures only with --start-retries", async () => {
 		let startAttempts = 0;
 		let startBody: Record<string, unknown> | undefined;
