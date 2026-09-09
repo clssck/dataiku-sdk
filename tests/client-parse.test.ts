@@ -148,7 +148,7 @@ describe("DataikuClient constructor configuration", () => {
 		},);
 	});
 
-	it("prefers explicit credentials while allowing one missing field to come from env", async () => {
+	it("does not mix explicit configuration with environment credentials", async () => {
 		const authorizations: string[] = [];
 		const paths: string[] = [];
 
@@ -167,26 +167,31 @@ describe("DataikuClient constructor configuration", () => {
 				},);
 				await expect(explicitClient.projects.list(),).resolves.toEqual([],);
 
-				const urlFallbackClient = new DataikuClient({
+				expect(() => new DataikuClient({
 					apiKey: "url-fallback-key",
-				} as DataikuClientConfig,);
-				await expect(urlFallbackClient.projects.list(),).resolves.toEqual([],);
+				} as DataikuClientConfig,),).toThrow(
+					"Dataiku URL and API key are required: pass {url, apiKey} or set DATAIKU_URL/DATAIKU_API_KEY",
+				);
 
-				const apiKeyFallbackClient = new DataikuClient({
+				expect(() => new DataikuClient({
 					url,
-				} as DataikuClientConfig,);
-				await expect(apiKeyFallbackClient.projects.list(),).resolves.toEqual([],);
+				} as DataikuClientConfig,),).toThrow(
+					"Dataiku URL and API key are required: pass {url, apiKey} or set DATAIKU_URL/DATAIKU_API_KEY",
+				);
+
+				expect(() => new DataikuClient({
+					url,
+					apiKey: "",
+				},),).toThrow(
+					"Dataiku URL and API key are required: pass {url, apiKey} or set DATAIKU_URL/DATAIKU_API_KEY",
+				);
 			},);
 		},);
 
 		expect(authorizations,).toEqual([
 			"Bearer explicit-key",
-			"Bearer url-fallback-key",
-			"Bearer env-key",
 		],);
 		expect(paths,).toEqual([
-			"/public/api/projects/",
-			"/env-should-not-be-used/public/api/projects/",
 			"/public/api/projects/",
 		],);
 	});
