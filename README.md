@@ -2,6 +2,18 @@
 
 Agent-only TypeScript SDK and `dss` CLI for Dataiku DSS automation.
 
+## API coverage
+
+The SDK and CLI include scenario run management; project, recipe, and dataset metadata; managed datasets, lineage, and table imports; external saved models and MLflow imports; LLM completions and embeddings; knowledge banks; project folders and data collections; users, groups, connections, macros, and plugin administration. Discover exact inputs with `dss commands run` and scoped command contracts rather than assuming flags from API field names. MLflow archive/folder imports and evaluations resolve the external container config explicitly: DSS 15 requires the `containerExecConfigName` parameter, so the SDK/CLI send `NONE` rather than omitting it (the plan surface matches the executed request).
+
+The [DSS 15 coverage matrix](docs/API-COVERAGE-DSS-15.md) maps documented operations to SDK methods and CLI actions, records documentation discrepancies, and identifies remaining gaps. A [machine-readable matrix](docs/API-COVERAGE-DSS-15.json) is also available. Coverage is not full DSS parity or live compatibility certification: availability depends on DSS version, permissions, licensing, and installed capabilities. One known documentation discrepancy: `plugin git-branches` is served by GET on DSS 15 (the same route rejects POST with 405 `rawMethodPOSTnotsupported`, contrary to the public docs).
+
+Metadata setters replace the complete metadata object: fetch it, edit it, then submit the replacement. Metadata previews expose that replacement under `next`. New mutation previews (`--plan` and `--dry-run`) make no DSS requests; sensitive payloads may be represented by redacted summaries rather than literal request bodies. LLM completions and embeddings are cost-bearing operations, and macros execute plugin code. Review their contracts before execution.
+
+ML training and macro waits bound status requests by the remaining wait deadline, including response bodies and retries. The client `requestTimeoutMs` still caps each request: an overall wait budget can shorten that cap, never extend it. An individual request timeout propagates as an error until the overall wait budget expires. Future and Project Git waits use adaptive polling by default; explicit polling intervals remain fixed. Early CLI usage errors load at most the selected resource definitions, not the full command runtime.
+
+Malformed user/group listings and scenario run histories fail explicitly instead of appearing empty. Scenario and macro run responses must contain usable run identifiers; missing identifiers are server-response errors, not caller-validation errors.
+
 ## Platform support
 
 The published `dss` CLI requires Bun >= 1.4.0 and supports Linux, macOS, and Windows. The release gate runs Bun 1.4.0 on all three operating systems. The runtime dependency is pure JavaScript, so the same package also runs on every Bun-supported x64 and ARM64 system.
@@ -33,8 +45,9 @@ writable managed storage connection. No imported tutorials are required.
 bun run test:live setup
 bun run test:live run --case core.dataset.baseline
 bun run test:live run --case "core.recipe.*"
-bun run test:live run                 # all core cases + migrated integration suites
+bun run test:live run --profile all          # every profile's run cases in one lab
 bun run test:live run --profile ml --case "ml.*"
+bun run test:live run --profile all --case "applications.*,infrastructure.sql-select"
 bun run test:live status
 bun run test:live clean               # delete only this lab, including its root project
 # CI: setup + run + cleanup, even when cases fail
@@ -51,6 +64,12 @@ an incomplete or cleaned lab rather than silently rebuilding it. Clean failed se
 before provisioning a replacement. Authentication and transport failures retain their
 original errors; they are not evidence that the lab is missing.
 
+`--profile all` is a selection operator, not a lifecycle command: it widens run-case
+availability to every profile (core, ml, applications, infrastructure) in the same
+persistent lab, and setup-only cases stay unselectable. The selector itself neither
+provisions beyond the selected cases nor cleans — combined with the `all` VERB the
+run still ends in the usual destructive cleanup.
+
 Core fixtures include deterministic CSVs with nulls, duplicates, Unicode and quoting;
 server-provisioned managed datasets; sync, Prepare, join, fuzzy-join, grouping and Python
 recipes; folders, scenarios, variables, wiki, notebooks, dashboards, insights, libraries,
@@ -58,9 +77,15 @@ metrics and quality rules. Project export/import/duplicate cases use separate ow
 projects. Managed dataset types, paths and recipe output schemas come from DSS rather
 than tutorial-specific connection guesses.
 
-Profiles add to core: `ml` trains and deploys a small decision tree and checks clustering;
-`applications` requires `DATAIKU_LIVE_APP_TEMPLATE_ID`; `infrastructure` requires
-`DATAIKU_SQL_CONNECTION` or `DATAIKU_SQL_DATASET_FULL_NAME` for read-only SQL.
+Profiles add to core: `ml` trains and deploys a small decision tree and checks clustering.
+`applications` template-gated cases (template surface, instance, successor and
+business-app surfaces) need `DATAIKU_LIVE_APP_TEMPLATE_ID`, and business-app instance
+cases may additionally use `DATAIKU_LIVE_BUSINESS_APP_ID`,
+`DATAIKU_LIVE_BAPP_INSTANCE_PROJECT`, `DATAIKU_LIVE_BAPP_USER` and
+`DATAIKU_LIVE_BAPP_ARCHIVE_PATH` — each missing prerequisite reports an exact blocker.
+Other application and infrastructure read/CRUD cases run without these. The SQL probe
+case needs `DATAIKU_SQL_CONNECTION` or `DATAIKU_SQL_DATASET_FULL_NAME` (other
+infrastructure read-only cases run without either).
 The SQL case permits only the fixed, table-free `SELECT 1 AS one` probe with an
 explicit target and an owned project whose incarnation is checked before execution.
 It does not authorize arbitrary SQL, alternate query inputs or global mutations. Missing
@@ -76,14 +101,65 @@ In a `finally` block, verify that the connection still matches the created defin
 remove it with `DELETE /public/api/admin/connections/<name>`. `all` cleans the owned projects,
 not this separately created connection. The in-memory database creates no database file.
 
-State is ignored by Git under `.live-tests/<server-hash>/`. Use `--state-dir PATH` for
-another lab or `--manifest PATH` to select an existing manifest for `run`, `clean` or
-`status` (not `setup`/`all`). Keep the manifest and
+State is ignored by Git under `.live-tests/<server-hash>/`. Use `--state-dir PATH` to keep
+a persistent demo or verification lab outside the default root — the directory is
+created on demand, isolated per server hash, and never cleaned implicitly. For `run`,
+`clean` or `status` you can alternatively select an existing lab with `--manifest PATH`
+(the two flags overlap only there; `setup`/`all` require `--state-dir` instead). Keep the manifest and
 `cleanup.jsonl`: cleanup requires exact project identities and creation-incarnation
 hashes, never a prefix sweep. A changed server/project identity or unconfirmed creation
 fails closed; investigate its journal before manual recovery. Locks prevent concurrent
 lab runs; after an uncatchable process kill, confirm its recorded process is gone before
 removing a stale lock. Interrupting a run preserves the lab; `all` attempts cleanup.
+
+New globally-scoped case families create only isolated, disposable resources: users,
+groups, meanings, workspaces, data collections, API-deployer infra/services/deployments,
+and plugins require an explicit reservation in the lab manifest plus an exact
+ownership marker written into a lab-controlled field and re-read on every GET
+(`ctx.markerFor`; code-envs instead bind on the server's `desc.creationTag`
+incarnation snapshot, and project folders have no nonce field — they bind on the
+server-generated id plus owner binding). The lifecycle is explicit: reserve checks the
+pending reservation against the manifest; create runs the command and binds the entry
+only after a GET proves the marker/incarnation identity; bound-target mutations
+re-verify the live object before every request. A GET that cannot prove identity
+leaves the entry unconfirmed rather than bound. A failed creation is never deleted
+blind and a conflicting pre-existing resource is recorded, not removed. Pre-existing
+accounts, connections and configuration are never modified or deleted.
+
+Trained-ML demonstration state is retained across iterations in the lab: the `ml`
+profile keeps a real trained decision-tree model and its fixtures, so subsequent
+iterations read model metadata, settings and versions without retraining.
+
+Core fixtures include deterministic CSVs with nulls, duplicates, Unicode and quoting;
+server-provisioned managed datasets; sync, Prepare, join, fuzzy-join, grouping and Python
+recipes; folders, scenarios, variables, wiki, notebooks, dashboards, insights, libraries,
+metrics and quality rules. Project export/import/duplicate cases use separate owned
+projects. Managed dataset types, paths and recipe output schemas come from DSS rather
+than tutorial-specific connection guesses. Expanded case families beyond the original
+core set cover bundles (export/publish lifecycles), Project Git (inspect, commit,
+library-scoped push/pull to local disposable remotes only), scenario statistics and
+payload round-trips, application template and instance manifests, webapp backend state,
+infrastructure reads (connections, users, groups, macros, code-envs, project folders,
+data collections), disposable global lifecycles under the ownership-marker contract,
+and disposable folders/notebooks with plugin.json receipt flows. Plugin cases that
+generate a plugin-managed code environment delete that derived environment explicitly
+before deleting the parent plugin (DSS does not cascade the deletion), and plugin updates
+require the `settings.codeEnvName` association created after plugin creation. MLflow
+import fixtures use canonical packaging (`code:'code'`, `data:'model'`, `env:'conda.yaml'`)
+inside owned runtime environments with pinned scientific versions, and both archive and
+folder imports/evaluations pass explicit `containerExecConfigName=NONE` (DSS 15 rejects
+requests that omit it; folder imports previously inherited a default); noncanonical
+model-path layouts fail with READ_META `ModuleNotFoundError`.
+
+Some capabilities have external prerequisites the lab cannot self-provision; each
+affected action records an explicit per-action blocker instead of passing or being
+silently omitted: an installed application template (`DATAIKU_LIVE_APP_TEMPLATE_ID`),
+external SQL connectivity (`DATAIKU_SQL_CONNECTION`/`DATAIKU_SQL_DATASET_FULL_NAME`),
+external Git remotes for plugin and project-Git push/fetch operations, an external
+auth backend (LDAP/SAML) for user external-directory reads and resyncs, plugin-store
+access, and any cost-bearing surface (LLM completions/embeddings bill per call; macros
+execute plugin code). Missing credentials, templates, external infrastructure or billing
+eligibility are reported as **blocked**, never as success.
 
 Each iteration retains logs and `report.json` with cases, timing, executed actions,
 capability reasons, coverage and external-project metadata integrity. Unavailable project
@@ -95,13 +171,16 @@ both fail, the cleanup error remains primary and the report preserves both resul
 Planned lifecycle commands retain ownership checks; local outputs stay inside the lab
 for both `--output` and `--output-file`. Treat local reports and exported archives as private project
 data. Coverage is an explicit inventory of every registered action, not a claim that
-every action has a live test: unexercised actions remain **uncovered**. Add cases through
+every action has a live test: unexercised actions remain **uncovered**, and the
+expanded demonstration keeps each registered action visible as demonstrated, blocked
+with a recorded prerequisite, or uncovered — never silently dropped. Add cases through
 the typed catalogue in `tests/live-cases.ts`, `LiveContext.check` and guarded helpers,
 then update `tests/live-coverage.ts` when the
 registry changes; catalogue drift fails the offline gate. Plan/dry-run calls do not count
 as executed live coverage.
 
 Regular `bun run check` and `bun run lint` include the live runner and fixtures.
+Lint includes project-owned rules in `tools/oxlint/index.ts`: accumulator-copy, widen-then-assert, and chained-assertion errors, alongside the native accumulating-spread check.
 For focused verification:
 
 ```sh
@@ -544,7 +623,9 @@ dss notebook unload-jupyter --all --dry-run --project-key MYPROJ
 Code-environment reads expose definitions, deployment mode, installed/requested packages, project
 versions, usages, and bounded build logs. Fetch the definition/hash before `set-definition` or
 `set-packages --expect-hash`; package, image, Jupyter, create, and delete operations can return DSS
-futures with `--no-wait`.
+futures with `--no-wait`. `set-packages` replaces the requested package list wholesale: an
+explicitly empty `--packages ''` value (or an empty `--file`) clears the requested specs, while a
+call with no package source flag at all is a usage error.
 
 Webapp updates use GET–deep-merge–PUT; API-service `save-settings` is explicit full replacement.
 Run either with `--dry-run` to inspect `currentHash`/`nextHash`, then apply with
