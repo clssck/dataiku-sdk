@@ -111,20 +111,30 @@ function splitPackageSpec(raw: string,): string[] {
 	return raw.split(/\r?\n/,).map((line,) => line.trim()).filter((line,) => line.length > 0);
 }
 
+/**
+ * Resolve requested package specs from --file/--packages/--package. An
+ * explicit source that resolves to zero specs is a legitimate clear
+ * (set-packages replaces specPackageList wholesale); only a call with no
+ * package source flag at all is a usage error.
+ */
 function codeEnvPackageList(flags: Record<string, string | boolean>,): string[] {
-	const packages: string[] = [];
-	if (typeof flags["file"] === "string") {
-		packages.push(...splitPackageSpec(fs.readFileSync(flags["file"], "utf-8",),),);
-	}
+	const file = flags["file"];
+	const packages = typeof file === "string"
+		? splitPackageSpec(fs.readFileSync(file, "utf-8",),)
+		: [];
 	if (typeof flags["packages"] === "string") {
 		packages.push(...splitPackageSpec(flags["packages"],),);
 	}
 	if (typeof flags["package"] === "string") {
 		packages.push(...splitPackageSpec(flags["package"],),);
 	}
-	if (packages.length === 0) {
+	if (
+		typeof file !== "string"
+		&& typeof flags["packages"] !== "string"
+		&& typeof flags["package"] !== "string"
+	) {
 		throw new UsageError(
-			"--packages, --package, or --file is required. Use newline-separated package specs for version constraints.",
+			"--packages, --package, or --file is required. Use newline-separated package specs for version constraints; an explicitly empty value (or empty file) clears the requested package list.",
 		);
 	}
 	return packages;
@@ -1214,8 +1224,9 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	// Plugin dev-Git actions mutate repository/plugin state like project-git:
 	// `fetch`/`pull`/`push`/`reset-*` never match the generic mutating-verb
 	// regex, so they are classified explicitly as write (destructive level
-	// from the explicit table below). `git-branches` is a documented POST
-	// observer and stays read.
+	// from the explicit table below). `git-branches` is a state observer
+	// (observed GET on DSS 15; the upstream docs' POST is wrong) and stays
+	// read.
 	if (resource === "plugin") {
 		return PLUGIN_GIT_OBSERVER_ACTIONS[action] === true ? "read" : "write";
 	}

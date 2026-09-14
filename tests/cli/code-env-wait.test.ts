@@ -1,5 +1,17 @@
 import { describe, expect, it, } from "bun:test";
-import { cliEnv, dss, dssFailure, readBody, sendJson, withCliServer, } from "./_harness.js";
+import { mkdtempSync, } from "node:fs";
+import {
+	cliEnv,
+	dss,
+	dssFailure,
+	join,
+	readBody,
+	rmSync,
+	sendJson,
+	tmpdir,
+	withCliServer,
+	writeFileSync,
+} from "./_harness.js";
 
 describe("CLI code-env management commands", () => {
 	it("code-env create posts deployment mode and params", async () => {
@@ -88,6 +100,94 @@ describe("CLI code-env management commands", () => {
 			envLang: "PYTHON",
 			specPackageList: "tabulate\nopenpyxl>=3.1.5,<3.2",
 			desc: { installCorePackages: true, pythonInterpreter: "PYTHON311", },
+		},);
+	});
+
+	it("code-env set-packages treats an explicitly empty list as a clear", async () => {
+		const requests: string[] = [];
+		const bodies: Array<Record<string, unknown>> = [];
+
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+			if (req.method === "GET" && url.pathname === "/public/api/admin/code-envs/PYTHON/omp_test_env") {
+				sendJson(res, {
+					envName: "omp_test_env",
+					envLang: "PYTHON",
+					specPackageList: "oldpkg",
+					desc: { installCorePackages: false, pythonInterpreter: "PYTHON311", },
+				},);
+				return;
+			}
+			if (req.method === "PUT" && url.pathname === "/public/api/admin/code-envs/PYTHON/omp_test_env") {
+				bodies.push(JSON.parse(await readBody(req,),) as Record<string, unknown>,);
+				sendJson(res, { updated: true, },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const viaFlag = await dss([
+				"code-env",
+				"set-packages",
+				"PYTHON",
+				"omp_test_env",
+				"--packages",
+				"",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(viaFlag.stdout,),).toEqual({ updated: true, },);
+			const emptyDir = mkdtempSync(join(tmpdir(), "dss-empty-packages-",),);
+			try {
+				const emptyFile = join(emptyDir, "requirements.txt",);
+				writeFileSync(emptyFile, "",);
+				const viaFile = await dss([
+					"code-env",
+					"set-packages",
+					"PYTHON",
+					"omp_test_env",
+					"--file",
+					emptyFile,
+				], { env: cliEnv(url,), },);
+				expect(JSON.parse(viaFile.stdout,),).toEqual({ updated: true, },);
+			} finally {
+				rmSync(emptyDir, { recursive: true, force: true, },);
+			}
+		},);
+
+		expect(requests,).toEqual([
+			"GET /public/api/admin/code-envs/PYTHON/omp_test_env",
+			"PUT /public/api/admin/code-envs/PYTHON/omp_test_env",
+			"GET /public/api/admin/code-envs/PYTHON/omp_test_env",
+			"PUT /public/api/admin/code-envs/PYTHON/omp_test_env",
+		],);
+		const cleared = {
+			envName: "omp_test_env",
+			envLang: "PYTHON",
+			specPackageList: "",
+			desc: { installCorePackages: false, pythonInterpreter: "PYTHON311", },
+		};
+		expect(bodies,).toEqual([cleared, cleared,],);
+	});
+
+	it("code-env set-packages without any package source is still a usage error", async () => {
+		await withCliServer((_req, res,) => {
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"code-env",
+				"set-packages",
+				"PYTHON",
+				"omp_test_env",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(1,);
+			expect(JSON.parse(failure.stdout,) as Record<string, unknown>,).toMatchObject({
+				code: "usage_error",
+				category: "usage",
+				resource: "code-env",
+				action: "set-packages",
+				exitCode: 1,
+			},);
 		},);
 	});
 

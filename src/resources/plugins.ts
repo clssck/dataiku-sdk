@@ -530,13 +530,15 @@ export class PluginsResource extends BaseResource {
 	}
 
 	/**
-	 * List the Git branches of a dev plugin. The documented route is POST
-	 * `/plugins/{pluginId}/gitBranches` (a POST that only observes state).
+	 * List the Git branches of a dev plugin. Observed DSS 15 contract: GET
+	 * `/plugins/{pluginId}/gitBranches` answers `200 ["master"]`. The upstream
+	 * DSS 15 REST reference documents POST for this path, but the live API
+	 * answers that POST with 405 Method Not Allowed (upstream method wrong);
+	 * this SDK uses the observed GET, with no POST fallback.
 	 */
 	async listGitBranches(pluginId: string,): Promise<string[]> {
-		const raw = await this.client.post<string[]>(
+		const raw = await this.client.get<string[]>(
 			`/public/api/plugins/${enc(pluginId,)}/gitBranches`,
-			{},
 		);
 		return Array.isArray(raw,) ? raw : [];
 	}

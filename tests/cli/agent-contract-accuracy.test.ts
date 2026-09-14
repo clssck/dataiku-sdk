@@ -1102,6 +1102,23 @@ describe("agent contract accuracy: coding plans", () => {
 		},);
 		expect(packages.requests,).toHaveLength(2,);
 
+		const clearedPackages = buildMutationPlan(
+			"code-env",
+			"set-packages",
+			commands["code-env"]!["set-packages"]!,
+			[
+				"PYTHON",
+				"audit_env",
+			],
+			{ packages: "", },
+		);
+		expect(clearedPackages,).toMatchObject({
+			exact: false,
+			method: "PUT",
+			endpoint: "/public/api/admin/code-envs/PYTHON/audit_env",
+		},);
+		expect((clearedPackages.payload as Record<string, unknown>)["packages"],).toEqual([],);
+
 		const images = buildMutationPlan(
 			"code-env",
 			"update-images",

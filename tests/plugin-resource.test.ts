@@ -483,7 +483,7 @@ describe("PluginsResource against a fake DSS (all documented endpoints)", () => 
 	it("lists git branches through the documented POST", async () => {
 		await withFakeDss(
 			(routes,) => {
-				routes.set("POST /public/api/plugins/p/gitBranches", (_req, res,) => {
+				routes.set("GET /public/api/plugins/p/gitBranches", (_req, res,) => {
 					json(res, ["main", "feature/x",],);
 				},);
 			},

@@ -69,20 +69,28 @@ function splitPackageSpec(raw: string,): string[] {
 	return raw.split(/\r?\n/,).map((line,) => line.trim()).filter((line,) => line.length > 0);
 }
 
+/**
+ * Resolve requested package specs from --file/--packages/--package. An
+ * explicit source that resolves to zero specs is a legitimate clear
+ * (set-packages replaces specPackageList wholesale); only a call with no
+ * package source flag at all is a usage error.
+ */
 function codeEnvPackageList(flags: Record<string, string | boolean>,): string[] {
-	const packages: string[] = [];
-	if (typeof flags["file"] === "string") {
-		packages.push(...splitPackageSpec(readFileSync(flags["file"], "utf-8",),),);
-	}
+	const file = flags["file"];
+	const packages = typeof file === "string" ? splitPackageSpec(readFileSync(file, "utf-8",),) : [];
 	if (typeof flags["packages"] === "string") {
 		packages.push(...splitPackageSpec(flags["packages"],),);
 	}
 	if (typeof flags["package"] === "string") {
 		packages.push(...splitPackageSpec(flags["package"],),);
 	}
-	if (packages.length === 0) {
+	if (
+		typeof file !== "string"
+		&& typeof flags["packages"] !== "string"
+		&& typeof flags["package"] !== "string"
+	) {
 		throw new UsageError(
-			"--packages, --package, or --file is required. Use newline-separated package specs for version constraints.",
+			"--packages, --package, or --file is required. Use newline-separated package specs for version constraints; an explicitly empty value (or empty file) clears the requested package list.",
 		);
 	}
 	return packages;
@@ -329,7 +337,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 		usage:
 			"dss code-env set-packages <lang> <name> (--packages PKGS|--package PKG|--file PATH) [--install-core-packages true|false] [--expect-hash SHA256] [--dry-run]",
 		description:
-			"Fetch the current definition, merge the requested package specs (and --install-core-packages) into it, then PUT the merged definition, so fields outside the package list are never dropped; --expect-hash refuses the merge when DSS changed since the hash was captured.",
+			"Fetch the current definition, merge the requested package specs (and --install-core-packages) into it, then PUT the merged definition, so fields outside the package list are never dropped; --expect-hash refuses the merge when DSS changed since the hash was captured. The package list is replaced wholesale, so an explicitly empty --packages value or an empty --file clears the requested packages.",
 		examples: [
 			"dss code-env set-packages PYTHON my_env --packages 'tabulate\\nnameparser' --dry-run",
 			"dss code-env set-packages PYTHON my_env --file requirements.txt",
