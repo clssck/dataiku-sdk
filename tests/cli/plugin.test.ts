@@ -381,7 +381,11 @@ describe("plugin CLI dry-run plans make zero requests", () => {
 		expect(create,).toMatchObject({
 			plan: true,
 			endpoint: "/public/api/plugins/p/code-env/actions/create",
-			payload: { conda: true, pythonInterpreter: "PYTHON36", },
+			payload: {
+				deploymentMode: "PLUGIN_MANAGED",
+				conda: true,
+				pythonInterpreter: "PYTHON36",
+			},
 			async: "future",
 		},);
 		const update = await run("code-env-update", client, ["p",], { "dry-run": true, },);

@@ -3768,7 +3768,11 @@ export function commandPlanShape(
 				method: "POST",
 				endpoint: `${pluginRootEndpoint(id, "/code-env/actions/create",)}`,
 				identifiers: { pluginId: id, },
-				payload: { conda, pythonInterpreter: flags["python-interpreter"], },
+				payload: {
+					deploymentMode: "PLUGIN_MANAGED",
+					conda,
+					pythonInterpreter: flags["python-interpreter"] ?? null,
+				},
 				wait: flags["wait"] === true,
 			};
 		}

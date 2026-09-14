@@ -375,7 +375,11 @@ export const pluginCommands: Record<string, CommandMeta> = {
 					method: "POST",
 					endpoint: pluginRootEndpoint(pluginId, "/code-env/actions/create",),
 					identifiers: { pluginId, },
-					payload: { conda, pythonInterpreter: pythonInterpreter ?? null, },
+					payload: {
+						deploymentMode: "PLUGIN_MANAGED",
+						conda,
+						pythonInterpreter: pythonInterpreter ?? null,
+					},
 					asyncKind: "future",
 				},);
 			}

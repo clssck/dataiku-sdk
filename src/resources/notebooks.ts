@@ -257,6 +257,9 @@ export class NotebooksResource extends BaseResource {
 			...content,
 			projectKey: this.resolveProjectKey(projectKey,),
 		};
+		// Positional identity only: a content-supplied id (e.g. a stale GET
+		// spread) is stripped before the request — DSS rejects it outright.
+		delete body["id"];
 		if (opts?.name !== undefined && body["name"] === undefined) body["name"] = opts.name;
 		const raw = await this.client.post<unknown>(
 			`/public/api/projects/${this.enc(projectKey,)}/sql-notebooks/`,
@@ -276,12 +279,20 @@ export class NotebooksResource extends BaseResource {
 		return { id, };
 	}
 
-	/** Save (overwrite) a SQL notebook's content. */
+	/**
+	 * Save (overwrite) a SQL notebook's content.
+	 *
+	 * Identity is positional: the URL id and the resolved project key are
+	 * injected into the body, overriding any `id`/`projectKey` the content may
+	 * carry, so a stale or hand-built body can never retarget the write. PUT
+	 * is a full replacement — fields absent from the content (e.g. `name`)
+	 * are cleared server-side.
+	 */
 	async saveSql(id: string, content: SqlNotebookContent, projectKey?: string,): Promise<void> {
 		const idEnc = encodeURIComponent(id,);
 		await this.client.putVoid(
 			`/public/api/projects/${this.enc(projectKey,)}/sql-notebooks/${idEnc}`,
-			content,
+			{ ...content, id, projectKey: this.resolveProjectKey(projectKey,), },
 		);
 	}
 

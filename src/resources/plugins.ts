@@ -441,7 +441,9 @@ export class PluginsResource extends BaseResource {
 
 	/**
 	 * Create the code env of a plugin. Returns the DSS future handle
-	 * (`{jobId}`).
+	 * (`{jobId}`). The request carries the plugin-managed deployment mode and
+	 * an explicit interpreter (null = the plugin's default), exactly as the
+	 * official Python client sends it.
 	 */
 	async createCodeEnv(
 		pluginId: string,
@@ -450,10 +452,9 @@ export class PluginsResource extends BaseResource {
 		const raw = await this.client.post<Record<string, unknown>>(
 			`/public/api/plugins/${enc(pluginId,)}/code-env/actions/create`,
 			{
+				deploymentMode: "PLUGIN_MANAGED",
 				conda: options.conda === true,
-				...(options.pythonInterpreter !== undefined
-					? { pythonInterpreter: options.pythonInterpreter, }
-					: {}),
+				pythonInterpreter: options.pythonInterpreter ?? null,
 			},
 		);
 		return requireJobId(raw, "plugins.createCodeEnv",);

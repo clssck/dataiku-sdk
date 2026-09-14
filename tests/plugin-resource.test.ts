@@ -392,7 +392,11 @@ describe("PluginsResource against a fake DSS (all documented endpoints)", () => 
 			(routes,) => {
 				routes.set("POST /public/api/plugins/p/code-env/actions/create", async (req, res,) => {
 					const body = JSON.parse((await readBody(req,)).toString("utf8",),);
-					expect(body,).toEqual({ conda: true, pythonInterpreter: "PYTHON36", },);
+					expect(body,).toEqual({
+						deploymentMode: "PLUGIN_MANAGED",
+						conda: true,
+						pythonInterpreter: "PYTHON36",
+					},);
 					json(res, { jobId: "future-1", },);
 				},);
 				routes.set("POST /public/api/plugins/p/code-env/actions/update", (_req, res,) => {

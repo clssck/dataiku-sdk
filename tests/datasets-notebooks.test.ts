@@ -711,9 +711,13 @@ describe("NotebooksResource.create", () => {
 	it("posts new SQL notebooks without an id and returns the server-allocated id", async () => {
 		const requests: string[] = [];
 		let observedBody: Record<string, unknown> | undefined;
+		// Stale identity from a previously spread notebook record: the create
+		// body must strip `id` (DSS rejects it) and override projectKey.
 		const notebook: SqlNotebookContent = {
 			connection: "postgres",
 			cells: [{ id: "cell-1", type: "QUERY", code: "select 1", },],
+			id: "stale-id",
+			projectKey: "OTHER",
 		};
 
 		await withTestServer(async (req, res,) => {
@@ -731,7 +735,8 @@ describe("NotebooksResource.create", () => {
 		expect(requests,).toEqual(["POST /public/api/projects/TEST/sql-notebooks/",],);
 		// DSS rejects a request-supplied `id`; the requested handle is only the name.
 		expect(observedBody,).toEqual({
-			...notebook,
+			connection: "postgres",
+			cells: [{ id: "cell-1", type: "QUERY", code: "select 1", },],
 			name: "sql/slash",
 			projectKey: "TEST",
 		},);

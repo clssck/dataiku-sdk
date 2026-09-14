@@ -177,7 +177,61 @@ describe("notebook save-sql command", () => {
 			`PUT ${notebookPath}`,
 			`GET ${notebookPath}`,
 		],);
-		expect(savedBody,).toEqual(nextNotebook,);
+		// Identity is positional: the URL id and resolved project key are
+		// injected into the PUT body.
+		expect(savedBody,).toEqual({
+			...nextNotebook,
+			id: "sql notebook",
+			projectKey: "TEST",
+		},);
+	});
+
+	it("cannot retarget a notebook from stale content identity", async () => {
+		const requests: string[] = [];
+		let savedBody: Record<string, unknown> | undefined;
+		const currentNotebook = {
+			connection: "postgres",
+			cells: [{ id: "cell-1", type: "QUERY", code: "select 0", },],
+		};
+		const state: { stored?: Record<string, unknown>; } = { stored: currentNotebook, };
+
+		await withServer(async (req, res,) => {
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			requests.push(request,);
+			if (req.method === "GET" && req.url === notebookPath) {
+				sendJson(res, state.stored,);
+				return;
+			}
+			if (req.method === "PUT" && req.url === notebookPath) {
+				savedBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
+				state.stored = savedBody;
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${request}`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			// Stale content tries to carry a foreign identity; the positional
+			// arguments must win and the write must stay on the requested notebook.
+			const stale = { ...nextNotebook, id: "other-target", projectKey: "OTHER", };
+			const result = await saveSql.handler(client, ["sql notebook",], {
+				data: JSON.stringify(stale,),
+			},) as { saved?: string; };
+			expect(result.saved,).toBe("sql notebook",);
+		},);
+
+		expect(requests,).toEqual([
+			`GET ${notebookPath}`,
+			`PUT ${notebookPath}`,
+			`GET ${notebookPath}`,
+		],);
+		expect(savedBody,).toEqual({
+			...nextNotebook,
+			id: "sql notebook",
+			projectKey: "TEST",
+		},);
 	});
 
 	it("rejects a stale --expect-hash without writing", async () => {
