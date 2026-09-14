@@ -71,6 +71,7 @@ describe("notebook save-sql command", () => {
 		const requests: string[] = [];
 		let createdBody: unknown;
 		const state: { stored?: Record<string, unknown>; } = {};
+		const generatedPath = "/public/api/projects/TEST/sql-notebooks/gen-1";
 
 		await withServer(async (req, res,) => {
 			const request = `${req.method ?? ""} ${req.url ?? ""}`;
@@ -83,11 +84,15 @@ describe("notebook save-sql command", () => {
 				sendJson(res, state.stored,);
 				return;
 			}
+			if (req.method === "GET" && req.url === generatedPath) {
+				sendJson(res, state.stored ?? {},);
+				return;
+			}
 			if (req.method === "POST" && req.url === "/public/api/projects/TEST/sql-notebooks/") {
 				createdBody = JSON.parse(await readRequestBody(req,),);
-				state.stored = createdBody as Record<string, unknown>;
-				res.statusCode = 204;
-				res.end();
+				// The server allocates the id and returns the full receipt.
+				state.stored = { id: "gen-1", ...(createdBody as Record<string, unknown>), };
+				sendJson(res, state.stored, 201,);
 				return;
 			}
 			res.statusCode = 500;
@@ -96,22 +101,30 @@ describe("notebook save-sql command", () => {
 			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
 			const result = await saveSql.handler(client, ["sql notebook",], {
 				data: JSON.stringify(nextNotebook,),
-			},) as { saved?: string; resource?: string; created?: boolean; hash?: string; };
-			expect(result.saved,).toBe("sql notebook",);
+			},) as {
+				saved?: string;
+				requested?: string;
+				resource?: string;
+				created?: boolean;
+				hash?: string;
+			};
+			expect(result.saved,).toBe("gen-1",);
+			expect(result.requested,).toBe("sql notebook",);
 			expect(result.resource,).toBe("sql-notebook",);
 			expect(result.created,).toBe(true,);
 			expect(result.hash,).toBe(stableHash(state.stored,),);
 		},);
 
-		// Fresh read decides create vs update, then POST, then a confirming read.
+		// Fresh read decides create vs update, then POST (no id in the body),
+		// then a confirming read by the server-allocated id.
 		expect(requests,).toEqual([
 			`GET ${notebookPath}`,
 			"POST /public/api/projects/TEST/sql-notebooks/",
-			`GET ${notebookPath}`,
+			`GET ${generatedPath}`,
 		],);
 		expect(createdBody,).toEqual({
 			...nextNotebook,
-			id: "sql notebook",
+			name: "sql notebook",
 			projectKey: "TEST",
 		},);
 	});

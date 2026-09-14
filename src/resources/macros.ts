@@ -136,10 +136,14 @@ function macroRunFailure(state: Record<string, unknown>,): MacroRunFailure | und
  * than JSON, so {@link MacrosResource.result} returns the raw body.
  */
 export class MacrosResource extends BaseResource {
-	/** List the macros (runnables) available in a project. */
+	/**
+	 * List the macros (runnables) available in a project. The official client
+	 * lists at `/runnables/` (trailing slash): the slashless path 404s on live
+	 * DSS 15, while get/run/state/result stay slashless.
+	 */
 	async list(projectKey?: string,): Promise<MacroSummary[]> {
 		const raw = await this.client.get<unknown>(
-			`/public/api/projects/${this.enc(projectKey,)}/runnables`,
+			`/public/api/projects/${this.enc(projectKey,)}/runnables/`,
 		);
 		return this.client.safeParse(MacroSummaryArraySchema, raw, "macros.list",);
 	}

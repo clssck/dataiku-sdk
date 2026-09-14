@@ -667,6 +667,19 @@ const NOTEBOOK_SAVE_OUTPUT_SCHEMA: Record<string, unknown> = {
 	},
 };
 
+/**
+ * `notebook.save-sql` adds `requested`: on create DSS allocates the persisted
+ * id (`saved`), while the requested handle only becomes the display name.
+ */
+const NOTEBOOK_SAVE_SQL_OUTPUT_SCHEMA: Record<string, unknown> = {
+	...NOTEBOOK_SAVE_OUTPUT_SCHEMA,
+	required: ["saved", "requested", "resource", "created", "hash",],
+	properties: {
+		...(NOTEBOOK_SAVE_OUTPUT_SCHEMA["properties"] as Record<string, unknown>),
+		requested: { type: "string", },
+	},
+};
+
 const COMMAND_OUTPUT_SCHEMAS: Record<string, Record<string, unknown>> = {
 	"code-env.list": CodeEnvSummaryArraySchema,
 	"code-env.get": CodeEnvDetailsSchema,
@@ -747,7 +760,7 @@ const COMMAND_OUTPUT_SCHEMAS: Record<string, Record<string, unknown>> = {
 	"notebook.get-sql": SqlNotebookContentSchema,
 	"notebook.history-sql": SqlNotebookHistorySchema,
 	"notebook.save-jupyter": NOTEBOOK_SAVE_OUTPUT_SCHEMA,
-	"notebook.save-sql": NOTEBOOK_SAVE_OUTPUT_SCHEMA,
+	"notebook.save-sql": NOTEBOOK_SAVE_SQL_OUTPUT_SCHEMA,
 	"project-library.list": { type: "array", items: PROJECT_LIBRARY_ITEM_OUTPUT_SCHEMA, },
 	"project-library.get-bytes": {
 		type: "object",
@@ -1454,7 +1467,7 @@ function cleanupCommandFromDeleteUsage(resource: string, action: string,): strin
 		return "dss notebook delete-jupyter <name> --if-exists";
 	}
 	if (`${resource}.${action}` === "notebook.save-sql") {
-		return "dss notebook delete-sql <id> --if-exists";
+		return "dss notebook delete-sql <the returned `saved` id> --if-exists";
 	}
 	if (`${resource}.${action}` === "project.import") {
 		return "dss project delete <used-project-key> --if-exists --expect-project-incarnation <hash>";
@@ -1605,7 +1618,7 @@ export function inferCleanupHint(resource: string, action: string,): string | un
 		return "If created:true, delete with `dss notebook delete-jupyter <name> --if-exists`.";
 	}
 	if (key === "notebook.save-sql") {
-		return "If created:true, delete with `dss notebook delete-sql <id> --if-exists`.";
+		return "If created:true, the persisted id is in `saved`; delete with `dss notebook delete-sql <saved> --if-exists`.";
 	}
 	if (!(action.startsWith("create",) || action === "clone")) return undefined;
 	if (LEDGER_ONLY_CLEANUP_KEYS[key] === true) return LEDGER_ONLY_CLEANUP_HINT;

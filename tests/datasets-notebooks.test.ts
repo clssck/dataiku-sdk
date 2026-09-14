@@ -708,7 +708,7 @@ describe("NotebooksResource.create", () => {
 		expect(observedBody,).toEqual(notebook,);
 	});
 
-	it("posts new SQL notebooks to the project SQL notebook collection", async () => {
+	it("posts new SQL notebooks without an id and returns the server-allocated id", async () => {
 		const requests: string[] = [];
 		let observedBody: Record<string, unknown> | undefined;
 		const notebook: SqlNotebookContent = {
@@ -719,17 +719,20 @@ describe("NotebooksResource.create", () => {
 		await withTestServer(async (req, res,) => {
 			requests.push(`${req.method} ${req.url}`,);
 			observedBody = JSON.parse(await readRequestBody(req,),) as Record<string, unknown>;
-			res.statusCode = 204;
-			res.end();
+			res.setHeader("Content-Type", "application/json",);
+			res.statusCode = 200;
+			res.end(JSON.stringify({ id: "gen-1", name: "sql/slash", },),);
 		}, async (url,) => {
 			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
-			await expect(client.notebooks.createSql("sql/slash", notebook,),).resolves.toBeUndefined();
+			await expect(client.notebooks.createSql(notebook, undefined, { name: "sql/slash", },),)
+				.resolves.toEqual({ id: "gen-1", },);
 		},);
 
 		expect(requests,).toEqual(["POST /public/api/projects/TEST/sql-notebooks/",],);
+		// DSS rejects a request-supplied `id`; the requested handle is only the name.
 		expect(observedBody,).toEqual({
 			...notebook,
-			id: "sql/slash",
+			name: "sql/slash",
 			projectKey: "TEST",
 		},);
 	});

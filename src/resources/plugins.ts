@@ -283,25 +283,39 @@ export class PluginsResource extends BaseResource {
 		return this.client.get<PluginSummary[]>("/public/api/plugins/",);
 	}
 
-	/** Install a plugin from a local zip file. Fails if already installed. */
+	/**
+	 * Install a plugin from a local zip file. Fails if already installed.
+	 * Resolves only after the installation completed: when DSS answers with a
+	 * future receipt the future is settled before returning.
+	 */
 	async installFromZip(filePath: string,): Promise<void> {
-		await this.client.upload("/public/api/plugins/actions/installFromZip", filePath,);
+		const receipt = await this.client.uploadJson<Record<string, unknown>>(
+			"/public/api/plugins/actions/installFromZip",
+			filePath,
+		);
+		await this.settleActionFuture(receipt, "installFromZip",);
 	}
 
 	/** Install a plugin from the Dataiku store. Fails if already installed. */
 	async installFromStore(pluginId: string,): Promise<void> {
-		await this.client.post("/public/api/plugins/actions/installFromStore", {
-			pluginId: validatePluginId(pluginId,),
-		},);
+		const receipt = await this.client.post<Record<string, unknown>>(
+			"/public/api/plugins/actions/installFromStore",
+			{ pluginId: validatePluginId(pluginId,), },
+		);
+		await this.settleActionFuture(receipt, "installFromStore",);
 	}
 
 	/** Install a plugin by checking out a Git repository. Fails if already installed. */
 	async installFromGit(options: PluginGitInstallOptions,): Promise<void> {
-		await this.client.post("/public/api/plugins/actions/installFromGit", {
-			gitRepositoryUrl: validatedPluginGitUrl(options.gitRepositoryUrl,),
-			gitCheckout: options.gitCheckout ?? null,
-			gitSubpath: options.gitSubpath ?? null,
-		},);
+		const receipt = await this.client.post<Record<string, unknown>>(
+			"/public/api/plugins/actions/installFromGit",
+			{
+				gitRepositoryUrl: validatedPluginGitUrl(options.gitRepositoryUrl,),
+				gitCheckout: options.gitCheckout ?? null,
+				gitSubpath: options.gitSubpath ?? null,
+			},
+		);
+		await this.settleActionFuture(receipt, "installFromGit",);
 	}
 
 	/** Download a development plugin as a zip archive. */
@@ -311,48 +325,69 @@ export class PluginsResource extends BaseResource {
 		);
 	}
 
-	/** Update a plugin from a local zip file. Fails if not already installed. */
+	/**
+	 * Update a plugin from a local zip file. Fails if not already installed.
+	 * Resolves only after the update completed (future receipt settled).
+	 */
 	async updateFromZip(pluginId: string, filePath: string,): Promise<void> {
-		await this.client.upload(
+		const receipt = await this.client.uploadJson<Record<string, unknown>>(
 			`/public/api/plugins/${enc(pluginId,)}/actions/updateFromZip`,
 			filePath,
 		);
+		await this.settleActionFuture(receipt, "updateFromZip",);
 	}
 
 	/** Update a plugin from the Dataiku Store. */
 	async updateFromStore(pluginId: string,): Promise<void> {
-		await this.client.post(
+		const receipt = await this.client.post<Record<string, unknown>>(
 			`/public/api/plugins/${enc(pluginId,)}/actions/updateFromStore`,
 			{},
 		);
+		await this.settleActionFuture(receipt, "updateFromStore",);
 	}
 
 	/**
 	 * Update a plugin from Git. Note the documented route lives at
 	 * `/plugins/actions/updateFromGit` (no pluginId in the path); the plugin
-	 * is selected server-side by the zip/checkout's plugin.json.
+	 * is selected server-side by the zip/checkout's plugin.json. Resolves
+	 * only after the update completed (future receipt settled).
 	 */
 	async updateFromGit(options: PluginGitInstallOptions,): Promise<void> {
-		await this.client.post("/public/api/plugins/actions/updateFromGit", {
-			gitRepositoryUrl: validatedPluginGitUrl(options.gitRepositoryUrl,),
-			gitCheckout: options.gitCheckout ?? null,
-			gitSubpath: options.gitSubpath ?? null,
-		},);
+		const receipt = await this.client.post<Record<string, unknown>>(
+			"/public/api/plugins/actions/updateFromGit",
+			{
+				gitRepositoryUrl: validatedPluginGitUrl(options.gitRepositoryUrl,),
+				gitCheckout: options.gitCheckout ?? null,
+				gitSubpath: options.gitSubpath ?? null,
+			},
+		);
+		await this.settleActionFuture(receipt, "updateFromGit",);
 	}
 
-	/** Move an installed plugin to the development environment. */
+	/**
+	 * Move an installed plugin to the development environment. Resolves only
+	 * after the move completed (future receipt settled).
+	 */
 	async moveToDev(pluginId: string,): Promise<void> {
-		await this.client.post(
+		const receipt = await this.client.post<Record<string, unknown>>(
 			`/public/api/plugins/${enc(pluginId,)}/actions/moveToDev`,
 			{},
 		);
+		await this.settleActionFuture(receipt, "moveToDev",);
 	}
 
-	/** Delete a plugin; refuses when usages exist unless `force` is set. */
+	/**
+	 * Delete a plugin; refuses when usages exist unless `force` is set.
+	 * Resolves only after the deletion completed: DSS answers this route with
+	 * a future, so reporting success before the future settles would leave
+	 * the plugin briefly present after the call returned.
+	 */
 	async delete(pluginId: string, options: { force?: boolean; } = {},): Promise<void> {
-		await this.client.post(`/public/api/plugins/${enc(pluginId,)}/actions/delete`, {
-			force: options.force === true,
-		},);
+		const receipt = await this.client.post<Record<string, unknown>>(
+			`/public/api/plugins/${enc(pluginId,)}/actions/delete`,
+			{ force: options.force === true, },
+		);
+		await this.settleActionFuture(receipt, "delete",);
 	}
 
 	/* ---- settings ---- */
@@ -538,7 +573,36 @@ export class PluginsResource extends BaseResource {
 			`/public/api/plugins/${enc(pluginId,)}/actions/${action}`,
 			{},
 		);
-		return raw ?? {};
+		const receipt = raw ?? {};
+		await this.settleActionFuture(receipt, action,);
+		return receipt;
+	}
+
+	/**
+	 * Settle a plugin action's future receipt. Plugin action endpoints answer
+	 * with `{jobId}` when DSS processes the action asynchronously, and with an
+	 * empty or already-settled body for synchronous ones — the official
+	 * Python client's `DSSFuture.from_resp` accepts a missing jobId and its
+	 * `wait_for_result` treats a jobless state as already complete. A jobless
+	 * receipt is returned as-is (no fake wait); a jobId is polled through the
+	 * shared futures waiter so callers only observe completion.
+	 */
+	private async settleActionFuture(
+		receipt: Record<string, unknown> | undefined,
+		action: string,
+	): Promise<void> {
+		const jobId = receipt?.["jobId"];
+		if (typeof jobId !== "string" || jobId.length === 0) return;
+		const waited = await this.client.futures.wait(jobId, {},);
+		if (waited.state !== "DONE") {
+			throw new DataikuError(
+				200,
+				"Unexpected Response",
+				`plugin ${action} future ${jobId} ended in state ${waited.state}${
+					waited.timedOut === true ? " (wait timed out)" : ""
+				}`,
+			);
+		}
 	}
 
 	/* ---- dev plugin contents ---- */
@@ -550,22 +614,21 @@ export class PluginsResource extends BaseResource {
 		);
 	}
 
-	/** Read a dev plugin file as text. */
+	/**
+	 * Read a dev plugin file as text. DSS answers this route with the raw file
+	 * body (no JSON envelope, `dataEncoding` is not honored), so the response
+	 * is read as text directly.
+	 */
 	async getFile(pluginId: string, path: string,): Promise<string> {
 		const valid = validatePluginPath(path,);
-		const res = await this.client.get<PluginFileData>(
-			`${this.contentsPath(pluginId, valid,)}?dataEncoding=base64`,
-		);
-		return Buffer.from(res.data, "base64",).toString("utf8",);
+		return await this.client.getText(this.contentsPath(pluginId, valid,),);
 	}
 
-	/** Read a dev plugin file as raw bytes. */
+	/** Read a dev plugin file as raw bytes (same raw-body route as getFile). */
 	async getFileBytes(pluginId: string, path: string,): Promise<Uint8Array> {
 		const valid = validatePluginPath(path,);
-		const res = await this.client.get<PluginFileData>(
-			`${this.contentsPath(pluginId, valid,)}?dataEncoding=base64`,
-		);
-		return Buffer.from(res.data, "base64",);
+		const res = await this.client.stream(this.contentsPath(pluginId, valid,),);
+		return new Uint8Array(await res.arrayBuffer(),);
 	}
 
 	/** Download a dev plugin file as a raw stream (binary-safe). */
@@ -643,11 +706,6 @@ export class PluginsResource extends BaseResource {
 /* ------------------------------------------------------------------ */
 /*  Shared helpers                                                     */
 /* ------------------------------------------------------------------ */
-
-/** DSS answers contents reads as `{ data: <base64> }`. */
-interface PluginFileData {
-	data: string;
-}
 
 function wrapUnknown(value: unknown,): Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value,)

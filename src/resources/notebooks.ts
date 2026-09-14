@@ -26,6 +26,16 @@ export interface NotebookSaveResult {
 	hash: string;
 }
 
+/**
+ * SQL-notebook save result. `id` is the persisted notebook identifier: on a
+ * create DSS allocates it server-side (a request-supplied `id` is rejected),
+ * so every later read, update, and delete must use this id — the requested
+ * handle only becomes the notebook's display name.
+ */
+export interface SqlNotebookSaveResult extends NotebookSaveResult {
+	id: string;
+}
+
 export interface SaveNotebookOptions {
 	/** Reject the save when the stored content hash no longer matches. */
 	expectHash?: string;
@@ -229,12 +239,41 @@ export class NotebooksResource extends BaseResource {
 		return this.client.safeParse(SqlNotebookContentSchema, raw, "notebooks.getSql",);
 	}
 
-	/** Create a SQL notebook. */
-	async createSql(id: string, content: SqlNotebookContent, projectKey?: string,): Promise<void> {
-		await this.client.post<void>(
+	/**
+	 * Create a SQL notebook.
+	 *
+	 * DSS allocates the notebook id server-side and rejects a request-supplied
+	 * `id` (`Field 'id' is specified, it must not be specified`); `name` is
+	 * the display handle (the requested label) when provided. The returned id
+	 * comes from the creation receipt and is the only handle later reads,
+	 * updates, and deletes may use.
+	 */
+	async createSql(
+		content: SqlNotebookContent,
+		projectKey?: string,
+		opts?: { name?: string; },
+	): Promise<{ id: string; }> {
+		const body: Record<string, unknown> = {
+			...content,
+			projectKey: this.resolveProjectKey(projectKey,),
+		};
+		if (opts?.name !== undefined && body["name"] === undefined) body["name"] = opts.name;
+		const raw = await this.client.post<unknown>(
 			`/public/api/projects/${this.enc(projectKey,)}/sql-notebooks/`,
-			{ ...content, id, projectKey: this.resolveProjectKey(projectKey,), },
+			body,
 		);
+		const record = raw !== null && typeof raw === "object" && !Array.isArray(raw,)
+			? raw as Record<string, unknown>
+			: undefined;
+		const id = record?.["id"];
+		if (typeof id !== "string" || id.length === 0) {
+			throw new DataikuError(
+				200,
+				"Unexpected Response",
+				"notebooks.createSql: DSS did not return the generated notebook id.",
+			);
+		}
+		return { id, };
 	}
 
 	/** Save (overwrite) a SQL notebook's content. */
@@ -247,16 +286,23 @@ export class NotebooksResource extends BaseResource {
 	}
 
 	/**
-	 * Save a SQL notebook, creating it when missing. Same contract as
-	 * `saveOrCreateJupyter`: `created` reflects the fresh read, and `hash` is
-	 * the hash of the persisted content from a confirming re-read.
+	 * Save a SQL notebook, creating it when missing.
+	 *
+	 * Update path: the fresh read finds the notebook and a PUT overwrites it.
+	 * Create path: DSS allocates the persisted id (the requested handle becomes
+	 * the display name; there is no name-based re-lookup, so a foreign
+	 * notebook can never be mistaken for the target), the id is returned, and
+	 * every later read/update/delete must use that returned id. `created`
+	 * reflects the fresh read; `hash` is the hash of the persisted content
+	 * from a confirming re-read. The armed `--expect-hash` guard also refuses
+	 * an absent target.
 	 */
 	async saveOrCreateSql(
 		id: string,
 		content: SqlNotebookContent,
 		projectKey?: string,
 		opts?: SaveNotebookOptions,
-	): Promise<NotebookSaveResult> {
+	): Promise<SqlNotebookSaveResult> {
 		const pk = this.resolveProjectKey(projectKey,);
 		const before = await this.prepareSave(
 			() => this.getSql(id, pk,),
@@ -266,12 +312,13 @@ export class NotebooksResource extends BaseResource {
 			id,
 		);
 		if (before === undefined) {
-			await this.createSql(id, content, pk,);
-		} else {
-			await this.saveSql(id, content, pk,);
+			const created = await this.createSql(content, pk, { name: id, },);
+			const persisted = await this.getSql(created.id, pk,);
+			return { created: true, id: created.id, hash: stableHash(persisted,), };
 		}
+		await this.saveSql(id, content, pk,);
 		const persisted = await this.getSql(id, pk,);
-		return { created: before === undefined, hash: stableHash(persisted,), };
+		return { created: false, id, hash: stableHash(persisted,), };
 	}
 
 	/** Delete a SQL notebook. */

@@ -807,8 +807,16 @@ describe("CLI command behavioral smoke coverage", () => {
 						"--data",
 						JSON.stringify(sqlContent,),
 					], { env: cliEnv(url,), },)).stdout,
-				) as { saved?: string; resource?: string; created?: boolean; hash?: string; };
+				) as {
+					saved?: string;
+					requested?: string;
+					resource?: string;
+					created?: boolean;
+					hash?: string;
+				};
 				expect(saveSqlResult.saved,).toBe("sql-1",);
+				// The notebook already existed, so update keeps the same persisted id.
+				expect(saveSqlResult.requested,).toBe("sql-1",);
 				expect(saveSqlResult.resource,).toBe("sql-notebook",);
 				expect(saveSqlResult.created,).toBe(false,);
 				expect(saveSqlResult.hash,).toMatch(/^[0-9a-f]{64}$/,);

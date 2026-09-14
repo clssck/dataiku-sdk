@@ -182,7 +182,6 @@ describe("PluginsResource against a fake DSS (all documented endpoints)", () => 
 	it("downloads a dev plugin zip as a binary stream", async () => {
 		const zipBytes = Buffer.from([0x50, 0x4b, 0x01, 0x02, 0xde, 0xad, 0xbe, 0xef,],);
 		const dir = mkdtempSync(join(tmpdir(), "plugin-dl-",),);
-		const outPath = join(dir, "out.zip",);
 		try {
 			await withFakeDss(
 				(routes,) => {
@@ -224,6 +223,139 @@ describe("PluginsResource against a fake DSS (all documented endpoints)", () => 
 				await plugins.moveToDev("p",);
 				await plugins.delete("p", { force: true, },);
 				expect(deleteBody,).toEqual({ force: true, },);
+			},
+		);
+	});
+
+	it("settles the delete future before resolving", async () => {
+		const order: string[] = [];
+		let polls = 0;
+		await withFakeDss(
+			(routes,) => {
+				routes.set("POST /public/api/plugins/p/actions/delete", (_req, res,) => {
+					order.push("post",);
+					json(res, { jobId: "job-del", },);
+				},);
+				routes.set("GET /public/api/futures/job-del", (_req, res,) => {
+					polls += 1;
+					order.push(`poll${String(polls,)}`,);
+					if (polls === 1) {
+						json(res, { jobId: "job-del", alive: true, hasResult: false, },);
+					} else {
+						json(res, { jobId: "job-del", hasResult: true, result: { ok: true, }, },);
+					}
+				},);
+			},
+			async (_url, plugins,) => {
+				await plugins.delete("p",);
+				order.push("resolved",);
+			},
+		);
+		// Fire-and-forget would resolve right after the POST; the call must
+		// only resolve once the future reported its result.
+		expect(order,).toEqual(["post", "poll1", "poll2", "resolved",],);
+	});
+
+	it("does not poll anything when the action receipt carries no future", async () => {
+		await withFakeDss(
+			(routes,) => {
+				routes.set("POST /public/api/plugins/p/actions/delete", (_req, res,) => {
+					json(res, {},);
+				},);
+			},
+			async (_url, plugins,) => {
+				// No /futures route is registered: an invented poll would 404
+				// (recorded as a miss) instead of passing silently.
+				await plugins.delete("p",);
+			},
+		);
+	});
+
+	it("settles install/update/move/reset action futures before resolving", async () => {
+		const order: string[] = [];
+		const dir = mkdtempSync(join(tmpdir(), "plugin-settle-",),);
+		const zipPath = join(dir, "p.zip",);
+		writeFileSync(zipPath, Buffer.from([0x50, 0x4b, 0x03, 0x04,],),);
+		try {
+			await withFakeDss(
+				(routes,) => {
+					routes.set("POST /public/api/plugins/actions/installFromZip", async (req, res,) => {
+						await readBody(req,);
+						order.push("install",);
+						json(res, { jobId: "job-install", },);
+					},);
+					routes.set("GET /public/api/futures/job-install", (_req, res,) => {
+						order.push("poll-install",);
+						json(res, { jobId: "job-install", hasResult: true, result: {}, },);
+					},);
+					routes.set("POST /public/api/plugins/p/actions/updateFromZip", async (req, res,) => {
+						await readBody(req,);
+						order.push("update",);
+						json(res, { jobId: "job-update", },);
+					},);
+					routes.set("GET /public/api/futures/job-update", (_req, res,) => {
+						order.push("poll-update",);
+						json(res, { jobId: "job-update", hasResult: true, result: {}, },);
+					},);
+					routes.set("POST /public/api/plugins/p/actions/moveToDev", (_req, res,) => {
+						order.push("move",);
+						json(res, { jobId: "job-move", },);
+					},);
+					routes.set("GET /public/api/futures/job-move", (_req, res,) => {
+						order.push("poll-move",);
+						json(res, { jobId: "job-move", hasResult: true, result: {}, },);
+					},);
+					routes.set("POST /public/api/plugins/p/actions/resetToRemoteHeadState", (_req, res,) => {
+						order.push("reset",);
+						json(res, { jobId: "job-reset", },);
+					},);
+					routes.set("GET /public/api/futures/job-reset", (_req, res,) => {
+						order.push("poll-reset",);
+						json(res, { jobId: "job-reset", hasResult: true, result: {}, },);
+					},);
+				},
+				async (_url, plugins,) => {
+					await plugins.installFromZip(zipPath,);
+					order.push("install-done",);
+					await plugins.updateFromZip("p", zipPath,);
+					order.push("update-done",);
+					await plugins.moveToDev("p",);
+					order.push("move-done",);
+					await plugins.resetToRemoteHeadState("p",);
+					order.push("reset-done",);
+				},
+			);
+			expect(order,).toEqual([
+				"install",
+				"poll-install",
+				"install-done",
+				"update",
+				"poll-update",
+				"update-done",
+				"move",
+				"poll-move",
+				"move-done",
+				"reset",
+				"poll-reset",
+				"reset-done",
+			],);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("reports a failed action future instead of reporting success", async () => {
+		await withFakeDss(
+			(routes,) => {
+				routes.set("POST /public/api/plugins/p/actions/delete", (_req, res,) => {
+					json(res, { jobId: "job-aborted", },);
+				},);
+				routes.set("GET /public/api/futures/job-aborted", (_req, res,) => {
+					json(res, { jobId: "job-aborted", aborted: true, },);
+				},);
+			},
+			async (_url, plugins,) => {
+				await expect(plugins.delete("p",),).rejects.toThrow(/ABORTED/,);
 			},
 		);
 	});
@@ -420,16 +552,24 @@ describe("PluginsResource against a fake DSS (all documented endpoints)", () => 
 
 	it("reads and writes plugin file contents binary-safely", async () => {
 		const binary = Uint8Array.from([0x00, 0x01, 0xff, 0xfe, 0x7f,],);
+		const notes = "plain text notes\n";
+		const queries: string[] = [];
 		let uploaded: Buffer = Buffer.alloc(0,);
 		await withFakeDss(
 			(routes,) => {
+				// DSS answers plugin contents reads with the raw file body: no
+				// JSON envelope and no honored dataEncoding parameter.
 				routes.set("GET /public/api/plugins/p/contents/static/data.bin", (req, res,) => {
-					const url = new URL(req.url ?? "/", "http://localhost",);
-					if (url.searchParams.get("dataEncoding",) === "base64") {
-						json(res, { data: Buffer.from(binary,).toString("base64",), },);
-						return;
-					}
-					json(res, { reason: "missing dataEncoding", }, 400,);
+					queries.push(new URL(req.url ?? "/", "http://localhost",).search,);
+					res.statusCode = 200;
+					res.setHeader("Content-Type", "application/octet-stream",);
+					res.end(Buffer.from(binary,),);
+				},);
+				routes.set("GET /public/api/plugins/p/contents/static/notes.txt", (req, res,) => {
+					queries.push(new URL(req.url ?? "/", "http://localhost",).search,);
+					res.statusCode = 200;
+					res.setHeader("Content-Type", "text/plain",);
+					res.end(notes,);
 				},);
 				routes.set("POST /public/api/plugins/p/contents/static/blob.bin", async (req, res,) => {
 					uploaded = await readBody(req,);
@@ -440,10 +580,36 @@ describe("PluginsResource against a fake DSS (all documented endpoints)", () => 
 			async (_url, plugins,) => {
 				const bytes = await plugins.getFileBytes("p", "static/data.bin",);
 				expect(Array.from(bytes,),).toEqual(Array.from(binary,),);
-				const text = await plugins.getFile("p", "static/data.bin",);
-				expect(typeof text,).toBe("string",);
+				const text = await plugins.getFile("p", "static/notes.txt",);
+				expect(text,).toBe(notes,);
+				expect(queries,).toEqual(["", "",],);
 				await plugins.putFile("p", "static/blob.bin", binary,);
 				expect(uploaded.equals(Buffer.from(binary,),),).toBe(true,);
+			},
+		);
+	});
+
+	it("reads a raw JSON plugin manifest verbatim with both readers", async () => {
+		const manifest = JSON.stringify({
+			id: "p",
+			version: "1.0.0",
+			metaVersion: 1,
+			meta: { label: "Live plugin", description: "SDK_LIVE_MARK_run_nonce", },
+		},);
+		await withFakeDss(
+			(routes,) => {
+				routes.set("GET /public/api/plugins/p/contents/plugin.json", (_req, res,) => {
+					res.statusCode = 200;
+					res.setHeader("Content-Type", "application/json",);
+					res.end(manifest,);
+				},);
+			},
+			async (_url, plugins,) => {
+				// The old base64-envelope reader would fail here; both readers
+				// must return the raw manifest byte-for-byte.
+				expect(await plugins.getFile("p", "plugin.json",),).toBe(manifest,);
+				const bytes = await plugins.getFileBytes("p", "plugin.json",);
+				expect(Buffer.from(bytes,).toString("utf8",),).toBe(manifest,);
 			},
 		);
 	});

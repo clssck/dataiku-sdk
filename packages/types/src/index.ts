@@ -450,6 +450,8 @@ export type MacroDefinition = Static<typeof MacroDefinitionSchema>;
 /** One entry of GET /projects/{pk}/runnables (array[Macro]). */
 export const MacroSummarySchema = Type.Object({
 	runnableType: Type.Optional(Type.String(),),
+	/** Owning plugin id as the server returns it (live identifiers are server-authored). */
+	ownerPluginId: Type.Optional(Type.String(),),
 	meta: Type.Optional(Type.Object({
 		label: Type.Optional(Type.String(),),
 	}, { additionalProperties: true, },),),
@@ -884,6 +886,11 @@ export const SqlNotebookCellSchema = Type.Object({
 	id: Type.String(),
 	type: Type.String(),
 	name: Type.Optional(Type.String(),),
+	/**
+	 * Cell source. DSS enforces a JSON string here: an array fails to parse
+	 * server-side (`Expected a string but was BEGIN_ARRAY ... $.cells[0].code`),
+	 * so the official-client example's line-array form does not apply to SQL.
+	 */
 	code: Type.String(),
 }, { additionalProperties: true, },);
 export type SqlNotebookCell = Static<typeof SqlNotebookCellSchema>;
@@ -896,6 +903,13 @@ export const SqlNotebookSummarySchema = Type.Object({
 }, { additionalProperties: true, },);
 export type SqlNotebookSummary = Static<typeof SqlNotebookSummarySchema>;
 
+/**
+ * A SQL notebook's content as returned by GET. The notebook record carries
+ * the server-allocated `id` (a request-supplied `id` is rejected on create)
+ * plus `name`/`projectKey`/`isRunning` and similar receipt fields via
+ * `additionalProperties`; requests supply `connection` + `cells` (and
+ * optionally `name` as the display handle).
+ */
 export const SqlNotebookContentSchema = Type.Object({
 	connection: Type.String(),
 	cells: Type.Array(SqlNotebookCellSchema,),

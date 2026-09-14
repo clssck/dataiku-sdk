@@ -260,7 +260,11 @@ export const notebookCommands: Record<string, CommandMeta> = {
 				expectHash: f["expect-hash"] as string | undefined,
 			},);
 			return {
-				saved: a[0],
+				// `saved` is the persisted notebook id: on create DSS allocates it
+				// server-side, so every later command must use this id. `requested`
+				// echoes the handle, which becomes the notebook's display name.
+				saved: result.id,
+				requested: a[0],
 				resource: "sql-notebook",
 				created: result.created,
 				hash: result.hash,
@@ -269,7 +273,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 		usage:
 			"dss notebook save-sql <id> (--data '{...}' | --data-file PATH | --stdin) [--expect-hash SHA256] [--dry-run] [--project-key KEY]",
 		description:
-			"Save content to a SQL notebook, creating it if missing. Reports created versus updated and the persisted content hash; --expect-hash rejects a stale read before writing.",
+			"Save content to a SQL notebook, creating it if missing. On create DSS allocates the notebook id: `saved` is the persisted id to use for every later read/update/delete, and `requested` echoes the handle, which becomes the display name. Reports created versus updated and the persisted content hash; --expect-hash rejects a stale read before writing and refuses a missing notebook.",
 		examples: ["dss notebook save-sql my_sql_notebook --data-file content.json --dry-run",],
 	},
 	"clear-sql-history": {

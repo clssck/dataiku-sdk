@@ -19,7 +19,7 @@ function macroServer(
 	return async (req: IncomingMessage, res: ServerResponse,): Promise<void> => {
 		const url = new URL(req.url ?? "/", "http://localhost",);
 		const p = url.pathname;
-		if (req.method === "GET" && p === `${RUNNABLES_BASE}`) {
+		if (req.method === "GET" && p === `${RUNNABLES_BASE}/`) {
 			sendJson(res, [
 				{ runnableType: "m1", meta: { label: "Macro One", }, },
 				{ runnableType: "m2", meta: { label: "Macro Two", }, },

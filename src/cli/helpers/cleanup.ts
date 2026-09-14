@@ -275,7 +275,9 @@ export function cleanupLedgerEntry(
 			};
 		}
 		case "notebook.save-sql": {
-			const id = args[0];
+			// On create the persisted id is the server receipt (`saved`), not the
+			// requested handle, which only becomes the display name.
+			const id = stringField(record, ["saved", "id",],) ?? args[0];
 			if (!id) return undefined;
 			return {
 				...base,

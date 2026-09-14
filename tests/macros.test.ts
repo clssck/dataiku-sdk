@@ -66,7 +66,7 @@ describe("MacrosResource", () => {
 	it("lists macros with URL-encoded project key", async () => {
 		await withDataikuServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
-			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/runnables") {
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/runnables/") {
 				sendJson(res, [
 					{ runnableType: "compute_orders", meta: { label: "Compute Orders", }, },
 					{ runnableType: "cleanup", meta: { label: "Cleanup", }, },
@@ -121,9 +121,9 @@ describe("MacrosResource", () => {
 		await withDataikuServer((req, res,) => {
 			httpHits += 1;
 			const url = new URL(req.url ?? "/", "http://localhost",);
-			// A blank id would encode to the bare /runnables list route; the
+			// A blank id would collate onto the /runnables/ list route; the
 			// guard must fire before any request so this stays 404-free.
-			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/runnables") {
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/runnables/") {
 				sendJson(res, [],);
 				return;
 			}
