@@ -16,7 +16,7 @@ import { DataikuClient, } from "../src/client.js";
 import { DataikuError, } from "../src/errors.js";
 import { stableHash, } from "../src/utils/stable-hash.js";
 import type { LiveManifest, } from "../tests/live-context.js";
-import { sendJson, withCliServer, } from "./cli/_harness.js";
+import { readBody, SDK_ROOT, sendJson, withCliServer, } from "./cli/_harness.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures: offline manifests; no env, no network, no live mutations.
@@ -36,6 +36,8 @@ function manifestWithProjects(
 		owner: "ci",
 		connection: "filesystem",
 		profiles: ["core",],
+		globals: [],
+		futures: [],
 		fixtures: { datasets: {}, expectedRows: {}, recipes: {}, },
 		projects: keys.map(({ key, state, },) => ({
 			key,
@@ -404,6 +406,124 @@ describe("live selection preflight", () => {
 			await fs.rm(dir, { recursive: true, force: true, },);
 		}
 	});
+});
+
+// ---------------------------------------------------------------------------
+// Graceful interruption: the first signal must stop the active child, let
+// main() release the lab lock in its finally block, and only then exit 130.
+// The old behavior force-exited from a timer, bypassing the finally and
+// leaving a stale lock (the interrupted-17 failure).
+// ---------------------------------------------------------------------------
+
+async function findInTree(root: string, name: string,): Promise<string | undefined> {
+	try {
+		const entries = await fs.readdir(root, { recursive: true, },);
+		for (const entry of entries) {
+			const relative = String(entry,);
+			if (path.basename(relative,) === name) return path.join(root, relative,);
+		}
+	} catch { /* the tree may not exist yet */ }
+	return undefined;
+}
+
+describe("graceful interruption", () => {
+	it("releases the lab lock before exiting 130 when interrupted mid-setup", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "live-interrupt-",),);
+		let childRequest: string | undefined;
+		try {
+			await withCliServer((req, res,) => {
+				const pathname = new URL(req.url!, "http://127.0.0.1",).pathname;
+				const listLike = pathname.endsWith("/projects/",) || pathname.endsWith("/projects",);
+				const singleProject = /^\/public\/api\/projects\/[^/]+\/?$/.test(pathname,);
+				const body = {
+					projectKey: "SDK_LIVE_TEST_ROOT_0",
+					name: "probe",
+					owner: "ci",
+					creationTag: { lastModifiedOn: 1, },
+				};
+				if (req.method === "GET" && listLike) {
+					sendJson(res, [],);
+					return;
+				}
+				if (req.method === "GET" && singleProject) {
+					// bindProject verifies details.projectKey === the requested key.
+					const requestedKey = pathname.slice("/public/api/projects/".length,).replace(/\/$/, "",)
+						|| body.projectKey;
+					sendJson(res, { ...body, projectKey: requestedKey, },);
+					return;
+				}
+				if (req.method === "POST" && listLike) {
+					// Respond only after reading the body so the CLI sees a clean JSON reply.
+					void readBody(req,).then(raw => {
+						let projectKey = body.projectKey;
+						try {
+							const parsed: unknown = JSON.parse(raw,);
+							if (
+								parsed && typeof parsed === "object" && "projectKey" in parsed
+								&& typeof parsed.projectKey === "string"
+							) projectKey = parsed.projectKey;
+						} catch { /* keep fallback */ }
+						sendJson(res, { ...body, projectKey, },);
+					},);
+					return;
+				}
+				// Hold everything else open: the parent's preflight speaks only the
+				// project endpoints above (owner/connection come from the test env),
+				// so this request can only come from the setup child. The child stays
+				// mid-flight until the interruption under test stops it.
+				childRequest ??= pathname;
+			}, async url => {
+				const child = Bun.spawn([
+					process.execPath,
+					"--no-env-file",
+					"scripts/live-suite.ts",
+					"setup",
+					"--state-dir",
+					dir,
+				], {
+					cwd: SDK_ROOT,
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						// Owner/connection overrides skip the parent's auth-info and
+						// connection probes; DATAIKU_DISABLE_ENV would also disable env
+						// credentials (dataikuEnvironmentEnabled), so the mock URL/KEY are
+						// passed as env vars and must win over any repo .env values.
+						DATAIKU_TEST_OWNER: "ci",
+						DATAIKU_TEST_CONNECTION: "filesystem",
+						DATAIKU_URL: url,
+						DATAIKU_API_KEY: "offline-key",
+					},
+					stdout: "pipe",
+					stderr: "pipe",
+				},);
+				void new Response(child.stdout,).text();
+				const stderrText = new Response(child.stderr,).text();
+				// Signal once the lock exists AND the setup child has issued its first
+				// request: the mid-run window the stale-lock bug came from.
+				const deadline = Date.now() + 30_000;
+				let lockPath: string | undefined;
+				while (Date.now() < deadline) {
+					lockPath = await findInTree(dir, "lock",);
+					if (lockPath && childRequest) break;
+					await Bun.sleep(50,);
+				}
+				expect(lockPath, "lab lock must be acquired before the signal",).toBeDefined();
+				expect(childRequest, "setup child must be active before the signal",).toBeDefined();
+				child.kill("SIGINT",);
+				const code = await Promise.race([
+					child.exited,
+					Bun.sleep(30_000,).then(() => "timeout" as const),
+				],);
+				expect(code, "the first signal must exit 130",).toBe(130,);
+				expect(await findInTree(dir, "lock",), "no stale lab lock may remain",).toBeUndefined();
+				expect(await findInTree(dir, "manifest.json",), "the lab itself is preserved",).toBeDefined();
+				expect(await stderrText,).toContain("stopping child",);
+			},);
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true, },);
+		}
+	}, 90_000,);
 });
 
 describe("live root preflight", () => {

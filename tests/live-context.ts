@@ -1,3 +1,4 @@
+import StreamZip from "node-stream-zip";
 import { randomUUID, } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -12,7 +13,13 @@ import {
 	reserveCleanupLedgerDssUrl,
 } from "../src/utils/cleanup-ledger.js";
 import { canonicalDssUrl, } from "../src/utils/dss-url.js";
+import { inspectProjectArchive, } from "../src/utils/project-archive.js";
 import { projectIncarnationHash, } from "../src/utils/project-incarnation.js";
+import {
+	redactUrlUserinfo,
+	replaceSecrets,
+	sanitizeSecrets,
+} from "../src/utils/secret-sanitize.js";
 
 import { type LiveCaseId, matchesLiveCase, } from "./live-cases.js";
 
@@ -52,6 +59,25 @@ export interface LiveFixtures {
 	dashboardId?: string;
 	insightId?: string;
 	notebookName?: string;
+	/** Convenience ids recorded by the disposable-infrastructure module (best-effort). */
+	projectFolderId?: string;
+	connectionId?: string;
+	codeEnvName?: string;
+	pluginId?: string;
+	ml?: LiveMlFixtures;
+}
+/** ML fixtures provisioned step-by-step in the run-owned root project; each step persists its id. */
+export interface LiveMlFixtures {
+	datasetName?: string;
+	analysisId?: string;
+	mlTaskId?: string;
+	trainedModelId?: string;
+	savedModelId?: string;
+	savedModelVersionId?: string;
+	scoringRecipe?: string;
+	scoredDataset?: string;
+	evaluationStoreId?: string;
+	evaluationRecipe?: string;
 }
 export interface CaseResult {
 	id: string;
@@ -76,6 +102,46 @@ export interface OwnedProject {
 	incarnation?: string;
 	createdAt: string;
 }
+/** Project-less resources with guarded CLI or private harness cleanup paths. */
+export const OWNED_GLOBAL_KINDS = [
+	"user",
+	"group",
+	"meaning",
+	"workspace",
+	"data-collection",
+	"project-folder",
+	"connection",
+	"code-env",
+	"plugin",
+	"api-deployer-infra",
+	"api-deployer-service",
+	"api-deployer-deployment",
+	"project-deployer-infra",
+	"project-deployer-project",
+	"project-deployer-deployment",
+] as const;
+export type OwnedGlobalKind = typeof OWNED_GLOBAL_KINDS[number];
+/**
+ * One reserved global identity. `name` is the exact creation argument (never a
+ * prefix); `id` is the server identity used by follow-up commands and equals
+ * `name` unless DSS generates ids (data collections, project folders). Only a
+ * `bound` entry (creation confirmed by an identity-matching GET) is ever deleted.
+ */
+export interface OwnedGlobal {
+	kind: OwnedGlobalKind;
+	name: string;
+	id?: string;
+	state: "pending" | "bound" | "conflict" | "unconfirmed" | "deleted";
+	/** Reservation nonce; the lab-written marker proves create receipt ownership. */
+	nonce?: string;
+	identity?: string;
+	reason?: string;
+	createdAt: string;
+}
+/** Marker the module must write into the kind's lab-controlled field at create. */
+export function globalMarker(runId: string, nonce: string,): string {
+	return `SDK_LIVE_MARK_${runId}_${nonce}`;
+}
 export interface LiveManifest {
 	version: 1;
 	fixtureVersion: 1;
@@ -87,13 +153,15 @@ export interface LiveManifest {
 	profiles: string[];
 	fixtures: LiveFixtures;
 	projects: OwnedProject[];
+	globals: OwnedGlobal[];
+	/** Future ids started by commands of this lab; only these may be aborted. */
+	futures: string[];
 	cases: CaseResult[];
 	commands: LiveCommand[];
 	iteration: number;
 	setupComplete?: boolean;
 	setupCases?: CaseResult[];
 	startedAt: string;
-	completedAt?: string;
 	beforeProjects: Record<string, string>;
 	capabilities: Record<string, unknown>;
 	cleanup: { status: "pending" | "kept" | "passed" | "failed"; errors: string[]; };
@@ -107,6 +175,7 @@ export interface LiveContext {
 	phase: "setup" | "run";
 	selection: string[];
 	iteration: number;
+	runId: string;
 	fixtures: LiveFixtures;
 	client: DataikuClient;
 	run<T = unknown,>(
@@ -122,6 +191,7 @@ export interface LiveContext {
 	writeFile(name: string, content: string | Uint8Array,): Promise<string>;
 	save(): Promise<void>;
 	createProject(label: string,): Promise<string>;
+	createProjectForGlobal(label: string,): Promise<string>;
 	duplicateProject(source: string, label: string,): Promise<string>;
 	importProject(archive: string, label: string,): Promise<string>;
 	deleteProject(key: string,): Promise<void>;
@@ -129,6 +199,40 @@ export interface LiveContext {
 	bindProject(key: string,): Promise<void>;
 	createManagedDataset(name: string,): Promise<void>;
 	propagateRecipeSchema(name: string,): Promise<void>;
+	globals: OwnedGlobal[];
+	/** Read-only view of owned projects for incarnation lookups. */
+	projects: OwnedProject[];
+	reserveGlobal(
+		kind: OwnedGlobalKind,
+		label: string,
+		options?: { lang?: "PYTHON" | "R"; },
+	): Promise<string>;
+	createPluginDev(label: string, pluginJson: (name: string, marker: string,) => string,): Promise<
+		OwnedGlobal
+	>;
+	/**
+	 * Reserve the managed code environment DSS generates for a BOUND owned
+	 * plugin (`plugin_<pluginId>_managed`) before any mutation creates it.
+	 * Absence is proven for the exact generated name; returns the reserved
+	 * env name for bindGlobal("code-env", name, `PYTHON/${name}`) after the
+	 * create future settles.
+	 */
+	reservePluginCodeEnv(pluginId: string,): Promise<string>;
+	installPluginFromZip(
+		label: string,
+		buildArchive: (name: string, marker: string,) => Promise<string>,
+	): Promise<OwnedGlobal>;
+	bindGlobal(kind: OwnedGlobalKind, name: string, id?: string,): Promise<OwnedGlobal>;
+	createGlobal(
+		kind: OwnedGlobalKind,
+		label: string,
+		argv: (name: string, marker: string,) => string[],
+		options?: { lang?: "PYTHON" | "R"; id?: (result: unknown,) => string | undefined; },
+	): Promise<OwnedGlobal>;
+	deleteGlobal(kind: OwnedGlobalKind, id: string,): Promise<void>;
+	recordFuture(id: string,): Promise<void>;
+	/** The lab-controlled ownership marker for a reserved global. */
+	markerFor(kind: OwnedGlobalKind, name: string,): string;
 }
 export class LiveCapabilityError extends Error {
 	constructor(message: string, readonly status: "blocked" | "unsupported" = "blocked",) {
@@ -178,6 +282,8 @@ export async function loadLiveManifest(file: string,): Promise<LiveManifest> {
 	if (data.profiles.some(p => !LIVE_PROFILES.includes(p as typeof LIVE_PROFILES[number],))) {
 		throw new Error("Unknown live profile in manifest",);
 	}
+	if (!Array.isArray(data.globals,)) data.globals = [];
+	if (!Array.isArray(data.futures,)) data.futures = [];
 	const seen = new Set<string>();
 	for (const project of data.projects) {
 		if (
@@ -191,11 +297,371 @@ export async function loadLiveManifest(file: string,): Promise<LiveManifest> {
 	return data;
 }
 
+/** Argv flags whose VALUE is secret material (redact the next token, not the flag). */
+const SECRET_VALUE_FLAGS: Record<string, true> = {
+	"api-key": true,
+	"password": true,
+	"password-env": true,
+};
+/** Live-report surface policy: every credential family, nested at any depth. */
+const LIVE_REPORT_SANITIZE_OPTIONS = {
+	sensitiveKeys: {
+		"apikey": true,
+		"apitoken": true,
+		"authrealm": true,
+		"basicauthpassword": true,
+		"key": true,
+		"password": true,
+		"secret": true,
+		"secrets": true,
+		"token": true,
+		"userpassword": true,
+	},
+	isSensitiveKey: (normalizedKey: string,) => normalizedKey === "secrets",
+} as const;
+/**
+ * Scrub a report-surface string: exact occurrences of known secret values
+ * (API key, plus any secret extracted from JSON payloads on this surface),
+ * userinfo in URLs, and credential-bearing JSON fragments.
+ */
+function redactReportSecrets(text: string, apiKey: string,): string {
+	let result = replaceSecrets(text, apiKey ? [apiKey,] : [],);
+	result = redactUrlUserinfo(result,);
+	return result.replace(
+		/("(?:authRealm|key|password|token|secret|apiKey|apiToken|basicAuthPassword|userPassword)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi,
+		'$1"[redacted]"',
+	);
+}
+/**
+ * Redact secret material from persisted argv before it reaches the report:
+ * JSON payloads scrubbed recursively per the live-report key policy (password,
+ * key, token, apikey, secrets, authRealm...), values following sensitive flags,
+ * and exact known-secret occurrences are all replaced before persisting.
+ * Wire payloads are never mutated — only the report surface.
+ */
+function redactSecretValues(arg: string,): string {
+	if (arg.startsWith("{",) || arg.startsWith("[",)) {
+		try {
+			return JSON.stringify(sanitizeSecrets(JSON.parse(arg,), LIVE_REPORT_SANITIZE_OPTIONS,),);
+		} catch {
+			return arg;
+		}
+	}
+	return arg;
+}
+function redactArgv(argv: string[],): string[] {
+	const redacted: string[] = [];
+	let redactNext = false;
+	for (const arg of argv) {
+		if (redactNext) {
+			redacted.push("[redacted]",);
+			redactNext = false;
+			continue;
+		}
+		const bare = arg.replace(/^--/, "",);
+		if (SECRET_VALUE_FLAGS[bare] === true) {
+			redacted.push(arg,);
+			redactNext = true;
+			continue;
+		}
+		redacted.push(redactSecretValues(arg,),);
+	}
+	return redacted;
+}
+
 /** Scope checks also run in the test child; credentials and server/project flags cannot be replaced by a case. */
+function safeParseJson(text: string,): unknown {
+	try {
+		return JSON.parse(text,);
+	} catch {
+		return undefined;
+	}
+}
+function asRecord(value: unknown,): Record<string, unknown> | undefined {
+	return value !== null && typeof value === "object" && !Array.isArray(value,)
+		? value as Record<string, unknown>
+		: undefined;
+}
+/**
+ * Verify one GET result proves ownership of a reserved global: the lab-written
+ * marker must appear in the kind's lab-controlled field (server-generated id +
+ * owner for project folders). Returns true when the object proves ownership.
+ */
+function globalMarkerVerified(
+	kind: OwnedGlobalKind,
+	record: Record<string, unknown>,
+	marker: string,
+	reservedName: string,
+	expectedId: string,
+): boolean {
+	const has = (value: unknown,) => typeof value === "string" && value.includes(marker,);
+	switch (kind) {
+		case "user":
+			return asString(record["email"],) === `${marker}@sdk-live.invalid`;
+		case "group":
+		case "meaning":
+		case "workspace":
+		case "data-collection":
+			return has(record["description"],);
+		case "api-deployer-infra":
+		case "api-deployer-service":
+		case "api-deployer-deployment":
+		case "project-deployer-infra":
+		case "project-deployer-project":
+		case "project-deployer-deployment": {
+			// Deployer create APIs expose caller-supplied IDs, not description fields.
+			// The full fresh reservation nonce is carried by that documented ID.
+			const infoKey = kind.endsWith("infra",)
+				? "infraBasicInfo"
+				: kind.endsWith("service",)
+				? "serviceBasicInfo"
+				: kind.endsWith("project",)
+				? "projectBasicInfo"
+				: "deploymentBasicInfo";
+			const info = asRecord(record[infoKey],) ?? record;
+			const id = asString(info["id"],) ?? asString(info["publishedServiceId"],)
+				?? asString(info["publishedProjectKey"],) ?? asString(info["deploymentId"],);
+			const nonce = marker.slice(marker.lastIndexOf("_",) + 1,);
+			return /^[a-f0-9]{32}$/i.test(nonce,) && reservedName.endsWith(`_${nonce.toUpperCase()}`,)
+				&& id === reservedName;
+		}
+		case "project-folder": {
+			const nonce = marker.slice(marker.lastIndexOf("_",) + 1,);
+			return /^[a-f0-9]{32}$/i.test(nonce,) && reservedName.endsWith(`_${nonce.toUpperCase()}`,)
+				&& asString(record["name"],)?.startsWith(reservedName,) === true
+				&& asString(record["id"],) === expectedId;
+		}
+		case "connection": {
+			const params = asRecord(record["params"],);
+			// Filesystem: marker inside a valid absolute root. JDBC/SQLite: marker
+			// inside the jdbc url (in-memory named). Exact-key per type, never
+			// invented keys.
+			if (asString(record["type"],) === "Filesystem") {
+				const root = asString(params?.["root"],) ?? "";
+				return root.startsWith("/",) && root.includes(marker,);
+			}
+			const jdbcUrl = asString(params?.["jdbcurl"],) ?? asString(params?.["URL"],);
+			return typeof jdbcUrl === "string" && jdbcUrl.includes(marker,);
+		}
+		case "plugin":
+			return record["id"] === expectedId && typeof record["isDev"] === "boolean"
+				&& has(asRecord(record["meta"],)?.["description"],);
+		case "code-env":
+			// Server incarnation identity (reviewer-confirmed): desc.creationTag
+			// is real and nested, versionTag separate. Bind on the EXACT resolved
+			// envName and its lang plus desc.creationTag; recheck before every
+			// mutation/delete. Two reservations can never share a verified
+			// identity: the server echo must equal the reserved name and the
+			// lang must match the reservation (plugins envs are PYTHON; plain
+			// reservations carry their lowercased lang prefix).
+			return asString(record["envName"],) === reservedName
+				&& asString(record["envLang"],)?.toUpperCase()
+					=== (reservedName.startsWith("plugin_",)
+						? "PYTHON"
+						: reservedName.split("_",)[0]!.toUpperCase())
+				&& Object.keys(asRecord(record["desc"],)?.["creationTag"] ?? {},).length > 0;
+	}
+}
+function stableStringify(value: unknown,): string {
+	if (value === null || typeof value !== "object") return JSON.stringify(value,);
+	if (Array.isArray(value,)) return `[${value.map(stableStringify,).join(",",)}]`;
+	return `{${
+		Object.entries(value as Record<string, unknown>,).sort(([a,], [b,],) =>
+			a < b ? -1 : a > b ? 1 : 0
+		)
+			.map(([k, v,],) => `${JSON.stringify(k,)}:${stableStringify(v,)}`).join(",",)
+	}}`;
+}
+function asString(value: unknown,): string | undefined {
+	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+/** The positional/JSON key that carries the reserved identity for a create. */
+function createNameArg(
+	rule: GlobalRule,
+	args: string[],
+	flags: Record<string, string | boolean>,
+): string | undefined {
+	if (rule.extra) {
+		// project-folder create-child passes --name NAME as a plain flag.
+		return asString(flags[rule.extra],) ?? (asString(jsonInput(flags,)?.[rule.extra],));
+	}
+	const body = jsonInput(flags,);
+	if (rule.kind === "workspace" || rule.kind === "data-collection") {
+		return asString(body?.["workspaceKey"],) ?? asString(body?.["id"],)
+			?? asString(body?.["displayName"],);
+	}
+	if (rule.kind === "api-deployer-infra" || rule.kind === "project-deployer-infra") {
+		return asString(body?.["id"],);
+	}
+	if (rule.kind === "api-deployer-service") return asString(body?.["publishedServiceId"],);
+	if (rule.kind === "project-deployer-project") return asString(body?.["publishedProjectKey"],);
+	if (rule.kind === "api-deployer-deployment" || rule.kind === "project-deployer-deployment") {
+		return asString(body?.["deploymentId"],);
+	}
+	if (rule.kind === "user") return asString(body?.["login"],);
+	if (rule.kind === "group") return asString(body?.["name"],);
+	if (rule.kind === "connection") return asString(body?.["name"],);
+	if (rule.kind === "code-env") return asString(args[3],);
+	return asString(args[2],);
+}
+/** The positional that carries the owned id for a target action. */
+function targetNameArg(rule: GlobalRule, action: string, args: string[],): string {
+	if (rule.kind === "code-env") {
+		const lang = args[2] ?? "";
+		const env = args[3] ?? "";
+		return `${lang.toUpperCase()}/${env}`;
+	}
+	return args[2] ?? "";
+}
+type GlobalRule = {
+	kind: OwnedGlobalKind;
+	/** Action allowed only while a matching pending reservation exists. */
+	create?: boolean;
+	/** Action allowed on an existing bound entry; true = args[2] is the id. */
+	target?: boolean | "settings";
+	/** Extra argv accepted on bound entries before the positional id. */
+	extra?: string;
+};
+type CreationAuthority =
+	| { kind: "plugin-json"; name: string; }
+	| { kind: "plugin-archive" | "project-bundle"; name: string; file: string; };
+const GLOBAL_RULES: Record<string, GlobalRule> = {
+	"user.create": { kind: "user", create: true, },
+	"user.update": { kind: "user", target: true, },
+	"user.delete": { kind: "user", target: true, },
+	"group.create": { kind: "group", create: true, },
+	"group.update": { kind: "group", target: true, },
+	"group.delete": { kind: "group", target: true, },
+	"meaning.create": { kind: "meaning", create: true, },
+	"meaning.update": { kind: "meaning", target: true, },
+	"meaning.delete": { kind: "meaning", target: true, },
+	"workspace.create": { kind: "workspace", create: true, },
+	"workspace.update-settings": { kind: "workspace", target: true, },
+	"workspace.delete": { kind: "workspace", target: true, },
+	"workspace.add-object": { kind: "workspace", target: true, },
+	"data-collection.create": { kind: "data-collection", create: true, extra: "displayName", },
+	"data-collection.settings-set": { kind: "data-collection", target: true, },
+	"data-collection.add-object": { kind: "data-collection", target: true, },
+	"data-collection.remove-dataset": { kind: "data-collection", target: true, },
+	"data-collection.delete": { kind: "data-collection", target: true, },
+	"project-folder.create-child": { kind: "project-folder", create: true, extra: "name", },
+	"project-folder.settings-set": { kind: "project-folder", target: true, },
+	"project-folder.move": { kind: "project-folder", target: true, },
+	"project-folder.delete": { kind: "project-folder", target: true, },
+	"connection.create": { kind: "connection", create: true, },
+	"connection.update": { kind: "connection", target: true, },
+	"connection.delete": { kind: "connection", target: true, },
+	"code-env.create": { kind: "code-env", create: true, },
+	"code-env.set-definition": { kind: "code-env", target: true, },
+	"code-env.set-packages": { kind: "code-env", target: true, },
+	"code-env.update-packages": { kind: "code-env", target: true, },
+	"code-env.update-images": { kind: "code-env", target: true, },
+	"code-env.set-jupyter": { kind: "code-env", target: true, },
+	"code-env.delete": { kind: "code-env", target: true, },
+	"plugin.create-dev": { kind: "plugin", create: true, },
+	"plugin.install-from-zip": { kind: "plugin", create: true, },
+	"plugin.delete": { kind: "plugin", target: true, },
+	"plugin.settings-set": { kind: "plugin", target: "settings", },
+	"plugin.contents-put": { kind: "plugin", target: "settings", },
+	"plugin.contents-delete": { kind: "plugin", target: "settings", },
+	"plugin.download": { kind: "plugin", target: true, },
+	"plugin.update-from-zip": { kind: "plugin", target: true, },
+	"plugin.reset-local": { kind: "plugin", target: true, },
+	"plugin.move-to-dev": { kind: "plugin", target: true, },
+	"plugin.folder-add": { kind: "plugin", target: true, },
+	"plugin.rename": { kind: "plugin", target: true, },
+	"plugin.move": { kind: "plugin", target: true, },
+	"plugin.code-env-create": { kind: "plugin", target: true, },
+	"plugin.code-env-update": { kind: "plugin", target: true, },
+	"api-deployer.create-infra": { kind: "api-deployer-infra", create: true, },
+	"api-deployer.delete-infra": { kind: "api-deployer-infra", target: true, },
+	"api-deployer.create-service": { kind: "api-deployer-service", create: true, },
+	"api-deployer.delete-service": { kind: "api-deployer-service", target: true, },
+	"api-deployer.publish-version": { kind: "api-deployer-service", target: true, },
+	"api-deployer.delete-version": { kind: "api-deployer-service", target: true, },
+	"api-deployer.create-deployment": { kind: "api-deployer-deployment", create: true, },
+	"api-deployer.delete-deployment": { kind: "api-deployer-deployment", target: true, },
+	"api-deployer.save-deployment-settings": { kind: "api-deployer-deployment", target: true, },
+	"api-deployer.deploy": { kind: "api-deployer-deployment", target: true, },
+	"project-deployer.create-infra": { kind: "project-deployer-infra", create: true, },
+	"project-deployer.create-project": { kind: "project-deployer-project", create: true, },
+	"project-deployer.create-deployment": { kind: "project-deployer-deployment", create: true, },
+	"project-deployer.delete-deployment": { kind: "project-deployer-deployment", target: true, },
+	"project-deployer.save-deployment-settings": {
+		kind: "project-deployer-deployment",
+		target: true,
+	},
+	"project-deployer.deploy": { kind: "project-deployer-deployment", target: true, },
+	"plugin.set-git-remote": { kind: "plugin", target: true, },
+	"plugin.delete-git-remote": { kind: "plugin", target: true, },
+	"plugin.fetch": { kind: "plugin", target: true, },
+	"plugin.push": { kind: "plugin", target: true, },
+	"plugin.pull": { kind: "plugin", target: true, },
+	"plugin.reset-remote": { kind: "plugin", target: true, },
+};
+function globalEntry(
+	kind: OwnedGlobalKind,
+	manifest: LiveManifest,
+	name: string,
+): OwnedGlobal | undefined {
+	return manifest.globals.find(g => g.kind === kind && g.name === name);
+}
+function assertOwnedGlobalScope(
+	resource: string,
+	action: string,
+	args: string[],
+	flags: Record<string, string | boolean>,
+	manifest: LiveManifest,
+	authority?: CreationAuthority,
+): void {
+	const rule = GLOBAL_RULES[`${resource}.${action}`];
+	if (!rule) return;
+	if (rule.create) {
+		if (resource === "plugin" && action === "create-dev" && flags["creation-mode"] !== "EMPTY") {
+			throw new Error("Plugin creation from external git sources needs an isolated harness",);
+		}
+		const archiveInstall = resource === "plugin" && action === "install-from-zip";
+		const pluginArchiveArmed = authority?.kind === "plugin-archive" ? authority : undefined;
+		if (archiveInstall && (!pluginArchiveArmed || flags["file"] !== pluginArchiveArmed.file)) {
+			throw new Error("Plugin archive installation requires a validated private reservation",);
+		}
+		const name = archiveInstall ? pluginArchiveArmed?.name : createNameArg(rule, args, flags,);
+		const entry = typeof name === "string" ? globalEntry(rule.kind, manifest, name,) : undefined;
+		if (!entry || entry.state !== "pending") {
+			throw new Error(
+				`Global create requires an exact pending reservation: ${resource}.${action} ${name ?? ""}`,
+			);
+		}
+		return;
+	}
+	const target = targetNameArg(rule, action, args,);
+	if (target === "") {
+		throw new Error(`Global mutation target missing: ${resource}.${action}`,);
+	}
+	const entry = manifest.globals.find(g => g.kind === rule.kind && (g.id ?? g.name) === target);
+	if (!entry) {
+		throw new Error(`Global target is not owned by this run: ${resource}.${action} ${target}`,);
+	}
+	// Pre-bind writes are denied. The ONLY exception is the atomic plugin
+	// bootstrap: a one-shot grant armed by createPluginDev for exactly this
+	// plugin id, consumed by run() immediately after this check. A direct
+	// ctx.run of the same argv without the grant is refused.
+	const isArmedBootstrapWrite = rule.kind === "plugin"
+		&& entry.state === "pending"
+		&& action === "contents-put"
+		&& args[3] === "plugin.json"
+		&& authority?.kind === "plugin-json" && authority.name === target;
+	if (entry.state !== "bound" && !isArmedBootstrapWrite) {
+		throw new Error(
+			`Global target creation is not confirmed; refusing mutation: ${resource}.${action} ${target}`,
+		);
+	}
+}
 export function assertLiveCommandScope(
 	argv: string[],
 	manifest: LiveManifest,
 	selectedProject: string,
+	authority?: CreationAuthority,
 ): void {
 	const { positional: args, flags, } = parseArgs(argv,);
 	const resource = args[0] ?? "";
@@ -215,7 +681,15 @@ export function assertLiveCommandScope(
 			p.key === key && (p.state === "bound" || pending && p.state === "pending")
 		);
 	for (const [flag, value,] of Object.entries(flags,)) {
-		if (flag.endsWith("project-key",) && !owned(value, flag === "target-project-key",)) {
+		const publishedTarget = flag === "published-project-key" && resource === "bundle"
+			&& action === "publish"
+			&& manifest.globals.some(g =>
+				g.kind === "project-deployer-project" && g.name === value && g.state === "bound"
+			);
+		if (
+			flag.endsWith("project-key",) && !publishedTarget
+			&& !owned(value, flag === "target-project-key",)
+		) {
 			throw new Error(`Refusing foreign project flag: --${flag}`,);
 		}
 	}
@@ -262,9 +736,95 @@ export function assertLiveCommandScope(
 		}
 		return;
 	}
-	if (executionMode(flags,).plan) return;
+	if (
+		(resource === "future" && action === "abort"
+			|| resource === "project-git" && action === "future-abort")
+		&& !executionMode(flags,).plan
+	) {
+		const id = args[2];
+		if (typeof id !== "string" || !manifest.futures.includes(id,)) {
+			throw new Error(`Future abort requires a future started by this lab: ${id ?? ""}`,);
+		}
+		return;
+	}
 	if (resource === "project-git" && entry.mutatesDss) {
-		throw new Error("Git mutations require an isolated remote harness",);
+		const local: Record<string, true> = {
+			"commit": true,
+			"create-branch": true,
+			"delete-branch": true,
+			"create-tag": true,
+			"delete-tag": true,
+			"switch": true,
+			"revert-to-revision": true,
+			"revert-commit": true,
+			"reset-to-head": true,
+			"reset-all-libraries": true,
+			"drop-and-rebuild": true,
+		};
+		const touchesRemote = flags["remote"] !== undefined || flags["delete-remotely"] !== undefined
+			|| flags["target-project-key"] !== undefined
+			|| flags["target-project-folder-id"] !== undefined;
+		if (!local[action] || touchesRemote) {
+			throw new Error(`Git actions reach beyond the owned project checkout: ${action}`,);
+		}
+	}
+	if (resource === "project-folder" && ["move", "move-project", "create-child",].includes(action,)) {
+		const ownedFolder = (id: string | undefined,) =>
+			manifest.globals.some(g => g.kind === "project-folder" && g.state === "bound" && g.id === id);
+		const container = (id: string | undefined,) => id === "ROOT" || ownedFolder(id,);
+		if (action === "create-child") {
+			if (!container(args[2],)) throw new Error("New folder parent must be ROOT or an owned folder",);
+		} else if (action === "move-project") {
+			if (!owned(args[3],) || !container(args[2],) || !container(args[4],)) {
+				throw new Error(
+					"Moving a project requires its owned identity and owned source/destination folders",
+				);
+			}
+			return;
+		} else {
+			if (!ownedFolder(args[2],) || !container(args[3],)) {
+				throw new Error("Moving a folder requires owned source and destination",);
+			}
+			return;
+		}
+	}
+
+	if (resource === "project-deployer" && action === "upload-bundle") {
+		const grant = authority?.kind === "project-bundle" ? authority : undefined;
+		const reserved = grant && globalEntry("project-deployer-project", manifest, grant.name,);
+		if (
+			!grant || grant.file !== args[2] || !reserved || !["pending", "bound",].includes(reserved.state,)
+			|| !owned(grant.name,)
+		) {
+			throw new Error("Bundle upload requires an inspected archive for the exact owned project",);
+		}
+		return;
+	}
+	if (resource === "bundle" && action === "publish") {
+		const key = asString(flags["published-project-key"],) ?? selectedProject;
+		const target = globalEntry("project-deployer-project", manifest, key,);
+		if (target?.state !== "bound" || !target.identity) {
+			throw new Error("Bundle publication requires a bound owned published project",);
+		}
+	}
+	assertOwnedGlobalScope(resource, action, args, flags, manifest, authority,);
+	if (executionMode(flags,).plan) return;
+	// A global rule already verified an exact owned reservation/target above;
+	// the project-sandbox fallback below must not reject it again. Read-only
+	// plugin commands mislabeled mutatesDss are scoped to owned plugins too.
+	const globalRule = GLOBAL_RULES[`${resource}.${action}`];
+	if (globalRule) return;
+	if (
+		resource === "plugin"
+		&& ["settings-get", "contents-get", "details", "contents-list", "get-git-remote",].includes(
+			action,
+		)
+	) {
+		const pluginId = args[2];
+		if (
+			typeof pluginId === "string" && pluginId !== ""
+			&& manifest.globals.some(g => g.kind === "plugin" && g.name === pluginId && g.state === "bound")
+		) return;
 	}
 	if (
 		resource === "sql" && action === "query"
@@ -286,6 +846,9 @@ export function assertLiveCommandScope(
 export class LiveRunContext implements LiveContext {
 	readonly dir: string;
 	readonly client: DataikuClient;
+	/** JobIds harvested from successful future-producing commands, with their origin command. */
+	private readonly futureReceipts = new Map<string, string>();
+	private creationAuthority: CreationAuthority | undefined;
 	constructor(
 		readonly manifestPath: string,
 		readonly manifest: LiveManifest,
@@ -307,6 +870,9 @@ export class LiveRunContext implements LiveContext {
 	get iteration() {
 		return this.manifest.iteration;
 	}
+	get runId() {
+		return this.manifest.runId;
+	}
 	get projectKey() {
 		return this.manifest.projectKey;
 	}
@@ -324,7 +890,7 @@ export class LiveRunContext implements LiveContext {
 	}
 	redact(value: unknown,): string {
 		const text = value instanceof Error ? value.message : String(value,);
-		return this.credentials.apiKey ? text.replaceAll(this.credentials.apiKey, "[redacted]",) : text;
+		return redactReportSecrets(text, this.credentials.apiKey,);
 	}
 	async save() {
 		await writeLiveJson(this.manifestPath, this.manifest,);
@@ -351,6 +917,40 @@ export class LiveRunContext implements LiveContext {
 			DATAIKU_TEST_CONNECTION: this.connection,
 		};
 	}
+	private async assertGlobalIdentity(kind: OwnedGlobalKind, id: string,): Promise<OwnedGlobal> {
+		const entry = this.manifest.globals.find(value =>
+			value.kind === kind && (value.id ?? value.name) === id
+		);
+		if (!entry || entry.state !== "bound" || !entry.identity) {
+			throw new Error(`Global target is not a confirmed bound identity: ${id}`,);
+		}
+		const record = asRecord(await this.fetchGlobal(kind, id,),);
+		const matches = kind === "code-env"
+			? record !== undefined
+				&& stableStringify(asRecord(record["desc"],)?.["creationTag"],) === entry.identity
+			: record !== undefined
+				&& globalMarkerVerified(
+					kind,
+					record,
+					this.markerFor(kind, entry.name,),
+					entry.name,
+					id,
+				);
+		if (!matches) throw new Error(`Global identity changed before mutation: ${id}`,);
+		return entry;
+	}
+	private async ownedArchivePath(input: string,): Promise<string> {
+		const file = await fs.realpath(input,);
+		const relative = path.relative(await fs.realpath(this.dir,), file,);
+		if (
+			!relative || relative === ".." || relative.startsWith(`..${path.sep}`,)
+			|| path.isAbsolute(relative,)
+		) {
+			throw new Error("Installation archive must be inside this lab directory",);
+		}
+		return file;
+	}
+
 	async run<T = unknown,>(
 		argv: string[],
 		options: { projectKey?: string; expectedExit?: number; } = {},
@@ -370,7 +970,33 @@ export class LiveRunContext implements LiveContext {
 		if (entry?.requiresProject && parsed.flags["project-key"] === undefined) {
 			args.push("--project-key", selected,);
 		}
-		assertLiveCommandScope(args, this.manifest, selected,);
+		let authority = this.creationAuthority;
+		this.creationAuthority = undefined;
+		if (resource === "project-deployer" && action === "upload-bundle") {
+			const file = await this.ownedArchivePath(parsed.positional[2] ?? "",);
+			const archive = await inspectProjectArchive(file,);
+			if (!archive.valid || !archive.sourceProjectKey) {
+				throw new Error("Bundle archive has no valid source-project identity",);
+			}
+			const key = archive.sourceProjectKey;
+			const project = this.manifest.projects.find(value =>
+				value.key === key && value.state === "bound"
+			);
+			const global = globalEntry("project-deployer-project", this.manifest, key,);
+			if (!project?.incarnation || !global || !["pending", "bound",].includes(global.state,)) {
+				throw new Error(
+					"Bundle upload requires the exact owned Design project and published-project reservation",
+				);
+			}
+			if (projectIncarnationHash(key, await this.client.projects.get(key,),) !== project.incarnation) {
+				throw new Error("Bundle source-project incarnation changed",);
+			}
+			if (global.state === "pending") await this.assertGlobalAbsent("project-deployer-project", key,);
+			else await this.assertGlobalIdentity("project-deployer-project", key,);
+			args[2] = file;
+			authority = { kind: "project-bundle", name: key, file, };
+		}
+		assertLiveCommandScope(args, this.manifest, selected, authority,);
 		if (
 			entry?.mutatesDss && (entry.requiresProject || resource === "sql" && action === "query")
 			&& !executionMode(parsed.flags,).plan
@@ -380,6 +1006,52 @@ export class LiveRunContext implements LiveContext {
 			if (
 				!identity?.incarnation || projectIncarnationHash(selected, details,) !== identity.incarnation
 			) throw new Error(`Project incarnation changed before mutation: ${selected}`,);
+		}
+		if (
+			resource === "project-folder" && !executionMode(parsed.flags,).plan
+			&& !executionMode(parsed.flags,).dryRun
+		) {
+			const folderIds = action === "move-project"
+				? [args[2], args[4],]
+				: action === "move"
+				? [args[3],]
+				: action === "create-child"
+				? [args[2],]
+				: [];
+			if (action === "move-project") {
+				const project = this.manifest.projects.find(p => p.key === args[3] && p.state === "bound");
+				if (
+					!project?.incarnation
+					|| projectIncarnationHash(project.key, await this.client.projects.get(project.key,),)
+						!== project.incarnation
+				) {
+					throw new Error("Project incarnation changed before folder move",);
+				}
+			}
+			for (const id of new Set(folderIds,)) {
+				if (id && id !== "ROOT") await this.assertGlobalIdentity("project-folder", id,);
+			}
+		}
+
+		const globalRule = GLOBAL_RULES[`${resource}.${action}`];
+		if (
+			globalRule && !globalRule.create && !executionMode(parsed.flags,).plan
+			&& !executionMode(parsed.flags,).dryRun
+		) {
+			const target = targetNameArg(globalRule, action, args,);
+			const bootstrap = globalRule.kind === "plugin" && action === "contents-put"
+				&& args[3] === "plugin.json"
+				&& authority?.kind === "plugin-json" && authority.name === target;
+			if (!bootstrap) await this.assertGlobalIdentity(globalRule.kind, target,);
+		}
+		if (
+			resource === "bundle" && action === "publish" && !executionMode(parsed.flags,).plan
+			&& !executionMode(parsed.flags,).dryRun
+		) {
+			await this.assertGlobalIdentity(
+				"project-deployer-project",
+				asString(parsed.flags["published-project-key"],) ?? selected,
+			);
 		}
 		if (entry?.producesLocalFile) {
 			for (const flag of ["output", "output-file",]) {
@@ -421,7 +1093,7 @@ export class LiveRunContext implements LiveContext {
 		const mode = executionMode(parsed.flags,);
 		this.manifest.commands.push({
 			action: `${resource}.${action}`,
-			args: args.map(s => this.redact(s,)),
+			args: redactArgv(args.map(s => this.redact(s,)),),
 			exitCode: exit,
 			durationMs: Date.now() - started,
 			mode: mode.plan ? "plan" : mode.dryRun ? "dry-run" : "execute",
@@ -445,6 +1117,18 @@ export class LiveRunContext implements LiveContext {
 				exit,
 				result,
 			);
+		}
+		if (
+			exit === 0 && entry?.mutatesDss && entry.async === "future"
+			&& !executionMode(parsed.flags,).plan && !executionMode(parsed.flags,).dryRun
+		) {
+			// Successful future-producing mutations in execute mode are the only
+			// receipt source; previews (plan/dry-run) never confer abort rights.
+			const receipt = asRecord(result,);
+			const jobId = ["jobId", "job_id", "futureId",]
+				.map(key => receipt?.[key])
+				.find(v => typeof v === "string" && v.length > 0);
+			if (typeof jobId === "string") this.futureReceipts.set(jobId, `${resource}.${action}`,);
 		}
 		return result as T;
 	}
@@ -505,6 +1189,9 @@ export class LiveRunContext implements LiveContext {
 		const suffix = label.toUpperCase().replace(/[^A-Z0-9_]/g, "_",).slice(0, 16,);
 		const key =
 			`SDK_LIVE_${this.manifest.runId.toUpperCase()}_${suffix}_${this.manifest.projects.length}`;
+		return this.reserveProjectKey(key,);
+	}
+	private async reserveProjectKey(key: string,): Promise<string> {
 		// DSS can return 403 for nonexistent keys; creation is exclusive and never updates a collision.
 		const visible = await this.client.projects.list();
 		if (visible.some(project => project.projectKey === key)) {
@@ -582,6 +1269,14 @@ export class LiveRunContext implements LiveContext {
 	}
 	async createProject(label: string,): Promise<string> {
 		const key = await this.reserveProject(label,);
+		return this.createReservedProject(key, label,);
+	}
+	async createProjectForGlobal(label: string,): Promise<string> {
+		const key = await this.reserveGlobal("project-deployer-project", label,);
+		await this.reserveProjectKey(key,);
+		return this.createReservedProject(key, label,);
+	}
+	private async createReservedProject(key: string, label: string,): Promise<string> {
 		await this.run([
 			"project",
 			"create",
@@ -644,8 +1339,561 @@ export class LiveRunContext implements LiveContext {
 		project.state = "deleted";
 		await this.save();
 	}
+	get globals(): OwnedGlobal[] {
+		return this.manifest.globals;
+	}
+	get projects(): OwnedProject[] {
+		return this.manifest.projects;
+	}
+	/** Deterministic run-scoped global name; every kind reserves one exact identity. */
+	globalName(kind: OwnedGlobalKind, label: string,): string {
+		const suffix = label.toUpperCase().replace(/[^A-Z0-9_]/g, "_",).slice(0, 16,);
+		const index = this.manifest.globals.length;
+		return `SDK_LIVE_${this.manifest.runId.toUpperCase()}_${
+			kind.toUpperCase().replaceAll("-", "_",)
+		}_${suffix}_${index}`;
+	}
+	/**
+	 * Reserve an exact, already-derived global name (duplicate-check + ledger
+	 * push with the reservation nonce). Shared by the standard generator and
+	 * the plugin code-env path so reservation semantics can never drift.
+	 * `nonce` is the reservation nonce; when a kind embeds it in the name
+	 * (deployer kinds, project folders) the SAME nonce is recorded so the
+	 * marker and the name can never disagree.
+	 */
+	private async reserveExactName(
+		kind: OwnedGlobalKind,
+		name: string,
+		nonce = randomUUID().replaceAll("-", "",),
+	): Promise<string> {
+		if (
+			this.manifest.globals.some(g => g.kind === kind && g.name === name && g.state !== "deleted")
+		) {
+			throw new Error(`Global identity is already reserved: ${kind} ${name}`,);
+		}
+		const entry: OwnedGlobal = {
+			kind,
+			name,
+			state: "pending",
+			nonce,
+			createdAt: new Date().toISOString(),
+		};
+		this.manifest.globals.push(entry,);
+		await this.save();
+		return name;
+	}
+	/**
+	 * Reserve the code environment DSS generates for a managed plugin
+	 * (`plugin_<pluginId>_managed`) before any mutation that would create it.
+	 * The parent plugin must be a BOUND owned plugin of this run, and absence
+	 * is proven against the authoritative code-env surface for the exact
+	 * generated name. Returns the reserved env name for use with
+	 * bindGlobal("code-env", name, `PYTHON/${name}`) after the create future
+	 * settles.
+	 */
+	async reservePluginCodeEnv(pluginId: string,): Promise<string> {
+		const plugin = this.manifest.globals.find(
+			g => g.kind === "plugin" && (g.id ?? g.name) === pluginId,
+		);
+		if (!plugin || plugin.state !== "bound") {
+			throw new Error(
+				`Plugin code environment requires a bound owned plugin of this run: ${pluginId}`,
+			);
+		}
+		const name = `plugin_${pluginId}_managed`;
+		await this.assertGlobalAbsent("code-env", `${"PYTHON"}/${name}`,);
+		return await this.reserveExactName("code-env", name,);
+	}
+	async reserveGlobal(
+		kind: OwnedGlobalKind,
+		label: string,
+		options: { lang?: "PYTHON" | "R"; } = {},
+	): Promise<string> {
+		const raw = this.globalName(kind, label,);
+		const nonce = randomUUID().replaceAll("-", "",);
+		const lang = (options.lang ?? "PYTHON").toLowerCase();
+		const name = kind === "code-env"
+			? `${lang}_${raw.toLowerCase()}`
+			: kind === "meaning"
+			? raw.toLowerCase()
+			: kind.includes("-deployer-",) || kind === "project-folder"
+			? `${raw.slice(0, 31,)}_${nonce.toUpperCase()}`
+			: raw;
+		await this.assertGlobalAbsent(kind, kind === "code-env" ? `${lang}/${name}` : name,);
+		return await this.reserveExactName(kind, name, nonce,);
+	}
+	/** The lab-controlled marker for a reserved entry, verified on every GET. */
+	markerFor(kind: OwnedGlobalKind, name: string,): string {
+		const entry = this.manifest.globals.find(g => g.kind === kind && g.name === name);
+		if (!entry?.nonce) throw new Error(`Global has no reservation nonce: ${kind} ${name}`,);
+		return globalMarker(this.manifest.runId, entry.nonce,);
+	}
+	/**
+	 * Confirm a creation by reading the exact server identity. Pass `id` when DSS
+	 * generated one (data collections, project folders); it must come from the
+	 * create call, never from a name-prefix search.
+	 */
+	async bindGlobal(kind: OwnedGlobalKind, name: string, id?: string,): Promise<OwnedGlobal> {
+		const entry = this.manifest.globals.find(g => g.kind === kind && g.name === name);
+		if (!entry) throw new Error(`Global was not reserved: ${kind} ${name}`,);
+		const resolved = id ?? name;
+		const marker = this.markerFor(kind, name,);
+		const details = await this.fetchGlobal(kind, resolved,);
+		const record = asRecord(details,);
+		const proven = record !== undefined
+			&& globalMarkerVerified(kind, record, marker, entry.name, resolved,);
+		if (!proven) {
+			entry.state = "unconfirmed";
+			entry.reason = "GET did not return the lab marker for the reserved identity";
+			await this.save();
+			throw new Error(`Global creation not proven by marker: ${kind} ${resolved}`,);
+		}
+		entry.id = resolved;
+		entry.identity = kind === "code-env"
+			// Exact server incarnation snapshot: a foreign recreated env under the
+			// same lang/name has a different creationTag and fails this comparison.
+			? stableStringify(asRecord(asRecord(record,)?.["desc"],)?.["creationTag"],)
+			: stableStringify({ kind, id: resolved, nonce: entry.nonce, },);
+		entry.state = "bound";
+		delete entry.reason;
+		await this.save();
+		const cleanupArgv = this.deleteArgv(kind, resolved,);
+		if (cleanupArgv) {
+			await appendCleanupLedgerEntry(path.join(this.dir, "cleanup.jsonl",), {
+				ts: new Date().toISOString(),
+				action: "create",
+				resource: kind,
+				id: resolved,
+				name: entry.name,
+				cleanup: { argv: cleanupArgv, },
+			}, this.manifest.dssUrl,);
+		}
+		return entry;
+	}
+	/**
+	 * Reserve → create → confirm lifecycle. A non-zero exit is either a real
+	 * conflict (a pre-existing object owns the identity — recorded, never deleted)
+	 * or an unconfirmed failure (never adopted, never deleted blind).
+	 */
+	async createGlobal(
+		kind: OwnedGlobalKind,
+		label: string,
+		argv: (name: string, marker: string,) => string[],
+		options: { lang?: "PYTHON" | "R"; id?: (result: unknown,) => string | undefined; } = {},
+	): Promise<OwnedGlobal> {
+		const name = await this.reserveGlobal(kind, label, options,);
+		const marker = this.markerFor(kind, name,);
+		let result: unknown;
+		try {
+			result = await this.run(argv(name, marker,),);
+		} catch (error) {
+			const entry = this.manifest.globals.find(g => g.kind === kind && g.name === name)!;
+			if (error instanceof LiveCommandError && this.isConflictResult(error,)) {
+				entry.state = "conflict";
+				entry.reason = this.redact(error,).slice(0, 300,);
+			} else {
+				entry.state = "unconfirmed";
+				entry.reason = this.redact(error,).slice(0, 300,);
+			}
+			await this.save();
+			throw error;
+		}
+		return await this.bindGlobal(kind, name, options.id?.(result,),);
+	}
+	/**
+	 * Atomic plugin bootstrap: reserve → create-dev EMPTY (receipt required) →
+	 * exactly ONE nonce-bearing plugin.json contents-put (the builder output)
+	 * → bind via the marker-verified GET. Any other pre-bind write stays
+	 * denied; a receipt-id echo mismatch or a failed write never binds.
+	 */
+	async createPluginDev(
+		label: string,
+		pluginJson: (name: string, marker: string,) => string,
+	): Promise<OwnedGlobal> {
+		const name = await this.reserveGlobal("plugin", label,);
+		const marker = this.markerFor("plugin", name,);
+		const entry = this.manifest.globals.find(g => g.kind === "plugin" && g.name === name)!;
+		// Validate the builder BEFORE any request so an invalid builder cannot
+		// orphan a created plugin: parseable JSON, matching id, marker embedded
+		// exactly inside meta.description (not anywhere in the file).
+		const content = pluginJson(name, marker,);
+		const parsedBuilder = asRecord(safeParseJson(content,),);
+		const metaDescription = asString(
+			asRecord(parsedBuilder?.["meta"],)?.["description"],
+		);
+		if (parsedBuilder === undefined || parsedBuilder["id"] !== name) {
+			entry.state = "unconfirmed";
+			entry.reason = "plugin.json builder output is not valid JSON with the reserved id";
+			await this.save();
+			throw new Error(`plugin.json must be valid JSON with id === ${name}`,);
+		}
+		if (metaDescription !== marker) {
+			entry.state = "unconfirmed";
+			entry.reason = "plugin.json meta.description must be exactly the lab marker";
+			await this.save();
+			throw new Error(`plugin.json meta.description must embed the lab marker: ${name}`,);
+		}
+		let result: unknown;
+		try {
+			result = await this.run(["plugin", "create-dev", name, "--creation-mode", "EMPTY",],);
+		} catch (error) {
+			entry.state = "unconfirmed";
+			entry.reason = `create-dev failed: ${this.redact(error,).slice(0, 300,)}`;
+			await this.save();
+			throw error;
+		}
+		const echoed = asRecord(result,)?.["created"];
+		if (echoed !== name) {
+			entry.state = "unconfirmed";
+			entry.reason = `create-dev receipt id ${JSON.stringify(echoed,)} does not match the reservation`;
+			await this.save();
+			throw new Error(`Create receipt id does not match the reserved plugin: ${name}`,);
+		}
+		// Arm the PRIVATE one-shot authority: the next run() of this exact
+		// contents-put argv is allowed through despite pending state; any direct
+		// ctx.run of the same shape (without this grant) is refused.
+		this.creationAuthority = { kind: "plugin-json", name, };
+		try {
+			await this.run(["plugin", "contents-put", name, "plugin.json", "--content", content,],);
+		} catch (error) {
+			entry.state = "unconfirmed";
+			entry.reason = `plugin.json initialization write failed: ${this.redact(error,).slice(0, 300,)}`;
+			await this.save();
+			throw error;
+		} finally {
+			this.creationAuthority = undefined;
+		}
+		return await this.bindGlobal("plugin", name,);
+	}
+	/** Install only a locally built archive whose manifest carries this reservation's nonce. */
+	async installPluginFromZip(
+		label: string,
+		buildArchive: (name: string, marker: string,) => Promise<string>,
+	): Promise<OwnedGlobal> {
+		const name = await this.reserveGlobal("plugin", label,);
+		const marker = this.markerFor("plugin", name,);
+		const file = await fs.realpath(await buildArchive(name, marker,),);
+		const relative = path.relative(await fs.realpath(this.dir,), file,);
+		if (
+			!relative || relative === ".." || relative.startsWith(`..${path.sep}`,)
+			|| path.isAbsolute(relative,)
+		) {
+			throw new Error("Plugin installation archive must be inside this lab directory",);
+		}
+		const zip = new StreamZip.async({ file, storeEntries: true, },);
+		try {
+			const entries = await zip.entries();
+			const records = Object.values(entries,);
+			const prefix = `${name}/`;
+			if (
+				records.length !== await zip.entriesCount
+				|| records.some(entry =>
+					!entry.name.startsWith(prefix,) || ((entry.attr >>> 16) & 0o170000) === 0o120000
+				)
+			) {
+				throw new Error(
+					"Plugin archive must contain one owned root without duplicate entries or symlinks",
+				);
+			}
+			const member = entries[`${prefix}plugin.json`];
+			if (!member || member.isDirectory || member.size > 65536) {
+				throw new Error("Plugin archive must contain a bounded plugin.json manifest",);
+			}
+			const chunks: Buffer[] = [];
+			let size = 0;
+			for await (const chunk of await zip.stream(member,)) {
+				const bytes = Buffer.isBuffer(chunk,) ? chunk : Buffer.from(chunk,);
+				size += bytes.length;
+				if (size > 65536) throw new Error("Plugin manifest exceeds the inspection limit",);
+				chunks.push(bytes,);
+			}
+			const manifest = asRecord(safeParseJson(Buffer.concat(chunks, size,).toString("utf8",),),);
+			const description = asRecord(manifest?.["meta"],)?.["description"];
+			if (
+				manifest?.["id"] !== name || typeof description !== "string" || !description.includes(marker,)
+			) {
+				throw new Error("Plugin archive manifest must match the reserved id and nonce",);
+			}
+		} finally {
+			await zip.close();
+		}
+		const owned = this.manifest.globals.find(entry =>
+			entry.kind === "plugin" && entry.name === name
+		)!;
+		this.creationAuthority = { kind: "plugin-archive", name, file, };
+		try {
+			const receipt = asRecord(await this.run(["plugin", "install-from-zip", "--file", file,],),);
+			if (receipt?.["installed"] !== true) {
+				throw new Error("Plugin installation did not return a success receipt",);
+			}
+		} catch (error) {
+			owned.state = "unconfirmed";
+			owned.reason = this.redact(error,);
+			await this.save();
+			throw error;
+		} finally {
+			this.creationAuthority = undefined;
+		}
+		return await this.bindGlobal("plugin", name,);
+	}
+
+	async deleteGlobal(kind: OwnedGlobalKind, id: string,): Promise<void> {
+		const entry = this.manifest.globals.find(g => g.kind === kind && (g.id ?? g.name) === id);
+		if (!entry) throw new Error(`Global is not owned by this run: ${kind} ${id}`,);
+		if (entry.state === "deleted") return;
+		if (entry.state !== "bound" || !entry.identity) {
+			throw new Error(`Unconfirmed global creation; refusing deletion: ${kind} ${id}`,);
+		}
+		let details: unknown;
+		try {
+			details = await this.fetchGlobal(kind, id,);
+		} catch (error) {
+			if (error instanceof DataikuError && error.status === 404) {
+				entry.state = "deleted";
+				await this.save();
+				return;
+			}
+			throw error;
+		}
+		const record = asRecord(details,);
+		// Code-envs verify the EXACT desc.creationTag snapshot captured at bind
+		// time; other kinds re-verify their lab marker. A foreign object under
+		// the same id fails either path.
+		const matches = kind === "code-env"
+			? record !== undefined
+				&& stableStringify(
+						asRecord(asRecord(record,)?.["desc"],)?.["creationTag"],
+					) === entry.identity
+			: record !== undefined
+				&& globalMarkerVerified(
+					kind,
+					record,
+					entry.nonce ? globalMarker(this.manifest.runId, entry.nonce,) : "",
+					entry.name,
+					id,
+				);
+		if (!matches) {
+			throw new Error(`Global identity changed; refusing deletion: ${kind} ${id}`,);
+		}
+		const argv = this.deleteArgv(kind, id,);
+		if (argv) await this.run(argv,);
+		else {
+			const resource = kind === "project-deployer-infra" ? "infras" : "projects";
+			await this.client.del(
+				`/public/api/project-deployer/${resource}/${encodeURIComponent(id,)}`,
+			);
+		}
+		entry.state = "deleted";
+		await this.save();
+	}
+	/**
+	 * Record a future id started by this lab. The id is accepted only when it is
+	 * exactly a jobId harvested from a successful execute-mode receipt of a
+	 * future-producing command of this run; foreign strings are rejected.
+	 */
+	async recordFuture(id: string,): Promise<void> {
+		if (typeof id !== "string" || !this.futureReceipts.has(id,)) {
+			throw new Error(`Future id is not a receipt of a lab-started command: ${id}`,);
+		}
+		if (!this.manifest.futures.includes(id,)) {
+			this.manifest.futures.push(id,);
+			await this.save();
+		}
+	}
+	private deleteArgv(kind: OwnedGlobalKind, id: string,): string[] | undefined {
+		switch (kind) {
+			case "user":
+				return ["user", "delete", id, "--if-exists",];
+			case "group":
+				return ["group", "delete", id, "--if-exists",];
+			case "meaning":
+				return ["meaning", "delete", id, "--if-exists",];
+			case "workspace":
+				return ["workspace", "delete", id,];
+			case "data-collection":
+				return ["data-collection", "delete", id,];
+			case "project-folder":
+				return ["project-folder", "delete", id, "--if-exists",];
+			case "connection":
+				return ["connection", "delete", id, "--if-exists",];
+			case "code-env": {
+				const [lang, name,] = id.split("/",);
+				return ["code-env", "delete", lang ?? "", name ?? id, "--if-exists",];
+			}
+			case "plugin":
+				return ["plugin", "delete", id,];
+			case "api-deployer-infra":
+				return ["api-deployer", "delete-infra", id,];
+			case "api-deployer-service":
+				return ["api-deployer", "delete-service", id,];
+			case "api-deployer-deployment":
+				return ["api-deployer", "delete-deployment", id,];
+			case "project-deployer-deployment":
+				return ["project-deployer", "delete-deployment", id,];
+			case "project-deployer-project":
+			case "project-deployer-infra":
+				return undefined;
+		}
+	}
+	/**
+	 * Prove absence of a reserved identity before create. Direct probes return
+	 * ambiguous errors on some kinds (400 "does not exist", 403 on permission
+	 * reads) — absence is only accepted from exact-name evidence or a real 404;
+	 * ambiguous errors fall back to an authoritative per-kind list.
+	 */
+	private async assertGlobalAbsent(kind: OwnedGlobalKind, name: string,): Promise<void> {
+		try {
+			await this.fetchGlobal(kind, name,);
+		} catch (error) {
+			if (error instanceof DataikuError && error.status === 404) return;
+			if (this.provesAbsenceByError(kind, error, name,)) return;
+			if (await this.provesAbsenceByListing(kind, name, error,)) return;
+			throw error;
+		}
+		throw new Error(`Refusing to overwrite an existing global ${kind}: ${name}`,);
+	}
+	/** Exact-name error shapes that prove absence without a blanket 400/403. */
+	private provesAbsenceByError(kind: OwnedGlobalKind, error: unknown, name: string,): boolean {
+		if (!(error instanceof DataikuError)) return false;
+		if (error.status !== 400) return false;
+		// DSS quotes the id in these messages ("Connection 'X' does not exist",
+		// "Unknown meaning: X"); match the exact reserved name conservatively
+		// against body AND message.
+		const text = `${error.body ?? ""}\n${error.message ?? ""}`;
+		const quoted = `'${name}'`;
+		if (kind === "meaning" && text.includes(`Unknown meaning: ${name}`,)) return true;
+		if (kind === "connection" && text.includes(`Connection ${quoted} does not exist`,)) {
+			return true;
+		}
+		if (kind === "connection" && text.includes(`Connection ${name} does not exist`,)) {
+			return true;
+		}
+		return false;
+	}
+	/**
+	 * Permission-shaped failures (403) prove nothing; only an authoritative
+	 * list without the exact identity counts as absence.
+	 */
+	private async provesAbsenceByListing(
+		kind: OwnedGlobalKind,
+		name: string,
+		error: unknown,
+	): Promise<boolean> {
+		if (!(error instanceof DataikuError)) return false;
+		if (kind === "code-env" && (error.status === 500 || error.status === 403)) {
+			// Missing DSS environment definitions can return 500, not 404.
+			// The error alone proves nothing; require an authoritative typed list.
+			try {
+				const [lang, envName,] = name.split("/",);
+				const envs = await this.client.codeEnvs.list();
+				return !!lang && !!envName
+					&& envs.every(env =>
+						typeof env.envName === "string" && env.envName.length > 0
+						&& typeof env.envLang === "string" && env.envLang.length > 0
+					)
+					&& !envs.some(env =>
+						env.envName === envName && env.envLang?.toLowerCase() === lang.toLowerCase()
+					);
+			} catch {
+				return false;
+			}
+		}
+		if (error.status !== 403) return false;
+		try {
+			if (kind === "workspace") {
+				const list = await this.client.workspaces.list();
+				return !list.some(w => w.id === name);
+			}
+			if (kind === "project-folder") {
+				// Reservations are named children of ROOT; the id is server-generated,
+				// so absence is proven by the root's children, never by name GETs.
+				const root = await this.client.projectFolders.root();
+				for (const childId of root.childrenIds ?? []) {
+					const child = await this.client.projectFolders.get(childId,);
+					if (child.name === name) return false;
+				}
+				return true;
+			}
+		} catch {
+			return false;
+		}
+		return false;
+	}
+	private async fetchGlobal(kind: OwnedGlobalKind, id: string,): Promise<unknown> {
+		switch (kind) {
+			case "user":
+				return this.client.users.get(id,);
+			case "group":
+				return this.client.groups.get(id,);
+			case "meaning":
+				return this.client.meanings.get(id,);
+			case "workspace":
+				return this.client.workspaces.get(id,);
+			case "data-collection":
+				return this.client.dataCollections.get(id,);
+			case "project-folder":
+				return this.client.projectFolders.get(id,);
+			case "connection":
+				return this.client.connections.adminGet(id,);
+			case "code-env": {
+				const [lang, name,] = id.split("/",);
+				// getDefinition returns the raw body and preserves desc.creationTag,
+				// which the normalized get() drops; the incarnation check needs it.
+				return this.client.codeEnvs.getDefinition(lang ?? "", name ?? id,);
+			}
+			case "plugin": {
+				const found = (await this.client.plugins.list()).find(p => p.id === id);
+				if (!found) throw new DataikuError(404, "Not Found", `plugin not found: ${id}`,);
+				if (!found.isDev) return found;
+				// DSS caches loaded metadata; a dev plugin's current nonce lives in its file.
+				const manifest = asRecord(
+					safeParseJson(await this.client.plugins.getFile(id, "plugin.json",),),
+				);
+				return { ...found, id: manifest?.["id"], meta: manifest?.["meta"], };
+			}
+			case "api-deployer-infra":
+				return this.client.apiDeployer.getInfra(id,);
+			case "api-deployer-service":
+				return this.client.apiDeployer.getService(id,);
+			case "api-deployer-deployment":
+				return this.client.apiDeployer.getDeployment(id,);
+			case "project-deployer-project":
+				return this.client.projectDeployer.getProjectStatus(id,);
+			case "project-deployer-deployment":
+				return this.client.projectDeployer.getDeployment(id,);
+			case "project-deployer-infra":
+				return this.client.get(`/public/api/project-deployer/infras/${encodeURIComponent(id,)}`,);
+		}
+	}
+	private isConflictResult(error: LiveCommandError,): boolean {
+		const payload = error.result as { status?: number; errorType?: string; message?: string; } | null;
+		if (payload && typeof payload === "object") {
+			if (payload.status === 409 || payload.errorType === "Conflict") return true;
+			if (typeof payload.message === "string" && /already exists/i.test(payload.message,)) return true;
+		}
+		return /already exists/i.test(error.message,);
+	}
 	async cleanup(): Promise<void> {
 		const errors: string[] = [];
+		const note = (entry: OwnedGlobal, reason: string,) => {
+			errors.push(`${entry.kind} ${entry.id ?? entry.name}: ${reason}`,);
+		};
+		for (let index = this.manifest.globals.length - 1; index >= 0; index--) {
+			const entry = this.manifest.globals[index]!;
+			try {
+				if (entry.state === "conflict") {
+					note(entry, "left in place: identity conflicts with a pre-existing resource",);
+				} else if (entry.state === "unconfirmed") {
+					note(entry, "left in place: creation was never confirmed",);
+				} else if (entry.state === "pending") {
+					note(entry, "left in place: reservation was never used",);
+				} else {
+					await this.deleteGlobal(entry.kind, entry.id ?? entry.name,);
+				}
+			} catch (error) {
+				errors.push(this.redact(error,),);
+			}
+		}
 		for (let index = this.manifest.projects.length - 1; index >= 0; index--) {
 			const project = this.manifest.projects[index]!;
 			try {
@@ -686,6 +1934,8 @@ export async function initializeLiveManifest(
 		profiles,
 		fixtures: { datasets: {}, expectedRows: {}, recipes: {}, },
 		projects: [],
+		globals: [],
+		futures: [],
 		cases: [],
 		commands: [],
 		iteration: 0,

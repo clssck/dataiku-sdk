@@ -57,7 +57,7 @@ type LiveVerb = "setup" | "run" | "clean" | "all" | "status";
 export interface LiveSuiteOptions {
 	verb: LiveVerb;
 	cases: string[];
-	profile: (typeof LIVE_PROFILES)[number];
+	profile: (typeof LIVE_PROFILES)[number] | "all";
 	manifest?: string;
 	stateDir?: string;
 	/** Show local usage; never mutates anything. */
@@ -79,7 +79,7 @@ function usage(): string {
 		"",
 		"Options:",
 		"  --case <id[,id2|prefix*]>   Comma-separated case ids or prefix filters (run/all).",
-		"  --profile <name>            core | ml | applications | infrastructure (default core).",
+		"  --profile <name>            core | ml | applications | infrastructure | all (default core).",
 		"  --manifest <PATH>           Override the lab manifest path.",
 		"  --state-dir <PATH>          Override the live state root (default .live-tests).",
 		"  --help                      Show this usage (no mutation).",
@@ -122,9 +122,9 @@ export function parseLiveSuiteArgs(argv: string[],): LiveSuiteOptions {
 			}
 			case "--profile": {
 				const name = value();
-				if (!(LIVE_PROFILES as readonly string[]).includes(name,)) {
+				if (name !== "all" && !(LIVE_PROFILES as readonly string[]).includes(name,)) {
 					throw new UsageRequestError(
-						`Unknown profile ${name}; expected one of ${LIVE_PROFILES.join(", ",)}`,
+						`Unknown profile ${name}; expected one of ${LIVE_PROFILES.join(", ",)}, all`,
 					);
 				}
 				profile = name;
@@ -159,7 +159,7 @@ export function parseLiveSuiteArgs(argv: string[],): LiveSuiteOptions {
 			throw new UsageRequestError("--case is only valid for run/all",);
 		}
 		const available = Object.entries(LIVE_CASES,).filter(([, c,],) =>
-			c.phase === "run" && (c.profile === "core" || c.profile === profile)
+			c.phase === "run" && (profile === "all" || c.profile === "core" || c.profile === profile)
 		).map(([id,],) => id);
 		for (const selected of cases) {
 			if (!available.some(id => matchesLiveCase(id, selected,))) {
@@ -177,6 +177,14 @@ export function parseLiveSuiteArgs(argv: string[],): LiveSuiteOptions {
 		stateDir,
 		help,
 	};
+}
+
+function profilesFor(profile: LiveSuiteOptions["profile"],): string[] {
+	return profile === "all"
+		? [...LIVE_PROFILES,]
+		: profile === "core"
+		? ["core",]
+		: ["core", profile,];
 }
 
 // ---------------------------------------------------------------------------
@@ -619,6 +627,15 @@ interface ChildSpec {
 }
 
 let activeChild: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined;
+/**
+ * Set by the first SIGINT/SIGTERM. The signal handler never exits directly:
+ * the active child gets its window to stop CLI subprocesses and save the
+ * manifest, main() unwinds through its finally block and releases the lab
+ * lock, and only then does the process exit 130. New child launches are
+ * refused while this is set so an interrupted run does not start further
+ * suites. A second signal force-exits immediately and may retain the lock.
+ */
+let interruptedBySignal = false;
 
 async function spawnLogged(spec: ChildSpec,): Promise<ChildResult> {
 	const started = Date.now();
@@ -729,6 +746,8 @@ interface SuiteReport {
 	coverage: ReturnType<typeof liveCoverage>;
 	capabilities: Record<string, unknown>;
 	projects: LiveManifest["projects"];
+	globals: LiveManifest["globals"];
+	commands: LiveManifest["commands"];
 	commandCount: number;
 	timings: Record<string, number>;
 	cleanup: LiveManifest["cleanup"];
@@ -962,7 +981,7 @@ async function runSetupVerb(
 		state.credentials,
 		owner,
 		connection,
-		options.profile === "core" ? ["core",] : ["core", options.profile,],
+		profilesFor(options.profile,),
 	);
 	manifest.beforeProjects = beforeProjects;
 	manifest.capabilities = capabilities;
@@ -997,6 +1016,9 @@ async function finishSetup(
 	}
 
 	const iterationDir = path.join(state.layout.labDir, "reports", `iteration-${manifest.iteration}`,);
+	if (interruptedBySignal) {
+		throw new Error("Interrupted before the setup child started; the lab is preserved.",);
+	}
 	const child = await spawnLogged({
 		name: "setup",
 		logPath: path.join(iterationDir, "setup.log",),
@@ -1080,7 +1102,7 @@ async function runRunVerb(
 	},);
 	await verifyLiveRoot(client, manifest,);
 
-	manifest.profiles = options.profile === "core" ? ["core",] : ["core", options.profile,];
+	manifest.profiles = profilesFor(options.profile,);
 	manifest.iteration += 1;
 	manifest.cases = [];
 	manifest.commands = [];
@@ -1088,6 +1110,9 @@ async function runRunVerb(
 	await new LiveRunContext(manifestPath, manifest, state.credentials, "run", options.cases,).save();
 
 	const iterationDir = path.join(state.layout.labDir, "reports", `iteration-${manifest.iteration}`,);
+	if (interruptedBySignal) {
+		throw new Error("Interrupted before the case suite started; the lab is preserved.",);
+	}
 	const child = await spawnLogged({
 		name: "run",
 		logPath: path.join(iterationDir, "run.log",),
@@ -1098,9 +1123,10 @@ async function runRunVerb(
 	},);
 	const fresh = await loadLiveManifest(manifestPath,);
 
-	// Optional legacy integration suites: full runs only.
+	// Optional legacy integration suites: full runs only, and never after an
+	// interruption (no further launches once the first signal arrived).
 	const legacy: ChildResult[] = [];
-	if (options.cases.length === 0) {
+	if (options.cases.length === 0 && !interruptedBySignal) {
 		legacy.push(
 			await spawnLogged({
 				name: "legacy-playground",
@@ -1111,16 +1137,18 @@ async function runRunVerb(
 				timeoutMs: 45 * 60 * 1000,
 			},),
 		);
-		legacy.push(
-			await spawnLogged({
-				name: "legacy-rigorous",
-				logPath: path.join(iterationDir, "legacy-rigorous.log",),
-				cwd: LIVE_ROOT,
-				argv: [process.execPath, "test", "tests/integration-rigorous.test.ts",],
-				env: legacyChildEnv(state.credentials, fresh.projectKey, fresh.connection, manifestPath,),
-				timeoutMs: 45 * 60 * 1000,
-			},),
-		);
+		if (!interruptedBySignal) {
+			legacy.push(
+				await spawnLogged({
+					name: "legacy-rigorous",
+					logPath: path.join(iterationDir, "legacy-rigorous.log",),
+					cwd: LIVE_ROOT,
+					argv: [process.execPath, "test", "tests/integration-rigorous.test.ts",],
+					env: legacyChildEnv(state.credentials, fresh.projectKey, fresh.connection, manifestPath,),
+					timeoutMs: 45 * 60 * 1000,
+				},),
+			);
+		}
 	}
 
 	const integrity = await verifyProjectIntegrity(client, fresh, fresh.beforeProjects,);
@@ -1185,6 +1213,8 @@ async function runRunVerb(
 		coverage,
 		capabilities: fresh.capabilities,
 		projects: fresh.projects,
+		globals: fresh.globals,
+		commands: fresh.commands,
 		commandCount: fresh.commands.length,
 		timings: {
 			run: child.durationMs,
@@ -1342,24 +1372,32 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
 	let interruptCount = 0;
+	const onSignal = (signal: "SIGINT" | "SIGTERM",) => {
+		interruptCount += 1;
+		if (interruptCount > 1) {
+			process.stderr.write(
+				`\nlive-suite: ${signal} received again; forcing exit (the lab lock may remain)\n`,
+			);
+			process.exit(130,);
+		}
+		interruptedBySignal = true;
+		process.stderr.write(`\nlive-suite: ${signal} received; stopping child and saving state\n`,);
+		const child = activeChild;
+		if (child) {
+			try {
+				child.kill("SIGTERM",);
+			} catch { /* already gone */ }
+		}
+		// Deliberately no process.exit here: the active child intercepts the
+		// signal, stops its CLI subprocesses via stopLiveCommands(), saves the
+		// manifest, and exits; main() then unwinds through its finally block and
+		// releases the lab lock before the process exits 130. A second signal
+		// force-exits and may retain the lock for manual recovery.
+	};
 	for (const signal of ["SIGINT", "SIGTERM",] as const) {
-		process.on(signal, () => {
-			interruptCount += 1;
-			if (interruptCount > 1) process.exit(130,);
-			process.stderr.write(`\nlive-suite: ${signal} received; stopping child and saving state\n`,);
-			const child = activeChild;
-			if (child) {
-				try {
-					child.kill("SIGTERM",);
-				} catch { /* already gone */ }
-			}
-			// The child intercepts the same signals, stops its CLI subprocesses
-			// via stopLiveCommands(), saves the manifest, and exits 130/143; give
-			// it that window before releasing the process so the lock is not
-			// dropped early.
-			setTimeout(() => process.exit(130,), 1500,);
-		},);
+		process.on(signal, () => onSignal(signal,),);
 	}
 
 	await main();
+	if (interruptedBySignal) process.exitCode = 130;
 }
