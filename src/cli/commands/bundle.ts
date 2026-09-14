@@ -31,7 +31,7 @@ export const bundleCommands: Record<string, CommandMeta> = {
 		usage:
 			"dss bundle export <bundleId> [--release-notes TEXT] [--evaluate-standards-checks true|false] [--project-key KEY]",
 		description:
-			"Create (or overwrite) an exported Design-node bundle. --release-notes forwards the documented releaseNotes parameter; --evaluate-standards-checks toggles the documented Project Standards Checks evaluation (default true).",
+			"Create an exported Design-node bundle. --release-notes forwards the documented releaseNotes parameter; --evaluate-standards-checks toggles the documented Project Standards Checks evaluation (default true; this instance forbids disabling it). DSS refuses re-exporting an existing bundle id — delete-exported first to replace one.",
 		examples: [
 			"dss bundle export v1",
 			"dss bundle export v1 --release-notes='Adds churn model' --evaluate-standards-checks=false",

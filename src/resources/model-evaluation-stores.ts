@@ -1,5 +1,4 @@
-import { UsageError, } from "../cli/usage.js";
-import { BaseResource, } from "./base.js";
+import { BaseResource, requireNonEmpty, } from "./base.js";
 
 export interface ModelEvaluationStoreListItem extends Record<string, unknown> {
 	id?: string;
@@ -31,13 +30,6 @@ export interface ModelEvaluationListItem extends Record<string, unknown> {
 	evaluationId?: string;
 	createdOn?: number;
 	label?: string;
-}
-
-function requireNonEmpty(value: string, name: string,): string {
-	if (typeof value !== "string" || value.trim().length === 0) {
-		throw new UsageError(`${name} must be a non-empty string.`, "validation_failed",);
-	}
-	return value;
 }
 
 export class ModelEvaluationStoresResource extends BaseResource {

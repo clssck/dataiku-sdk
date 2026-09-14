@@ -20,16 +20,22 @@ interface TokenBudget {
 
 const TOKEN_BUDGETS = {
 	skill: { baseline: 750, maxTokens: 825, },
-	agentContract: { baseline: 3_015, maxTokens: 3_200, },
-	commandsRunDefault: { baseline: 1_037, maxTokens: 1_200, },
+	// Intentional contract expansion: the 113-action resource surface (plugin,
+	// saved-model, user, data-collection, connection, project-folder, scenario,
+	// dataset, recipe, project, llm, knowledge-bank, group, macro additions)
+	// grew `commands.actions` from 3_015 to 3_410 o200k tokens. All prose
+	// sections are byte-identical to the pre-expansion contract; the delta is
+	// action-name arrays only. Budget raised accordingly, same ~6% margin.
+	agentContract: { baseline: 3_410, maxTokens: 3_600, },
+	commandsRunDefault: { baseline: 1_577, maxTokens: 1_700, },
 	registryExportStdout: { baseline: 17, maxTokens: 40, },
-	datasetResource: { baseline: 14_057, maxTokens: 15_250, },
+	datasetResource: { baseline: 18_210, maxTokens: 19_300, },
 	datasetCreate: { baseline: 1_035, maxTokens: 1_200, },
 	datasetCreateUsage: { baseline: 50, maxTokens: 70, },
 	datasetCreateDescription: { baseline: 11, maxTokens: 24, },
 	scopedBootstrap: { baseline: 245, maxTokens: 285, },
-	actionSummary: { baseline: 1_039, maxTokens: 1_200, },
-	fourFieldProjection: { baseline: 338, maxTokens: 390, },
+	actionSummary: { baseline: 1_581, maxTokens: 1_700, },
+	fourFieldProjection: { baseline: 356, maxTokens: 390, },
 	fieldsUsageFailure: { baseline: 92, maxTokens: 110, },
 	unknownFlag: { baseline: 42, maxTokens: 60, },
 	unknownResourceRecovery: { baseline: 204, maxTokens: 240, },
@@ -93,12 +99,12 @@ describe("agent-facing token budgets", () => {
 				"KimiK2",
 				"Glm5",
 			];
-			// Measured 2026-09-08: raw text only, excluding provider message framing.
+			// Measured 2026-09-09 after the 113-action expansion and canonical command renames; raw text only.
 			// Claude counters are ctok reconstructions; the newer variants share vocabulary.
 			const cases = [
 				{
 					args: ["agent", "contract",],
-					baseline: [3028, 2923, 3601, 5131, 5131, 5131, 2932, 3305, 2865, 2923,],
+					baseline: [3408, 3289, 4044, 5680, 5680, 5680, 3298, 3714, 3223, 3289,],
 				},
 				{
 					args: ["commands", "run", "--fields", "dataset.create",],

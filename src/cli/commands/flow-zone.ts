@@ -136,7 +136,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			};
 			if (executionMode(f,).dryRun) {
 				const current = await c.flowZones.get(zoneId, pk,);
-				const next = deepMerge(current as unknown as Record<string, unknown>, patch,);
+				const next = deepMerge(current, patch,);
 				return { dryRun: true, action: "update", resource: "flow-zone", id: zoneId, current, next, };
 			}
 			return c.flowZones.update(zoneId, patch,);

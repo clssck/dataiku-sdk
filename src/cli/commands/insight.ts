@@ -107,7 +107,7 @@ export const insightCommands: Record<string, CommandMeta> = {
 			}
 			if (executionMode(f,).dryRun) {
 				const current = await c.insights.get(a[0], f["project-key"] as string | undefined,);
-				const next = deepMerge(current as unknown as Record<string, unknown>, data ?? {},);
+				const next = deepMerge(current, data ?? {},);
 				if (name !== undefined) next.name = name;
 				if (listed !== undefined) next.listed = listed;
 				if (params !== undefined) {

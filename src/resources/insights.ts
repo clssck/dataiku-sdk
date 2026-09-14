@@ -84,7 +84,7 @@ export class InsightsResource extends BaseResource {
 	async update(insightId: string, opts: InsightUpdateOptions,): Promise<InsightDetails> {
 		const current = await this.get(insightId, opts.projectKey,);
 		const next = applyInsightFields(
-			deepMerge(current as unknown as Record<string, unknown>, opts.data ?? {},),
+			deepMerge(current, opts.data ?? {},),
 			opts,
 		);
 		const pk = this.resolveProjectKey(opts.projectKey,);

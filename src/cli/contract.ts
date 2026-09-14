@@ -78,7 +78,7 @@ import type {
 	CommandPayloadSchema,
 	CommandRegistryOverride,
 } from "./types.js";
-import { requireArgs, UsageError, } from "./usage.js";
+import { inferRequiresProject, requireArgs, UsageError, } from "./usage.js";
 import {
 	AGENT_CONTRACT_SCHEMA_ID,
 	AGENT_CONTRACT_VERSION,
@@ -318,27 +318,34 @@ const READ_ACTIONS = new Set([
 	"usages",
 	"verify-instance",
 ],);
+/**
+ * Security admin actions that hand back a DSS future instead of settling
+ * inline: resyncs mint sync jobs, external-user/group fetches mint a
+ * supplier-enumeration job, and provision runs a supplier import. Without
+ * this table they fall through to the read default and `--plan` rejects
+ * them as non-mutating.
+ */
+const ADMIN_SECURITY_FUTURE_ACTIONS: Record<string, true> = {
+	"external-groups": true,
+	"external-users": true,
+	provision: true,
+	resync: true,
+	"resync-multi": true,
+};
 
-const PROJECT_SCOPED_RESOURCES = new Set([
-	"analysis",
-	"data-quality",
-	"dashboard",
-	"dataset",
-	"flow-zone",
-	"insight",
-	"folder",
-	"fixtures",
-	"job",
-	"notebook",
-	"ml-task",
-	"model-evaluation-store",
-	"recipe",
-	"scenario",
-	"sql",
-	"variable",
-	"saved-model",
-	"wiki",
-],);
+/** Connection tables-import actions return a DSS future reference. */
+const CONNECTION_FUTURE_ACTIONS: Record<string, true> = {
+	"execute-import": true,
+	"prepare-import": true,
+};
+
+/** Plugin actions that only observe state despite POST shape (documented). */
+const PLUGIN_GIT_OBSERVER_ACTIONS: Record<string, true> = {
+	"git-branches": true,
+	list: true,
+	usages: true,
+};
+
 /**
  * Project Git actions that only observe repository state. Everything else in the
  * `project-git` resource is a mutation: the verb-shaped names (`fetch`, `pull`,
@@ -377,6 +384,18 @@ const PROJECT_GIT_DESTRUCTIVE_ACTIONS: Record<string, true> = {
 	"reset-to-upstream": true,
 	"revert-commit": true,
 	"revert-to-revision": true,
+};
+
+/** Plugin actions that discard work or publish it beyond the instance. */
+const PLUGIN_DESTRUCTIVE_ACTIONS: Record<string, true> = {
+	"contents-delete": true,
+	delete: true,
+	"delete-git-remote": true,
+	fetch: true,
+	pull: true,
+	push: true,
+	"reset-local": true,
+	"reset-remote": true,
 };
 
 /** Project Git actions that hand back a DSS future (`{jobId}`) instead of a result. */
@@ -649,9 +668,9 @@ const NOTEBOOK_SAVE_OUTPUT_SCHEMA: Record<string, unknown> = {
 };
 
 const COMMAND_OUTPUT_SCHEMAS: Record<string, Record<string, unknown>> = {
-	"code-env.list": CodeEnvSummaryArraySchema as unknown as Record<string, unknown>,
-	"code-env.get": CodeEnvDetailsSchema as unknown as Record<string, unknown>,
-	"code-env.list-logs": CodeEnvLogSummaryArraySchema as unknown as Record<string, unknown>,
+	"code-env.list": CodeEnvSummaryArraySchema,
+	"code-env.get": CodeEnvDetailsSchema,
+	"code-env.list-logs": CodeEnvLogSummaryArraySchema,
 	"code-env.get-log": {
 		oneOf: [
 			{
@@ -682,8 +701,8 @@ const COMMAND_OUTPUT_SCHEMAS: Record<string, Record<string, unknown>> = {
 			},
 		],
 	},
-	"code-env.version": CodeEnvVersionForProjectSchema as unknown as Record<string, unknown>,
-	"code-env.usages": CodeEnvUsageArraySchema as unknown as Record<string, unknown>,
+	"code-env.version": CodeEnvVersionForProjectSchema,
+	"code-env.usages": CodeEnvUsageArraySchema,
 	"code.run": {
 		type: "object",
 		additionalProperties: false,
@@ -721,12 +740,12 @@ const COMMAND_OUTPUT_SCHEMAS: Record<string, Record<string, unknown>> = {
 			},
 		},
 	},
-	"notebook.list-jupyter": JupyterNotebookSummaryArraySchema as unknown as Record<string, unknown>,
-	"notebook.get-jupyter": JupyterNotebookContentSchema as unknown as Record<string, unknown>,
-	"notebook.sessions-jupyter": NotebookSessionArraySchema as unknown as Record<string, unknown>,
-	"notebook.list-sql": SqlNotebookSummaryArraySchema as unknown as Record<string, unknown>,
-	"notebook.get-sql": SqlNotebookContentSchema as unknown as Record<string, unknown>,
-	"notebook.history-sql": SqlNotebookHistorySchema as unknown as Record<string, unknown>,
+	"notebook.list-jupyter": JupyterNotebookSummaryArraySchema,
+	"notebook.get-jupyter": JupyterNotebookContentSchema,
+	"notebook.sessions-jupyter": NotebookSessionArraySchema,
+	"notebook.list-sql": SqlNotebookSummaryArraySchema,
+	"notebook.get-sql": SqlNotebookContentSchema,
+	"notebook.history-sql": SqlNotebookHistorySchema,
 	"notebook.save-jupyter": NOTEBOOK_SAVE_OUTPUT_SCHEMA,
 	"notebook.save-sql": NOTEBOOK_SAVE_OUTPUT_SCHEMA,
 	"project-library.list": { type: "array", items: PROJECT_LIBRARY_ITEM_OUTPUT_SCHEMA, },
@@ -781,24 +800,24 @@ const COMMAND_OUTPUT_SCHEMAS: Record<string, Record<string, unknown>> = {
 			maxLines: { type: "integer", minimum: 0, },
 		},
 	},
-	"project.list": ProjectSummaryArraySchema as unknown as Record<string, unknown>,
-	"project.get": ProjectDetailsSchema as unknown as Record<string, unknown>,
-	"project.metadata": ProjectMetadataSchema as unknown as Record<string, unknown>,
-	"dataset.list": DatasetSummaryArraySchema as unknown as Record<string, unknown>,
-	"dataset.get": DatasetDetailsSchema as unknown as Record<string, unknown>,
-	"dataset.schema": DatasetSchemaSchema as unknown as Record<string, unknown>,
-	"recipe.list": RecipeSummaryArraySchema as unknown as Record<string, unknown>,
-	"job.list": JobSummaryArraySchema as unknown as Record<string, unknown>,
-	"job.wait": JobWaitResultSchema as unknown as Record<string, unknown>,
-	"job.monitor": JobWaitResultSchema as unknown as Record<string, unknown>,
-	"scenario.list": ScenarioSummaryArraySchema as unknown as Record<string, unknown>,
-	"scenario.get": ScenarioDetailsSchema as unknown as Record<string, unknown>,
-	"scenario.status": ScenarioStatusSchema as unknown as Record<string, unknown>,
-	"flow-zone.list": FlowZoneArraySchema as unknown as Record<string, unknown>,
-	"flow-zone.get": FlowZoneSchema as unknown as Record<string, unknown>,
+	"project.list": ProjectSummaryArraySchema,
+	"project.get": ProjectDetailsSchema,
+	"project.metadata": ProjectMetadataSchema,
+	"dataset.list": DatasetSummaryArraySchema,
+	"dataset.get": DatasetDetailsSchema,
+	"dataset.schema": DatasetSchemaSchema,
+	"recipe.list": RecipeSummaryArraySchema,
+	"job.list": JobSummaryArraySchema,
+	"job.wait": JobWaitResultSchema,
+	"job.monitor": JobWaitResultSchema,
+	"scenario.list": ScenarioSummaryArraySchema,
+	"scenario.get": ScenarioDetailsSchema,
+	"scenario.status": ScenarioStatusSchema,
+	"flow-zone.list": FlowZoneArraySchema,
+	"flow-zone.get": FlowZoneSchema,
 	"sql.query": {
 		anyOf: [
-			SqlQueryResponseSchema as unknown as Record<string, unknown>,
+			SqlQueryResponseSchema,
 			{
 				type: "object",
 				required: ["queryId", "rowCount", "preview",],
@@ -1164,10 +1183,29 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	// locally; the DSS-side resource is untouched.
 	if ((resource === "project" || resource === "dashboard") && action === "export") return "read";
 	if (resource === "data-quality" && action === "compute") return "write";
+	if (resource === "user" && ADMIN_SECURITY_FUTURE_ACTIONS[action] === true) return "write";
+	if (resource === "connection" && CONNECTION_FUTURE_ACTIONS[action] === true) return "write";
+	// Saved-model evaluation triggers scoring work on DSS side (cost-bearing).
+	if (resource === "saved-model" && action === "evaluate-version") return "write";
+	// LLM Mesh completions/embeddings invoke the LLM provider (cost-bearing,
+	// arbitrary-prompt execution); the verb shapes match no mutating pattern
+	// and would fall through to read, wrongly rejecting --plan. Knowledge-bank
+	// search stays a READ per Main's preservation directive.
+	if (resource === "llm" && (action === "completions" || action === "embeddings")) {
+		return "write";
+	}
 	// Project Git is classified from the explicit read table, not by verb shape:
 	// `switch`, `fetch`, `pull`, `push`, `commit`, the `reset-*`/`revert-*`
 	// families, `drop-and-rebuild`, and `future-abort` all mutate repository or
 	// future state yet match none of the mutating-verb patterns.
+	// Plugin dev-Git actions mutate repository/plugin state like project-git:
+	// `fetch`/`pull`/`push`/`reset-*` never match the generic mutating-verb
+	// regex, so they are classified explicitly as write (destructive level
+	// from the explicit table below). `git-branches` is a documented POST
+	// observer and stays read.
+	if (resource === "plugin") {
+		return PLUGIN_GIT_OBSERVER_ACTIONS[action] === true ? "read" : "write";
+	}
 	if (resource === "project-git") {
 		return PROJECT_GIT_READ_ACTIONS[action] === true ? "read" : "write";
 	}
@@ -1175,8 +1213,9 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (
 		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove|publish|activate|deploy|import|export|preload|upgrade|start|stop|restart|duplicate|put|rename|reply|compute|organize)/
 			.test(action,)
-		// Compound actions whose mutating verb is a suffix (e.g. permissions-set, dataset-compute).
-		|| /-(set|compute|restore)$/.test(action,)
+		// Compound actions whose mutating verb is a suffix (e.g. permissions-set,
+		// dataset-compute, saved-model external-metadata-put).
+		|| /-(set|compute|restore|put)$/.test(action,)
 	) {
 		return "write";
 	}
@@ -1189,19 +1228,6 @@ function inferRequiresAuth(resource: string,): boolean {
 		&& resource !== "commands"
 		&& resource !== "install-skill"
 		&& resource !== "version";
-}
-
-export function inferRequiresProject(resource: string, action: string, usage: string,): boolean {
-	if (
-		resource === "agent" || resource === "auth" || resource === "doctor" || resource === "commands"
-		|| resource === "install-skill" || resource === "version"
-	) {
-		return false;
-	}
-	if (resource === "sql" && action === "query") return false;
-	if (PROJECT_SCOPED_RESOURCES.has(resource,)) return true;
-	if (resource === "project-git") return !action.startsWith("future-",);
-	return usage.includes("--project-key",);
 }
 
 const ARRAY_OUTPUT_ACTIONS = new Set([
@@ -1465,6 +1491,20 @@ export function supportsCleanupLedger(resource: string, action: string,): boolea
 const EXPLICIT_DESTRUCTIVE_KEYS: Record<string, true> = {
 	"dataset.upload-file": true,
 	"sql.query": true,
+	// Plugin dev-Git and content deletions discard work with no undo route.
+	"plugin.delete": true,
+	"plugin.delete-git-remote": true,
+	"plugin.push": true,
+	"plugin.pull": true,
+	"plugin.fetch": true,
+	"plugin.reset-local": true,
+	"plugin.reset-remote": true,
+	"plugin.contents-delete": true,
+	// Macro runs execute arbitrary plugin code.
+	"macro.run": true,
+	"macro.run-and-wait": true,
+	// Saved-model version deletion removes model versions permanently.
+	"saved-model.delete-versions": true,
 };
 
 function inferDestructiveLevel(
@@ -1474,6 +1514,9 @@ function inferDestructiveLevel(
 ): CommandDestructiveLevel {
 	if (sideEffect !== "write") return "none";
 	if (EXPLICIT_DESTRUCTIVE_KEYS[`${resource}.${action}`] === true) return "destructive";
+	if (resource === "plugin") {
+		return PLUGIN_DESTRUCTIVE_ACTIONS[action] === true ? "destructive" : "reversible";
+	}
 	if (resource === "project-git") {
 		return PROJECT_GIT_DESTRUCTIVE_ACTIONS[action] === true ? "destructive" : "reversible";
 	}
@@ -1493,6 +1536,8 @@ function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
 	if (resource === "scenario" && ["run", "run-and-wait", "status",].includes(action,)) {
 		return "future";
 	}
+	if (resource === "user" && ADMIN_SECURITY_FUTURE_ACTIONS[action] === true) return "future";
+	if (resource === "connection" && CONNECTION_FUTURE_ACTIONS[action] === true) return "future";
 	if (resource === "data-quality" && action === "compute") return "future";
 	// Project Git mutation results carry a future job id only for the library
 	// calls and the future lifecycle itself; plain Git actions settle inline.
@@ -1707,8 +1752,9 @@ export function buildCommandRegistry(
 	resourceFilter?: string,
 ): Record<string, Record<string, CommandRegistryEntry>> {
 	const registry: Record<string, Record<string, CommandRegistryEntry>> = {};
-	for (const [resource, actions,] of Object.entries(commands,)) {
+	for (const resource of Object.keys(commands,)) {
 		if (resourceFilter !== undefined && resource !== resourceFilter) continue;
+		const actions = commands[resource]!;
 		registry[resource] = {};
 		for (const [action, meta,] of Object.entries(actions,)) {
 			registry[resource][action] = buildRegistryEntry(resource, action, meta,);
@@ -2138,6 +2184,10 @@ function querySuffix(params: Record<string, string | number | boolean | undefine
 	const raw = search.toString();
 	return raw ? `?${raw}` : "";
 }
+
+function projectFolderEndpoint(folderId: string,): string {
+	return `/public/api/project-folders/${encodeURIComponent(folderId,)}`;
+}
 /**
  * Git and future API mount. The official Python client mounts these routes on
  * `/dip/publicapi`, which is also what the project-git resource uses; do not
@@ -2184,6 +2234,112 @@ function validatedPlanRepositoryUrl(url: string, flag: string, usage: string,): 
 		}
 	}
 	return candidate;
+}
+
+function pluginRootEndpoint(pluginId: string, suffix: string,): string {
+	return `/public/api/plugins/${encodeURIComponent(pluginId,)}${suffix}`;
+}
+
+function pluginActionEndpoint(pluginId: string, action: string,): string {
+	return pluginRootEndpoint(pluginId, `/actions/${action}`,);
+}
+
+function pluginContentsEndpoint(pluginId: string, contentPath: string,): string {
+	return `${pluginRootEndpoint(pluginId, "/contents/",)}${
+		encodePluginSegmentsForPlan(contentPath,)
+	}`;
+}
+
+function pluginFoldersEndpoint(pluginId: string, contentPath: string,): string {
+	return `${pluginRootEndpoint(pluginId, "/folders/",)}${encodePluginSegmentsForPlan(contentPath,)}`;
+}
+
+/** Encodes a plugin content path per segment for plan-time endpoints. */
+function encodePluginSegmentsForPlan(contentPath: string,): string {
+	return contentPath.split("/",).map((segment,) => encodeURIComponent(segment,)).join("/",);
+}
+
+/**
+ * Plan payload for plugin git install/update bodies. The repository URL is
+ * validated (embedded userinfo rejected) and secrets are never echoed: the
+ * plan carries the URL only, never embedded credentials.
+ */
+function pluginGitPlanPayload(
+	flags: Record<string, string | boolean>,
+): Record<string, unknown> {
+	const repository = requiredPlanFlag(
+		flags,
+		"repository",
+		"dss plugin install-from-git --repository URL",
+	);
+	const payload: Record<string, unknown> = {
+		gitRepositoryUrl: validatedPlanRepositoryUrl(repository, "repository", "--repository URL",),
+	};
+	if (typeof flags["checkout"] === "string") payload.gitCheckout = flags["checkout"];
+	if (typeof flags["path-in-repository"] === "string") {
+		payload.gitSubpath = flags["path-in-repository"];
+	}
+	return payload;
+}
+
+function optionalPlanProjectScope(
+	flags: Record<string, string | boolean>,
+): string {
+	const projectKey = flags["project-key"];
+	if (typeof projectKey !== "string" || projectKey.trim() === "") return "";
+	return `?projectKey=${encodeURIComponent(projectKey.trim(),)}`;
+}
+
+function settingsConfigKeys(flags: Record<string, string | boolean>,): string[] {
+	const content = flags["content"];
+	if (typeof content !== "string") return [];
+	try {
+		const parsed: unknown = JSON.parse(content,);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed,)) return [];
+		return Object.keys(parsed as Record<string, unknown>,);
+	} catch {
+		return [];
+	}
+}
+
+function contentSourceKind(flags: Record<string, string | boolean>,): string {
+	if (flags["stdin"] === true) return "stdin";
+	if (typeof flags["file"] === "string") return "file";
+	if (typeof flags["content"] === "string") return "content";
+	return "unknown";
+}
+
+/**
+ * Plan-safe view of a user create/update body: password values are replaced by
+ * a fixed marker so secrets never appear in --plan output.
+ */
+function redactedUserPayload(
+	payload: Record<string, unknown>,
+): Record<string, unknown> {
+	if (payload["password"] === undefined) return payload;
+	return { ...payload, password: "<omitted>", };
+}
+
+/**
+ * Plan-safe view of a connection create/update body: the connection-type
+ * specific `params` object may carry credentials (passwords, keys, tokens), so
+ * the plan carries only the marker, never the raw params.
+ */
+function redactedConnectionPayload(
+	payload: Record<string, unknown>,
+): Record<string, unknown> {
+	if (payload["params"] === undefined) return payload;
+	return { ...payload, params: "<omitted; may include credentials>", };
+}
+
+/** Required CSV flag for plans (comma-separated logins list). */
+function requiredPlanCsv(
+	flags: Record<string, string | boolean>,
+	name: string,
+	usage: string,
+): string[] {
+	const raw = requiredPlanFlag(flags, name, usage,);
+	return raw.split(",",).map((entry,) => entry.trim()).filter((entry,) => entry.length > 0);
 }
 
 function requiredPlanRepositoryUrl(
@@ -2455,8 +2611,8 @@ export function commandPlanShape(
 			};
 		case "future.abort":
 			return {
-				method: "POST",
-				endpoint: `/public/api/futures/${encodeURIComponent(id,)}/abort`,
+				method: "DELETE",
+				endpoint: `/public/api/futures/${encodeURIComponent(id,)}`,
 				identifiers: { id, },
 			};
 		case "flow-zone.create": {
@@ -2584,8 +2740,40 @@ export function commandPlanShape(
 				method: "PUT",
 				endpoint: projectEndpoint(`/datasets/${encodeURIComponent(id,)}`,),
 				identifiers: { name: id, },
+			};
+		case "dataset.metadata-set":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/datasets/${encodeURIComponent(id,)}/metadata`,),
+				identifiers: { name: id, },
 				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
+		case "dataset.create-managed": {
+			const name = requiredPlanFlag(flags, "name", entry.usage,);
+			const connection = requiredPlanFlag(flags, "connection", entry.usage,);
+			const creationSettings: Record<string, unknown> = { connectionId: connection, };
+			const specificSettings: Record<string, unknown> = {};
+			if (typeof flags["type-option-id"] === "string") {
+				creationSettings.typeOptionId = flags["type-option-id"];
+			}
+			if (typeof flags["format-option-id"] === "string") {
+				specificSettings.formatOptionId = flags["format-option-id"];
+			}
+			if (typeof flags["copy-partitioning-from"] === "string") {
+				specificSettings.partitioningOptionId = `copy:${
+					flags["partitioning-folder"] === true ? "folder" : "dataset"
+				}:${flags["copy-partitioning-from"]}`;
+			}
+			if (Object.keys(specificSettings,).length > 0) {
+				creationSettings.specificSettings = specificSettings;
+			}
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/datasets/managed",),
+				identifiers: { name, },
+				payload: { name, creationSettings, },
+			};
+		}
 		case "recipe.add-input":
 		case "recipe.remove-input": {
 			const role = (flags["role"] as string | undefined) ?? "main";
@@ -2785,6 +2973,42 @@ export function commandPlanShape(
 				payload: jobBuildPayload(id, projectKey!, flags,),
 				wait: action === "build-and-wait" || flags["wait"] === true,
 			};
+		case "scenario.abort":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/abort`,),
+				identifiers: { id, },
+			};
+		case "scenario.payload-set":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/payload`,),
+				identifiers: { id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "scenario.active-set": {
+			const activeRaw = args[1];
+			if (activeRaw !== "true" && activeRaw !== "false") {
+				throw new UsageError(`Usage: ${entry.usage}`,);
+			}
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/light`,),
+				identifiers: { id, },
+				payload: { id, active: activeRaw === "true", },
+			};
+		}
+		case "folder.create": {
+			const name = requiredPlanFlag(flags, "name", entry.usage,);
+			const type = flags["type"] as string | undefined;
+			const connection = flags["connection"] as string | undefined;
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/managedfolders/",),
+				identifiers: { name, },
+				payload: { name, type, connection, path: flags["path"] as string | undefined, projectKey, },
+			};
+		}
 		case "job.abort":
 			return {
 				method: "POST",
@@ -2825,17 +3049,6 @@ export function commandPlanShape(
 				identifiers: { id, },
 				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
-		case "folder.create": {
-			const name = requiredPlanFlag(flags, "name", entry.usage,);
-			const type = flags["type"] as string | undefined;
-			const connection = flags["connection"] as string | undefined;
-			return {
-				method: "POST",
-				endpoint: projectEndpoint("/managedfolders/",),
-				identifiers: { name, },
-				payload: { name, type, connection, path: flags["path"] as string | undefined, projectKey, },
-			};
-		}
 		case "folder.update":
 			return {
 				method: "PUT",
@@ -3066,6 +3279,596 @@ export function commandPlanShape(
 				endpoint: `/public/api/meanings/${encodeURIComponent(id,)}`,
 				identifiers: { id, },
 			};
+		case "llm.list": {
+			const params = new URLSearchParams();
+			const purpose = flags["purpose"];
+			if (typeof purpose === "string" && purpose.trim() !== "") {
+				params.set("purpose", purpose.trim(),);
+			}
+			const query = params.size > 0 ? `?${params.toString()}` : "";
+			return {
+				method: "GET",
+				endpoint: projectEndpoint(`/llms/${query}`,),
+			};
+		}
+		case "llm.completions":
+		case "llm.embeddings": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			const llmId = stringField(payload, ["llmId",],);
+			if (llmId === undefined || llmId.trim() === "") {
+				throw new UsageError(
+					`llmId is required and must be a non-empty string (e.g. "openai:openai1:gpt-4").\nUsage: ${entry.usage}`,
+					"invalid_flag_value",
+				);
+			}
+			const queries = payload["queries"];
+			if (!Array.isArray(queries,) || queries.length === 0) {
+				throw new UsageError(
+					`queries is required and must be a non-empty array of query objects.\nUsage: ${entry.usage}`,
+					"invalid_flag_value",
+				);
+			}
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					action === "completions" ? "/llms/completions" : "/llms/embeddings",
+				),
+				identifiers: { llmId, },
+				payload,
+			};
+		}
+		case "knowledge-bank.search": {
+			if (typeof id !== "string" || id.trim() === "") {
+				throw new UsageError(
+					`knowledgeBankId must be a non-empty string.\nUsage: ${entry.usage}`,
+					"invalid_flag_value",
+				);
+			}
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			const query = stringField(payload, ["query",],);
+			if (query === undefined || query.trim() === "") {
+				throw new UsageError(
+					`query is required and must be a non-empty string.\nUsage: ${entry.usage}`,
+					"invalid_flag_value",
+				);
+			}
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/knowledge-banks/${encodeURIComponent(id,)}/search`,
+				),
+				identifiers: { knowledgeBankId: id, },
+				payload,
+			};
+		}
+		case "knowledge-bank.clear":
+			if (typeof id !== "string" || id.trim() === "") {
+				throw new UsageError(
+					`knowledgeBankId must be a non-empty string.\nUsage: ${entry.usage}`,
+					"invalid_flag_value",
+				);
+			}
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/knowledge-banks/${encodeURIComponent(id,)}/clear`,
+				),
+				identifiers: { knowledgeBankId: id, },
+			};
+		case "data-collection.create":
+			return {
+				method: "POST",
+				endpoint: "/public/api/data-collections/",
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "data-collection.settings-set":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/data-collections/${encodeURIComponent(id,)}`,
+				identifiers: { dataCollectionId: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "data-collection.delete":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/data-collections/${encodeURIComponent(id,)}`,
+				identifiers: { dataCollectionId: id, },
+			};
+		case "data-collection.add-object": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			const cid = id
+				?? (typeof payload["dataCollectionId"] === "string"
+					? payload["dataCollectionId"] as string
+					: undefined);
+			if (!cid) throw new UsageError(`Usage: ${entry.usage}`,);
+			const reference = { ...payload, };
+			delete (reference as Record<string, unknown>)["dataCollectionId"];
+			return {
+				method: "POST",
+				endpoint: `/public/api/data-collections/${encodeURIComponent(cid,)}/objects`,
+				identifiers: { dataCollectionId: cid, },
+				payload: reference,
+			};
+		}
+		case "data-collection.remove-dataset": {
+			const projectKeyArg = args[1];
+			const datasetName = args[2];
+			if (!projectKeyArg || !datasetName) {
+				throw new UsageError(`Usage: ${entry.usage}`,);
+			}
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/data-collections/${encodeURIComponent(id,)}/objects/dataset/${
+					encodeURIComponent(projectKeyArg,)
+				}/${encodeURIComponent(datasetName,)}`,
+				identifiers: { dataCollectionId: id, projectKey: projectKeyArg, datasetName, },
+			};
+		}
+		case "project.tags-set":
+			return {
+				method: "PUT",
+				endpoint: encodedProjectEndpointForPlan(
+					projectKey ?? requiredPlanProjectKey(flags, entry.usage,),
+					"/tags",
+				),
+				identifiers: { projectKey: projectKey ?? requiredPlanProjectKey(flags, entry.usage,), },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "project.metadata-set":
+			return {
+				method: "PUT",
+				endpoint: encodedProjectEndpointForPlan(
+					projectKey ?? requiredPlanProjectKey(flags, entry.usage,),
+					"/metadata",
+				),
+				identifiers: { projectKey: projectKey ?? requiredPlanProjectKey(flags, entry.usage,), },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "macro.run":
+		case "macro.run-and-wait": {
+			// The plan payload mirrors the live POST body exactly: params and
+			// adminParams when provided via --data, {} otherwise. Validation is
+			// identical to the live path (JSON object shape), zero network.
+			const data = optionalJsonFlag(flags, "data",);
+			const runPayload: Record<string, unknown> = {};
+			if (data && typeof data === "object" && !Array.isArray(data,)) {
+				if (data["params"] !== undefined) runPayload["params"] = data["params"];
+				if (data["adminParams"] !== undefined) runPayload["adminParams"] = data["adminParams"];
+			}
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/runnables/${encodeURIComponent(id,)}?wait=false`,),
+				identifiers: { id, },
+				payload: runPayload,
+				wait: action === "macro.run-and-wait" || flags["wait"] === true,
+			};
+		}
+		case "macro.abort": {
+			const runId = args[1];
+			if (!runId) throw new UsageError(`Usage: ${entry.usage}`,);
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/runnables/${encodeURIComponent(id,)}/abort/${encodeURIComponent(runId,)}`,
+				),
+				identifiers: { id, runId, },
+			};
+		}
+		case "recipe.metadata-set":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/recipes/${encodeURIComponent(id,)}/metadata`,),
+				identifiers: { recipeName: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "user.create":
+			return {
+				method: "POST",
+				endpoint: "/public/api/admin/users",
+				payload: redactedUserPayload(requiredPlanJsonInput(flags, entry.usage,),),
+			};
+		case "group.create":
+			return {
+				method: "POST",
+				endpoint: "/public/api/admin/groups",
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "saved-model.create-external": {
+			const config = optionalJsonFlag(flags, "configuration",) ?? optionalJsonFlag(flags, "data",);
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/savedmodels/",),
+				identifiers: { name: id, },
+				payload: {
+					savedModelType: requiredPlanFlag(flags, "type", entry.usage,),
+					name: id,
+					...(typeof flags["prediction-type"] === "string"
+						? { predictionType: flags["prediction-type"], }
+						: {}),
+					...(config ? { proxyModelConfiguration: config, } : {}),
+				},
+			};
+		}
+		case "saved-model.update-settings":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/savedmodels/${encodeURIComponent(id,)}`,),
+				identifiers: { savedModelId: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "saved-model.delete-versions": {
+			const versionsRaw = args[1];
+			if (typeof versionsRaw !== "string" || versionsRaw.trim() === "") {
+				throw new UsageError(`Usage: ${entry.usage}`,);
+			}
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/savedmodels/${encodeURIComponent(id,)}/actions/delete-versions`,),
+				identifiers: { savedModelId: id, },
+				payload: {
+					versions: versionsRaw.split(",",).map((v,) => v.trim()).filter((v,) => v.length > 0),
+					removeIntermediate: parseBooleanOption(
+						flags["remove-intermediate"],
+						"--remove-intermediate",
+					) ?? true,
+				},
+			};
+		}
+		case "saved-model.import-mlflow-version":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/savedmodels/${encodeURIComponent(id,)}/versions/${encodeURIComponent(args[1] ?? "",)}`,
+				),
+				identifiers: { savedModelId: id, versionId: args[1], },
+				payload: {
+					source: { kind: "local-archive", archive: requiredPlanFlag(flags, "archive", entry.usage,), },
+					...(typeof flags["code-env"] === "string"
+						? { codeEnvName: flags["code-env"], }
+						: {}),
+					setActive: parseBooleanOption(flags["set-active"], "--set-active",) ?? true,
+					...(flags["binary-classification-threshold"] !== undefined
+						? {
+							binaryClassificationThreshold: num(
+								flags["binary-classification-threshold"],
+								"--binary-classification-threshold",
+							),
+						}
+						: {}),
+				},
+			};
+		case "saved-model.import-mlflow-version-from-folder":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/savedmodels/${encodeURIComponent(id,)}/versions/${encodeURIComponent(args[1] ?? "",)}`,
+				),
+				identifiers: { savedModelId: id, versionId: args[1], },
+				payload: {
+					source: {
+						kind: "managed-folder",
+						folderRef: requiredPlanFlag(flags, "folder", entry.usage,),
+						path: flags["path"] as string | undefined,
+					},
+					...(typeof flags["code-env"] === "string" ? { codeEnvName: flags["code-env"], } : {}),
+					setActive: parseBooleanOption(flags["set-active"], "--set-active",) ?? true,
+				},
+			};
+		case "saved-model.external-metadata-put":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(
+					`/savedmodels/${encodeURIComponent(id,)}/versions/${
+						encodeURIComponent(args[1] ?? "",)
+					}/external-ml/metadata`,
+				),
+				identifiers: { savedModelId: id, versionId: args[1], },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "saved-model.evaluate-version": {
+			const payload: Record<string, unknown> = {
+				datasetRef: requiredPlanFlag(flags, "dataset", entry.usage,),
+			};
+			if (typeof flags["container-exec-config"] === "string") {
+				payload.containerExecConfigName = flags["container-exec-config"];
+			}
+			if (typeof flags["sampling"] === "string") payload.sampling = flags["sampling"];
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/savedmodels/${encodeURIComponent(id,)}/versions/${
+						encodeURIComponent(args[1] ?? "",)
+					}/external-ml/actions/evaluate`,
+				),
+				identifiers: { savedModelId: id, versionId: args[1], },
+				payload,
+			};
+		}
+		case "saved-model.set-user-meta":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(
+					`/savedmodels/${encodeURIComponent(id,)}/versions/${
+						encodeURIComponent(args[1] ?? "",)
+					}/user-meta`,
+				),
+				identifiers: { savedModelId: id, versionId: args[1], },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "user.update":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/admin/users/${encodeURIComponent(id,)}`,
+				identifiers: { login: id, },
+				payload: redactedUserPayload(requiredPlanJsonInput(flags, entry.usage,),),
+			};
+		case "user.delete":
+		case "group.delete":
+			return {
+				method: "DELETE",
+				endpoint: resource === "user"
+					? `/public/api/admin/users/${encodeURIComponent(id,)}`
+					: `/public/api/admin/groups/${encodeURIComponent(id,)}`,
+				identifiers: resource === "user" ? { login: id, } : { name: id, },
+			};
+		case "user.resync":
+			return {
+				method: "POST",
+				endpoint: `/public/api/admin/users/${encodeURIComponent(id,)}/actions/resync`,
+				identifiers: { login: id, },
+			};
+		case "user.resync-multi": {
+			const logins = requiredPlanCsv(flags, "logins", entry.usage,);
+			return {
+				method: "POST",
+				endpoint: "/public/api/admin/users/actions/resync-multi",
+				identifiers: { count: logins.length, },
+				payload: logins,
+			};
+		}
+		case "user.external-users":
+			return {
+				method: "GET",
+				endpoint: "/public/api/admin/users/actions/external-users",
+			};
+		case "user.external-groups":
+			return {
+				method: "GET",
+				endpoint: "/public/api/admin/users/actions/external-groups",
+			};
+		case "connection.test":
+			return {
+				method: "GET",
+				endpoint: `/public/api/connections/${encodeURIComponent(id,)}/test`,
+				identifiers: { connectionName: id, },
+			};
+		case "user.provision":
+			return {
+				method: "POST",
+				endpoint: "/public/api/admin/users/actions/provision",
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "group.update":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/admin/groups/${encodeURIComponent(id,)}`,
+				identifiers: { name: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "connection.create":
+			return {
+				method: "POST",
+				endpoint: "/public/api/admin/connections",
+				payload: redactedConnectionPayload(requiredPlanJsonInput(flags, entry.usage,),),
+			};
+		case "connection.update":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/admin/connections/${encodeURIComponent(id,)}`,
+				identifiers: { connectionName: id, },
+				payload: redactedConnectionPayload(requiredPlanJsonInput(flags, entry.usage,),),
+			};
+		case "connection.delete":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/admin/connections/${encodeURIComponent(id,)}`,
+				identifiers: { connectionName: id, },
+			};
+		case "connection.prepare-import": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			if (!projectKey) throw new UsageError(`Missing project key for ${resource} ${action}.`,);
+			return {
+				method: "POST",
+				endpoint: encodedProjectEndpointForPlan(
+					projectKey,
+					"/datasets/tables-import/actions/prepare-from-keys",
+				),
+				identifiers: { projectKey, },
+				payload,
+			};
+		}
+		case "connection.execute-import": {
+			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			if (!projectKey) throw new UsageError(`Missing project key for ${resource} ${action}.`,);
+			return {
+				method: "POST",
+				endpoint: encodedProjectEndpointForPlan(
+					projectKey,
+					"/datasets/tables-import/actions/execute-from-candidates",
+				),
+				identifiers: { projectKey, },
+				payload,
+			};
+		}
+		case "plugin.install-from-zip":
+			return {
+				method: "POST",
+				endpoint: "/public/api/plugins/actions/installFromZip",
+				payload: { file: requiredPlanFlag(flags, "file", entry.usage,), upload: "multipart", },
+			};
+		case "plugin.install-from-store":
+			return {
+				method: "POST",
+				endpoint: "/public/api/plugins/actions/installFromStore",
+				identifiers: { pluginId: id, },
+				payload: { pluginId: id, },
+			};
+		case "plugin.install-from-git": {
+			const payload = pluginGitPlanPayload(flags,);
+			return {
+				method: "POST",
+				endpoint: "/public/api/plugins/actions/installFromGit",
+				payload,
+			};
+		}
+		case "plugin.update-from-zip":
+			return {
+				method: "POST",
+				endpoint: pluginActionEndpoint(id, "updateFromZip",),
+				identifiers: { pluginId: id, },
+				payload: { file: requiredPlanFlag(flags, "file", entry.usage,), upload: "multipart", },
+			};
+		case "plugin.update-from-store":
+			return {
+				method: "POST",
+				endpoint: pluginActionEndpoint(id, "updateFromStore",),
+				identifiers: { pluginId: id, },
+			};
+		case "plugin.update-from-git":
+			return {
+				method: "POST",
+				endpoint: "/public/api/plugins/actions/updateFromGit",
+				payload: pluginGitPlanPayload(flags,),
+			};
+		case "plugin.settings-set": {
+			const scope = optionalPlanProjectScope(flags,);
+			return {
+				method: "POST",
+				endpoint: `${pluginRootEndpoint(id, "/settings",)}${scope}`,
+				identifiers: { pluginId: id, },
+				payload: { configKeys: settingsConfigKeys(flags,), },
+			};
+		}
+		case "plugin.code-env-create": {
+			const conda = parseBooleanOption(flags["conda"], "--conda",) ?? false;
+			return {
+				method: "POST",
+				endpoint: `${pluginRootEndpoint(id, "/code-env/actions/create",)}`,
+				identifiers: { pluginId: id, },
+				payload: { conda, pythonInterpreter: flags["python-interpreter"], },
+				wait: flags["wait"] === true,
+			};
+		}
+		case "plugin.code-env-update":
+			return {
+				method: "POST",
+				endpoint: `${pluginRootEndpoint(id, "/code-env/actions/update",)}`,
+				identifiers: { pluginId: id, },
+				wait: flags["wait"] === true,
+			};
+		case "plugin.move-to-dev":
+			return {
+				method: "POST",
+				endpoint: pluginActionEndpoint(id, "moveToDev",),
+				identifiers: { pluginId: id, },
+			};
+		case "plugin.delete":
+			return {
+				method: "POST",
+				endpoint: pluginActionEndpoint(id, "delete",),
+				identifiers: { pluginId: id, },
+				payload: { force: parseBooleanOption(flags["force"], "--force",) ?? false, },
+			};
+		case "plugin.create-dev": {
+			const creationMode = requiredPlanFlag(flags, "creation-mode", entry.usage,);
+			const payload: Record<string, unknown> = {
+				pluginId: id,
+				creationMode,
+			};
+			if (typeof flags["repository"] === "string") payload.gitRepository = flags["repository"];
+			if (typeof flags["checkout"] === "string") payload.gitCheckout = flags["checkout"];
+			if (typeof flags["path-in-repository"] === "string") {
+				payload.gitSubpath = flags["path-in-repository"];
+			}
+			return {
+				method: "POST",
+				endpoint: "/public/api/plugins/actions/createDev",
+				identifiers: { pluginId: id, creationMode, },
+				payload,
+			};
+		}
+		case "plugin.set-git-remote": {
+			const repository = requiredPlanFlag(flags, "repository", entry.usage,);
+			return {
+				method: "POST",
+				endpoint: `${pluginRootEndpoint(id, "/gitRemote",)}`,
+				identifiers: { pluginId: id, },
+				payload: { repositoryUrl: validatedPlanRepositoryUrl(repository, "repository", entry.usage,), },
+			};
+		}
+		case "plugin.delete-git-remote":
+			return {
+				method: "DELETE",
+				endpoint: pluginRootEndpoint(id, "/gitRemote",),
+				identifiers: { pluginId: id, },
+			};
+		case "plugin.push":
+		case "plugin.pull":
+		case "plugin.fetch":
+		case "plugin.reset-local":
+		case "plugin.reset-remote": {
+			const actionMap: Record<string, string> = {
+				"plugin.push": "push",
+				"plugin.pull": "pullRebase",
+				"plugin.fetch": "fetch",
+				"plugin.reset-local": "resetToLocalHeadState",
+				"plugin.reset-remote": "resetToRemoteHeadState",
+			};
+			return {
+				method: "POST",
+				endpoint: pluginActionEndpoint(id, actionMap[`${resource}.${action}`]!,),
+				identifiers: { pluginId: id, },
+			};
+		}
+		case "plugin.contents-put":
+			return {
+				method: "POST",
+				endpoint: pluginContentsEndpoint(id, args[1] ?? "",),
+				identifiers: { pluginId: id, path: args[1], },
+				payload: { contentSource: contentSourceKind(flags,), },
+			};
+		case "plugin.contents-delete":
+			return {
+				method: "DELETE",
+				endpoint: pluginContentsEndpoint(id, args[1] ?? "",),
+				identifiers: { pluginId: id, path: args[1], },
+			};
+		case "plugin.folder-add":
+			return {
+				method: "POST",
+				endpoint: pluginFoldersEndpoint(id, args[1] ?? "",),
+				identifiers: { pluginId: id, path: args[1], },
+			};
+		case "plugin.rename": {
+			const newName = requiredPlanPositionals(entry.usage,)[2];
+			if (!newName) throw new UsageError(`Usage: ${entry.usage}`,);
+			return {
+				method: "POST",
+				endpoint: `${pluginRootEndpoint(id, "/contents-actions/rename",)}`,
+				identifiers: { pluginId: id, path: args[1], },
+				payload: { oldPath: args[1], newName: args[2], },
+			};
+		}
+		case "plugin.move": {
+			const destination = args[2];
+			if (!destination) throw new UsageError(`Usage: ${entry.usage}`,);
+			return {
+				method: "POST",
+				endpoint: `${pluginRootEndpoint(id, "/contents-actions/move",)}`,
+				identifiers: { pluginId: id, path: args[1], },
+				payload: { oldPath: args[1], newPath: destination, },
+			};
+		}
 		case "business-app.save-settings":
 			return {
 				method: "PUT",
@@ -4618,6 +5421,55 @@ export function commandPlanShape(
 				endpoint: projectGitFutureEndpoint(id,),
 				identifiers: { jobId: id, },
 			};
+		case "project-folder.settings-set": {
+			const payload = requiredPlanJsonInput(
+				flags,
+				`--data, --data-file, or --stdin is required. Usage: ${entry.usage}`,
+			);
+			return {
+				method: "PUT",
+				endpoint: `${projectFolderEndpoint(id,)}/settings`,
+				identifiers: { folderId: id, },
+				payload,
+			};
+		}
+		case "project-folder.move": {
+			const destination = args[1];
+			if (!destination) throw new UsageError(`Usage: ${entry.usage}`,);
+			return {
+				method: "POST",
+				endpoint: `${projectFolderEndpoint(id,)}/move${querySuffix({ destination, },)}`,
+				identifiers: { folderId: id, destination, },
+			};
+		}
+		case "project-folder.delete":
+			return {
+				method: "DELETE",
+				endpoint: projectFolderEndpoint(id,),
+				identifiers: { folderId: id, },
+			};
+		case "project-folder.create-child": {
+			const name = requiredPlanFlag(flags, "name", entry.usage,);
+			return {
+				method: "POST",
+				endpoint: `${projectFolderEndpoint(id,)}/children${querySuffix({ name, },)}`,
+				identifiers: { parentFolderId: id, name, },
+			};
+		}
+		case "project-folder.move-project": {
+			const projectKeyArg = args[1];
+			const destination = args[2];
+			if (!projectKeyArg || !destination) {
+				throw new UsageError(`Usage: ${entry.usage}`,);
+			}
+			return {
+				method: "POST",
+				endpoint: `${projectFolderEndpoint(id,)}/projects/${encodeURIComponent(projectKeyArg,)}/move${
+					querySuffix({ destination, },)
+				}`,
+				identifiers: { folderId: id, projectKey: projectKeyArg, destination, },
+			};
+		}
 		default:
 			return {
 				exact: false,

@@ -337,6 +337,9 @@ describe("CLI registry required-input usage accuracy", () => {
 			"dashboard create",
 			"insight create",
 			"code-env create",
+			"saved-model create-external",
+			"macro run",
+			"macro run-and-wait",
 		],);
 		const payloadTokens =
 			/--data\b|--stdin\b|--file(?!-)\b|--content\b|--sql\b|\[SQL\b|--packages\b|--package\b|--params\b/;

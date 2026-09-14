@@ -1,10 +1,10 @@
 import { DataikuError, } from "../errors.js";
 import { JobSummaryArraySchema, } from "../schemas.js";
 import type { BuildMode, JobSummary, JobWaitResult, } from "../schemas.js";
+import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
 import { BaseResource, } from "./base.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
-const MAX_POLL_INTERVAL_MS = 10_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_LOG_LINES = 500;
 /**
@@ -24,7 +24,14 @@ const TERMINAL_STATES = new Set([
 	"ERROR",
 ],);
 
-export type JobBuildTargetType = "DATASET" | "MANAGED_FOLDER";
+/**
+ * Buildable target kinds. DATASET and MANAGED_FOLDER are user-selectable;
+ * MODEL_EVALUATION_STORE appears as a recipe output role and is a valid job
+ * target per the official client (recipe.run object_type_map maps
+ * COMPUTABLE_MODEL_EVALUATION_STORE to MODEL_EVALUATION_STORE before
+ * JobDefinition.with_output).
+ */
+export type JobBuildTargetType = "DATASET" | "MANAGED_FOLDER" | "MODEL_EVALUATION_STORE";
 export type JobLogFilter = "stdout" | "stderr" | "user" | "errors";
 
 export interface JobLogProgress {
@@ -86,30 +93,6 @@ function isSuccessfulTerminalState(state: string | undefined,): boolean {
 	return (state ?? "").toUpperCase() === "DONE";
 }
 
-interface ComputeNextPollDelayMsOptions {
-	pollCount: number;
-	baseIntervalMs: number;
-	adaptiveEnabled: boolean;
-}
-
-/**
- * Compute the next poll delay.
- * When adaptive polling is enabled, the interval doubles every 3 polls,
- * capped at MAX_POLL_INTERVAL_MS (or baseIntervalMs if it's larger).
- */
-export function computeNextPollDelayMs({
-	pollCount,
-	baseIntervalMs,
-	adaptiveEnabled,
-}: ComputeNextPollDelayMsOptions,): number {
-	if (!adaptiveEnabled) {
-		return baseIntervalMs;
-	}
-	const step = Math.max(0, Math.floor((pollCount - 1) / 3,),);
-	const interval = baseIntervalMs * 2 ** step;
-	return Math.min(interval, Math.max(baseIntervalMs, MAX_POLL_INTERVAL_MS,),);
-}
-
 function sleep(ms: number,): Promise<void> {
 	return new Promise((resolve,) => setTimeout(resolve, ms,));
 }
@@ -126,7 +109,10 @@ function jobBuildOutput(
 	const projectKey = target.projectKey ?? defaultProjectKey;
 	const partition = target.partition ?? defaultPartition;
 	const output: Record<string, unknown> = { projectKey, id: target.id, type: targetType, };
-	if (targetType === "DATASET") {
+	if (targetType === "DATASET" || targetType === "MODEL_EVALUATION_STORE") {
+		// MES targets follow the plain {projectKey, id, type} shape (official
+		// JobDefinition.with_output sends the name/id plus object type, with no
+		// managed-folder indirection).
 		if (partition !== undefined) output.partition = partition;
 	} else {
 		output.targetManagedFolderProjectKey = projectKey;
@@ -442,6 +428,8 @@ export class JobsResource extends BaseResource {
 		const jobEnc = encodeURIComponent(jobId,);
 		const baseIntervalMs = Math.max(1, opts?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,);
 		const adaptivePolling = opts?.pollIntervalMs === undefined;
+		// Pre-existing contract: the effective budget is never below one poll
+		// interval, so a single observation always fits inside it.
 		const timeout = Math.max(baseIntervalMs, opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS,);
 		const startedAt = Date.now();
 		let pollCount = 0;
@@ -449,7 +437,13 @@ export class JobsResource extends BaseResource {
 		while (true) {
 			pollCount += 1;
 
-			const j = await this.client.get<{
+			// One status observation always happens, even when the budget is
+			// already spent (the poll precedes the deadline check); only the
+			// requests issued while budget remains are bounded by the remaining
+			// time, so a stalled status endpoint can never defeat the deadline.
+			const elapsedBefore = Date.now() - startedAt;
+			const remainingMs = timeout - elapsedBefore;
+			let j: {
 				baseStatus?: {
 					def?: { id?: string; type?: string; };
 					state?: string;
@@ -460,7 +454,35 @@ export class JobsResource extends BaseResource {
 					running?: number;
 					total?: number;
 				};
-			}>(`/public/api/projects/${projectEnc}/jobs/${jobEnc}/`,);
+			};
+			try {
+				j = await this.client.get(
+					`/public/api/projects/${projectEnc}/jobs/${jobEnc}/`,
+					remainingMs > 0
+						? { timeoutMs: remainingMs, }
+						: undefined,
+				);
+			} catch (error) {
+				// The poll budget ran out mid-request: report the documented
+				// structured timeout instead of letting the transport deadline
+				// error escape the loop.
+				if (!isRequestDeadlineError(error, startedAt + timeout,)) throw error;
+				return {
+					success: false,
+					jobId,
+					state: "unknown",
+					type: "unknown",
+					elapsedMs: Date.now() - startedAt,
+					pollCount,
+					timedOut: true,
+					progress: {
+						done: 0,
+						failed: 0,
+						running: 0,
+						total: null,
+					},
+				};
+			}
 
 			const bs = j.baseStatus ?? {};
 			const def = bs.def ?? {};

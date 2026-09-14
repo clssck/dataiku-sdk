@@ -1,5 +1,4 @@
-import { UsageError, } from "../cli/usage.js";
-import { BaseResource, } from "./base.js";
+import { BaseResource, requireNonEmpty, } from "./base.js";
 
 export interface AnalysisListItem extends Record<string, unknown> {
 	id?: string;
@@ -25,13 +24,6 @@ export interface AnalysisCreateOptions {
 export interface AnalysisCreateResult extends Record<string, unknown> {
 	id?: string;
 	analysisId?: string;
-}
-
-function requireNonEmpty(value: string, name: string,): string {
-	if (typeof value !== "string" || value.trim().length === 0) {
-		throw new UsageError(`${name} must be a non-empty string.`, "validation_failed",);
-	}
-	return value;
 }
 
 export class AnalysesResource extends BaseResource {

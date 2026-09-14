@@ -103,7 +103,7 @@ export const folderCommands: Record<string, CommandMeta> = {
 			const folderId = await resolveFolderId(c, a[0], f,);
 			if (executionMode(f,).dryRun) {
 				const current = await c.folders.get(folderId, pk,);
-				const next = deepMerge(current as unknown as Record<string, unknown>, data,);
+				const next = deepMerge(current, data,);
 				return {
 					dryRun: true,
 					action: "update",

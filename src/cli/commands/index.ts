@@ -1,82 +1,155 @@
 import type { CommandMeta, } from "../types.js";
-import { analysisCommands, } from "./analysis.js";
-import { apiDeployerCommands, } from "./api-deployer.js";
-import { apiServiceCommands, } from "./api-service.js";
-import { appCommands, } from "./app.js";
-import { bundleCommands, } from "./bundle.js";
-import { businessAppCommands, } from "./business-app.js";
-import { codeEnvCommands, } from "./code-env.js";
-import { codeCommands, } from "./code.js";
-import { connectionCommands, } from "./connection.js";
-import { continuousActivityCommands, } from "./continuous-activity.js";
-import { dashboardCommands, } from "./dashboard.js";
-import { dataQualityCommands, } from "./data-quality.js";
-import { datasetCommands, } from "./dataset.js";
-import { discussionCommands, } from "./discussion.js";
-import { doctorCommands, } from "./doctor.js";
-import { flowZoneCommands, } from "./flow-zone.js";
-import { folderCommands, } from "./folder.js";
-import { futureCommands, } from "./future.js";
-import { insightCommands, } from "./insight.js";
-import { jobCommands, } from "./job.js";
-import { meaningCommands, } from "./meaning.js";
-import { metricsCommands, } from "./metrics.js";
-import { mlTaskCommands, } from "./ml-task.js";
-import { modelEvaluationStoreCommands, } from "./model-evaluation-store.js";
-import { notebookCommands, } from "./notebook.js";
-import { projectDeployerCommands, } from "./project-deployer.js";
-import { projectGitCommands, } from "./project-git.js";
-import { projectLibraryCommands, } from "./project-library.js";
-import { projectCommands, } from "./project.js";
-import { recipeCommands, } from "./recipe.js";
-import { savedModelCommands, } from "./saved-model.js";
-import { scenarioCommands, } from "./scenario.js";
-import { sqlCommands, } from "./sql.js";
-import { statisticsCommands, } from "./statistics.js";
-import { streamingEndpointCommands, } from "./streaming-endpoint.js";
-import { variableCommands, } from "./variable.js";
-import { webappCommands, } from "./webapp.js";
-import { wikiCommands, } from "./wiki.js";
-import { workspaceCommands, } from "./workspace.js";
 
+// Bun caches these synchronous module loads. Enumerating resource names stays
+// cheap; looking up one resource loads only its command definitions.
 export const commands: Record<string, Record<string, CommandMeta>> = {
-	project: projectCommands,
-	analysis: analysisCommands,
-	"ml-task": mlTaskCommands,
-	"saved-model": savedModelCommands,
-	"model-evaluation-store": modelEvaluationStoreCommands,
-	app: appCommands,
-	"business-app": businessAppCommands,
-	webapp: webappCommands,
-	"api-service": apiServiceCommands,
-	"api-deployer": apiDeployerCommands,
-	bundle: bundleCommands,
-	"project-deployer": projectDeployerCommands,
-	"project-git": projectGitCommands,
-	"project-library": projectLibraryCommands,
-	"streaming-endpoint": streamingEndpointCommands,
-	"continuous-activity": continuousActivityCommands,
-	statistics: statisticsCommands,
-	discussion: discussionCommands,
-	meaning: meaningCommands,
-	workspace: workspaceCommands,
-	metrics: metricsCommands,
-	doctor: doctorCommands,
-	wiki: wikiCommands,
-	dashboard: dashboardCommands,
-	insight: insightCommands,
-	"data-quality": dataQualityCommands,
-	future: futureCommands,
-	"flow-zone": flowZoneCommands,
-	dataset: datasetCommands,
-	recipe: recipeCommands,
-	job: jobCommands,
-	scenario: scenarioCommands,
-	folder: folderCommands,
-	variable: variableCommands,
-	connection: connectionCommands,
-	"code-env": codeEnvCommands,
-	sql: sqlCommands,
-	code: codeCommands,
-	notebook: notebookCommands,
+	get "project"() {
+		return (require("./project.js",) as typeof import("./project.js")).projectCommands;
+	},
+	get "analysis"() {
+		return (require("./analysis.js",) as typeof import("./analysis.js")).analysisCommands;
+	},
+	get "ml-task"() {
+		return (require("./ml-task.js",) as typeof import("./ml-task.js")).mlTaskCommands;
+	},
+	get "saved-model"() {
+		return (require("./saved-model.js",) as typeof import("./saved-model.js")).savedModelCommands;
+	},
+	get "model-evaluation-store"() {
+		return (require("./model-evaluation-store.js",) as typeof import("./model-evaluation-store.js"))
+			.modelEvaluationStoreCommands;
+	},
+	get "app"() {
+		return (require("./app.js",) as typeof import("./app.js")).appCommands;
+	},
+	get "business-app"() {
+		return (require("./business-app.js",) as typeof import("./business-app.js")).businessAppCommands;
+	},
+	get "webapp"() {
+		return (require("./webapp.js",) as typeof import("./webapp.js")).webappCommands;
+	},
+	get "api-service"() {
+		return (require("./api-service.js",) as typeof import("./api-service.js")).apiServiceCommands;
+	},
+	get "api-deployer"() {
+		return (require("./api-deployer.js",) as typeof import("./api-deployer.js")).apiDeployerCommands;
+	},
+	get "bundle"() {
+		return (require("./bundle.js",) as typeof import("./bundle.js")).bundleCommands;
+	},
+	get "project-deployer"() {
+		return (require("./project-deployer.js",) as typeof import("./project-deployer.js"))
+			.projectDeployerCommands;
+	},
+	get "project-git"() {
+		return (require("./project-git.js",) as typeof import("./project-git.js")).projectGitCommands;
+	},
+	get "project-folder"() {
+		return (require("./project-folder.js",) as typeof import("./project-folder.js"))
+			.projectFolderCommands;
+	},
+	get "project-library"() {
+		return (require("./project-library.js",) as typeof import("./project-library.js"))
+			.projectLibraryCommands;
+	},
+	get "streaming-endpoint"() {
+		return (require("./streaming-endpoint.js",) as typeof import("./streaming-endpoint.js"))
+			.streamingEndpointCommands;
+	},
+	get "continuous-activity"() {
+		return (require("./continuous-activity.js",) as typeof import("./continuous-activity.js"))
+			.continuousActivityCommands;
+	},
+	get "statistics"() {
+		return (require("./statistics.js",) as typeof import("./statistics.js")).statisticsCommands;
+	},
+	get "discussion"() {
+		return (require("./discussion.js",) as typeof import("./discussion.js")).discussionCommands;
+	},
+	get "meaning"() {
+		return (require("./meaning.js",) as typeof import("./meaning.js")).meaningCommands;
+	},
+	get "workspace"() {
+		return (require("./workspace.js",) as typeof import("./workspace.js")).workspaceCommands;
+	},
+	get "metrics"() {
+		return (require("./metrics.js",) as typeof import("./metrics.js")).metricsCommands;
+	},
+	get "doctor"() {
+		return (require("./doctor.js",) as typeof import("./doctor.js")).doctorCommands;
+	},
+	get "wiki"() {
+		return (require("./wiki.js",) as typeof import("./wiki.js")).wikiCommands;
+	},
+	get "dashboard"() {
+		return (require("./dashboard.js",) as typeof import("./dashboard.js")).dashboardCommands;
+	},
+	get "insight"() {
+		return (require("./insight.js",) as typeof import("./insight.js")).insightCommands;
+	},
+	get "data-quality"() {
+		return (require("./data-quality.js",) as typeof import("./data-quality.js")).dataQualityCommands;
+	},
+	get "future"() {
+		return (require("./future.js",) as typeof import("./future.js")).futureCommands;
+	},
+	get "flow-zone"() {
+		return (require("./flow-zone.js",) as typeof import("./flow-zone.js")).flowZoneCommands;
+	},
+	get "dataset"() {
+		return (require("./dataset.js",) as typeof import("./dataset.js")).datasetCommands;
+	},
+	get "recipe"() {
+		return (require("./recipe.js",) as typeof import("./recipe.js")).recipeCommands;
+	},
+	get "job"() {
+		return (require("./job.js",) as typeof import("./job.js")).jobCommands;
+	},
+	get "scenario"() {
+		return (require("./scenario.js",) as typeof import("./scenario.js")).scenarioCommands;
+	},
+	get "folder"() {
+		return (require("./folder.js",) as typeof import("./folder.js")).folderCommands;
+	},
+	get "variable"() {
+		return (require("./variable.js",) as typeof import("./variable.js")).variableCommands;
+	},
+	get "connection"() {
+		return (require("./connection.js",) as typeof import("./connection.js")).connectionCommands;
+	},
+	get "code-env"() {
+		return (require("./code-env.js",) as typeof import("./code-env.js")).codeEnvCommands;
+	},
+	get "sql"() {
+		return (require("./sql.js",) as typeof import("./sql.js")).sqlCommands;
+	},
+	get "code"() {
+		return (require("./code.js",) as typeof import("./code.js")).codeCommands;
+	},
+	get "notebook"() {
+		return (require("./notebook.js",) as typeof import("./notebook.js")).notebookCommands;
+	},
+	get "user"() {
+		return (require("./user.js",) as typeof import("./user.js")).userCommands;
+	},
+	get "group"() {
+		return (require("./group.js",) as typeof import("./group.js")).groupCommands;
+	},
+	get "plugin"() {
+		return (require("./plugin.js",) as typeof import("./plugin.js")).pluginCommands;
+	},
+	get "llm"() {
+		return (require("./llm.js",) as typeof import("./llm.js")).llmCommands;
+	},
+	get "knowledge-bank"() {
+		return (require("./knowledge-bank.js",) as typeof import("./knowledge-bank.js"))
+			.knowledgeBankCommands;
+	},
+	get "macro"() {
+		return (require("./macro.js",) as typeof import("./macro.js")).macroCommands;
+	},
+	get "data-collection"() {
+		return (require("./data-collection.js",) as typeof import("./data-collection.js"))
+			.dataCollectionCommands;
+	},
 };

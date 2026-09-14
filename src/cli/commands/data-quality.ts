@@ -109,7 +109,7 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 					a[1],
 					f["project-key"] as string | undefined,
 				);
-				const next = deepMerge(current as unknown as Record<string, unknown>, data,);
+				const next = deepMerge(current, data,);
 				return {
 					dryRun: true,
 					action: "update-rule",

@@ -1,4 +1,4 @@
-import { ClientValidationError, DataikuError, } from "../errors.js";
+import { ClientValidationError, } from "../errors.js";
 import type {
 	ProjectGitActionResult,
 	ProjectGitDiffResult,
@@ -21,6 +21,8 @@ import {
 	ProjectGitStatusSchema,
 	ProjectGitTagsSchema,
 } from "../schemas.js";
+import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
+import { sanitizeErrorSecrets, } from "../utils/secret-sanitize.js";
 import { BaseResource, } from "./base.js";
 
 /**
@@ -114,6 +116,12 @@ export interface ProjectGitSetLibraryOptions {
 
 export interface ProjectGitFutureStateOptions {
 	peek?: boolean;
+	/**
+	 * Total duration budget in milliseconds for this single state request,
+	 * covering headers, retries, backoff, and body read. Intended for polling
+	 * loops that must not hang on a stalled endpoint.
+	 */
+	timeoutMs?: number;
 }
 
 export interface ProjectGitFutureWaitOptions {
@@ -124,18 +132,6 @@ export interface ProjectGitFutureWaitOptions {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-/**
- * The Git routes authenticate with HTTP Basic (API key as the username, empty
- * password) exactly like the official Python client, so they bypass the shared
- * bearer helpers and reach the client's transport directly. Retries, TLS
- * options, timeouts, and DSS error classification still come from the client.
- */
-type GitTransportClient = {
-	baseUrl: string;
-	apiKey: string;
-	fetchWithRetry(url: string, init: RequestInit,): Promise<Response>;
-};
 
 type QueryValue = string | number | boolean | undefined;
 
@@ -232,28 +228,9 @@ function validatedRepository(repository: string, field: string,): string {
 }
 
 /** Replace every exact occurrence of a secret so echoed errors cannot leak it. */
-function redactSecrets(text: string, secrets: string[],): string {
-	let result = text;
-	for (const secret of secrets) {
-		if (secret !== undefined && secret !== "") {
-			result = result.split(secret,).join("[redacted]",);
-		}
-	}
-	return result;
-}
-
-/**
- * Strip a password that a server misconfiguration may have echoed from an
- * error response. `DataikuError.message` was built at construction, so the
- * raw body, the message, and the stack all need scrubbing.
- */
 function scrubErrorSecrets(error: unknown, secrets: string[],): void {
-	if (!(error instanceof DataikuError) || secrets.length === 0) return;
-	error.body = redactSecrets(error.body, secrets,);
-	error.message = redactSecrets(error.message, secrets,);
-	if (typeof error.stack === "string") {
-		error.stack = redactSecrets(error.stack, secrets,);
-	}
+	if (secrets.length === 0) return;
+	sanitizeErrorSecrets(error, { sensitiveKeys: {}, secrets, },);
 }
 
 function describeFutureFailure(error: unknown,): string | undefined {
@@ -268,6 +245,31 @@ function describeFutureFailure(error: unknown,): string | undefined {
 		return JSON.stringify(error,);
 	}
 	return String(error,);
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * DSS answers the lib-git-refs listing as an object map of attached external
+ * libraries keyed by target path alongside code-library metadata (observed
+ * raw on DSS 15: `{gitReferences, pythonPath, rsrcPath,
+ * importLibrariesFromProjects}`), while the official Python client and this
+ * resource's typed contract expose a plain array. Normalize the map into
+ * entries, preserving each key as the library's `localTargetPath`; a bare
+ * array passes through untouched.
+ */
+function normalizeLibraryList(raw: unknown,): unknown {
+	if (Array.isArray(raw,) || raw === undefined || raw === null) return raw ?? [];
+	if (typeof raw !== "object") return raw;
+	const record = raw as Record<string, unknown>;
+	const refs = record["gitReferences"];
+	if (refs === undefined || refs === null || typeof refs !== "object" || Array.isArray(refs,)) {
+		return raw;
+	}
+	return Object.entries(refs,).map(([localTargetPath, spec,],) => ({
+		localTargetPath,
+		...(typeof spec === "object" && spec !== null ? spec as Record<string, unknown> : {}),
+	}));
 }
 
 /* ------------------------------------------------------------------ */
@@ -578,7 +580,7 @@ export class ProjectGitResource extends BaseResource {
 		const raw = await this.request("GET", `${this.libraryPath(projectKey,)}/`,);
 		return this.client.safeParse(
 			ProjectGitLibrariesSchema,
-			raw ?? [],
+			normalizeLibraryList(raw,),
 			"projectGit.listLibraries",
 		);
 	}
@@ -725,6 +727,9 @@ export class ProjectGitResource extends BaseResource {
 		const raw = await this.request(
 			"GET",
 			`/futures/${encodeURIComponent(jobId,)}${this.query({ peek: options.peek === true, },)}`,
+			undefined,
+			[],
+			{ timeoutMs: options.timeoutMs, },
 		);
 		return this.client.safeParse(
 			ProjectGitFutureStateSchema,
@@ -752,11 +757,41 @@ export class ProjectGitResource extends BaseResource {
 		if (!Number.isFinite(timeoutMs,) || timeoutMs < 0) {
 			throw new ClientValidationError("timeoutMs must be a finite non-negative number.",);
 		}
+		// Adaptive backoff applies only when the caller did not pin an exact
+		// interval; an explicit pollIntervalMs is an exact contract.
+		const adaptiveEnabled = options.pollIntervalMs === undefined;
+		let pollCount = 0;
 		const startedAt = Date.now();
 
 		while (true) {
 			// Unlike peek state, the ordinary state includes the completed result.
-			const state = await this.getFutureState(jobId, { peek: false, },);
+			// One state observation always happens, even when the budget is
+			// already spent (the poll precedes the deadline check); only the
+			// requests issued while budget remains are bounded by the remaining
+			// time, so a stalled endpoint can never defeat the caller's deadline.
+			const remainingMs = timeoutMs - (Date.now() - startedAt);
+			pollCount += 1;
+			let state: ProjectGitFutureState;
+			try {
+				state = await this.getFutureState(
+					jobId,
+					remainingMs > 0
+						? {
+							peek: false,
+							timeoutMs: remainingMs,
+						}
+						: { peek: false, },
+				);
+			} catch (error) {
+				// The poll budget ran out mid-request: report the documented
+				// timeout failure instead of letting the transport deadline
+				// error escape.
+				if (!isRequestDeadlineError(error, startedAt + timeoutMs,)) throw error;
+				throw new Error(
+					`Timed out after ${String(Date.now() - startedAt,)}ms waiting for Dataiku future ${jobId}`,
+					{ cause: error, },
+				);
+			}
 
 			const failure = describeFutureFailure(state.error,);
 			if (failure !== undefined) {
@@ -773,15 +808,20 @@ export class ProjectGitResource extends BaseResource {
 				throw new Error(`Dataiku future ${jobId} ended without producing a result`,);
 			}
 
-			// Only the remaining budget is slept, so a caller's deadline is never
-			// overshot by a whole poll interval.
 			const elapsedMs = Date.now() - startedAt;
 			if (elapsedMs >= timeoutMs) {
 				throw new Error(
 					`Timed out after ${String(elapsedMs,)}ms waiting for Dataiku future ${jobId}`,
 				);
 			}
-			await sleep(Math.min(pollIntervalMs, timeoutMs - elapsedMs,),);
+			const nextDelayMs = computeNextPollDelayMs({
+				pollCount,
+				baseIntervalMs: pollIntervalMs,
+				adaptiveEnabled,
+			},);
+			// Only the remaining budget is slept, so a caller's deadline is never
+			// overshot by a whole interval.
+			await sleep(Math.min(nextDelayMs, timeoutMs - elapsedMs,),);
 		}
 	}
 
@@ -814,22 +854,15 @@ export class ProjectGitResource extends BaseResource {
 		path: string,
 		body?: unknown,
 		secrets: string[] = [],
+		opts: { timeoutMs?: number; } = {},
 	): Promise<unknown> {
-		const transport = this.client as unknown as GitTransportClient;
-		const init: RequestInit = {
-			method,
-			headers: {
-				// The Git routes are only reachable with dataikuapi-style Basic auth:
-				// API key as the username, empty password.
-				Authorization: `Basic ${Buffer.from(`${transport.apiKey}:`, "utf8",).toString("base64",)}`,
-				Accept: "application/json",
-				"Content-Type": "application/json",
-			},
-		};
-		if (body !== undefined) init.body = JSON.stringify(body,);
-
 		try {
-			const res = await transport.fetchWithRetry(`${transport.baseUrl}${GIT_API_BASE}${path}`, init,);
+			const res = await this.client.requestGit(
+				method,
+				`${GIT_API_BASE}${path}`,
+				body,
+				opts.timeoutMs === undefined ? undefined : Date.now() + opts.timeoutMs,
+			);
 			const text = await res.text();
 			if (text.trim() === "") return undefined;
 			try {

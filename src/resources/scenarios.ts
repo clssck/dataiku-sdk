@@ -1,5 +1,5 @@
 import { randomUUID, } from "node:crypto";
-import { DataikuError, } from "../errors.js";
+import { ClientValidationError, DataikuError, } from "../errors.js";
 import type {
 	ScenarioDetails,
 	ScenarioStatus,
@@ -13,8 +13,8 @@ import {
 	ScenarioSummaryArraySchema,
 } from "../schemas.js";
 import { deepMerge, } from "../utils/deep-merge.js";
-import { BaseResource, } from "./base.js";
-import { computeNextPollDelayMs, } from "./jobs.js";
+import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
+import { BaseResource, requireArrayResponse, requireNonEmpty, } from "./base.js";
 
 export const SCENARIO_CANONICAL_EDITABLE_FIELDS = [
 	"params.steps",
@@ -24,6 +24,70 @@ export const SCENARIO_CANONICAL_EDITABLE_FIELDS = [
 	"active",
 	"name",
 ] as const;
+
+/** Default byte cap applied when fetching a scenario run log. */
+export const DEFAULT_SCENARIO_MAX_LOG_BYTES = 1_048_576;
+
+/** One entry of GET /scenarios/{id}/get-last-runs — a finished (or running) scenario run summary. */
+export interface ScenarioRunSummary {
+	runId: string;
+	start?: number;
+	end?: number;
+	scenario?: Record<string, unknown>;
+	variables?: Record<string, unknown>;
+	result?: Record<string, unknown>;
+}
+
+/** Status payload returned by the scenario light endpoints: identity plus running/active flags. */
+export interface ScenarioLightStatus {
+	id?: string;
+	running?: boolean;
+	active?: boolean;
+}
+
+/** Result of a light active toggle: the light status observed after the PUT. */
+export interface ScenarioActiveUpdateResult {
+	scenarioId: string;
+	active: boolean;
+	before?: boolean;
+	status: ScenarioLightStatus;
+}
+
+/** Step-level entry of a scenario run report, sanitized to documented fields. */
+export interface ScenarioRunStepReport {
+	id?: string;
+	name?: string;
+	type?: string;
+	runId?: string;
+	start?: number;
+	end?: number;
+	outcome?: string;
+	warningCount?: number;
+}
+
+/** Response of GET /scenarios/{id}/get-run-for-trigger and GET /scenarios/{id}/{runId}. */
+export interface ScenarioRunDetails {
+	scenarioRun?: {
+		runId?: string;
+		result?: Record<string, unknown>;
+	};
+	stepRuns?: ScenarioRunStepReport[];
+}
+
+/** Bounded log retrieval result: text plus whether the byte cap cut it. */
+export interface ScenarioRunLog {
+	text: string;
+	truncated: boolean;
+	maxLogBytes: number;
+}
+
+/** Internal: run state shared by runAndWait/runScript while polling get-run-for-trigger. */
+interface TrackedRun {
+	runId: string;
+	outcome: string;
+	timedOut: boolean;
+	pollCount: number;
+}
 
 export interface ScenarioUpdateNormalization {
 	from: string;
@@ -107,6 +171,66 @@ export interface ScenarioScriptRunResult {
 const DEFAULT_CODE_RUN_MAX_LOG_BYTES = 1_048_576;
 const CODE_RUN_OUTPUT_START = "<<<DSS_CODE_RUN_OUTPUT_b7e3a1>>>";
 const CODE_RUN_OUTPUT_END = "<<<DSS_CODE_RUN_OUTPUT_END_b7e3a1>>>";
+
+/** Prefer the current runId field, with the legacy id field as fallback. */
+function triggerRunIdOf(trigger: Record<string, unknown>, scenarioId?: string,): string {
+	const runId = trigger?.runId ?? trigger?.id;
+	if (typeof runId !== "string" || runId.trim().length === 0) {
+		throw new DataikuError(
+			200,
+			"Unexpected Response",
+			`Scenario${
+				scenarioId ? ` "${scenarioId}"` : ""
+			} run response did not contain a usable run identifier.`,
+		);
+	}
+	return runId;
+}
+
+function triggerQueryOf(trigger: Record<string, unknown>,): string {
+	const triggerObj = trigger.trigger as Record<string, unknown> | undefined;
+	const triggerId = (triggerObj?.id as string | undefined) ?? "manual";
+	const triggerRunId = triggerRunIdOf(trigger,);
+	return `triggerId=${encodeURIComponent(triggerId,)}&triggerRunId=${
+		encodeURIComponent(triggerRunId,)
+	}`;
+}
+
+/** A finite number, or undefined for anything else (absent/malformed JSON fields). */
+function optionalNumber(value: unknown,): number | undefined {
+	return typeof value === "number" && Number.isFinite(value,) ? value : undefined;
+}
+
+/** Map one get-last-runs entry to a ScenarioRunSummary, tolerating missing fields. */
+function scenarioRunSummaryFromRaw(entry: unknown,): ScenarioRunSummary {
+	if (!isRecord(entry,)) return { runId: "unknown", };
+	const runId = typeof entry.runId === "string" ? entry.runId : "unknown";
+	const optionalRecord = (value: unknown,): Record<string, unknown> | undefined =>
+		isRecord(value,) ? value : undefined;
+	return {
+		runId,
+		...(optionalNumber(entry.start,) !== undefined ? { start: optionalNumber(entry.start,), } : {}),
+		...(optionalNumber(entry.end,) !== undefined ? { end: optionalNumber(entry.end,), } : {}),
+		...(optionalRecord(entry.scenario,) !== undefined
+			? { scenario: optionalRecord(entry.scenario,), }
+			: {}),
+		...(optionalRecord(entry.variables,) !== undefined
+			? { variables: optionalRecord(entry.variables,), }
+			: {}),
+		...(optionalRecord(entry.result,) !== undefined
+			? { result: optionalRecord(entry.result,), }
+			: {}),
+	};
+}
+
+/** Map a light-endpoint response to the documented ScenarioWithStatus shape. */
+function scenarioLightStatusFromRaw(raw: Record<string, unknown>,): ScenarioLightStatus {
+	return {
+		...(typeof raw.id === "string" ? { id: raw.id, } : {}),
+		...(typeof raw.running === "boolean" ? { running: raw.running, } : {}),
+		...(typeof raw.active === "boolean" ? { active: raw.active, } : {}),
+	};
+}
 
 /**
  * Wrap a user Python script so its stdout/stderr (and any traceback) are captured
@@ -413,14 +537,12 @@ export class ScenariosResource extends BaseResource {
 
 	/** Trigger a scenario run. */
 	async run(scenarioId: string, projectKey?: string,): Promise<{ runId: string; }> {
-		const scEnc = encodeURIComponent(scenarioId,);
+		const scEnc = encodeURIComponent(requireNonEmpty(scenarioId, "scenarioId",),);
 		const result = await this.client.post<Record<string, unknown>>(
 			`/public/api/projects/${this.enc(projectKey,)}/scenarios/${scEnc}/run/`,
 			{},
 		);
-		return {
-			runId: (result.id as string | undefined) ?? (result.runId as string | undefined) ?? "unknown",
-		};
+		return { runId: triggerRunIdOf(result, scenarioId,), };
 	}
 
 	/** Get the light/status view of a scenario. */
@@ -491,91 +613,31 @@ export class ScenariosResource extends BaseResource {
 		const adaptivePolling = opts?.pollIntervalMs === undefined;
 		const timeout = Math.max(baseIntervalMs, opts?.timeoutMs ?? 120_000,);
 		const startedAt = Date.now();
-
 		// POST /run/ returns a TRIGGER run id, which differs from the actual scenario
 		// run id; resolve the real run via get-run-for-trigger so a completed scenario
 		// is not misreported as a timeout (the trigger id never matches lastRun).
 		const trigger = await this.client.post<Record<string, unknown>>(`${base}/run/`, {},);
-		const triggerObj = trigger.trigger as Record<string, unknown> | undefined;
-		const triggerId = (triggerObj?.id as string | undefined) ?? "manual";
-		const triggerRunId = String(trigger.runId ?? trigger.id ?? "",);
-		if (!triggerRunId) {
-			throw new DataikuError(
-				500,
-				"Scenario run not started",
-				`Scenario "${scenarioId}" run trigger returned no run id; cannot track the run.`,
-			);
-		}
-		const trigQuery = `triggerId=${encodeURIComponent(triggerId,)}&triggerRunId=${
-			encodeURIComponent(triggerRunId,)
-		}`;
-
-		let runId = "";
-		let outcome = "UNKNOWN";
-		let pollCount = 0;
-		let timedOut = false;
-		while (true) {
-			if (Date.now() - startedAt >= timeout) {
-				outcome = "TIMEOUT";
-				timedOut = true;
-				break;
-			}
-			pollCount += 1;
-			const run = await this.client.get<Record<string, unknown>>(
-				`${base}/get-run-for-trigger?${trigQuery}`,
-			);
-			const scenarioRun = run.scenarioRun as Record<string, unknown> | undefined;
-			if (scenarioRun) {
-				runId = (scenarioRun.runId as string | undefined) ?? runId;
-				const result = scenarioRun.result as Record<string, unknown> | undefined;
-				const finished = result?.outcome as string | undefined;
-				if (finished) {
-					outcome = finished;
-					break;
-				}
-			}
-			const nextDelayMs = computeNextPollDelayMs({
-				pollCount,
-				baseIntervalMs,
-				adaptiveEnabled: adaptivePolling,
-			},);
-			const { promise, resolve, } = Promise.withResolvers<void>();
-			setTimeout(resolve, Math.min(nextDelayMs, Math.max(1, timeout - (Date.now() - startedAt),),),);
-			await promise;
-		}
-
-		const resolvedRunId = runId || triggerRunId;
-		let steps: ScenarioStepRun[] | undefined;
-		if (!timedOut && runId) {
-			try {
-				const details = await this.client.get<Record<string, unknown>>(
-					`${base}/${encodeURIComponent(runId,)}/`,
-				);
-				const stepRuns = (details.stepRuns as Array<Record<string, unknown>> | undefined) ?? [];
-				const mapped = stepRuns.map((entry,) => {
-					const stepDef = entry.step as Record<string, unknown> | undefined;
-					const stepResult = entry.result as Record<string, unknown> | undefined;
-					return {
-						name: stepDef?.name as string | undefined,
-						type: stepDef?.type as string | undefined,
-						outcome: (stepResult?.outcome as string | undefined) ?? "UNKNOWN",
-						...scenarioStepWarningSummary(stepResult,),
-					};
-				},);
-				if (mapped.length > 0) steps = mapped;
-			} catch {
-				// Best-effort diagnostics: never fail the wait because the run report is unavailable.
-			}
-		}
+		const tracked = await this.trackTriggerRun(scenarioId, base, trigger, {
+			startedAt,
+			baseIntervalMs,
+			adaptivePolling,
+			timeout,
+		},);
+		const resolvedRunId = tracked.runId || triggerRunIdOf(trigger,);
+		const steps = tracked.timedOut || !tracked.runId
+			? undefined
+			: await this.runStepSummaries(base, tracked.runId,);
 		return {
 			scenarioId,
 			runId: resolvedRunId,
-			outcome,
-			success: outcome === "SUCCESS",
+			outcome: tracked.outcome,
+			success: tracked.outcome === "SUCCESS",
 			elapsedMs: Date.now() - startedAt,
-			pollCount,
-			...(triggerRunId !== resolvedRunId ? { triggerRunId, } : {}),
-			...(timedOut ? { timedOut: true, } : {}),
+			pollCount: tracked.pollCount,
+			...(triggerRunIdOf(trigger,) !== resolvedRunId
+				? { triggerRunId: triggerRunIdOf(trigger,), }
+				: {}),
+			...(tracked.timedOut ? { timedOut: true, } : {}),
 			...(steps ? { steps, } : {}),
 		};
 	}
@@ -633,55 +695,22 @@ export class ScenariosResource extends BaseResource {
 			);
 
 			const trigger = await this.client.post<Record<string, unknown>>(`${base}/run/`, {},);
-			const triggerObj = trigger.trigger as Record<string, unknown> | undefined;
-			const triggerId = (triggerObj?.id as string | undefined) ?? "manual";
-			const triggerRunId = String(trigger.runId ?? "",);
-			if (!triggerRunId) {
-				throw new DataikuError(
-					500,
-					"Scenario run not started",
-					`Scenario "${scenarioId}" run trigger returned no run id; cannot track the run.`,
-				);
-			}
-			const trigQuery = `triggerId=${encodeURIComponent(triggerId,)}&triggerRunId=${
-				encodeURIComponent(triggerRunId,)
-			}`;
-
-			while (true) {
-				if (Date.now() - startedAt >= timeout) {
-					outcome = "TIMEOUT";
-					timedOut = true;
-					break;
-				}
-				pollCount += 1;
-				const run = await this.client.get<Record<string, unknown>>(
-					`${base}/get-run-for-trigger?${trigQuery}`,
-				);
-				const scenarioRun = run.scenarioRun as Record<string, unknown> | undefined;
-				if (scenarioRun) {
-					runId = (scenarioRun.runId as string | undefined) ?? runId;
-					const result = scenarioRun.result as Record<string, unknown> | undefined;
-					const finished = result?.outcome as string | undefined;
-					if (finished) {
-						outcome = finished;
-						break;
-					}
-				}
-				const nextDelayMs = computeNextPollDelayMs({
-					pollCount,
-					baseIntervalMs,
-					adaptiveEnabled: adaptivePolling,
-				},);
-				await new Promise((r,) =>
-					setTimeout(r, Math.min(nextDelayMs, Math.max(1, timeout - (Date.now() - startedAt),),),)
-				);
-			}
+			const tracked = await this.trackTriggerRun(scenarioId, base, trigger, {
+				startedAt,
+				baseIntervalMs,
+				adaptivePolling,
+				timeout,
+			},);
+			outcome = tracked.outcome;
+			runId = tracked.runId;
+			pollCount = tracked.pollCount;
+			timedOut = tracked.timedOut;
 
 			if (runId && outcome !== "TIMEOUT") {
-				const limitedLog = await this.client.getTextLimited(
-					`${base}/${encodeURIComponent(runId,)}/log`,
+				const limitedLog = await this.getRunLog(scenarioId, runId, {
+					projectKey: opts?.projectKey,
 					maxLogBytes,
-				);
+				},);
 				log = limitedLog.text;
 				logTruncated = limitedLog.truncated;
 			}
@@ -714,6 +743,234 @@ export class ScenariosResource extends BaseResource {
 			...(timedOut ? { timedOut: true, timeoutMs: timeout, } : {}),
 			cleanup,
 		};
+	}
+
+	/**
+	 * Abort a running scenario (POST /scenarios/{id}/abort). The call returns as
+	 * soon as DSS accepts the abort request; the scenario may take some time to
+	 * actually stop, so this does not wait for termination.
+	 */
+	async abort(scenarioId: string, projectKey?: string,): Promise<void> {
+		const scEnc = encodeURIComponent(scenarioId,);
+		await this.client.post(
+			`/public/api/projects/${this.enc(projectKey,)}/scenarios/${scEnc}/abort`,
+		);
+	}
+
+	/** Get the raw last-runs list (GET /scenarios/{id}/get-last-runs/?limit=N). */
+	async getLastRuns(
+		scenarioId: string,
+		opts?: {
+			limit?: number;
+			projectKey?: string;
+		},
+	): Promise<ScenarioRunSummary[]> {
+		if (opts?.limit !== undefined && (!Number.isInteger(opts.limit,) || opts.limit < 1)) {
+			throw new ClientValidationError(`limit must be a positive integer, got ${opts.limit}.`,);
+		}
+		const scEnc = encodeURIComponent(scenarioId,);
+		const query = opts?.limit !== undefined ? `?limit=${opts.limit}` : "";
+		const raw = await this.client.get<unknown>(
+			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/get-last-runs/${query}`,
+		);
+		return requireArrayResponse<unknown>(raw, "scenarios.getLastRuns",).map(
+			scenarioRunSummaryFromRaw,
+		);
+	}
+
+	/** Get the details of a specific run (GET /scenarios/{id}/{runId}). */
+	async getRunDetails(
+		scenarioId: string,
+		runId: string,
+		opts?: { projectKey?: string; },
+	): Promise<ScenarioRunDetails> {
+		return this.client.get<ScenarioRunDetails>(
+			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${
+				encodeURIComponent(scenarioId,)
+			}/${encodeURIComponent(runId,)}/`,
+		);
+	}
+
+	/**
+	 * Get the log of a scenario run (GET /scenarios/{id}/{runId}/log), optionally
+	 * scoped to a single step via `stepId`. The text is byte-bounded: at most
+	 * `maxLogBytes` (default 1 MiB) of the beginning of the log is retained and
+	 * `truncated` reports whether the cap cut the body.
+	 */
+	async getRunLog(
+		scenarioId: string,
+		runId: string,
+		opts?: {
+			stepId?: string;
+			maxLogBytes?: number;
+			projectKey?: string;
+		},
+	): Promise<ScenarioRunLog> {
+		if (opts?.stepId !== undefined) requireNonEmpty(opts.stepId, "stepId",);
+		const maxLogBytes = Math.max(
+			0,
+			Math.floor(opts?.maxLogBytes ?? DEFAULT_SCENARIO_MAX_LOG_BYTES,),
+		);
+		const scEnc = encodeURIComponent(scenarioId,);
+		const query = opts?.stepId !== undefined
+			? `?stepId=${encodeURIComponent(opts.stepId,)}`
+			: "";
+		const { text, truncated, } = await this.client.getTextLimited(
+			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/${
+				encodeURIComponent(runId,)
+			}/log${query}`,
+			maxLogBytes,
+		);
+		return { text, truncated, maxLogBytes, };
+	}
+
+	/** Get the payload of a (custom) scenario (GET /scenarios/{id}/payload). */
+	async getPayload(
+		scenarioId: string,
+		opts?: { projectKey?: string; },
+	): Promise<Record<string, unknown>> {
+		const scEnc = encodeURIComponent(scenarioId,);
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/payload`,
+		);
+	}
+
+	/** Update the payload of a (custom) scenario (PUT /scenarios/{id}/payload). */
+	async setPayload(
+		scenarioId: string,
+		payload: Record<string, unknown>,
+		opts?: { projectKey?: string; },
+	): Promise<void> {
+		const scEnc = encodeURIComponent(scenarioId,);
+		await this.client.putVoid(
+			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/payload`,
+			payload,
+		);
+	}
+
+	/**
+	 * Toggle the active flag through the light endpoints (GET then PUT
+	 * /scenarios/{id}/light) without a full-definition round-trip. Returns the
+	 * light status observed after the PUT.
+	 */
+	async setActive(
+		scenarioId: string,
+		active: boolean,
+		opts?: { projectKey?: string; },
+	): Promise<ScenarioActiveUpdateResult> {
+		const scEnc = encodeURIComponent(scenarioId,);
+		const base = `/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/light`;
+		const beforeRaw = await this.client.get<Record<string, unknown>>(base,);
+		const before = typeof beforeRaw.active === "boolean" ? beforeRaw.active : undefined;
+		// DSS parses the light PUT as a full Scenario object: a minimal {id, active} body 400s with
+		// "Could not parse a Scenario from request body" (missing name). Echo the complete GET body
+		// with active overridden — the same contract as the python client's set_definition(with_status).
+		const nextLight = { ...beforeRaw, active, };
+		await this.client.putVoid(base, nextLight,);
+		const after = await this.client.get<Record<string, unknown>>(base,);
+		return {
+			scenarioId,
+			active: typeof after.active === "boolean" ? after.active : active,
+			...(before !== undefined ? { before, } : {}),
+			status: scenarioLightStatusFromRaw(after,),
+		};
+	}
+
+	/**
+	 * Poll get-run-for-trigger until the triggered run reports an outcome or the
+	 * deadline elapses. Shared by runAndWait and runScript: POST /run/ returns a
+	 * TRIGGER run id, which differs from the actual scenario run id, so the real
+	 * run is resolved via get-run-for-trigger (the trigger id never matches
+	 * lastRun and would misreport a completed scenario as a timeout).
+	 */
+	private async trackTriggerRun(
+		scenarioId: string,
+		base: string,
+		trigger: Record<string, unknown>,
+		timing: {
+			startedAt: number;
+			baseIntervalMs: number;
+			adaptivePolling: boolean;
+			timeout: number;
+		},
+	): Promise<TrackedRun> {
+		triggerRunIdOf(trigger, scenarioId,);
+		const trigQuery = triggerQueryOf(trigger,);
+		let runId = "";
+		let pollCount = 0;
+		while (true) {
+			if (Date.now() - timing.startedAt >= timing.timeout) {
+				return { runId, outcome: "TIMEOUT", timedOut: true, pollCount, };
+			}
+			pollCount += 1;
+			// Budget the per-poll GET by the remaining wait so a stalling
+			// trigger-status endpoint cannot defeat the overall run deadline.
+			const remainingMs = Math.max(1, timing.timeout - (Date.now() - timing.startedAt),);
+			let run: Record<string, unknown>;
+			try {
+				run = await this.client.get<Record<string, unknown>>(
+					`${base}/get-run-for-trigger?${trigQuery}`,
+					{ timeoutMs: remainingMs, },
+				);
+			} catch (error) {
+				if (!isRequestDeadlineError(error, timing.startedAt + timing.timeout,)) throw error;
+				return { runId, outcome: "TIMEOUT", timedOut: true, pollCount, };
+			}
+			const scenarioRun = run.scenarioRun as Record<string, unknown> | undefined;
+			if (scenarioRun) {
+				runId = (scenarioRun.runId as string | undefined) ?? runId;
+				const result = scenarioRun.result as Record<string, unknown> | undefined;
+				const finished = result?.outcome as string | undefined;
+				if (finished) {
+					return { runId, outcome: finished, timedOut: false, pollCount, };
+				}
+			}
+			const nextDelayMs = computeNextPollDelayMs({
+				pollCount,
+				baseIntervalMs: timing.baseIntervalMs,
+				adaptiveEnabled: timing.adaptivePolling,
+			},);
+			const { promise, resolve, } = Promise.withResolvers<void>();
+			setTimeout(
+				resolve,
+				Math.min(
+					nextDelayMs,
+					Math.max(1, timing.timeout - (Date.now() - timing.startedAt),),
+				),
+			);
+			await promise;
+		}
+	}
+
+	/**
+	 * Best-effort step outcome summaries from the run report
+	 * (GET /scenarios/{id}/{runId}). Never fails the wait: an unavailable
+	 * run report returns undefined.
+	 */
+	private async runStepSummaries(
+		base: string,
+		runId: string,
+	): Promise<ScenarioStepRun[] | undefined> {
+		try {
+			const details = await this.client.get<Record<string, unknown>>(
+				`${base}/${encodeURIComponent(runId,)}/`,
+			);
+			const stepRuns = (details.stepRuns as Array<Record<string, unknown>> | undefined) ?? [];
+			const mapped = stepRuns.map((entry,) => {
+				const stepDef = entry.step as Record<string, unknown> | undefined;
+				const stepResult = entry.result as Record<string, unknown> | undefined;
+				return {
+					name: stepDef?.name as string | undefined,
+					type: stepDef?.type as string | undefined,
+					outcome: (stepResult?.outcome as string | undefined) ?? "UNKNOWN",
+					...scenarioStepWarningSummary(stepResult,),
+				};
+			},);
+			return mapped.length > 0 ? mapped : undefined;
+		} catch {
+			// Best-effort diagnostics: never fail the wait because the run report is unavailable.
+			return undefined;
+		}
 	}
 
 	/**

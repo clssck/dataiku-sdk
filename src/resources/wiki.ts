@@ -98,7 +98,7 @@ export class WikiResource extends BaseResource {
 	async update(articleIdOrName: string, opts: WikiArticleUpdateOptions,): Promise<WikiArticleData> {
 		const current = await this.get(articleIdOrName, opts.projectKey,);
 		const patch: Record<string, unknown> = opts.data ?? {};
-		const next = deepMerge(current as unknown as Record<string, unknown>, patch,) as WikiArticleData;
+		const next = deepMerge(current, patch,);
 		if (opts.name !== undefined) next.article = { ...next.article, name: opts.name, };
 		if (opts.content !== undefined) next.payload = opts.content;
 		const raw = await this.client.put<unknown>(

@@ -1,5 +1,6 @@
 import type { FutureState, FutureWaitResult, } from "../schemas.js";
 import { FutureStateSchema, FutureWaitResultSchema, } from "../schemas.js";
+import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
 import { BaseResource, } from "./base.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
@@ -30,19 +31,26 @@ function waitState(state: FutureState,): string {
 }
 
 export class FuturesResource extends BaseResource {
-	async get(futureId: string,): Promise<FutureState> {
-		return this.state(futureId, { peek: false, },);
+	async get(
+		futureId: string,
+		opts: { timeoutMs?: number; } = {},
+	): Promise<FutureState> {
+		return this.state(futureId, { peek: false, timeoutMs: opts.timeoutMs, },);
 	}
 
 	async peek(futureId: string,): Promise<FutureState> {
 		return this.state(futureId, { peek: true, },);
 	}
 
-	async state(futureId: string, opts: { peek?: boolean; } = {},): Promise<FutureState> {
+	async state(
+		futureId: string,
+		opts: { peek?: boolean; timeoutMs?: number; } = {},
+	): Promise<FutureState> {
 		const params = new URLSearchParams();
 		params.set("peek", String(opts.peek === true,),);
 		const raw = await this.client.get<unknown>(
 			`/public/api/futures/${encodeURIComponent(futureId,)}?${params.toString()}`,
+			{ timeoutMs: opts.timeoutMs, },
 		);
 		return this.client.safeParse(FutureStateSchema, raw, "futures.state",);
 	}
@@ -52,7 +60,14 @@ export class FuturesResource extends BaseResource {
 	}
 
 	async wait(futureId: string, opts: FutureWaitOptions = {},): Promise<FutureWaitResult> {
-		const baseIntervalMs = Math.max(1, opts.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,);
+		// Adaptive backoff is the default; an explicit pollIntervalMs is an
+		// exact contract the caller chose, so it is never adapted.
+		const explicitIntervalMs = opts.pollIntervalMs;
+		const baseIntervalMs = Math.max(
+			1,
+			explicitIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+		);
+		const adaptiveEnabled = explicitIntervalMs === undefined;
 		// A caller's budget is never rounded up to a whole poll interval: a 5ms
 		// wait must answer in about 5ms. One state observation always happens
 		// regardless, because the poll precedes the deadline check.
@@ -62,7 +77,34 @@ export class FuturesResource extends BaseResource {
 
 		while (true) {
 			pollCount += 1;
-			const state = await this.get(futureId,);
+			// One state observation always happens, even when the budget is
+			// already spent (the poll precedes the deadline check); only the
+			// requests issued while budget remains are bounded by the remaining
+			// time, so a stalled status endpoint can never defeat the deadline.
+			const remainingMs = timeoutMs - (Date.now() - startedAt);
+			let state: FutureState;
+			try {
+				state = await this.get(
+					futureId,
+					remainingMs > 0 ? { timeoutMs: remainingMs, } : undefined,
+				);
+			} catch (error) {
+				// The poll budget ran out mid-request: report the structured
+				// timeout instead of letting the transport deadline error escape.
+				if (!isRequestDeadlineError(error, startedAt + timeoutMs,)) throw error;
+				return this.client.safeParse(
+					FutureWaitResultSchema,
+					{
+						futureId,
+						state: "RUNNING",
+						elapsedMs: Date.now() - startedAt,
+						pollCount,
+						success: false,
+						timedOut: true,
+					},
+					"futures.wait",
+				);
+			}
 			const elapsedMs = Date.now() - startedAt;
 			const status = waitState(state,);
 
@@ -102,7 +144,12 @@ export class FuturesResource extends BaseResource {
 
 			// Only the remaining budget is slept: a longer sleep would report an
 			// elapsed time the caller never authorized.
-			await sleep(Math.min(baseIntervalMs, timeoutMs - elapsedMs,),);
+			const nextDelayMs = computeNextPollDelayMs({
+				pollCount,
+				baseIntervalMs,
+				adaptiveEnabled,
+			},);
+			await sleep(Math.min(nextDelayMs, timeoutMs - elapsedMs,),);
 		}
 	}
 }

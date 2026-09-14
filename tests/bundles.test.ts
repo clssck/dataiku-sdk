@@ -83,15 +83,16 @@ describe("BundlesResource", () => {
 		expect(requests,).toEqual(["GET /public/api/projects/TEST/bundles/exported",],);
 	});
 
-	it("exports bundles through PUT with encoded ids", async () => {
+	it("exports bundles through PUT with encoded ids and no body", async () => {
 		let observedMethod = "";
 		let observedPath = "";
-		let observedBody: unknown;
+		let hadBody = false;
 
 		await withServer(async (req, res,) => {
 			observedMethod = req.method ?? "";
 			observedPath = req.url ?? "";
-			observedBody = JSON.parse(await readBody(req,),);
+			const body = await readBody(req,);
+			hadBody = body.length > 0;
 			res.statusCode = 204;
 			res.end();
 		}, async (url,) => {
@@ -103,7 +104,7 @@ describe("BundlesResource", () => {
 		expect(observedPath,).toBe(
 			"/public/api/projects/TEST/bundles/exported/bundle%2Fslash?evaluateProjectStandardsChecks=true",
 		);
-		expect(observedBody,).toEqual({},);
+		expect(hadBody,).toBe(false,);
 	});
 
 	it("forwards bundle export release notes and standards-check opt-out", async () => {

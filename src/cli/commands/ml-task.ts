@@ -1,4 +1,4 @@
-import { requiredJsonInput, requiredStringFlag, } from "../coerce.js";
+import { num, requiredJsonInput, requiredStringFlag, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -103,26 +103,36 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 		],
 	},
 	train: {
-		handler: (c, a, f,) => {
-			requireArgs(
-				a,
-				2,
-				"dss ml-task train <analysisId> <mlTaskId> [--session-name NAME] [--wait] [--project-key KEY]",
-			);
+		handler: async (c, a, f,) => {
+			const usage =
+				"dss ml-task train <analysisId> <mlTaskId> [--session-name NAME] [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]";
+			requireArgs(a, 2, usage,);
 			const options = {
 				analysisId: a[0],
 				mlTaskId: a[1],
 				sessionName: optionalStringFlag(f, "session-name",),
 				wait: f["wait"] === true,
+				timeoutMs: num(f["timeout"], "--timeout",),
+				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
 				projectKey: f["project-key"] as string | undefined,
 			};
+			if (executionMode(f,).dryRun) {
+				return {
+					dryRun: true,
+					action: "train",
+					resource: "ml-task",
+					...options,
+				};
+			}
 			return c.mlTasks.train(options,);
 		},
 		usage:
-			"dss ml-task train <analysisId> <mlTaskId> [--session-name NAME] [--wait] [--project-key KEY]",
-		description: "Start ML task training, optionally waiting for trained model IDs.",
+			"dss ml-task train <analysisId> <mlTaskId> [--session-name NAME] [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
+		description:
+			"Start ML task training, optionally waiting for trained model IDs. --timeout bounds only the wait phase after DSS accepts training; an invalid timeout fails before any request.",
 		examples: [
-			"dss ml-task train ANALYSIS_ID TASK_ID --session-name baseline --wait --project-key PROJECT",
+			"dss ml-task train ANALYSIS_ID TASK_ID --session-name baseline --wait --timeout 60000 --project-key PROJECT",
+			"dss ml-task train ANALYSIS_ID TASK_ID --wait --timeout 0 --poll-interval 1000 --project-key PROJECT",
 		],
 	},
 	"list-models": {

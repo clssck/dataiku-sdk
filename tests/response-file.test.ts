@@ -44,3 +44,28 @@ it("preserves contents and permissions when an export stream fails", async () =>
 		await rm(dir, { recursive: true, force: true, },);
 	}
 });
+
+it("cancels the response body when the output cannot be opened", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "dss-cancel-",),);
+	let cancelled = false;
+	const response = new Response(
+		new ReadableStream({
+			pull(controller,) {
+				controller.enqueue(new Uint8Array([1, 2, 3,],),);
+			},
+			cancel() {
+				cancelled = true;
+			},
+		},),
+	);
+	try {
+		await expect(writeResponseToFile(join(dir, "missing", "result",), response,),).rejects
+			.toMatchObject({
+				code: "ENOENT",
+			},);
+		expect(cancelled,).toBe(true,);
+		expect(await readdir(dir,),).toEqual([],);
+	} finally {
+		await rm(dir, { recursive: true, force: true, },);
+	}
+});

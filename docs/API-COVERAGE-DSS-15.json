@@ -1,0 +1,5901 @@
+{
+	"meta": {
+		"title": "DSS 15 REST API coverage matrix",
+		"source": "https://doc.dataiku.com/dss/api/15/rest/",
+		"sourceSnapshot": "official static HTML-to-markdown text, retrieved 2026-09-09",
+		"dssMajorVersion": 15,
+		"officialEndpointRows": 372,
+		"sdkSnapshot": "src/resources (44 files) + src/cli working tree 2026-09-09; CLI catalogue = buildCommandRegistry()/commandActionSummary(): 55 resources / 474 actions total (47 API-facing resources / 466 API actions + 8 meta-commands: agent, auth, batch, cleanup, commands, fixtures, install-skill, version). Mappings machine-validated: every nonempty CLI mapping exists in the catalogue and every cited SDK method is a public method on its client resource class (private helpers are cited only via their public callers).",
+		"cliResourcesAtSnapshot": 55,
+		"cliActionsAtSnapshot": 474,
+		"cliApiResourceSubset": {
+			"resources": 47,
+			"actions": 466,
+			"metaCommands": [
+				"agent",
+				"auth",
+				"batch",
+				"cleanup",
+				"commands",
+				"fixtures",
+				"install-skill",
+				"version"
+			]
+		},
+		"implementedOfficialRows": 294,
+		"notImplementedOfficialRows": 78,
+		"countingCaveat": "Rows are documented operation entries (method + documented URI, identity by doc anchor). The 372 official entries resolve to 371 distinct (method, URI) pairs: the official page documents GET /admin/connections/{connectionName} twice (a known doc duplication); both entries are retained. Query variants on one row are not double-counted. Where the SDK reaches the same capability via a different verb/path it is recorded as implemented with a drift note, never counted twice.",
+		"parityPolicy": "No coverage percentage is claimed; counts are raw row tallies validated against the programmatic CLI registry (buildCommandRegistry()) at snapshot time.",
+		"officialDistinctMethodUriPairs": 371,
+		"duplicateDocOperations": [
+			{
+				"method": "GET",
+				"uri": "/admin/connections/{connectionName}",
+				"anchors": [
+					"#connections-connection-get",
+					"#connections-connection-get-1"
+				],
+				"explanation": "The official DSS 15 REST page documents this operation twice (the second entry is a doc bug); both documented operation entries are kept because each carries its own doc anchor. 372 documented operations resolve to 371 distinct (method, URI) pairs."
+			}
+		]
+	},
+	"sections": {
+		"Project Folders": [
+			{
+				"section": "Project Folders",
+				"subsection": "Root Project Folder",
+				"name": "Get root project folder",
+				"method": "GET",
+				"uri": "/project-folders/",
+				"docAnchor": "#project-folders-root-project-folder-get",
+				"status": "implemented",
+				"sdk": [
+					"ProjectFoldersResource.root"
+				],
+				"cli": [
+					"dss project-folder root"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Folders",
+				"subsection": "Project Folder",
+				"name": "Get a project folder",
+				"method": "GET",
+				"uri": "/project-folders/{folderId}",
+				"docAnchor": "#project-folders-project-folder-get",
+				"status": "implemented",
+				"sdk": [
+					"ProjectFoldersResource.get"
+				],
+				"cli": [
+					"dss project-folder delete",
+					"dss project-folder get"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Folders",
+				"subsection": "Project Folder",
+				"name": "Get project folder settings",
+				"method": "GET",
+				"uri": "/project-folders/{folderId}/settings",
+				"docAnchor": "#project-folders-project-folder-get-1",
+				"status": "implemented",
+				"sdk": [
+					"ProjectFoldersResource.getSettings"
+				],
+				"cli": [
+					"dss project-folder settings-get"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Folders",
+				"subsection": "Project Folder",
+				"name": "Update project folder settings",
+				"method": "PUT",
+				"uri": "/project-folders/{folderId}/settings",
+				"docAnchor": "#project-folders-project-folder-put",
+				"status": "implemented",
+				"sdk": [
+					"ProjectFoldersResource.updateSettings"
+				],
+				"cli": [
+					"dss project-folder settings-set"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Folders",
+				"subsection": "Project Folder",
+				"name": "Move a project folder",
+				"method": "POST",
+				"uri": "/project-folders/{folderId}/move{?destination}",
+				"docAnchor": "#project-folders-project-folder-post",
+				"status": "implemented",
+				"sdk": [
+					"ProjectFoldersResource.move"
+				],
+				"cli": [
+					"dss project-folder move"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Folders",
+				"subsection": "Project Folder",
+				"name": "Delete project",
+				"method": "DELETE",
+				"uri": "/project-folders/{folderId}",
+				"docAnchor": "#project-folders-project-folder-delete",
+				"status": "implemented",
+				"sdk": [
+					"ProjectFoldersResource.delete"
+				],
+				"cli": [
+					"dss project-folder delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Folders",
+				"subsection": "Project Folder",
+				"name": "Create a sub-project folder",
+				"method": "POST",
+				"uri": "/project-folders/{folderId}/children{?name}",
+				"docAnchor": "#project-folders-project-folder-post-1",
+				"status": "implemented",
+				"sdk": [
+					"ProjectFoldersResource.createChild"
+				],
+				"cli": [
+					"dss project-folder create-child"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Folders",
+				"subsection": "Project Folder",
+				"name": "Move a project",
+				"method": "POST",
+				"uri": "/project-folders/{folderId}/projects/{projectKey}/move{?destination}",
+				"docAnchor": "#project-folders-project-folder-post-2",
+				"status": "implemented",
+				"sdk": [
+					"ProjectFoldersResource.moveProject"
+				],
+				"cli": [
+					"dss project-folder move-project"
+				],
+				"note": null
+			}
+		],
+		"Projects": [
+			{
+				"section": "Projects",
+				"subsection": "Projects",
+				"name": "List projects",
+				"method": "GET",
+				"uri": "/projects/{tags}",
+				"docAnchor": "#projects-projects-get",
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.list"
+				],
+				"cli": [
+					"dss project list"
+				],
+				"note": "Docs publish the list endpoint as GET /projects/{tags} with an optional tags selector; the SDK GETs /projects/ and filters client-side. The same normalized shape also matches GET /projects/{projectKey}/ (project details), so both list and get land on this row."
+			},
+			{
+				"section": "Projects",
+				"subsection": "Projects",
+				"name": "Create project",
+				"method": "POST",
+				"uri": "/projects{?projectFolderId}",
+				"docAnchor": "#projects-projects-post",
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.createProject"
+				],
+				"cli": [
+					"dss project create"
+				],
+				"note": null
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Get project metadata",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/metadata",
+				"docAnchor": "#projects-project-get",
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.metadata"
+				],
+				"cli": [
+					"dss project metadata"
+				],
+				"note": null
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Update project metadata",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/metadata",
+				"docAnchor": "#projects-project-put",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": "SDK exposes GET metadata only; no PUT wrapper at snapshot."
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Get project permissions",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/permissions",
+				"docAnchor": "#projects-project-get-1",
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.getPermissions"
+				],
+				"cli": [
+					"dss app permissions-diff",
+					"dss app permissions-restore",
+					"dss app permissions-snapshot",
+					"dss project permissions-get"
+				],
+				"note": null
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Update project permissions",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/permissions",
+				"docAnchor": "#projects-project-put-1",
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.setPermissions"
+				],
+				"cli": [
+					"dss app permissions-restore",
+					"dss project permissions-set"
+				],
+				"note": null
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Get project variables",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/variables",
+				"docAnchor": "#projects-project-get-2",
+				"status": "implemented",
+				"sdk": [
+					"VariablesResource.get",
+					"VariablesResource.set"
+				],
+				"cli": [
+					"dss variable get",
+					"dss variable set"
+				],
+				"note": null
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Update project variables",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/variables",
+				"docAnchor": "#projects-project-put-2",
+				"status": "implemented",
+				"sdk": [
+					"VariablesResource.set"
+				],
+				"cli": [
+					"dss variable set"
+				],
+				"note": null
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Delete project",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}{?dropData}",
+				"docAnchor": "#projects-project-delete",
+				"status": "implemented",
+				"sdk": [
+					"ApplicationsResource.deleteInstance",
+					"ProjectsResource.deleteProject"
+				],
+				"cli": [
+					"dss app delete-instance",
+					"dss project delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Export project",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/export{?exportUploads}{?exportManaged}{?exportAnalysisModels}{?exportSavedModels}",
+				"docAnchor": "#projects-project-get-3",
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.exportArchive"
+				],
+				"cli": [
+					"dss project export"
+				],
+				"note": "Verb drift: official GET /export{?exportUploads}{?exportManaged}{?exportAnalysisModels}{?exportSavedModels}; SDK POSTs /export and streams the archive."
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Duplicate project",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/duplicate",
+				"docAnchor": "#projects-project-post",
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.duplicate"
+				],
+				"cli": [
+					"dss project duplicate"
+				],
+				"note": null
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Push to Git remote",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/actions/push-to-git-remote{?remote}",
+				"docAnchor": "#projects-project-post-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": "project-git resource drives the Git remotes/branches/tags/actions family; this one-shot action endpoint is not wrapped."
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Get project tags",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/tags",
+				"docAnchor": "#projects-project-get-4",
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.tags"
+				],
+				"cli": [
+					"dss project tags-get"
+				],
+				"note": null
+			},
+			{
+				"section": "Projects",
+				"subsection": "Project",
+				"name": "Update project tags",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/tags",
+				"docAnchor": "#projects-project-put-3",
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.setTags"
+				],
+				"cli": [
+					"dss project tags-set"
+				],
+				"note": null
+			}
+		],
+		"Workspaces": [
+			{
+				"section": "Workspaces",
+				"subsection": "Workspaces",
+				"name": "List workspaces",
+				"method": "GET",
+				"uri": "/workspaces",
+				"docAnchor": "#workspaces-workspaces-get",
+				"status": "implemented",
+				"sdk": [
+					"WorkspacesResource.list"
+				],
+				"cli": [
+					"dss workspace list"
+				],
+				"note": null
+			},
+			{
+				"section": "Workspaces",
+				"subsection": "Workspaces",
+				"name": "Create workspace",
+				"method": "POST",
+				"uri": "/workspaces",
+				"docAnchor": "#workspaces-workspaces-post",
+				"status": "implemented",
+				"sdk": [
+					"WorkspacesResource.create"
+				],
+				"cli": [
+					"dss workspace create"
+				],
+				"note": null
+			},
+			{
+				"section": "Workspaces",
+				"subsection": "Workspace",
+				"name": "Get workspace settings",
+				"method": "GET",
+				"uri": "/workspaces/{workspaceKey}",
+				"docAnchor": "#workspaces-workspace-get",
+				"status": "implemented",
+				"sdk": [
+					"WorkspacesResource.get"
+				],
+				"cli": [
+					"dss workspace get"
+				],
+				"note": null
+			},
+			{
+				"section": "Workspaces",
+				"subsection": "Workspace",
+				"name": "Update workspace settings",
+				"method": "PUT",
+				"uri": "/workspaces/{workspaceKey}",
+				"docAnchor": "#workspaces-workspace-put",
+				"status": "implemented",
+				"sdk": [
+					"WorkspacesResource.updateSettings"
+				],
+				"cli": [
+					"dss workspace update-settings"
+				],
+				"note": null
+			},
+			{
+				"section": "Workspaces",
+				"subsection": "Workspace",
+				"name": "Delete workspace",
+				"method": "DELETE",
+				"uri": "/workspaces/{workspaceKey}",
+				"docAnchor": "#workspaces-workspace-delete",
+				"status": "implemented",
+				"sdk": [
+					"WorkspacesResource.delete"
+				],
+				"cli": [
+					"dss workspace delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Workspaces",
+				"subsection": "Workspace objects",
+				"name": "Get workspace objects",
+				"method": "GET",
+				"uri": "/workspaces/{workspaceKey}/objects",
+				"docAnchor": "#workspaces-workspace-objects-get",
+				"status": "implemented",
+				"sdk": [
+					"WorkspacesResource.listObjects"
+				],
+				"cli": [
+					"dss workspace list-objects"
+				],
+				"note": null
+			},
+			{
+				"section": "Workspaces",
+				"subsection": "Workspace objects",
+				"name": "Add workspace object",
+				"method": "POST",
+				"uri": "/workspaces/{workspaceKey}/objects",
+				"docAnchor": "#workspaces-workspace-objects-post",
+				"status": "implemented",
+				"sdk": [
+					"WorkspacesResource.addObject"
+				],
+				"cli": [
+					"dss workspace add-object"
+				],
+				"note": null
+			},
+			{
+				"section": "Workspaces",
+				"subsection": "Workspace objects",
+				"name": "Remove workspace object",
+				"method": "DELETE",
+				"uri": "/workspaces/{workspaceKey}/objects/{workspaceObjectId}",
+				"docAnchor": "#workspaces-workspace-objects-delete",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			}
+		],
+		"Collections": [
+			{
+				"section": "Collections",
+				"subsection": "Collections",
+				"name": "List Collections",
+				"method": "GET",
+				"uri": "/data-collections/",
+				"docAnchor": "#collections-collections-get",
+				"status": "implemented",
+				"sdk": [
+					"DataCollectionsResource.list"
+				],
+				"cli": [
+					"dss data-collection list"
+				],
+				"note": null
+			},
+			{
+				"section": "Collections",
+				"subsection": "Collections",
+				"name": "Create Collection",
+				"method": "POST",
+				"uri": "/data-collections/",
+				"docAnchor": "#collections-collections-post",
+				"status": "implemented",
+				"sdk": [
+					"DataCollectionsResource.create"
+				],
+				"cli": [
+					"dss data-collection create"
+				],
+				"note": null
+			},
+			{
+				"section": "Collections",
+				"subsection": "Collection",
+				"name": "Get Collection settings",
+				"method": "GET",
+				"uri": "/data-collections/{dataCollectionId}",
+				"docAnchor": "#collections-collection-get",
+				"status": "implemented",
+				"sdk": [
+					"DataCollectionsResource.get"
+				],
+				"cli": [
+					"dss data-collection get"
+				],
+				"note": null
+			},
+			{
+				"section": "Collections",
+				"subsection": "Collection",
+				"name": "Update Collection settings",
+				"method": "PUT",
+				"uri": "/data-collections/{dataCollectionId}",
+				"docAnchor": "#collections-collection-put",
+				"status": "implemented",
+				"sdk": [
+					"DataCollectionsResource.update"
+				],
+				"cli": [
+					"dss data-collection settings-set"
+				],
+				"note": null
+			},
+			{
+				"section": "Collections",
+				"subsection": "Collection",
+				"name": "Delete Collection",
+				"method": "DELETE",
+				"uri": "/data-collections/{dataCollectionId}",
+				"docAnchor": "#collections-collection-delete",
+				"status": "implemented",
+				"sdk": [
+					"DataCollectionsResource.delete"
+				],
+				"cli": [
+					"dss data-collection delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Collections",
+				"subsection": "Collection objects",
+				"name": "Get Collection objects",
+				"method": "GET",
+				"uri": "/data-collections/{dataCollectionId}/objects",
+				"docAnchor": "#collections-collection-objects-get",
+				"status": "implemented",
+				"sdk": [
+					"DataCollectionsResource.listObjects"
+				],
+				"cli": [
+					"dss data-collection list-objects"
+				],
+				"note": null
+			},
+			{
+				"section": "Collections",
+				"subsection": "Collection objects",
+				"name": "Add Collection object",
+				"method": "POST",
+				"uri": "/data-collections/{dataCollectionId}/objects",
+				"docAnchor": "#collections-collection-objects-post",
+				"status": "implemented",
+				"sdk": [
+					"DataCollectionsResource.addObject"
+				],
+				"cli": [
+					"dss data-collection add-object"
+				],
+				"note": null
+			},
+			{
+				"section": "Collections",
+				"subsection": "Collection objects",
+				"name": "Remove dataset from Collection",
+				"method": "DELETE",
+				"uri": "/data-collections/{dataCollectionId}/objects/dataset/{projectKey}/{datasetName}",
+				"docAnchor": "#collections-collection-objects-delete",
+				"status": "implemented",
+				"sdk": [
+					"DataCollectionsResource.removeDataset"
+				],
+				"cli": [
+					"dss data-collection remove-dataset"
+				],
+				"note": null
+			}
+		],
+		"Data Quality": [
+			{
+				"section": "Data Quality",
+				"subsection": "Instance",
+				"name": "Get Data Quality instance current status",
+				"method": "GET",
+				"uri": "/data-quality/status",
+				"docAnchor": "#data-quality-instance-get",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": "Instance-wide DQ status not wrapped; DQ resource covers project and dataset level."
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Project",
+				"name": "Get Data Quality project current status",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/data-quality/status{?onlyMonitored}",
+				"docAnchor": "#data-quality-project-get",
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.projectStatus"
+				],
+				"cli": [
+					"dss data-quality project-status"
+				],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Project",
+				"name": "Get Data Quality project timeline",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/data-quality/timeline{?minTimestamp}{?maxTimestamp}",
+				"docAnchor": "#data-quality-project-get-1",
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.projectTimeline"
+				],
+				"cli": [
+					"dss data-quality project-timeline"
+				],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Dataset",
+				"name": "Get Data Quality rules configuration",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/rules",
+				"docAnchor": "#data-quality-dataset-get",
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.getRule",
+					"DataQualityResource.listRules",
+					"DataQualityResource.rules",
+					"DataQualityResource.updateRule"
+				],
+				"cli": [
+					"dss data-quality create-rule",
+					"dss data-quality delete-rule",
+					"dss data-quality get-rule",
+					"dss data-quality rules",
+					"dss data-quality update-rule"
+				],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Dataset",
+				"name": "Create Data Quality rule",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/rules",
+				"docAnchor": "#data-quality-dataset-post",
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.createRule"
+				],
+				"cli": [
+					"dss data-quality create-rule"
+				],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Dataset",
+				"name": "Get last outcome on specific partition",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/get-partitions-status",
+				"docAnchor": "#data-quality-dataset-post-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Dataset",
+				"name": "Compute rules on a specific partition",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/actions/compute-rules",
+				"docAnchor": "#data-quality-dataset-post-2",
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.computeRules",
+					"DataQualityResource.computeRulesAndWait"
+				],
+				"cli": [
+					"dss data-quality compute"
+				],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Dataset",
+				"name": "Get current status of the dataset",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/status",
+				"docAnchor": "#data-quality-dataset-get-1",
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.status"
+				],
+				"cli": [
+					"dss data-quality status"
+				],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Dataset",
+				"name": "Get current status of the dataset per partitions",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/status-by-partition{?includeAllPartitions}",
+				"docAnchor": "#data-quality-dataset-get-2",
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.status",
+					"DataQualityResource.statusByPartition"
+				],
+				"cli": [
+					"dss data-quality status",
+					"dss data-quality status-by-partition"
+				],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Rules",
+				"name": "Get the last rule results",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/last-rules-result{?partition}{?ruleId}",
+				"docAnchor": "#data-quality-rules-get",
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.lastResults"
+				],
+				"cli": [
+					"dss data-quality assert-results",
+					"dss data-quality last-results"
+				],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Rules",
+				"name": "Get the rule history",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/rules-history{?minTimestamp}{?maxTimestamp}{?resultsPerPage}{?page}{?ruleIds}",
+				"docAnchor": "#data-quality-rules-get-1",
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.history"
+				],
+				"cli": [
+					"dss data-quality history"
+				],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Rules",
+				"name": "Update rule configuration",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/rules/{ruleId}",
+				"docAnchor": "#data-quality-rules-put",
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.updateRule"
+				],
+				"cli": [
+					"dss data-quality update-rule"
+				],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Rules",
+				"name": "Delete rule",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/rules/{ruleId}",
+				"docAnchor": "#data-quality-rules-delete",
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.deleteRule"
+				],
+				"cli": [
+					"dss data-quality delete-rule"
+				],
+				"note": null
+			},
+			{
+				"section": "Data Quality",
+				"subsection": "Rules",
+				"name": "Delete rule history",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/{partition}/rules-history",
+				"docAnchor": "#data-quality-rules-delete-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			}
+		],
+		"Flow": [
+			{
+				"section": "Flow",
+				"subsection": "Generate flow documentation from default template",
+				"name": "Generate flow documentation from default template",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/flow/documentation/generate",
+				"docAnchor": "#flow-generate-flow-documentation-from-default-template-post",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": "utils/flow-analysis.ts is local graph analysis of GET /flow/graph, not flow documentation export."
+			},
+			{
+				"section": "Flow",
+				"subsection": "Generate flow documentation from a custom template",
+				"name": "Generate flow documentation from a custom template",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/flow/documentation/generate-with-template",
+				"docAnchor": "#flow-generate-flow-documentation-from-a-custom-template-post",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Flow",
+				"subsection": "Generate flow documentation from a template file in a managed folder",
+				"name": "Generate flow documentation from a template file in a managed folder",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/flow/documentation/generate-with-template-in-folder{?folderId}{?path}",
+				"docAnchor": "#flow-generate-flow-documentation-from-a-template-file-in-a-managed-folder-post",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Flow",
+				"subsection": "Download flow documentation",
+				"name": "Download flow documentation",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/flow/documentation/generated/{exportId}",
+				"docAnchor": "#flow-download-flow-documentation-get",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			}
+		],
+		"Datasets": [
+			{
+				"section": "Datasets",
+				"subsection": "Datasets",
+				"name": "List datasets",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{?tags}{?foreign}",
+				"docAnchor": "#datasets-datasets-get",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.list",
+					"ProjectsResource.map"
+				],
+				"cli": [
+					"dss dataset create",
+					"dss dataset list",
+					"dss project map"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Datasets",
+				"name": "Create dataset",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets",
+				"docAnchor": "#datasets-datasets-post",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.create",
+					"RecipesResource.create"
+				],
+				"cli": [
+					"dss dataset create",
+					"dss recipe create"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Datasets",
+				"name": "Create managed dataset",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/managed",
+				"docAnchor": "#datasets-datasets-post-1",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.createManaged"
+				],
+				"cli": [
+					"dss dataset create-managed"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset",
+				"name": "Get dataset settings",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}",
+				"docAnchor": "#datasets-dataset-get",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.get"
+				],
+				"cli": [
+					"dss dataset clone",
+					"dss dataset delete",
+					"dss dataset get",
+					"dss dataset source",
+					"dss dataset update"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset",
+				"name": "Update dataset settings",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}",
+				"docAnchor": "#datasets-dataset-put",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.update"
+				],
+				"cli": [
+					"dss dataset update"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset",
+				"name": "Delete dataset",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}{?dropData}",
+				"docAnchor": "#datasets-dataset-delete",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.delete",
+					"RecipesResource.create"
+				],
+				"cli": [
+					"dss dataset delete",
+					"dss recipe create"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset metadata",
+				"name": "Get metadata",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/metadata",
+				"docAnchor": "#datasets-dataset-metadata-get",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.metadata"
+				],
+				"cli": [
+					"dss dataset metadata"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset metadata",
+				"name": "Set metadata",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/metadata",
+				"docAnchor": "#datasets-dataset-metadata-put",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset information",
+				"name": "Get full info",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/info",
+				"docAnchor": "#datasets-dataset-information-get",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.info"
+				],
+				"cli": [
+					"dss dataset info"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset schema",
+				"name": "Get schema",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/schema",
+				"docAnchor": "#datasets-dataset-schema-get",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.getSchemaObject",
+					"DatasetsResource.schema"
+				],
+				"cli": [
+					"dss dataset assert-schema",
+					"dss dataset refresh-schema",
+					"dss dataset schema"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset schema",
+				"name": "Set schema",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/schema",
+				"docAnchor": "#datasets-dataset-schema-put",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.updateSchema"
+				],
+				"cli": [
+					"dss dataset refresh-schema"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset Column Lineage",
+				"name": "Get column lineage",
+				"method": "GET",
+				"uri": "/projects/datasets/column-lineage{?columnName}{?maxDatasetCount}",
+				"docAnchor": "#datasets-dataset-column-lineage-get",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.getColumnLineage"
+				],
+				"cli": [
+					"dss dataset column-lineage"
+				],
+				"note": "Path drift: docs render a merged project-scoped route GET /projects/{pk}/datasets/column-lineage{?columnName}{?maxDatasetCount}; the SDK (matching the official Python client) calls dataset-scoped GET /projects/{pk}/datasets/{datasetName}/column-lineage?columnName=...&maxDatasetCount=..."
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset data",
+				"name": "Get data",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data{?format}{?formatParams}{?columns}{?partitions}{?filter}{?sampling}",
+				"docAnchor": "#datasets-dataset-data-get",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.assertRowCount"
+				],
+				"cli": [
+					"dss dataset assert-count"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset data",
+				"name": "Get data - alternative version",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data",
+				"docAnchor": "#datasets-dataset-data-post",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": "Data write/upload endpoint not wrapped; SDK reads data via streaming GET only."
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset data",
+				"name": "Clear data",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data/{?partitions}",
+				"docAnchor": "#datasets-dataset-data-delete",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.clear"
+				],
+				"cli": [
+					"dss dataset clear"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset status",
+				"name": "List partitions",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/partitions",
+				"docAnchor": "#datasets-dataset-status-get",
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.listPartitions"
+				],
+				"cli": [
+					"dss dataset list-partitions"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset status",
+				"name": "Get last metric values",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/metrics/last/{?partition}",
+				"docAnchor": "#datasets-dataset-status-get-1",
+				"status": "implemented",
+				"sdk": [
+					"MetricsResource.getDatasetMetrics"
+				],
+				"cli": [
+					"dss metrics dataset-get"
+				],
+				"note": "SDK appends literal NP (no-partition) segment; official uses optional {?partition} query."
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Dataset status",
+				"name": "Get single metric history",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/metrics/history/{?partition}{?metricLookup}",
+				"docAnchor": "#datasets-dataset-status-get-2",
+				"status": "implemented",
+				"sdk": [
+					"MetricsResource.getDatasetMetricHistory"
+				],
+				"cli": [
+					"dss metrics dataset-history"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Actions on dataset",
+				"name": "Synchronize Hive metastore",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/actions/synchronizeHiveMetastore",
+				"docAnchor": "#datasets-actions-on-dataset-post",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Actions on dataset",
+				"name": "Update from Hive metastore",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/actions/updateFromHive",
+				"docAnchor": "#datasets-actions-on-dataset-post-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Actions on dataset",
+				"name": "Compute metrics",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/actions/computeMetrics/{?partitions}",
+				"docAnchor": "#datasets-actions-on-dataset-post-2",
+				"status": "implemented",
+				"sdk": [
+					"MetricsResource.computeDatasetMetrics"
+				],
+				"cli": [
+					"dss metrics dataset-compute"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Actions on dataset",
+				"name": "Run checks",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/actions/runChecks/{?partitions}",
+				"docAnchor": "#datasets-actions-on-dataset-post-3",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Import tables",
+				"name": "List schemas",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/tables-import/actions/list-schemas{?connectionName}",
+				"docAnchor": "#datasets-import-tables-get",
+				"status": "implemented",
+				"sdk": [
+					"ConnectionsResource.schemas"
+				],
+				"cli": [
+					"dss connection schemas"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Import tables",
+				"name": "List tables",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/tables-import/actions/list-tables{?connectionName}{?catalogName}{?schemaName}",
+				"docAnchor": "#datasets-import-tables-get-1",
+				"status": "implemented",
+				"sdk": [
+					"ConnectionsResource.tables"
+				],
+				"cli": [
+					"dss connection tables"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Import tables",
+				"name": "Prepare import",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/tables-import/actions/prepare-from-keys",
+				"docAnchor": "#datasets-import-tables-post",
+				"status": "implemented",
+				"sdk": [
+					"ConnectionsResource.prepareTablesImport"
+				],
+				"cli": [
+					"dss connection prepare-import"
+				],
+				"note": null
+			},
+			{
+				"section": "Datasets",
+				"subsection": "Import tables",
+				"name": "Execute import",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/tables-import/actions/execute-from-candidates",
+				"docAnchor": "#datasets-import-tables-post-1",
+				"status": "implemented",
+				"sdk": [
+					"ConnectionsResource.executeTablesImport"
+				],
+				"cli": [
+					"dss connection execute-import"
+				],
+				"note": null
+			}
+		],
+		"LLM Mesh": [
+			{
+				"section": "LLM Mesh",
+				"subsection": "LLM Mesh",
+				"name": "List available LLMs",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/llms/{?purpose}",
+				"docAnchor": "#llm-mesh-llm-mesh-get",
+				"status": "implemented",
+				"sdk": [
+					"LlmsResource.list"
+				],
+				"cli": [
+					"dss llm list"
+				],
+				"note": "Optional ?purpose query forwarded; SDK path keeps the trailing slash (/llms/)."
+			},
+			{
+				"section": "LLM Mesh",
+				"subsection": "LLM Mesh",
+				"name": "Perform completions on a LLM",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/llms/completions",
+				"docAnchor": "#llm-mesh-llm-mesh-post",
+				"status": "implemented",
+				"sdk": [
+					"LlmsResource.completions"
+				],
+				"cli": [
+					"dss llm completions"
+				],
+				"note": null
+			},
+			{
+				"section": "LLM Mesh",
+				"subsection": "LLM Mesh",
+				"name": "Perform embeddings on a LLM",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/llms/embeddings",
+				"docAnchor": "#llm-mesh-llm-mesh-post-1",
+				"status": "implemented",
+				"sdk": [
+					"LlmsResource.embeddings"
+				],
+				"cli": [
+					"dss llm embeddings"
+				],
+				"note": null
+			}
+		],
+		"Knowledge Banks": [
+			{
+				"section": "Knowledge Banks",
+				"subsection": "Knowledge Banks",
+				"name": "Search in a knowledge bank",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/knowledge-banks/{knowledgeBankId}/search",
+				"docAnchor": "#knowledge-banks-knowledge-banks-post",
+				"status": "implemented",
+				"sdk": [
+					"KnowledgeBanksResource.search"
+				],
+				"cli": [
+					"dss knowledge-bank search"
+				],
+				"note": null
+			},
+			{
+				"section": "Knowledge Banks",
+				"subsection": "Knowledge Banks",
+				"name": "Clear a knowledge bank",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/knowledge-banks/{knowledgeBankId}/clear",
+				"docAnchor": "#knowledge-banks-knowledge-banks-post-1",
+				"status": "implemented",
+				"sdk": [
+					"KnowledgeBanksResource.clear"
+				],
+				"cli": [
+					"dss knowledge-bank clear"
+				],
+				"note": null
+			}
+		],
+		"Dataset Statistics": [
+			{
+				"section": "Dataset Statistics",
+				"subsection": "Worksheets",
+				"name": "List worksheets",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/statistics/worksheets/",
+				"docAnchor": "#dataset-statistics-worksheets-get",
+				"status": "implemented",
+				"sdk": [
+					"StatisticsResource.listWorksheets"
+				],
+				"cli": [
+					"dss statistics list-worksheets"
+				],
+				"note": null
+			},
+			{
+				"section": "Dataset Statistics",
+				"subsection": "Worksheets",
+				"name": "Create worksheet",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/statistics/worksheets",
+				"docAnchor": "#dataset-statistics-worksheets-post",
+				"status": "implemented",
+				"sdk": [
+					"StatisticsResource.createWorksheet"
+				],
+				"cli": [
+					"dss statistics create-worksheet"
+				],
+				"note": null
+			},
+			{
+				"section": "Dataset Statistics",
+				"subsection": "Worksheets",
+				"name": "Get worksheet",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/statistics/worksheets/{worksheetId}",
+				"docAnchor": "#dataset-statistics-worksheets-get-1",
+				"status": "implemented",
+				"sdk": [
+					"StatisticsResource.getWorksheet",
+					"StatisticsResource.runWorksheet"
+				],
+				"cli": [
+					"dss statistics get-worksheet",
+					"dss statistics run-worksheet"
+				],
+				"note": null
+			},
+			{
+				"section": "Dataset Statistics",
+				"subsection": "Worksheets",
+				"name": "Update worksheet",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/statistics/worksheets/{worksheetId}",
+				"docAnchor": "#dataset-statistics-worksheets-put",
+				"status": "implemented",
+				"sdk": [
+					"StatisticsResource.updateWorksheet"
+				],
+				"cli": [
+					"dss statistics update-worksheet"
+				],
+				"note": null
+			},
+			{
+				"section": "Dataset Statistics",
+				"subsection": "Worksheets",
+				"name": "Delete worksheet",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/datasets/statistics/worksheets/{worksheetId}",
+				"docAnchor": "#dataset-statistics-worksheets-delete",
+				"status": "implemented",
+				"sdk": [
+					"StatisticsResource.deleteWorksheet"
+				],
+				"cli": [
+					"dss statistics delete-worksheet"
+				],
+				"note": "Docs quirk: official DELETE URI omits {datasetName}; SDK scopes worksheets under the dataset path."
+			},
+			{
+				"section": "Dataset Statistics",
+				"subsection": "Actions on worksheets",
+				"name": "Run a card",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/statistics/worksheets/{worksheetId}/actions/run-card",
+				"docAnchor": "#dataset-statistics-actions-on-worksheets-post",
+				"status": "implemented",
+				"sdk": [
+					"StatisticsResource.runCard"
+				],
+				"cli": [
+					"dss statistics run-card"
+				],
+				"note": null
+			},
+			{
+				"section": "Dataset Statistics",
+				"subsection": "Actions on worksheets",
+				"name": "Run a computation",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/statistics/worksheets/{worksheetId}/actions/run-computation",
+				"docAnchor": "#dataset-statistics-actions-on-worksheets-post-1",
+				"status": "implemented",
+				"sdk": [
+					"StatisticsResource.runComputation"
+				],
+				"cli": [
+					"dss statistics run-computation"
+				],
+				"note": null
+			}
+		],
+		"Jobs": [
+			{
+				"section": "Jobs",
+				"subsection": "Jobs",
+				"name": "List latest jobs",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/jobs/{?limit}",
+				"docAnchor": "#jobs-jobs-get",
+				"status": "implemented",
+				"sdk": [
+					"JobsResource.list"
+				],
+				"cli": [
+					"dss job list"
+				],
+				"note": null
+			},
+			{
+				"section": "Jobs",
+				"subsection": "Jobs",
+				"name": "Run job",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/jobs",
+				"docAnchor": "#jobs-jobs-post",
+				"status": "implemented",
+				"sdk": [
+					"JobsResource.build",
+					"JobsResource.buildAndWait",
+					"JobsResource.buildOutputs"
+				],
+				"cli": [
+					"dss job build",
+					"dss job build-and-wait"
+				],
+				"note": null
+			},
+			{
+				"section": "Jobs",
+				"subsection": "Job",
+				"name": "Get job status",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/jobs/{jobId}",
+				"docAnchor": "#jobs-job-get",
+				"status": "implemented",
+				"sdk": [
+					"JobsResource.get",
+					"JobsResource.wait"
+				],
+				"cli": [
+					"dss job get",
+					"dss job monitor",
+					"dss job wait",
+					"dss job watch"
+				],
+				"note": null
+			},
+			{
+				"section": "Jobs",
+				"subsection": "Job",
+				"name": "Abort",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/jobs/{jobId}/abort",
+				"docAnchor": "#jobs-job-post",
+				"status": "implemented",
+				"sdk": [
+					"JobsResource.abort"
+				],
+				"cli": [
+					"dss job abort"
+				],
+				"note": null
+			},
+			{
+				"section": "Jobs",
+				"subsection": "Job logs",
+				"name": "Get job logs",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/jobs/{jobId}/log{?activity}",
+				"docAnchor": "#jobs-job-logs-get",
+				"status": "implemented",
+				"sdk": [
+					"JobsResource.log"
+				],
+				"cli": [
+					"dss job log"
+				],
+				"note": null
+			}
+		],
+		"Scenarios": [
+			{
+				"section": "Scenarios",
+				"subsection": "Scenarios",
+				"name": "List scenarios of a project",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/scenarios",
+				"docAnchor": "#scenarios-scenarios-get",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.list"
+				],
+				"cli": [
+					"dss scenario create",
+					"dss scenario list"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenarios",
+				"name": "Create scenario",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/scenarios",
+				"docAnchor": "#scenarios-scenarios-post",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.create",
+					"ScenariosResource.runScript"
+				],
+				"cli": [
+					"dss code run",
+					"dss scenario create"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Get a scenario",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/",
+				"docAnchor": "#scenarios-scenario-get",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.get",
+					"ScenariosResource.update"
+				],
+				"cli": [
+					"dss scenario delete",
+					"dss scenario get",
+					"dss scenario update"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Get the status of a scenario",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/light",
+				"docAnchor": "#scenarios-scenario-get-1",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.status",
+					"ScenariosResource.setActive"
+				],
+				"cli": [
+					"dss scenario status",
+					"dss scenario active-set"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Get the payload of a scenario of a project",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/payload",
+				"docAnchor": "#scenarios-scenario-get-2",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.getPayload"
+				],
+				"cli": [
+					"dss scenario payload-get"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Delete scenario",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/",
+				"docAnchor": "#scenarios-scenario-delete",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.delete"
+				],
+				"cli": [
+					"dss scenario delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Run a scenario",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/run",
+				"docAnchor": "#scenarios-scenario-post",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.run",
+					"ScenariosResource.runAndWait"
+				],
+				"cli": [
+					"dss scenario run",
+					"dss scenario run-and-wait"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Abort a scenario",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/abort",
+				"docAnchor": "#scenarios-scenario-post-1",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.abort"
+				],
+				"cli": [
+					"dss scenario abort"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Get last runs",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/get-last-runs/{?limit}",
+				"docAnchor": "#scenarios-scenario-get-3",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.getLastRuns"
+				],
+				"cli": [
+					"dss scenario last-runs"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Get run from trigger run",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/get-run-for-trigger/{?triggerId}{?triggerRunId}",
+				"docAnchor": "#scenarios-scenario-get-4",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.runAndWait",
+					"ScenariosResource.runScript"
+				],
+				"cli": [
+					"dss code run",
+					"dss scenario run",
+					"dss scenario run-and-wait"
+				],
+				"note": "Tracking internals use GET /scenarios/{id}/get-run-for-trigger and GET /scenarios/trigger/{scenarioId}/{triggerId} through a private helper; public entry points are runAndWait/runScript."
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Get details for a run",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/{runId}",
+				"docAnchor": "#scenarios-scenario-get-5",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.getRunDetails"
+				],
+				"cli": [
+					"dss scenario get-run"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Get scenario logs",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/{runId}/log{?stepId}",
+				"docAnchor": "#scenarios-scenario-get-6",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.getRunLog"
+				],
+				"cli": [
+					"dss scenario log"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Get a run of a trigger",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/scenarios/trigger/{scenarioId}/{triggerId}{?triggerRunId}",
+				"docAnchor": "#scenarios-scenario-get-7",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.runAndWait",
+					"ScenariosResource.runScript"
+				],
+				"cli": [
+					"dss code run",
+					"dss scenario run",
+					"dss scenario run-and-wait"
+				],
+				"note": "Same private tracking helper as get-run-for-trigger; public entry points are runAndWait/runScript."
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Update scenario settings",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}",
+				"docAnchor": "#scenarios-scenario-put",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.update"
+				],
+				"cli": [
+					"dss scenario update"
+				],
+				"note": null
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Update basic scenario settings",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/light",
+				"docAnchor": "#scenarios-scenario-put-1",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.setActive"
+				],
+				"cli": [
+					"dss scenario active-set"
+				],
+				"note": "SDK setActive verifies via GET before/after PUT of the light form."
+			},
+			{
+				"section": "Scenarios",
+				"subsection": "Scenario",
+				"name": "Update scenario payload",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/scenarios/{scenarioId}/payload",
+				"docAnchor": "#scenarios-scenario-put-2",
+				"status": "implemented",
+				"sdk": [
+					"ScenariosResource.setPayload"
+				],
+				"cli": [
+					"dss scenario payload-set"
+				],
+				"note": null
+			}
+		],
+		"Machine Learning - Lab": [
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine Learning Lab - Analysis",
+				"name": "List analyses",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/lab",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-analysis-get",
+				"status": "implemented",
+				"sdk": [
+					"AnalysesResource.list"
+				],
+				"cli": [
+					"dss analysis list"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine Learning Lab - Analysis",
+				"name": "Create a visual analysis",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/lab",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-analysis-post",
+				"status": "implemented",
+				"sdk": [
+					"AnalysesResource.create"
+				],
+				"cli": [
+					"dss analysis create"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine Learning Lab - Analysis",
+				"name": "Get details about analysis",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/lab/{analysisId}",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-analysis-get-1",
+				"status": "implemented",
+				"sdk": [
+					"AnalysesResource.get"
+				],
+				"cli": [
+					"dss analysis delete",
+					"dss analysis get"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine Learning Lab - Analysis",
+				"name": "Update a visual analysis",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/lab/{analysisId}",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-analysis-put",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine Learning Lab - Analysis",
+				"name": "Delete a visual analyis",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/lab/{analysisId}",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-analysis-delete",
+				"status": "implemented",
+				"sdk": [
+					"AnalysesResource.delete"
+				],
+				"cli": [
+					"dss analysis delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine Learning Lab - Analysis",
+				"name": "List ML tasks",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/lab/{analysisId}/models",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-analysis-get-2",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine Learning Lab - Analysis",
+				"name": "Create a new ML task",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/lab/{analysisId}/models",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-analysis-post-1",
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.create"
+				],
+				"cli": [
+					"dss ml-task create"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine Learning Lab - ML tasks",
+				"name": "List ML Tasks",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-ml-tasks-get",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine Learning Lab - ML tasks",
+				"name": "Create a ML Task",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/models/lab",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-ml-tasks-post",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - MLTask",
+				"name": "Get the settings of a ML Task",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/settings",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-mltask-get",
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.getSettings"
+				],
+				"cli": [
+					"dss ml-task get-settings"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - MLTask",
+				"name": "Get the status of a ML Task",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/status",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-mltask-get-1",
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.listTrainedModels",
+					"MlTasksResource.status"
+				],
+				"cli": [
+					"dss ml-task list-models",
+					"dss ml-task status"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - MLTask",
+				"name": "Re-guess a ML Task",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/guess{?predictionType}{?targetVariable}{?timeVariable}{?timeseriesIdentifiers}{?fullReguess}",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-mltask-post",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - MLTask",
+				"name": "Change forecasting parameters of a time series forecasting ML Task and reguess impacted algorithm settings",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/reguess-with-forecasting-params",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-mltask-post-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - MLTask",
+				"name": "Start training a ML Task",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/train",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-mltask-post-2",
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.train"
+				],
+				"cli": [
+					"dss ml-task train"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - MLTask",
+				"name": "Get the snippets of a set of trained models",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models-snippets",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-mltask-get-2",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Get the details of a trained model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/details",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get",
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.trainedModelDetails"
+				],
+				"cli": [
+					"dss ml-task model-details"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Saves user metadata for a trained model",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/user-meta",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-put",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Deploy a trained model to Flow",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/actions/deployToFlow",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post",
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.deployToFlow"
+				],
+				"cli": [
+					"dss ml-task deploy"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Get scoring jar of a trained model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/scoring-jar{?fullClassName}{?includeLibs}",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Get scoring PMML of a trained model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/scoring-pmml",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-2",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Compute subpopulation analyses of a trained model",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/subpopulation-analyses",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Get subpopulation analyses of a trained model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/subpopulation-analyses",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-3",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Compute partial dependencies of a trained model",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/partial-dependencies",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-2",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Get partial dependencies of a trained model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/partial-dependencies",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-4",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Compute residuals of a timeseries trained model",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/timeseries-residuals",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-3",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Get residuals of a timeseries trained model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/timeseries-residuals",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-5",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Get per timeseries metrics of a timeseries trained model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/per-timeseries-metrics",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-6",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Get per timeseries evaluation forecasts of a timeseries trained model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/per-timeseries-evaluation-forecasts",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-7",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Generate model documentation from default template",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-default-template",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-4",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Generate model documentation from a custom template",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-custom-template",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-5",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Generate model documentation from a template file in a managed folder",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-template-in-folder{?folderId}{?path}",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-6",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Lab",
+				"subsection": "Machine learning lab - Single model",
+				"name": "Download model documentation of a trained model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/models/lab/documentations/{exportId}",
+				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-8",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			}
+		],
+		"Machine Learning - Saved models": [
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved models",
+				"name": "List saved models",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels",
+				"docAnchor": "#machine-learning-saved-models-saved-models-get",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.list"
+				],
+				"cli": [
+					"dss saved-model list"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved models",
+				"name": "Create saved model",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/savedmodels/create-external",
+				"docAnchor": "#machine-learning-saved-models-saved-models-post",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.createExternal"
+				],
+				"cli": [
+					"dss saved-model create-external"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved models",
+				"name": "Get saved model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}",
+				"docAnchor": "#machine-learning-saved-models-saved-models-get-1",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.get"
+				],
+				"cli": [
+					"dss saved-model delete",
+					"dss saved-model get"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved models",
+				"name": "Update saved model",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}",
+				"docAnchor": "#machine-learning-saved-models-saved-models-put",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "List versions",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.listVersions"
+				],
+				"cli": [
+					"dss saved-model list-versions"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Import MLflow version from file or path",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}{?codeEnvName}{?containerExecConfigName}{?folderRef}{?path}",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.importMlflowVersion",
+					"SavedModelsResource.importMlflowVersionFromFolder"
+				],
+				"cli": [
+					"dss saved-model import-mlflow-version",
+					"dss saved-model import-mlflow-version-from-folder"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Get snippet of a version",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/snippet",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-1",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.versionSnippet"
+				],
+				"cli": [
+					"dss saved-model version-snippet"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Get details of a version",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/details",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-2",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.versionDetails"
+				],
+				"cli": [
+					"dss saved-model version-details"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Set a version as active",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/actions/setActive",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-1",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.setActiveVersion"
+				],
+				"cli": [
+					"dss saved-model set-active"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Set a version user meta",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/user-meta",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-put",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.setUserMeta"
+				],
+				"cli": [
+					"dss saved-model set-user-meta"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Delete versions",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/delete-versions{?versions}{?removeIntermediate}",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-3",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.delete"
+				],
+				"cli": [
+					"dss saved-model delete"
+				],
+				"note": "DRIFT (documented): official REST page shows mutating GET /projects/{projectKey}/savedmodels/{savedModelId}/delete-versions{?versions}{?removeIntermediate}; the official Python client and this SDK instead POST /projects/{projectKey}/savedmodels/{savedModelId}/actions/delete-versions with JSON body {versions, removeIntermediate}. Python-verified against dataiku-api-client-python master on 2026-09-09."
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Get MLflow model version metadata",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/external-ml/metadata",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-4",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.externalMetadataGet"
+				],
+				"cli": [
+					"dss saved-model external-metadata-get"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Update MLflow model version metadata",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/external-ml/metadata",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-put-1",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.externalMetadataPut"
+				],
+				"cli": [
+					"dss saved-model external-metadata-put"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Evaluate MLflow model version",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/external-ml/actions/evaluate",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-2",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.evaluateVersion"
+				],
+				"cli": [
+					"dss saved-model evaluate-version"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Get scoring jar of a version",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/scoring-jar{?fullClassName}{?includeLibs}",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-5",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.downloadScoringJar"
+				],
+				"cli": [
+					"dss saved-model download-scoring-jar"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Get scoring PMML of a version",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/scoring-pmml",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-6",
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.downloadScoringPmml"
+				],
+				"cli": [
+					"dss saved-model download-scoring-pmml"
+				],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Compute subpopulation analyses of a version",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/subpopulation-analyses",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-3",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Get subpopulation analyses of a version",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/subpopulation-analyses",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-7",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Compute partial dependencies of a version",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/partial-dependencies",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-4",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Get partial dependencies of a version",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/partial-dependencies",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-8",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Compute residuals of a timeseries saved model version",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/timeseries-residuals",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-5",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Get residuals of a timeseries saved model version",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/timeseries-residuals",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-9",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Get per timeseries metrics of a timeseries trained model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/per-timeseries-metrics",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-10",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Get per timeseries evaluation forecasts of a timeseries trained model",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/per-timeseries-evaluation-forecasts",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-11",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Generate model documentation from default template",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-default-template",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-6",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Generate model documentation from a custom template",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-custom-template",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-7",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Generate model documentation from a template file in a managed folder",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-template-in-folder{?folderId}{?path}",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-8",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Saved models",
+				"subsection": "Saved model versions",
+				"name": "Download model documentation of a version",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/savedmodels/documentations/{exportId}",
+				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-12",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			}
+		],
+		"Machine Learning - Experiment tracking": [
+			{
+				"section": "Machine Learning - Experiment tracking",
+				"subsection": "Experiment tracking",
+				"name": "List models for a run",
+				"method": "GET",
+				"uri": "/api/2.0/mlflow/extension/models/{runId}",
+				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-get",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Experiment tracking",
+				"subsection": "Experiment tracking",
+				"name": "Set inference information",
+				"method": "POST",
+				"uri": "/api/2.0/mlflow/extension/set-run-inference-info",
+				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-post",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Experiment tracking",
+				"subsection": "Experiment tracking",
+				"name": "Deploy run model",
+				"method": "POST",
+				"uri": "/api/2.0/mlflow/extension/deploy-run",
+				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-post-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Experiment tracking",
+				"subsection": "Experiment tracking",
+				"name": "Create virtual dataset",
+				"method": "POST",
+				"uri": "/api/2.0/mlflow/extension/create-project-experiments-dataset",
+				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-post-2",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Experiment tracking",
+				"subsection": "Experiment tracking",
+				"name": "Garbage collect",
+				"method": "POST",
+				"uri": "/api/2.0/mlflow/extension/garbage-collect",
+				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-post-3",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Machine Learning - Experiment tracking",
+				"subsection": "Experiment tracking",
+				"name": "Clean project",
+				"method": "DELETE",
+				"uri": "/api/2.0/mlflow/extension/clean-db/{projectKey}",
+				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-delete",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			}
+		],
+		"Managed Folders": [
+			{
+				"section": "Managed Folders",
+				"subsection": "Managed folders",
+				"name": "List Managed folders",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/managedfolders/",
+				"docAnchor": "#managed-folders-managed-folders-get",
+				"status": "implemented",
+				"sdk": [
+					"FoldersResource.list",
+					"FoldersResource.resolveId",
+					"ProjectsResource.map"
+				],
+				"cli": [
+					"dss folder create",
+					"dss folder list",
+					"dss project map"
+				],
+				"note": null
+			},
+			{
+				"section": "Managed Folders",
+				"subsection": "Managed folders",
+				"name": "Create managed folder",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/managedfolders",
+				"docAnchor": "#managed-folders-managed-folders-post",
+				"status": "implemented",
+				"sdk": [
+					"FoldersResource.create"
+				],
+				"cli": [
+					"dss folder create"
+				],
+				"note": null
+			},
+			{
+				"section": "Managed Folders",
+				"subsection": "Managed folder",
+				"name": "Get managed folder settings",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/managedfolders/{folderId}",
+				"docAnchor": "#managed-folders-managed-folder-get",
+				"status": "implemented",
+				"sdk": [
+					"FoldersResource.get",
+					"FoldersResource.update"
+				],
+				"cli": [
+					"dss folder delete",
+					"dss folder get",
+					"dss folder update"
+				],
+				"note": null
+			},
+			{
+				"section": "Managed Folders",
+				"subsection": "Managed folder",
+				"name": "Update managed folder settings",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/managedfolders/{folderId}",
+				"docAnchor": "#managed-folders-managed-folder-put",
+				"status": "implemented",
+				"sdk": [
+					"FoldersResource.update"
+				],
+				"cli": [
+					"dss folder update"
+				],
+				"note": null
+			},
+			{
+				"section": "Managed Folders",
+				"subsection": "Managed folder",
+				"name": "Delete managed folder",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/managedfolders/{folderId}",
+				"docAnchor": "#managed-folders-managed-folder-delete",
+				"status": "implemented",
+				"sdk": [
+					"FoldersResource.delete"
+				],
+				"cli": [
+					"dss folder delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Managed Folders",
+				"subsection": "Managed folder contents",
+				"name": "List files in managed folder",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/managedfolders/{folderId}/contents/",
+				"docAnchor": "#managed-folders-managed-folder-contents-get",
+				"status": "implemented",
+				"sdk": [
+					"FoldersResource.contents"
+				],
+				"cli": [
+					"dss folder contents"
+				],
+				"note": null
+			},
+			{
+				"section": "Managed Folders",
+				"subsection": "Managed folder contents",
+				"name": "Download file from managed folder",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/managedfolders/{folderId}/contents/{path}",
+				"docAnchor": "#managed-folders-managed-folder-contents-get-1",
+				"status": "implemented",
+				"sdk": [
+					"FoldersResource.download"
+				],
+				"cli": [
+					"dss folder download"
+				],
+				"note": null
+			},
+			{
+				"section": "Managed Folders",
+				"subsection": "Managed folder contents",
+				"name": "Delete a file from managed folder",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/managedfolders/{folderId}/contents/{path}",
+				"docAnchor": "#managed-folders-managed-folder-contents-delete",
+				"status": "implemented",
+				"sdk": [
+					"FoldersResource.deleteFile"
+				],
+				"cli": [
+					"dss folder delete-file"
+				],
+				"note": null
+			},
+			{
+				"section": "Managed Folders",
+				"subsection": "Managed folder contents",
+				"name": "Upload file to managed folder",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/managedfolders/{folderId}/contents/{path}",
+				"docAnchor": "#managed-folders-managed-folder-contents-post",
+				"status": "implemented",
+				"sdk": [
+					"FoldersResource.upload"
+				],
+				"cli": [
+					"dss folder upload"
+				],
+				"note": null
+			}
+		],
+		"Recipes": [
+			{
+				"section": "Recipes",
+				"subsection": "Recipes",
+				"name": "List recipes",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/recipes/",
+				"docAnchor": "#recipes-recipes-get",
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.map",
+					"RecipesResource.list"
+				],
+				"cli": [
+					"dss project map",
+					"dss recipe create",
+					"dss recipe list"
+				],
+				"note": null
+			},
+			{
+				"section": "Recipes",
+				"subsection": "Recipes",
+				"name": "Create recipe",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/recipes",
+				"docAnchor": "#recipes-recipes-post",
+				"status": "implemented",
+				"sdk": [
+					"RecipesResource.create"
+				],
+				"cli": [
+					"dss recipe create"
+				],
+				"note": null
+			},
+			{
+				"section": "Recipes",
+				"subsection": "Recipe",
+				"name": "Get recipe settings",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/recipes/{recipeName}",
+				"docAnchor": "#recipes-recipe-get",
+				"status": "implemented",
+				"sdk": [
+					"RecipesResource.clone",
+					"RecipesResource.download",
+					"RecipesResource.resolveRunOutputs",
+					"RecipesResource.run",
+					"RecipesResource.update",
+					"RecipesResource.validateGraph"
+				],
+				"cli": [
+					"dss recipe add-input",
+					"dss recipe clone",
+					"dss recipe download",
+					"dss recipe remove-input",
+					"dss recipe run",
+					"dss recipe update",
+					"dss recipe validate-graph"
+				],
+				"note": null
+			},
+			{
+				"section": "Recipes",
+				"subsection": "Recipe",
+				"name": "Update recipe settings",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/recipes/{recipeName}",
+				"docAnchor": "#recipes-recipe-put",
+				"status": "implemented",
+				"sdk": [
+					"RecipesResource.create",
+					"RecipesResource.replace",
+					"RecipesResource.setPayload"
+				],
+				"cli": [
+					"dss recipe create",
+					"dss recipe restore",
+					"dss recipe set-payload"
+				],
+				"note": null
+			},
+			{
+				"section": "Recipes",
+				"subsection": "Recipe",
+				"name": "Delete recipe",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/recipes/{recipeName}",
+				"docAnchor": "#recipes-recipe-delete",
+				"status": "implemented",
+				"sdk": [
+					"RecipesResource.delete"
+				],
+				"cli": [
+					"dss recipe delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Recipes",
+				"subsection": "Recipe metadata",
+				"name": "Get metadata",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/recipes/{recipeName}/metadata",
+				"docAnchor": "#recipes-recipe-metadata-get",
+				"status": "implemented",
+				"sdk": [
+					"RecipesResource.metadata"
+				],
+				"cli": [
+					"dss recipe metadata"
+				],
+				"note": null
+			},
+			{
+				"section": "Recipes",
+				"subsection": "Recipe metadata",
+				"name": "Set metadata",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/recipes/{recipeName}/metadata",
+				"docAnchor": "#recipes-recipe-metadata-put",
+				"status": "implemented",
+				"sdk": [
+					"RecipesResource.setMetadata"
+				],
+				"cli": [
+					"dss recipe metadata-set"
+				],
+				"note": null
+			}
+		],
+		"Streaming endpoints": [
+			{
+				"section": "Streaming endpoints",
+				"subsection": "Streaming endpoints",
+				"name": "List Streaming endpoints",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/streamingendpoints/",
+				"docAnchor": "#streaming-endpoints-streaming-endpoints-get",
+				"status": "implemented",
+				"sdk": [
+					"StreamingEndpointsResource.list"
+				],
+				"cli": [
+					"dss streaming-endpoint list"
+				],
+				"note": null
+			},
+			{
+				"section": "Streaming endpoints",
+				"subsection": "Streaming endpoints",
+				"name": "Create Streaming endpoint",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/streamingendpoints/",
+				"docAnchor": "#streaming-endpoints-streaming-endpoints-post",
+				"status": "implemented",
+				"sdk": [
+					"StreamingEndpointsResource.create"
+				],
+				"cli": [
+					"dss streaming-endpoint create"
+				],
+				"note": null
+			},
+			{
+				"section": "Streaming endpoints",
+				"subsection": "Streaming endpoints",
+				"name": "Create managed Streaming endpoint",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/streamingendpoints/managed",
+				"docAnchor": "#streaming-endpoints-streaming-endpoints-post-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Streaming endpoints",
+				"subsection": "Streaming endpoint",
+				"name": "Get Streaming endpoint settings",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/streamingendpoints/{streamingEndpointId}",
+				"docAnchor": "#streaming-endpoints-streaming-endpoint-get",
+				"status": "implemented",
+				"sdk": [
+					"StreamingEndpointsResource.get",
+					"StreamingEndpointsResource.getSettings"
+				],
+				"cli": [
+					"dss streaming-endpoint get"
+				],
+				"note": null
+			},
+			{
+				"section": "Streaming endpoints",
+				"subsection": "Streaming endpoint",
+				"name": "Update Streaming endpoint settings",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/streamingendpoints/{streamingEndpointId}",
+				"docAnchor": "#streaming-endpoints-streaming-endpoint-put",
+				"status": "implemented",
+				"sdk": [
+					"StreamingEndpointsResource.updateSettings"
+				],
+				"cli": [
+					"dss streaming-endpoint update-settings"
+				],
+				"note": null
+			},
+			{
+				"section": "Streaming endpoints",
+				"subsection": "Streaming endpoint",
+				"name": "Delete streaming endpoint",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/streamingendpoints/{streamingEndpointId}",
+				"docAnchor": "#streaming-endpoints-streaming-endpoint-delete",
+				"status": "implemented",
+				"sdk": [
+					"StreamingEndpointsResource.delete"
+				],
+				"cli": [
+					"dss streaming-endpoint delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Streaming endpoints",
+				"subsection": "Streaming endpoint schema",
+				"name": "Get schema",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/streamingendpoints/{streamingEndpointId}/schema",
+				"docAnchor": "#streaming-endpoints-streaming-endpoint-schema-get",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Streaming endpoints",
+				"subsection": "Streaming endpoint schema",
+				"name": "Set schema",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/streamingendpoints/{streamingEndpointId}/schema",
+				"docAnchor": "#streaming-endpoints-streaming-endpoint-schema-put",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			}
+		],
+		"Continuous activities": [
+			{
+				"section": "Continuous activities",
+				"subsection": "Continuous activities",
+				"name": "List latest continuous activities",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/continuous-activities",
+				"docAnchor": "#continuous-activities-continuous-activities-get",
+				"status": "implemented",
+				"sdk": [
+					"ContinuousActivitiesResource.list"
+				],
+				"cli": [
+					"dss continuous-activity list"
+				],
+				"note": null
+			},
+			{
+				"section": "Continuous activities",
+				"subsection": "Continuous activity",
+				"name": "Get continuous activity status",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/continuous-activities/{recipeId}",
+				"docAnchor": "#continuous-activities-continuous-activity-get",
+				"status": "implemented",
+				"sdk": [
+					"ContinuousActivitiesResource.getStatus",
+					"ContinuousActivitiesResource.stop"
+				],
+				"cli": [
+					"dss continuous-activity status",
+					"dss continuous-activity stop"
+				],
+				"note": null
+			},
+			{
+				"section": "Continuous activities",
+				"subsection": "Continuous activity",
+				"name": "Start",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/continuous-activities/{recipeId}/start",
+				"docAnchor": "#continuous-activities-continuous-activity-post",
+				"status": "implemented",
+				"sdk": [
+					"ContinuousActivitiesResource.start"
+				],
+				"cli": [
+					"dss continuous-activity start"
+				],
+				"note": null
+			},
+			{
+				"section": "Continuous activities",
+				"subsection": "Continuous activity",
+				"name": "Stop",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/continuous-activities/{recipeId}/stop",
+				"docAnchor": "#continuous-activities-continuous-activity-post-1",
+				"status": "implemented",
+				"sdk": [
+					"ContinuousActivitiesResource.stop"
+				],
+				"cli": [
+					"dss continuous-activity stop"
+				],
+				"note": null
+			}
+		],
+		"Webapps": [
+			{
+				"section": "Webapps",
+				"subsection": "Webapps",
+				"name": "List webapps",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/webapps/",
+				"docAnchor": "#webapps-webapps-get",
+				"status": "implemented",
+				"sdk": [
+					"WebappsResource.list"
+				],
+				"cli": [
+					"dss webapp list"
+				],
+				"note": null
+			},
+			{
+				"section": "Webapps",
+				"subsection": "Webapp",
+				"name": "Get webapp",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/webapps/{webappId}",
+				"docAnchor": "#webapps-webapp-get",
+				"status": "implemented",
+				"sdk": [
+					"WebappsResource.getSettings",
+					"WebappsResource.updateSettings"
+				],
+				"cli": [
+					"dss webapp get-settings",
+					"dss webapp update-settings"
+				],
+				"note": null
+			},
+			{
+				"section": "Webapps",
+				"subsection": "Webapp",
+				"name": "Update webapp",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/webapps/{webappId}",
+				"docAnchor": "#webapps-webapp-put",
+				"status": "implemented",
+				"sdk": [
+					"WebappsResource.updateSettings"
+				],
+				"cli": [
+					"dss webapp update-settings"
+				],
+				"note": null
+			},
+			{
+				"section": "Webapps",
+				"subsection": "Webapp",
+				"name": "Trust a webapp",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/webapps/{webappId}/actions/trust{?trustForEverybody}",
+				"docAnchor": "#webapps-webapp-post",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Webapps",
+				"subsection": "Webapp",
+				"name": "Restart webapp backend",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/webapps/{webappId}/backend/actions/restart",
+				"docAnchor": "#webapps-webapp-put-1",
+				"status": "implemented",
+				"sdk": [
+					"WebappsResource.restartBackendAndWait",
+					"WebappsResource.startOrRestartBackend"
+				],
+				"cli": [
+					"dss webapp restart-backend"
+				],
+				"note": null
+			},
+			{
+				"section": "Webapps",
+				"subsection": "Webapp",
+				"name": "Stop webapp backend",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/webapps/{webappId}/backend/actions/stop",
+				"docAnchor": "#webapps-webapp-put-2",
+				"status": "implemented",
+				"sdk": [
+					"WebappsResource.stopBackend"
+				],
+				"cli": [
+					"dss webapp stop-backend"
+				],
+				"note": null
+			},
+			{
+				"section": "Webapps",
+				"subsection": "Webapp",
+				"name": "Retrieve webapp backend state",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/webapps/{webappId}/backend/state",
+				"docAnchor": "#webapps-webapp-get-1",
+				"status": "implemented",
+				"sdk": [
+					"WebappsResource.getBackendState"
+				],
+				"cli": [
+					"dss webapp backend-state"
+				],
+				"note": null
+			}
+		],
+		"Notebooks": [
+			{
+				"section": "Notebooks",
+				"subsection": "Jupyter Notebooks",
+				"name": "List jupyter notebook names",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/jupyter-notebooks/{?active}",
+				"docAnchor": "#notebooks-jupyter-notebooks-get",
+				"status": "implemented",
+				"sdk": [
+					"NotebooksResource.listJupyter",
+					"NotebooksResource.unloadJupyterAll"
+				],
+				"cli": [
+					"dss notebook list-jupyter",
+					"dss notebook unload-jupyter"
+				],
+				"note": null
+			},
+			{
+				"section": "Notebooks",
+				"subsection": "Jupyter notebook",
+				"name": "Get jupyter notebook",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/jupyter-notebooks/{notebookName}",
+				"docAnchor": "#notebooks-jupyter-notebook-get",
+				"status": "implemented",
+				"sdk": [
+					"NotebooksResource.getJupyter"
+				],
+				"cli": [
+					"dss notebook clear-jupyter-outputs",
+					"dss notebook delete-jupyter",
+					"dss notebook get-jupyter",
+					"dss notebook save-jupyter"
+				],
+				"note": null
+			},
+			{
+				"section": "Notebooks",
+				"subsection": "Jupyter notebook",
+				"name": "Update jupyter notebook",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/jupyter-notebooks/{notebookName}",
+				"docAnchor": "#notebooks-jupyter-notebook-put",
+				"status": "implemented",
+				"sdk": [
+					"NotebooksResource.saveJupyter"
+				],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Notebooks",
+				"subsection": "Jupyter notebook",
+				"name": "Create a jupyter notebook",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/jupyter-notebooks/{notebookName}",
+				"docAnchor": "#notebooks-jupyter-notebook-post",
+				"status": "implemented",
+				"sdk": [
+					"NotebooksResource.createJupyter"
+				],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Notebooks",
+				"subsection": "Jupyter notebook",
+				"name": "Delete jupyter notebook",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/jupyter-notebooks/{notebookName}",
+				"docAnchor": "#notebooks-jupyter-notebook-delete",
+				"status": "implemented",
+				"sdk": [
+					"NotebooksResource.deleteJupyter"
+				],
+				"cli": [
+					"dss notebook delete-jupyter"
+				],
+				"note": null
+			},
+			{
+				"section": "Notebooks",
+				"subsection": "Jupyter notebook",
+				"name": "Clear jupyter notebook outputs",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/jupyter-notebooks/{notebookName}/outputs",
+				"docAnchor": "#notebooks-jupyter-notebook-delete-1",
+				"status": "implemented",
+				"sdk": [
+					"NotebooksResource.clearJupyterOutputs"
+				],
+				"cli": [
+					"dss notebook clear-jupyter-outputs"
+				],
+				"note": null
+			},
+			{
+				"section": "Notebooks",
+				"subsection": "Jupyter notebook",
+				"name": "List jupyter notebook sessions",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/jupyter-notebooks/{notebookName}/sessions",
+				"docAnchor": "#notebooks-jupyter-notebook-get-1",
+				"status": "implemented",
+				"sdk": [
+					"NotebooksResource.listJupyterSessions"
+				],
+				"cli": [
+					"dss notebook sessions-jupyter",
+					"dss notebook unload-jupyter"
+				],
+				"note": null
+			},
+			{
+				"section": "Notebooks",
+				"subsection": "Jupyter notebook",
+				"name": "Stop jupyter notebook session",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/jupyter-notebooks/{notebookName}/sessions/{sessionId}",
+				"docAnchor": "#notebooks-jupyter-notebook-delete-2",
+				"status": "implemented",
+				"sdk": [
+					"NotebooksResource.unloadJupyter"
+				],
+				"cli": [
+					"dss notebook unload-jupyter"
+				],
+				"note": null
+			}
+		],
+		"Macros": [
+			{
+				"section": "Macros",
+				"subsection": "Macros",
+				"name": "List macros",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/runnables",
+				"docAnchor": "#macros-macros-get",
+				"status": "implemented",
+				"sdk": [
+					"MacrosResource.list"
+				],
+				"cli": [
+					"dss macro list"
+				],
+				"note": null
+			},
+			{
+				"section": "Macros",
+				"subsection": "Macro",
+				"name": "Get macro definition",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/runnables/{runnableType}",
+				"docAnchor": "#macros-macro-get",
+				"status": "implemented",
+				"sdk": [
+					"MacrosResource.definition"
+				],
+				"cli": [
+					"dss macro get"
+				],
+				"note": null
+			},
+			{
+				"section": "Macros",
+				"subsection": "Macro",
+				"name": "Run",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/runnables/{runnableType}{?wait}",
+				"docAnchor": "#macros-macro-post",
+				"status": "implemented",
+				"sdk": [
+					"MacrosResource.run"
+				],
+				"cli": [
+					"dss macro run"
+				],
+				"note": null
+			},
+			{
+				"section": "Macros",
+				"subsection": "Macro",
+				"name": "Abort",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/runnables/{runnableType}/abort/{run}",
+				"docAnchor": "#macros-macro-post-1",
+				"status": "implemented",
+				"sdk": [
+					"MacrosResource.abort"
+				],
+				"cli": [
+					"dss macro abort"
+				],
+				"note": null
+			},
+			{
+				"section": "Macros",
+				"subsection": "Macro",
+				"name": "Poll state",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/runnables/{runnableType}/state/{run}",
+				"docAnchor": "#macros-macro-get-1",
+				"status": "implemented",
+				"sdk": [
+					"MacrosResource.state"
+				],
+				"cli": [
+					"dss macro state"
+				],
+				"note": null
+			},
+			{
+				"section": "Macros",
+				"subsection": "Macro",
+				"name": "Retrieve result",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/runnables/{runnableType}/result/{run}",
+				"docAnchor": "#macros-macro-get-2",
+				"status": "implemented",
+				"sdk": [
+					"MacrosResource.result"
+				],
+				"cli": [
+					"dss macro result"
+				],
+				"note": null
+			}
+		],
+		"Long tasks": [
+			{
+				"section": "Long tasks",
+				"subsection": "Tasks running in the instance",
+				"name": "List tasks in progress",
+				"method": "GET",
+				"uri": "/futures/{?allUsers}{?withScenarios}",
+				"docAnchor": "#long-tasks-tasks-running-in-the-instance-get",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": "Futures listing (allUsers/withScenarios) not wrapped; SDK addresses futures by jobId."
+			},
+			{
+				"section": "Long tasks",
+				"subsection": "Tasks running in the instance",
+				"name": "Get status of a running task",
+				"method": "GET",
+				"uri": "/futures/{jobId}{?peek}",
+				"docAnchor": "#long-tasks-tasks-running-in-the-instance-get-1",
+				"status": "implemented",
+				"sdk": [
+					"FuturesResource.get",
+					"FuturesResource.peek",
+					"FuturesResource.state",
+					"FuturesResource.wait"
+				],
+				"cli": [
+					"dss app create-instance",
+					"dss app delete-instance",
+					"dss future get",
+					"dss future peek",
+					"dss future wait"
+				],
+				"note": null
+			},
+			{
+				"section": "Long tasks",
+				"subsection": "Tasks running in the instance",
+				"name": "Abort a task",
+				"method": "DELETE",
+				"uri": "/futures/{jobId}",
+				"docAnchor": "#long-tasks-tasks-running-in-the-instance-delete",
+				"status": "implemented",
+				"sdk": [
+					"FuturesResource.abort"
+				],
+				"cli": [
+					"dss future abort"
+				],
+				"note": null
+			}
+		],
+		"Meanings": [
+			{
+				"section": "Meanings",
+				"subsection": "Meanings",
+				"name": "List meanings",
+				"method": "GET",
+				"uri": "/meanings/",
+				"docAnchor": "#meanings-meanings-get",
+				"status": "implemented",
+				"sdk": [
+					"MeaningsResource.list"
+				],
+				"cli": [
+					"dss meaning list"
+				],
+				"note": null
+			},
+			{
+				"section": "Meanings",
+				"subsection": "Meanings",
+				"name": "Create meaning",
+				"method": "POST",
+				"uri": "/meanings",
+				"docAnchor": "#meanings-meanings-post",
+				"status": "implemented",
+				"sdk": [
+					"MeaningsResource.create"
+				],
+				"cli": [
+					"dss meaning create"
+				],
+				"note": null
+			},
+			{
+				"section": "Meanings",
+				"subsection": "Meaning",
+				"name": "Get meaning definition",
+				"method": "GET",
+				"uri": "/meanings/{meaningId}",
+				"docAnchor": "#meanings-meaning-get",
+				"status": "implemented",
+				"sdk": [
+					"MeaningsResource.get"
+				],
+				"cli": [
+					"dss meaning delete",
+					"dss meaning get"
+				],
+				"note": null
+			},
+			{
+				"section": "Meanings",
+				"subsection": "Meaning",
+				"name": "Update meaning definition",
+				"method": "PUT",
+				"uri": "/meanings/{meaningId}",
+				"docAnchor": "#meanings-meaning-put",
+				"status": "implemented",
+				"sdk": [
+					"MeaningsResource.update"
+				],
+				"cli": [
+					"dss meaning update"
+				],
+				"note": null
+			}
+		],
+		"Plugins": [
+			{
+				"section": "Plugins",
+				"subsection": "Plugins",
+				"name": "List Installed plugins",
+				"method": "GET",
+				"uri": "/plugins/",
+				"docAnchor": "#plugins-plugins-get",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.list"
+				],
+				"cli": [
+					"dss plugin list"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugins",
+				"name": "Upload a new plugin",
+				"method": "POST",
+				"uri": "/plugins/actions/installFromZip",
+				"docAnchor": "#plugins-plugins-post",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.installFromZip"
+				],
+				"cli": [
+					"dss plugin install-from-zip"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugins",
+				"name": "Installs a plugin from the store",
+				"method": "POST",
+				"uri": "/plugins/actions/installFromStore",
+				"docAnchor": "#plugins-plugins-post-1",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.installFromStore"
+				],
+				"cli": [
+					"dss plugin install-from-store"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugins",
+				"name": "Installs a plugin from Git",
+				"method": "POST",
+				"uri": "/plugins/actions/installFromGit",
+				"docAnchor": "#plugins-plugins-post-2",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.installFromGit"
+				],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin",
+				"name": "Download a plugin",
+				"method": "GET",
+				"uri": "/plugins/{pluginId}/download",
+				"docAnchor": "#plugins-plugin-get",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.download"
+				],
+				"cli": [
+					"dss plugin download"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin",
+				"name": "Update a plugin from a Zip archive",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/actions/updateFromZip",
+				"docAnchor": "#plugins-plugin-post",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.updateFromZip"
+				],
+				"cli": [
+					"dss plugin update-from-zip"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin",
+				"name": "Update a plugin from the store",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/actions/updateFromStore",
+				"docAnchor": "#plugins-plugin-post-1",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.updateFromStore"
+				],
+				"cli": [
+					"dss plugin update-from-store"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin",
+				"name": "Update a plugin from Git",
+				"method": "POST",
+				"uri": "/plugins/actions/updateFromGit",
+				"docAnchor": "#plugins-plugin-post-2",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.updateFromGit"
+				],
+				"cli": [
+					"dss plugin update-from-git"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin",
+				"name": "Get plugin settings",
+				"method": "GET",
+				"uri": "/plugins/{pluginId}/settings{?projectKey}",
+				"docAnchor": "#plugins-plugin-get-1",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.getSettings"
+				],
+				"cli": [
+					"dss plugin settings-get"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin",
+				"name": "Set plugin settings",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/settings{?projectKey}",
+				"docAnchor": "#plugins-plugin-post-3",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.setSettings"
+				],
+				"cli": [
+					"dss plugin settings-set"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin",
+				"name": "Create the code env of a plugin",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/code-env/actions/create",
+				"docAnchor": "#plugins-plugin-post-4",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.createCodeEnv"
+				],
+				"cli": [
+					"dss plugin code-env-create"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin",
+				"name": "Update the code env of a plugin",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/code-env/actions/update",
+				"docAnchor": "#plugins-plugin-post-5",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.updateCodeEnv"
+				],
+				"cli": [
+					"dss plugin code-env-update"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin",
+				"name": "Move a plugin to dev environment",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/actions/moveToDev",
+				"docAnchor": "#plugins-plugin-post-6",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.moveToDev"
+				],
+				"cli": [
+					"dss plugin move-to-dev"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin",
+				"name": "List usages of plugin",
+				"method": "GET",
+				"uri": "/plugins/{pluginId}/actions/listUsages{?projectKey}",
+				"docAnchor": "#plugins-plugin-get-2",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.listUsages"
+				],
+				"cli": [
+					"dss plugin usages"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin",
+				"name": "Delete plugin",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/actions/delete",
+				"docAnchor": "#plugins-plugin-post-7",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.delete"
+				],
+				"cli": [
+					"dss plugin delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Development plugins",
+				"name": "Create a new development plugins",
+				"method": "POST",
+				"uri": "/plugins/actions/createDev",
+				"docAnchor": "#plugins-development-plugins-post",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.createDev"
+				],
+				"cli": [
+					"dss plugin create-dev"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Development plugins",
+				"name": "Get Git remote info",
+				"method": "GET",
+				"uri": "/plugins/{pluginId}/gitRemote",
+				"docAnchor": "#plugins-development-plugins-get",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.getGitRemote"
+				],
+				"cli": [
+					"dss plugin get-git-remote"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Development plugins",
+				"name": "Set Git remote info",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/gitRemote",
+				"docAnchor": "#plugins-development-plugins-post-1",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.setGitRemote"
+				],
+				"cli": [
+					"dss plugin set-git-remote"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Development plugins",
+				"name": "Delete Git remote info",
+				"method": "DELETE",
+				"uri": "/plugins/{pluginId}/gitRemote",
+				"docAnchor": "#plugins-development-plugins-delete",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.deleteGitRemote"
+				],
+				"cli": [
+					"dss plugin delete-git-remote"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Development plugins",
+				"name": "List Git branches",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/gitBranches",
+				"docAnchor": "#plugins-development-plugins-post-2",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.listGitBranches"
+				],
+				"cli": [
+					"dss plugin git-branches"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Development plugins",
+				"name": "Push to Git remote",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/actions/push",
+				"docAnchor": "#plugins-development-plugins-post-3",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.push"
+				],
+				"cli": [
+					"dss plugin push"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Development plugins",
+				"name": "Pull from Git remote",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/actions/pullRebase",
+				"docAnchor": "#plugins-development-plugins-post-4",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.pull"
+				],
+				"cli": [
+					"dss plugin pull"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Development plugins",
+				"name": "Fetch from Git remote",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/actions/fetch",
+				"docAnchor": "#plugins-development-plugins-post-5",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.fetch"
+				],
+				"cli": [
+					"dss plugin fetch"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Development plugins",
+				"name": "Reset to local HEAD state",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/actions/resetToLocalHeadState",
+				"docAnchor": "#plugins-development-plugins-post-6",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.resetToLocalHeadState"
+				],
+				"cli": [
+					"dss plugin reset-local"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Development plugins",
+				"name": "Reset to remote HEAD state",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/actions/resetToRemoteHeadState",
+				"docAnchor": "#plugins-development-plugins-post-7",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.resetToRemoteHeadState"
+				],
+				"cli": [
+					"dss plugin reset-remote"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin contents for dev plugins",
+				"name": "List files in plugin",
+				"method": "GET",
+				"uri": "/plugins/{pluginId}/contents/",
+				"docAnchor": "#plugins-plugin-contents-for-dev-plugins-get",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.listContents"
+				],
+				"cli": [
+					"dss plugin contents-list"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin contents for dev plugins",
+				"name": "Download file from plugin",
+				"method": "GET",
+				"uri": "/plugins/{pluginId}/contents/{path}",
+				"docAnchor": "#plugins-plugin-contents-for-dev-plugins-get-1",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.downloadFile",
+					"PluginsResource.getFile",
+					"PluginsResource.getFileBytes"
+				],
+				"cli": [
+					"dss plugin contents-get"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin contents for dev plugins",
+				"name": "Get file detail from plugin",
+				"method": "GET",
+				"uri": "/plugins/{pluginId}/details/{path}",
+				"docAnchor": "#plugins-plugin-contents-for-dev-plugins-get-2",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.getFileDetails"
+				],
+				"cli": [
+					"dss plugin details"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin contents for dev plugins",
+				"name": "Upload file to plugin",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/contents/{path}",
+				"docAnchor": "#plugins-plugin-contents-for-dev-plugins-post",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.putFile"
+				],
+				"cli": [
+					"dss plugin contents-put"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin contents for dev plugins",
+				"name": "Delete file from plugin",
+				"method": "DELETE",
+				"uri": "/plugins/{pluginId}/contents/{path}",
+				"docAnchor": "#plugins-plugin-contents-for-dev-plugins-delete",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.deleteFile"
+				],
+				"cli": [
+					"dss plugin contents-delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin contents for dev plugins",
+				"name": "Add folder to plugin",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/folders/{path}",
+				"docAnchor": "#plugins-plugin-contents-for-dev-plugins-post-1",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.addFolder"
+				],
+				"cli": [
+					"dss plugin folder-add"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin contents for dev plugins",
+				"name": "Rename file/folder in plugin",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/contents-actions/rename",
+				"docAnchor": "#plugins-plugin-contents-for-dev-plugins-post-2",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.rename"
+				],
+				"cli": [
+					"dss plugin rename"
+				],
+				"note": null
+			},
+			{
+				"section": "Plugins",
+				"subsection": "Plugin contents for dev plugins",
+				"name": "Move file/folder in plugin",
+				"method": "POST",
+				"uri": "/plugins/{pluginId}/contents-actions/move",
+				"docAnchor": "#plugins-plugin-contents-for-dev-plugins-post-3",
+				"status": "implemented",
+				"sdk": [
+					"PluginsResource.move"
+				],
+				"cli": [
+					"dss plugin move"
+				],
+				"note": null
+			}
+		],
+		"Libraries": [
+			{
+				"section": "Libraries",
+				"subsection": "Libraries",
+				"name": "List files in library",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/libraries/contents/",
+				"docAnchor": "#libraries-libraries-get",
+				"status": "implemented",
+				"sdk": [
+					"ProjectLibraryResource.addFolder",
+					"ProjectLibraryResource.hasLibraryItem",
+					"ProjectLibraryResource.listContents"
+				],
+				"cli": [
+					"dss project-library create-file",
+					"dss project-library create-folder",
+					"dss project-library list"
+				],
+				"note": null
+			},
+			{
+				"section": "Libraries",
+				"subsection": "Libraries",
+				"name": "Download file from library",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/libraries/contents/{path}",
+				"docAnchor": "#libraries-libraries-get-1",
+				"status": "implemented",
+				"sdk": [
+					"ProjectLibraryResource.addFile",
+					"ProjectLibraryResource.getFile"
+				],
+				"cli": [
+					"dss project-library create-file",
+					"dss project-library get"
+				],
+				"note": null
+			},
+			{
+				"section": "Libraries",
+				"subsection": "Libraries",
+				"name": "Upload file to library",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/libraries/contents/{path}",
+				"docAnchor": "#libraries-libraries-post",
+				"status": "implemented",
+				"sdk": [
+					"ProjectLibraryResource.addFile",
+					"ProjectLibraryResource.addFolder",
+					"ProjectLibraryResource.addOrUpdateFile"
+				],
+				"cli": [
+					"dss project-library create-file",
+					"dss project-library create-folder",
+					"dss project-library put"
+				],
+				"note": null
+			},
+			{
+				"section": "Libraries",
+				"subsection": "Libraries",
+				"name": "Delete file from library",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/libraries/contents/{path}",
+				"docAnchor": "#libraries-libraries-delete",
+				"status": "implemented",
+				"sdk": [
+					"ProjectLibraryResource.deleteFile"
+				],
+				"cli": [
+					"dss project-library delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Libraries",
+				"subsection": "Libraries",
+				"name": "Add folder to library",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/libraries/folders/{path}",
+				"docAnchor": "#libraries-libraries-post-1",
+				"status": "implemented",
+				"sdk": [
+					"ProjectLibraryResource.addFolder"
+				],
+				"cli": [
+					"dss project-library create-folder"
+				],
+				"note": null
+			},
+			{
+				"section": "Libraries",
+				"subsection": "Libraries",
+				"name": "Rename file/folder in libraries",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/libraries/contents-actions/rename",
+				"docAnchor": "#libraries-libraries-post-2",
+				"status": "implemented",
+				"sdk": [
+					"ProjectLibraryResource.rename"
+				],
+				"cli": [
+					"dss project-library rename"
+				],
+				"note": null
+			},
+			{
+				"section": "Libraries",
+				"subsection": "Libraries",
+				"name": "Move file/folder in library",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/libraries/contents-actions/move",
+				"docAnchor": "#libraries-libraries-post-3",
+				"status": "implemented",
+				"sdk": [
+					"ProjectLibraryResource.move"
+				],
+				"cli": [
+					"dss project-library move"
+				],
+				"note": null
+			}
+		],
+		"API Services": [
+			{
+				"section": "API Services",
+				"subsection": "API Services",
+				"name": "List API Services",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/apiservices/",
+				"docAnchor": "#api-services-api-services-get",
+				"status": "implemented",
+				"sdk": [
+					"ApiServicesResource.list"
+				],
+				"cli": [
+					"dss api-service list"
+				],
+				"note": null
+			},
+			{
+				"section": "API Services",
+				"subsection": "API Services",
+				"name": "List packages",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/apiservices/{serviceId}/packages/",
+				"docAnchor": "#api-services-api-services-get-1",
+				"status": "implemented",
+				"sdk": [
+					"ApiServicesResource.listPackages"
+				],
+				"cli": [
+					"dss api-service list-packages"
+				],
+				"note": null
+			},
+			{
+				"section": "API Services",
+				"subsection": "API Services",
+				"name": "Download package archive",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/apiservices/{serviceId}/packages/{packageId}/archive",
+				"docAnchor": "#api-services-api-services-get-2",
+				"status": "implemented",
+				"sdk": [
+					"ApiServicesResource.downloadPackageArchive"
+				],
+				"cli": [
+					"dss api-service download-package"
+				],
+				"note": null
+			},
+			{
+				"section": "API Services",
+				"subsection": "API Services",
+				"name": "Generate package",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/apiservices/{serviceId}/packages/{packageId}",
+				"docAnchor": "#api-services-api-services-post",
+				"status": "implemented",
+				"sdk": [
+					"ApiServicesResource.createPackage"
+				],
+				"cli": [
+					"dss api-service create-package"
+				],
+				"note": null
+			},
+			{
+				"section": "API Services",
+				"subsection": "API Services",
+				"name": "Delete package",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/apiservices/{serviceId}/packages/{packageId}",
+				"docAnchor": "#api-services-api-services-delete",
+				"status": "implemented",
+				"sdk": [
+					"ApiServicesResource.deletePackage"
+				],
+				"cli": [
+					"dss api-service delete-package"
+				],
+				"note": null
+			},
+			{
+				"section": "API Services",
+				"subsection": "API Services",
+				"name": "Publish package",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/apiservices/{serviceId}/packages/{packageId}/publish{?publishedServiceId}",
+				"docAnchor": "#api-services-api-services-post-1",
+				"status": "implemented",
+				"sdk": [
+					"ApiServicesResource.publishPackage"
+				],
+				"cli": [
+					"dss api-service publish-package"
+				],
+				"note": null
+			}
+		],
+		"Bundles, Design-side": [
+			{
+				"section": "Bundles, Design-side",
+				"subsection": "Bundles of a project",
+				"name": "List exported bundles",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/bundles/exported",
+				"docAnchor": "#bundles,-design-side-bundles-of-a-project-get",
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.listExported"
+				],
+				"cli": [
+					"dss bundle list-exported"
+				],
+				"note": null
+			},
+			{
+				"section": "Bundles, Design-side",
+				"subsection": "Bundles of a project",
+				"name": "Get details about a bundle",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/bundles/exported/{bundleId}",
+				"docAnchor": "#bundles,-design-side-bundles-of-a-project-get-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": "Single exported-bundle details not wrapped; the SDK lists exported bundles and downloads their /archive streams."
+			},
+			{
+				"section": "Bundles, Design-side",
+				"subsection": "Bundles of a project",
+				"name": "Download a bundle",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/bundles/exported/{bundleId}/archive",
+				"docAnchor": "#bundles,-design-side-bundles-of-a-project-get-2",
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.downloadExportedArchive"
+				],
+				"cli": [
+					"dss bundle download-exported"
+				],
+				"note": null
+			},
+			{
+				"section": "Bundles, Design-side",
+				"subsection": "Bundles of a project",
+				"name": "Create a new bundle",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/bundles/exported/",
+				"docAnchor": "#bundles,-design-side-bundles-of-a-project-put",
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.exportBundle"
+				],
+				"cli": [
+					"dss bundle export"
+				],
+				"note": "Path-shape drift: official \"Create a new bundle\" is PUT /projects/{projectKey}/bundles/exported/ with bundleId in the body; the SDK PUTs /bundles/exported/{bundleId} (id in path) and also forwards releaseNotes/evaluateProjectStandardsChecks query params."
+			},
+			{
+				"section": "Bundles, Design-side",
+				"subsection": "Bundles of a project",
+				"name": "Delete an exported bundle",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/bundles/exported/",
+				"docAnchor": "#bundles,-design-side-bundles-of-a-project-delete",
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.deleteExported"
+				],
+				"cli": [
+					"dss bundle delete-exported"
+				],
+				"note": "Path-shape drift: official \"Delete an exported bundle\" documents DELETE /bundles/exported/ with bundleId in the body; the SDK DELETEs /bundles/exported/{bundleId}."
+			},
+			{
+				"section": "Bundles, Design-side",
+				"subsection": "Bundles of a project",
+				"name": "Publish bundle",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/bundles/{bundleId}/publish{?publishedProjectKey}",
+				"docAnchor": "#bundles,-design-side-bundles-of-a-project-post",
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.publish"
+				],
+				"cli": [
+					"dss bundle publish"
+				],
+				"note": null
+			}
+		],
+		"Bundles, Automation-side": [
+			{
+				"section": "Bundles, Automation-side",
+				"subsection": "Bundles of a project",
+				"name": "List imported bundles",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/bundles/imported",
+				"docAnchor": "#bundles,-automation-side-bundles-of-a-project-get",
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.listImported"
+				],
+				"cli": [
+					"dss bundle list-imported"
+				],
+				"note": null
+			},
+			{
+				"section": "Bundles, Automation-side",
+				"subsection": "Bundles of a project",
+				"name": "Import bundle from archive file",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/bundles/imported/actions/importFromArchive{?archivePath}",
+				"docAnchor": "#bundles,-automation-side-bundles-of-a-project-post",
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.importFromArchive"
+				],
+				"cli": [
+					"dss bundle import-from-archive"
+				],
+				"note": null
+			},
+			{
+				"section": "Bundles, Automation-side",
+				"subsection": "Bundles of a project",
+				"name": "Preload a bundle",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/bundles/imported/{bundleId}/actions/preload",
+				"docAnchor": "#bundles,-automation-side-bundles-of-a-project-post-1",
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.preload"
+				],
+				"cli": [
+					"dss bundle preload"
+				],
+				"note": null
+			},
+			{
+				"section": "Bundles, Automation-side",
+				"subsection": "Bundles of a project",
+				"name": "Activate a bundle",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/bundles/imported/{bundleId}/actions/activate",
+				"docAnchor": "#bundles,-automation-side-bundles-of-a-project-post-2",
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.activate"
+				],
+				"cli": [
+					"dss bundle activate"
+				],
+				"note": null
+			},
+			{
+				"section": "Bundles, Automation-side",
+				"subsection": "New project",
+				"name": "Create project from a bundle",
+				"method": "POST",
+				"uri": "/projectsFromBundle{?projectFolderId}",
+				"docAnchor": "#bundles,-automation-side-new-project-post",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": "Project-from-bundle creation (Automation node) not wrapped."
+			},
+			{
+				"section": "Bundles, Automation-side",
+				"subsection": "New project",
+				"name": "Create project from a bundle",
+				"method": "POST",
+				"uri": "/projectsFromBundle/fromArchive{?archivePath,projectFolderId}",
+				"docAnchor": "#bundles,-automation-side-new-project-post-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": "Project-from-archive-bundle creation (Automation node) not wrapped."
+			},
+			{
+				"section": "Bundles, Automation-side",
+				"subsection": "Existing project",
+				"name": "Upload a new bundle",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/bundles/imported/actions/importFromStream",
+				"docAnchor": "#bundles,-automation-side-existing-project-post",
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.importFromStream"
+				],
+				"cli": [
+					"dss bundle import-from-stream"
+				],
+				"note": null
+			}
+		],
+		"Project Deployer": [
+			{
+				"section": "Project Deployer",
+				"subsection": "Deployments",
+				"name": "List deployments",
+				"method": "GET",
+				"uri": "/project-deployer/deployments",
+				"docAnchor": "#project-deployer-deployments-get",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.listDeployments"
+				],
+				"cli": [
+					"dss project-deployer list-deployments"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Deployments",
+				"name": "Get deployment",
+				"method": "GET",
+				"uri": "/project-deployer/deployments/{deploymentId}",
+				"docAnchor": "#project-deployer-deployments-get-1",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.getDeployment"
+				],
+				"cli": [
+					"dss project-deployer get-deployment"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Deployments",
+				"name": "Create deployment",
+				"method": "POST",
+				"uri": "/project-deployer/deployments",
+				"docAnchor": "#project-deployer-deployments-post",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.createDeployment"
+				],
+				"cli": [
+					"dss project-deployer create-deployment"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Deployments",
+				"name": "Delete deployment",
+				"method": "DELETE",
+				"uri": "/project-deployer/deployments/{deploymentId}",
+				"docAnchor": "#project-deployer-deployments-delete",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.deleteDeployment"
+				],
+				"cli": [
+					"dss project-deployer delete-deployment"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Deployments",
+				"name": "Get deployment settings",
+				"method": "GET",
+				"uri": "/project-deployer/deployments/{deploymentId}/settings",
+				"docAnchor": "#project-deployer-deployments-get-2",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": "Deployment settings GET not wrapped; the PD resource exposes settings save (PUT) only."
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Deployments",
+				"name": "Save deployment settings",
+				"method": "PUT",
+				"uri": "/project-deployer/deployments/{deploymentId}/settings",
+				"docAnchor": "#project-deployer-deployments-put",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.saveDeploymentSettings"
+				],
+				"cli": [
+					"dss project-deployer save-deployment-settings"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Deployments",
+				"name": "Get deployment status",
+				"method": "GET",
+				"uri": "/project-deployer/deployments/{deploymentId}/status",
+				"docAnchor": "#project-deployer-deployments-get-3",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.getDeploymentStatus"
+				],
+				"cli": [
+					"dss project-deployer deployment-status"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Deployments",
+				"name": "Get governance deployment status",
+				"method": "GET",
+				"uri": "/project-deployer/deployments/{deploymentId}/governance-status",
+				"docAnchor": "#project-deployer-deployments-get-4",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Deployments",
+				"name": "Update deployment",
+				"method": "POST",
+				"uri": "/project-deployer/deployments/{deploymentId}/actions/update",
+				"docAnchor": "#project-deployer-deployments-post-1",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.startUpdate"
+				],
+				"cli": [
+					"dss project-deployer deploy"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Published projects",
+				"name": "List projects",
+				"method": "GET",
+				"uri": "/project-deployer/projects",
+				"docAnchor": "#project-deployer-published-projects-get",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.listProjects"
+				],
+				"cli": [
+					"dss project-deployer list-projects"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Published projects",
+				"name": "Get project",
+				"method": "GET",
+				"uri": "/project-deployer/projects/{projectKey}",
+				"docAnchor": "#project-deployer-published-projects-get-1",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.getProjectStatus"
+				],
+				"cli": [
+					"dss project-deployer project-status"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Published projects",
+				"name": "Create project",
+				"method": "POST",
+				"uri": "/project-deployer/projects",
+				"docAnchor": "#project-deployer-published-projects-post",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.createProject"
+				],
+				"cli": [
+					"dss project-deployer create-project"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Published projects",
+				"name": "Delete project",
+				"method": "DELETE",
+				"uri": "/project-deployer/projects/{projectKey}",
+				"docAnchor": "#project-deployer-published-projects-delete",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Published projects",
+				"name": "Get project settings",
+				"method": "GET",
+				"uri": "/project-deployer/projects/settings",
+				"docAnchor": "#project-deployer-published-projects-get-2",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Published projects",
+				"name": "Save project settings",
+				"method": "PUT",
+				"uri": "/project-deployer/projects/{projectKey}/settings",
+				"docAnchor": "#project-deployer-published-projects-put",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Published projects",
+				"name": "Upload bundle",
+				"method": "POST",
+				"uri": "/project-deployer/projects/bundles{?projectKey}{?filePart}",
+				"docAnchor": "#project-deployer-published-projects-post-1",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.uploadBundle"
+				],
+				"cli": [
+					"dss project-deployer upload-bundle"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Published projects",
+				"name": "Delete bundle",
+				"method": "DELETE",
+				"uri": "/project-deployer/projects/{projectKey}/bundles/{bundleId}",
+				"docAnchor": "#project-deployer-published-projects-delete-1",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Infrastructures",
+				"name": "List stages",
+				"method": "GET",
+				"uri": "/project-deployer/infras/stages",
+				"docAnchor": "#project-deployer-infrastructures-get",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Infrastructures",
+				"name": "List infras",
+				"method": "GET",
+				"uri": "/project-deployer/infras",
+				"docAnchor": "#project-deployer-infrastructures-get-1",
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.listInfras"
+				],
+				"cli": [
+					"dss project-deployer list-infras"
+				],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Infrastructures",
+				"name": "Get infra",
+				"method": "GET",
+				"uri": "/project-deployer/infras/{infraId}",
+				"docAnchor": "#project-deployer-infrastructures-get-2",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Infrastructures",
+				"name": "Create infra",
+				"method": "POST",
+				"uri": "/project-deployer/projects/infras",
+				"docAnchor": "#project-deployer-infrastructures-post",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Infrastructures",
+				"name": "Get infra settings",
+				"method": "GET",
+				"uri": "/project-deployer/infras/{infraId}/settings",
+				"docAnchor": "#project-deployer-infrastructures-get-3",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Infrastructures",
+				"name": "Save infra settings",
+				"method": "PUT",
+				"uri": "/project-deployer/infras/{infraId}/settings",
+				"docAnchor": "#project-deployer-infrastructures-put",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Project Deployer",
+				"subsection": "Infrastructures",
+				"name": "Delete infra",
+				"method": "DELETE",
+				"uri": "/project-deployer/infras/{infraId}",
+				"docAnchor": "#project-deployer-infrastructures-delete",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			}
+		],
+		"Wiki": [
+			{
+				"section": "Wiki",
+				"subsection": "Wiki",
+				"name": "Get wiki",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/wiki/",
+				"docAnchor": "#wiki-wiki-get",
+				"status": "implemented",
+				"sdk": [
+					"WikiResource.list",
+					"WikiResource.settings"
+				],
+				"cli": [
+					"dss wiki create",
+					"dss wiki list",
+					"dss wiki settings"
+				],
+				"note": null
+			},
+			{
+				"section": "Wiki",
+				"subsection": "Wiki",
+				"name": "Update wiki",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/wiki/",
+				"docAnchor": "#wiki-wiki-put",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Wiki",
+				"subsection": "Wiki",
+				"name": "Create article",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/wiki/",
+				"docAnchor": "#wiki-wiki-post",
+				"status": "implemented",
+				"sdk": [
+					"WikiResource.create"
+				],
+				"cli": [
+					"dss wiki create"
+				],
+				"note": null
+			},
+			{
+				"section": "Wiki",
+				"subsection": "Article",
+				"name": "Get article",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/wiki/{articleId}",
+				"docAnchor": "#wiki-article-get",
+				"status": "implemented",
+				"sdk": [
+					"WikiResource.delete",
+					"WikiResource.get",
+					"WikiResource.update"
+				],
+				"cli": [
+					"dss wiki delete",
+					"dss wiki get",
+					"dss wiki update"
+				],
+				"note": null
+			},
+			{
+				"section": "Wiki",
+				"subsection": "Article",
+				"name": "Update article",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/wiki/{articleId}",
+				"docAnchor": "#wiki-article-put",
+				"status": "implemented",
+				"sdk": [
+					"WikiResource.update"
+				],
+				"cli": [
+					"dss wiki update"
+				],
+				"note": null
+			}
+		],
+		"Discussions": [
+			{
+				"section": "Discussions",
+				"subsection": "Discussions",
+				"name": "Get discussions",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/discussions/{objectType}/{objectId}/",
+				"docAnchor": "#discussions-discussions-get",
+				"status": "implemented",
+				"sdk": [
+					"DiscussionsResource.list"
+				],
+				"cli": [
+					"dss discussion list"
+				],
+				"note": null
+			},
+			{
+				"section": "Discussions",
+				"subsection": "Discussions",
+				"name": "Create discussion",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/discussions/{objectType}/{objectId}/",
+				"docAnchor": "#discussions-discussions-post",
+				"status": "implemented",
+				"sdk": [
+					"DiscussionsResource.create"
+				],
+				"cli": [
+					"dss discussion create"
+				],
+				"note": null
+			},
+			{
+				"section": "Discussions",
+				"subsection": "Discussion",
+				"name": "Get discussion",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/discussions/{objectType}/{objectId}/{discussionId}",
+				"docAnchor": "#discussions-discussion-get",
+				"status": "implemented",
+				"sdk": [
+					"DiscussionsResource.get"
+				],
+				"cli": [
+					"dss discussion get"
+				],
+				"note": null
+			},
+			{
+				"section": "Discussions",
+				"subsection": "Discussion",
+				"name": "Update discussion",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/discussions/{objectType}/{objectId}/{discussionId}",
+				"docAnchor": "#discussions-discussion-put",
+				"status": "not-implemented",
+				"sdk": [],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Discussions",
+				"subsection": "Discussion replies",
+				"name": "Reply",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/discussions/{objectType}/{objectId}/{discussionId}/replies/",
+				"docAnchor": "#discussions-discussion-replies-post",
+				"status": "implemented",
+				"sdk": [
+					"DiscussionsResource.reply"
+				],
+				"cli": [
+					"dss discussion reply"
+				],
+				"note": null
+			}
+		],
+		"Dashboards": [
+			{
+				"section": "Dashboards",
+				"subsection": "Dashboards",
+				"name": "List Dashboards",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/dashboards/",
+				"docAnchor": "#dashboards-dashboards-get",
+				"status": "implemented",
+				"sdk": [
+					"DashboardsResource.list"
+				],
+				"cli": [
+					"dss dashboard create",
+					"dss dashboard list"
+				],
+				"note": null
+			},
+			{
+				"section": "Dashboards",
+				"subsection": "Dashboards",
+				"name": "Create Dashboard",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/dashboards/",
+				"docAnchor": "#dashboards-dashboards-post",
+				"status": "implemented",
+				"sdk": [
+					"DashboardsResource.create"
+				],
+				"cli": [
+					"dss dashboard create"
+				],
+				"note": null
+			},
+			{
+				"section": "Dashboards",
+				"subsection": "Dashboard",
+				"name": "Get Dashboard",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/dashboards/{dashboardId}",
+				"docAnchor": "#dashboards-dashboard-get",
+				"status": "implemented",
+				"sdk": [
+					"DashboardsResource.get",
+					"DashboardsResource.update"
+				],
+				"cli": [
+					"dss dashboard delete",
+					"dss dashboard get",
+					"dss dashboard update"
+				],
+				"note": null
+			},
+			{
+				"section": "Dashboards",
+				"subsection": "Dashboard",
+				"name": "Update the Dashboard",
+				"method": "PUT",
+				"uri": "/projects/{projectKey}/dashboards/{dashboardId}",
+				"docAnchor": "#dashboards-dashboard-put",
+				"status": "implemented",
+				"sdk": [
+					"DashboardsResource.update"
+				],
+				"cli": [
+					"dss dashboard update"
+				],
+				"note": null
+			},
+			{
+				"section": "Dashboards",
+				"subsection": "Dashboard",
+				"name": "Delete the Dashboard",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/dashboards/{dashboardId}",
+				"docAnchor": "#dashboards-dashboard-delete",
+				"status": "implemented",
+				"sdk": [
+					"DashboardsResource.delete"
+				],
+				"cli": [
+					"dss dashboard delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Dashboards",
+				"subsection": "Dashboard",
+				"name": "Export the dashboard",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/dashboards/{dashboardId}/action/export",
+				"docAnchor": "#dashboards-dashboard-post",
+				"status": "implemented",
+				"sdk": [
+					"DashboardsResource.export"
+				],
+				"cli": [
+					"dss dashboard export"
+				],
+				"note": null
+			}
+		],
+		"Insights": [
+			{
+				"section": "Insights",
+				"subsection": "Insights",
+				"name": "List Insights",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/insights/",
+				"docAnchor": "#insights-insights-get",
+				"status": "implemented",
+				"sdk": [
+					"InsightsResource.list"
+				],
+				"cli": [
+					"dss insight create",
+					"dss insight list"
+				],
+				"note": null
+			},
+			{
+				"section": "Insights",
+				"subsection": "Insights",
+				"name": "Create Insight",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/insights/",
+				"docAnchor": "#insights-insights-post",
+				"status": "implemented",
+				"sdk": [
+					"InsightsResource.create"
+				],
+				"cli": [
+					"dss insight create"
+				],
+				"note": null
+			},
+			{
+				"section": "Insights",
+				"subsection": "Insight",
+				"name": "Get Insight",
+				"method": "GET",
+				"uri": "/projects/{projectKey}/insights/{insightId}",
+				"docAnchor": "#insights-insight-get",
+				"status": "implemented",
+				"sdk": [
+					"InsightsResource.get"
+				],
+				"cli": [
+					"dss insight delete",
+					"dss insight get",
+					"dss insight update"
+				],
+				"note": null
+			},
+			{
+				"section": "Insights",
+				"subsection": "Insight",
+				"name": "Update the Insight",
+				"method": "POST",
+				"uri": "/projects/{projectKey}/insights/{insightId}",
+				"docAnchor": "#insights-insight-post",
+				"status": "implemented",
+				"sdk": [
+					"InsightsResource.update"
+				],
+				"cli": [
+					"dss insight update"
+				],
+				"note": null
+			},
+			{
+				"section": "Insights",
+				"subsection": "Insight",
+				"name": "Delete the Insight",
+				"method": "DELETE",
+				"uri": "/projects/{projectKey}/insights/{insightId}",
+				"docAnchor": "#insights-insight-delete",
+				"status": "implemented",
+				"sdk": [
+					"InsightsResource.delete"
+				],
+				"cli": [
+					"dss insight delete"
+				],
+				"note": null
+			}
+		],
+		"SQL queries": [
+			{
+				"section": "SQL queries",
+				"subsection": "SQL queries",
+				"name": "Start a query",
+				"method": "POST",
+				"uri": "/sql/queries",
+				"docAnchor": "#sql-queries-sql-queries-post",
+				"status": "implemented",
+				"sdk": [
+					"SqlResource.query",
+					"SqlResource.startQuery"
+				],
+				"cli": [
+					"dss sql query"
+				],
+				"note": null
+			},
+			{
+				"section": "SQL queries",
+				"subsection": "SQL queries",
+				"name": "Stream the data",
+				"method": "GET",
+				"uri": "/sql/queries/{queryId}/stream{?format}{?formatParams}",
+				"docAnchor": "#sql-queries-sql-queries-get",
+				"status": "implemented",
+				"sdk": [
+					"SqlResource.streamResults"
+				],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "SQL queries",
+				"subsection": "SQL queries",
+				"name": "Verify a query",
+				"method": "GET",
+				"uri": "/sql/queries/{queryId}/finish-streaming",
+				"docAnchor": "#sql-queries-sql-queries-get-1",
+				"status": "implemented",
+				"sdk": [
+					"SqlResource.finishStreaming"
+				],
+				"cli": [],
+				"note": null
+			}
+		],
+		"Connections": [
+			{
+				"section": "Connections",
+				"subsection": "Connections",
+				"name": "List connections",
+				"method": "GET",
+				"uri": "/admin/connections",
+				"docAnchor": "#connections-connections-get",
+				"status": "implemented",
+				"sdk": [
+					"ConnectionsResource.adminList"
+				],
+				"cli": [],
+				"note": null
+			},
+			{
+				"section": "Connections",
+				"subsection": "Connections",
+				"name": "Create connection",
+				"method": "POST",
+				"uri": "/admin/connections",
+				"docAnchor": "#connections-connections-post",
+				"status": "implemented",
+				"sdk": [
+					"ConnectionsResource.adminCreate"
+				],
+				"cli": [
+					"dss connection create"
+				],
+				"note": null
+			},
+			{
+				"section": "Connections",
+				"subsection": "Connection",
+				"name": "Get connection",
+				"method": "GET",
+				"uri": "/admin/connections/{connectionName}",
+				"docAnchor": "#connections-connection-get",
+				"status": "implemented",
+				"sdk": [
+					"ConnectionsResource.adminGet"
+				],
+				"cli": [
+					"dss connection delete",
+					"dss connection get",
+					"dss connection update"
+				],
+				"note": "Config read stays on the admin path per docs. TEST-ROUTE DRIFT (documented): the official REST page has no connection-test route (the GET /admin/connections/{connectionName} entries are ambiguous); the official Python client (dataikuapi/dss/connection.py, DSSConnection.test, master) uses GET /public/api/connections/{name}/test — connections-admin uses the Python-verified /test route for testing, and the admin path for config read."
+			},
+			{
+				"section": "Connections",
+				"subsection": "Connection",
+				"name": "Update connection",
+				"method": "PUT",
+				"uri": "/admin/connections/{connectionName}",
+				"docAnchor": "#connections-connection-put",
+				"status": "implemented",
+				"sdk": [
+					"ConnectionsResource.adminUpdate"
+				],
+				"cli": [
+					"dss connection update"
+				],
+				"note": null
+			},
+			{
+				"section": "Connections",
+				"subsection": "Connection",
+				"name": "Delete connection",
+				"method": "DELETE",
+				"uri": "/admin/connections/{connectionName}",
+				"docAnchor": "#connections-connection-delete",
+				"status": "implemented",
+				"sdk": [
+					"ConnectionsResource.adminDelete"
+				],
+				"cli": [
+					"dss connection delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Connections",
+				"subsection": "Connection",
+				"name": "Test connection",
+				"method": "GET",
+				"uri": "/admin/connections/{connectionName}",
+				"docAnchor": "#connections-connection-get-1",
+				"status": "implemented",
+				"sdk": [
+					"ConnectionsResource.adminGet"
+				],
+				"cli": [
+					"dss connection delete",
+					"dss connection get",
+					"dss connection update"
+				],
+				"note": "Config read stays on the admin path per docs. TEST-ROUTE DRIFT (documented): the official REST page has no connection-test route (the GET /admin/connections/{connectionName} entries are ambiguous); the official Python client (dataikuapi/dss/connection.py, DSSConnection.test, master) uses GET /public/api/connections/{name}/test — connections-admin uses the Python-verified /test route for testing, and the admin path for config read."
+			},
+			{
+				"section": "Connections",
+				"subsection": "Connections names",
+				"name": "List connections names",
+				"method": "GET",
+				"uri": "/connections/get-names/{?type}",
+				"docAnchor": "#connections-connections-names-get",
+				"status": "implemented",
+				"sdk": [
+					"ConnectionsResource.infer",
+					"ConnectionsResource.list"
+				],
+				"cli": [
+					"dss connection infer",
+					"dss connection list"
+				],
+				"note": null
+			}
+		],
+		"Security": [
+			{
+				"section": "Security",
+				"subsection": "Users",
+				"name": "List users",
+				"method": "GET",
+				"uri": "/admin/users/{?connected}",
+				"docAnchor": "#security-users-get",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.list"
+				],
+				"cli": [
+					"dss user list"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "Users",
+				"name": "Create user",
+				"method": "POST",
+				"uri": "/admin/users",
+				"docAnchor": "#security-users-post",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.create"
+				],
+				"cli": [
+					"dss user create"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "User",
+				"name": "Get user",
+				"method": "GET",
+				"uri": "/admin/users/{login}",
+				"docAnchor": "#security-user-get",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.get"
+				],
+				"cli": [
+					"dss user delete",
+					"dss user get",
+					"dss user update"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "User",
+				"name": "Update user",
+				"method": "PUT",
+				"uri": "/admin/users/{login}",
+				"docAnchor": "#security-user-put",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.update"
+				],
+				"cli": [
+					"dss user update"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "User",
+				"name": "Delete user",
+				"method": "DELETE",
+				"uri": "/admin/users/{login}",
+				"docAnchor": "#security-user-delete",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.delete"
+				],
+				"cli": [
+					"dss user delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "User",
+				"name": "Resync a user",
+				"method": "POST",
+				"uri": "/admin/users/{login}/actions/resync",
+				"docAnchor": "#security-user-post",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.resync"
+				],
+				"cli": [
+					"dss user resync"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "User",
+				"name": "Resync multiple users",
+				"method": "POST",
+				"uri": "/admin/users/actions/resync-multi",
+				"docAnchor": "#security-user-post-1",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.resyncMulti"
+				],
+				"cli": [
+					"dss user resync-multi"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "User",
+				"name": "Fetch external users",
+				"method": "GET",
+				"uri": "/admin/users/actions/external-users",
+				"docAnchor": "#security-user-get-1",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.externalUsers"
+				],
+				"cli": [
+					"dss user external-users"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "User",
+				"name": "Fetch external groups",
+				"method": "GET",
+				"uri": "/admin/users/actions/external-groups",
+				"docAnchor": "#security-user-get-2",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.externalGroups"
+				],
+				"cli": [
+					"dss user external-groups"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "User",
+				"name": "Provision users",
+				"method": "POST",
+				"uri": "/admin/users/actions/provision",
+				"docAnchor": "#security-user-post-2",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.provision"
+				],
+				"cli": [
+					"dss user provision"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "User last activity",
+				"name": "Get all users last activity",
+				"method": "GET",
+				"uri": "/admin/users-activity",
+				"docAnchor": "#security-user-last-activity-get",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.activityAll"
+				],
+				"cli": [
+					"dss user activity"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "User last activity",
+				"name": "Get user last activity",
+				"method": "GET",
+				"uri": "/admin/users/{login}/activity",
+				"docAnchor": "#security-user-last-activity-get-1",
+				"status": "implemented",
+				"sdk": [
+					"UsersResource.activity"
+				],
+				"cli": [
+					"dss user activity-get"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "Groups",
+				"name": "List groups",
+				"method": "GET",
+				"uri": "/admin/groups",
+				"docAnchor": "#security-groups-get",
+				"status": "implemented",
+				"sdk": [
+					"GroupsResource.list"
+				],
+				"cli": [
+					"dss group list"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "Groups",
+				"name": "Create group",
+				"method": "POST",
+				"uri": "/admin/groups",
+				"docAnchor": "#security-groups-post",
+				"status": "implemented",
+				"sdk": [
+					"GroupsResource.create"
+				],
+				"cli": [
+					"dss group create"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "Group",
+				"name": "Get group",
+				"method": "GET",
+				"uri": "/admin/groups/{groupname}",
+				"docAnchor": "#security-group-get",
+				"status": "implemented",
+				"sdk": [
+					"GroupsResource.get"
+				],
+				"cli": [
+					"dss group delete",
+					"dss group get",
+					"dss group update"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "Group",
+				"name": "Update group",
+				"method": "PUT",
+				"uri": "/admin/groups/{groupname}",
+				"docAnchor": "#security-group-put",
+				"status": "implemented",
+				"sdk": [
+					"GroupsResource.update"
+				],
+				"cli": [
+					"dss group update"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "Group",
+				"name": "Delete group",
+				"method": "DELETE",
+				"uri": "/admin/groups/{groupname}",
+				"docAnchor": "#security-group-delete",
+				"status": "implemented",
+				"sdk": [
+					"GroupsResource.delete"
+				],
+				"cli": [
+					"dss group delete"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "Code envs",
+				"name": "List code envs",
+				"method": "GET",
+				"uri": "/admin/code-envs",
+				"docAnchor": "#security-code-envs-get",
+				"status": "implemented",
+				"sdk": [
+					"CodeEnvsResource.list"
+				],
+				"cli": [
+					"dss code-env create",
+					"dss code-env list"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "Code env",
+				"name": "Create code env",
+				"method": "POST",
+				"uri": "/admin/code-envs/{envLang}/{envName}",
+				"docAnchor": "#security-code-env-post",
+				"status": "implemented",
+				"sdk": [
+					"CodeEnvsResource.create"
+				],
+				"cli": [
+					"dss code-env create"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "Code env",
+				"name": "Get code env",
+				"method": "GET",
+				"uri": "/admin/code-envs/{envLang}/{envName}",
+				"docAnchor": "#security-code-env-get",
+				"status": "implemented",
+				"sdk": [
+					"CodeEnvsResource.get",
+					"CodeEnvsResource.getDefinition",
+					"CodeEnvsResource.setDefinition",
+					"CodeEnvsResource.setPackages"
+				],
+				"cli": [
+					"dss code-env delete",
+					"dss code-env get",
+					"dss code-env get-definition",
+					"dss code-env set-definition",
+					"dss code-env set-packages"
+				],
+				"note": null
+			},
+			{
+				"section": "Security",
+				"subsection": "Code env",
+				"name": "Update code env",
+				"method": "PUT",
+				"uri": "/admin/code-envs/{envLang}/{envName}",
+				"docAnchor": "#security-code-env-put",
+				"status": "implemented",
+				"sdk": [
+					"CodeEnvsResource.setDefinition"
+				],
+				"cli": [
+					"dss code-env set-definition"
+				],
+				"note": null
+			}
+		]
+	}
+}

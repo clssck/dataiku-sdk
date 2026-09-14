@@ -1050,3 +1050,140 @@ describe("Project delete guards", () => {
 		],);
 	});
 });
+
+describe("Project tags and metadata replacement", () => {
+	it("gets and replaces project tags through the tags endpoints", async () => {
+		const requests: Array<{ method: string; url: string; body?: unknown; }> = [];
+		const tags = { tags: { pg: { color: "#a088bd", }, }, };
+
+		await withServer(async (req, res,) => {
+			const method = req.method ?? "";
+			const url = req.url ?? "";
+			if (method === "GET" && url === "/public/api/projects/TEST/tags") {
+				requests.push({ method, url, },);
+				sendJson(res, tags,);
+				return;
+			}
+			if (method === "PUT" && url === "/public/api/projects/TEST/tags") {
+				requests.push({ method, url, body: JSON.parse(await readBody(req,),), },);
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`${method} ${url}`,);
+		}, async (url,) => {
+			const resource = new ProjectsResource(createClient(url,),);
+			await expect(resource.tags("TEST",),).resolves.toEqual(tags,);
+			await expect(resource.setTags("TEST", tags,),).resolves.toBeUndefined();
+		},);
+
+		expect(requests,).toEqual([
+			{ method: "GET", url: "/public/api/projects/TEST/tags", },
+			{ method: "PUT", url: "/public/api/projects/TEST/tags", body: tags, },
+		],);
+	});
+
+	it("sends metadata replacement verbatim without merge or defaults", async () => {
+		const requests: Array<{ method: string; url: string; body?: unknown; }> = [];
+		const replacement = { label: "Renamed", custom: { kv: { keep: "me", }, }, };
+
+		await withServer(async (req, res,) => {
+			const method = req.method ?? "";
+			const url = req.url ?? "";
+			if (method === "PUT" && url === "/public/api/projects/TEST/metadata") {
+				requests.push({ method, url, body: JSON.parse(await readBody(req,),), },);
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`${method} ${url}`,);
+		}, async (url,) => {
+			const resource = new ProjectsResource(createClient(url,),);
+			await expect(resource.setMetadata("TEST", replacement,),).resolves.toBeUndefined();
+		},);
+
+		expect(requests,).toEqual([
+			{ method: "PUT", url: "/public/api/projects/TEST/metadata", body: replacement, },
+		],);
+	});
+
+	it("round-trips tags through the CLI; dry-run validates without any request", async () => {
+		const requests: Array<{ method: string; url: string; body?: unknown; }> = [];
+		const tags = { tags: { pg: { color: "#a088bd", }, }, };
+		const next = { tags: { pg: { color: "#28aadd", }, }, };
+
+		await withServer(async (req, res,) => {
+			const method = req.method ?? "";
+			const url = req.url ?? "";
+			if (method === "GET" && url === "/public/api/projects/TEST/tags") {
+				requests.push({ method, url, },);
+				sendJson(res, tags,);
+				return;
+			}
+			if (method === "PUT" && url === "/public/api/projects/TEST/tags") {
+				requests.push({ method, url, body: JSON.parse(await readBody(req,),), },);
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`${method} ${url}`,);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(
+				projectCommands["tags-get"].handler(client, [], { "project-key": "TEST", },),
+			).resolves.toEqual(tags,);
+			await expect(
+				projectCommands["tags-set"].handler(client, [], {
+					"project-key": "TEST",
+					data: JSON.stringify(next,),
+				},),
+			).resolves.toEqual({ updated: true, },);
+			await expect(
+				projectCommands["tags-set"].handler(client, [], {
+					"project-key": "TEST",
+					"dry-run": true,
+					data: JSON.stringify(next,),
+				},),
+			).resolves.toEqual({
+				dryRun: true,
+				action: "tags-set",
+				resource: "project",
+				next: next,
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			{ method: "GET", url: "/public/api/projects/TEST/tags", },
+			{ method: "PUT", url: "/public/api/projects/TEST/tags", body: next, },
+		],);
+	});
+
+	it("metadata-set dry-run validates the payload with zero requests", async () => {
+		const requests: Array<{ method: string; url: string; }> = [];
+
+		await withServer((req, res,) => {
+			requests.push({ method: req.method ?? "", url: req.url ?? "", },);
+			res.statusCode = 500;
+			res.end("dry-run must not contact DSS",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(
+				projectCommands["metadata-set"].handler(client, [], {
+					"project-key": "TEST",
+					"dry-run": true,
+					data: JSON.stringify({ label: "Renamed", },),
+				},),
+			).resolves.toEqual({
+				dryRun: true,
+				action: "metadata-set",
+				resource: "project",
+				next: { label: "Renamed", },
+			},);
+		},);
+
+		expect(requests,).toEqual([],);
+	});
+});

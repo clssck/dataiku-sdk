@@ -1,7 +1,8 @@
 {
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
-	"plugins": ["typescript", "import", "unicorn"],
+	"plugins": ["typescript", "import", "unicorn", "oxc"],
 	"ignorePatterns": ["dist/"],
+	"jsPlugins": [{ "name": "dss", "specifier": "./tools/oxlint/index.ts" }],
 	"categories": {
 		"correctness": "error",
 		"suspicious": "warn",
@@ -10,6 +11,11 @@
 		"perf": "warn"
 	},
 	"rules": {
+		"oxc/no-map-spread": "off",
+		"oxc/no-accumulating-spread": "error",
+		"dss/no-reduce-accumulator-copy": "error",
+		"dss/no-chained-type-assertions": "error",
+		"dss/no-widen-then-assert": "error",
 		"no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
 		"no-var": "error",
 		"prefer-const": "error",

@@ -10,6 +10,7 @@ import {
 	normalizeLineEndings,
 	num,
 	recipeInputDatasetsFromFlags,
+	requiredJsonInput,
 	requiredStringFlag,
 	rewritePairsFromFlags,
 	sha256Hex,
@@ -110,6 +111,47 @@ export const recipeCommands: Record<string, CommandMeta> = {
 		usage: "dss recipe list [--project-key KEY]",
 		description: "List all recipes in a project.",
 		examples: ["dss recipe list",],
+	},
+	metadata: {
+		handler: (c, a, f,) => {
+			requireArgs(a, 1, "dss recipe metadata <name>",);
+			return c.recipes.metadata(a[0], {
+				projectKey: f["project-key"] as string | undefined,
+			},);
+		},
+		usage: "dss recipe metadata <name> [--project-key KEY]",
+		description: "Get recipe metadata (label, description, tags, custom fields).",
+		examples: ["dss recipe metadata compute_orders",],
+	},
+	"metadata-set": {
+		handler: async (c, a, f,) => {
+			const usage =
+				"dss recipe metadata-set <name> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]";
+			requireArgs(a, 1, usage,);
+			const metadata = requiredJsonInput(
+				f,
+				"--data, --data-file, or --stdin is required (full metadata object).",
+			);
+			const pk = f["project-key"] as string | undefined;
+			if (executionMode(f,).dryRun) {
+				return {
+					dryRun: true,
+					action: "metadata-set",
+					resource: "recipe",
+					name: a[0],
+					next: metadata,
+				};
+			}
+			await c.recipes.setMetadata(a[0], metadata, { projectKey: pk, },);
+			return { updated: a[0], resource: "recipe", };
+		},
+		usage:
+			"dss recipe metadata-set <name> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
+		description:
+			"Replace recipe metadata with a full object obtained from a previous metadata GET. Fields absent from the payload are removed.",
+		examples: [
+			'dss recipe metadata-set compute_orders --data \'{"label":"Orders"}\' --dry-run',
+		],
 	},
 	get: {
 		handler: (c, a, f,) => {

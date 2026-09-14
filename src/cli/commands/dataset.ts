@@ -384,48 +384,43 @@ export const datasetCommands: Record<string, CommandMeta> = {
 		description: "Get dataset-level metadata.",
 		examples: ["dss dataset metadata orders",],
 	},
-	download: {
+	"metadata-set": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset download <name>",);
-			const result = await c.datasets.download(a[0], {
-				outputPath: f["output"] as string | undefined,
-				projectKey: f["project-key"] as string | undefined,
-				limit: num(f["limit"], "--limit",),
-				rawData: f["raw-data"] === true,
-			},);
-			if (result.truncated) {
-				enqueueCliWarning({
-					code: "dataset_download_truncated",
-					message:
-						`Download of '${a[0]}' stopped at the ${result.limit}-row cap; the dataset has more rows. `
-						+ "Re-run with --limit N for more, or read inside a recipe (get_dataframe) for the full data.",
-					dataset: a[0],
-					rows: result.rows,
-					limit: result.limit,
-					path: result.path,
-				},);
+			const usage =
+				"dss dataset metadata-set <name> (--data JSON | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]";
+			requireArgs(a, 1, usage,);
+			// Validated identically for live, --plan, and --dry-run: the JSON
+			// input replaces the server metadata object verbatim (faithful PUT;
+			// no client-side merge).
+			const metadata = jsonInput(f,);
+			if (metadata === undefined) {
+				throw new UsageError(
+					`--data, --data-file, or --stdin is required. Usage: ${usage}`,
+				);
 			}
-			if (!f["output"]) {
-				enqueueCliWarning({
-					code: "dataset_download_default_location",
-					message:
-						`No --output was given, so '${
-							a[0]
-						}' was written to '${result.path}' in the current directory. `
-						+ "Pass --output PATH to control the destination and avoid writing into your working tree.",
-					dataset: a[0],
-					path: result.path,
-				},);
+			const pk = f["project-key"] as string | undefined;
+			if (executionMode(f,).dryRun) {
+				// Zero HTTP: the replacement JSON is validated and echoed as-is;
+				// current server state is intentionally not fetched (faithful
+				// replace means the PUT body is exactly this object).
+				return {
+					dryRun: true,
+					action: "metadata-set",
+					resource: "dataset",
+					name: a[0],
+					next: metadata,
+				};
 			}
-			return result;
+			const updated = await c.datasets.updateMetadata(a[0], metadata, pk,);
+			return { updated: a[0], resource: "dataset", metadata: updated, };
 		},
-		usage: "dss dataset download <name> [--output PATH] [--limit N] [--raw-data] [--project-key KEY]",
+		usage:
+			"dss dataset metadata-set <name> (--data JSON | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description:
-			"Download up to --limit rows (default 100k) as CSV and return { path, rows, truncated, limit }. Formula-like cells are neutralized for spreadsheets; --raw-data preserves exact bytes. Warnings report truncation and the default output path.",
+			"Replace dataset-level metadata with the given JSON object (faithful PUT: GET, edit, PUT full object; no merge).",
 		examples: [
-			"dss dataset download orders",
-			"dss dataset download orders --output ./data/",
-			"dss dataset download orders --raw-data",
+			`dss dataset metadata-set orders --data '{"label":"Orders","tags":["prod"]}' --dry-run`,
+			'echo \'{"label":"Orders"}\' | dss dataset metadata-set orders --stdin',
 		],
 	},
 	create: {
@@ -484,6 +479,156 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			"dss dataset create --name uploads --type UploadedFiles",
 			"dss dataset create --name orders --connection filesystem --type Filesystem",
 			"dss dataset create --name orders --connection filesystem --type Filesystem --zone Experiments --dry-run",
+		],
+	},
+	"create-managed": {
+		handler: async (c, _a, f,) => {
+			const usage =
+				"dss dataset create-managed --name NAME --connection CONN [--type-option-id ID] [--format-option-id ID] [--copy-partitioning-from REF] [--partitioning-folder] [--dry-run] [--project-key KEY]";
+			const name = f["name"] as string | undefined;
+			if (!name || name.trim() === "") {
+				throw new UsageError(`--name is required. Usage: ${usage}`,);
+			}
+			const connection = f["connection"] as string | undefined;
+			if (!connection || connection.trim() === "") {
+				throw new UsageError(`--connection is required. Usage: ${usage}`,);
+			}
+			const pk = f["project-key"] as string | undefined;
+			// Server-derived settings only: no fabricated defaults are merged in.
+			const payload: Record<string, unknown> = {
+				name,
+				connection,
+				...(typeof f["type-option-id"] === "string" ? { typeOptionId: f["type-option-id"], } : {}),
+				...(typeof f["format-option-id"] === "string"
+					? { formatOptionId: f["format-option-id"], }
+					: {}),
+				...(typeof f["copy-partitioning-from"] === "string"
+					? {
+						copyPartitioningFrom: {
+							ref: f["copy-partitioning-from"],
+							...(f["partitioning-folder"] === true ? { type: "FOLDER" as const, } : {}),
+						},
+					}
+					: {}),
+			};
+			if (executionMode(f,).dryRun) {
+				return { dryRun: true, action: "create-managed", resource: "dataset", ...payload, };
+			}
+			const created = await c.datasets.createManaged({
+				name,
+				connection,
+				...(typeof f["type-option-id"] === "string" ? { typeOptionId: f["type-option-id"], } : {}),
+				...(typeof f["format-option-id"] === "string"
+					? { formatOptionId: f["format-option-id"], }
+					: {}),
+				...(typeof f["copy-partitioning-from"] === "string"
+					? {
+						copyPartitioningFrom: {
+							ref: f["copy-partitioning-from"],
+							...(f["partitioning-folder"] === true ? { type: "FOLDER" as const, } : {}),
+						},
+					}
+					: {}),
+			}, pk,);
+			return {
+				created: created.datasetName,
+				resource: "dataset",
+				managed: true,
+				projectKey: created.projectKey,
+				creationSettings: created.creationSettings,
+			};
+		},
+		usage:
+			"dss dataset create-managed --name NAME --connection CONN [--type-option-id ID] [--format-option-id ID] [--copy-partitioning-from REF] [--partitioning-folder] [--dry-run] [--project-key KEY]",
+		description:
+			"Create a managed dataset via the dedicated endpoint: DSS derives storage/format details; you pick name, connection, and optional type/format/partitioning options.",
+		examples: [
+			"dss dataset create-managed --name orders_copy --connection filesystem_managed",
+			"dss dataset create-managed --name events_parquet --connection s3_conn --format-option-id PARQUET_HIVE --dry-run",
+			"dss dataset create-managed --name partitioned --connection s3_conn --copy-partitioning-from raw_events",
+		],
+	},
+	info: {
+		handler: (c, a, f,) => {
+			requireArgs(a, 1, "dss dataset info <name>",);
+			return c.datasets.info(a[0], f["project-key"] as string | undefined,);
+		},
+		usage: "dss dataset info <name> [--project-key KEY]",
+		description:
+			"Get the full info object for a dataset (type, parameters, last build information, schema, etc.).",
+		examples: ["dss dataset info orders", "dss dataset info orders --project-key MYPROJ",],
+	},
+	"column-lineage": {
+		handler: (c, a, f,) => {
+			const usage =
+				"dss dataset column-lineage <name> <column> [--max-dataset-count N] [--project-key KEY]";
+			requireArgs(a, 2, usage,);
+			const maxDatasetCount = num(f["max-dataset-count"], "--max-dataset-count",);
+			if (
+				maxDatasetCount !== undefined
+				&& (!Number.isSafeInteger(maxDatasetCount,) || maxDatasetCount <= 0)
+			) {
+				throw new UsageError(
+					`--max-dataset-count must be a positive integer (got "${String(f["max-dataset-count"],)}"). `
+						+ `Usage: ${usage}`,
+					"validation_failed",
+				);
+			}
+			return c.datasets.getColumnLineage(a[0], a[1], {
+				maxDatasetCount,
+				projectKey: f["project-key"] as string | undefined,
+			},);
+		},
+		usage: "dss dataset column-lineage <name> <column> [--max-dataset-count N] [--project-key KEY]",
+		description:
+			"Get the full column lineage (auto-computed and manual) of a column; includes local and foreign project relations.",
+		examples: [
+			"dss dataset column-lineage orders customer_id",
+			"dss dataset column-lineage orders customer_id --max-dataset-count 2000",
+		],
+	},
+	download: {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 1, "dss dataset download <name>",);
+			const result = await c.datasets.download(a[0], {
+				outputPath: f["output"] as string | undefined,
+				projectKey: f["project-key"] as string | undefined,
+				limit: num(f["limit"], "--limit",),
+				rawData: f["raw-data"] === true,
+			},);
+			if (result.truncated) {
+				enqueueCliWarning({
+					code: "dataset_download_truncated",
+					message:
+						`Download of '${a[0]}' stopped at the ${result.limit}-row cap; the dataset has more rows. `
+						+ "Re-run with --limit N for more, or read inside a recipe (get_dataframe) for the full data.",
+					dataset: a[0],
+					rows: result.rows,
+					limit: result.limit,
+					path: result.path,
+				},);
+			}
+			if (!f["output"]) {
+				enqueueCliWarning({
+					code: "dataset_download_default_location",
+					message:
+						`No --output was given, so '${
+							a[0]
+						}' was written to '${result.path}' in the current directory. `
+						+ "Pass --output PATH to control the destination and avoid writing into your working tree.",
+					dataset: a[0],
+					path: result.path,
+				},);
+			}
+			return result;
+		},
+		usage: "dss dataset download <name> [--output PATH] [--limit N] [--raw-data] [--project-key KEY]",
+		description:
+			"Download up to --limit rows (default 100k) as CSV and return { path, rows, truncated, limit }. Formula-like cells are neutralized for spreadsheets; --raw-data preserves exact bytes. Warnings report truncation and the default output path.",
+		examples: [
+			"dss dataset download orders",
+			"dss dataset download orders --output ./data/",
+			"dss dataset download orders --raw-data",
 		],
 	},
 	clone: {
@@ -561,7 +706,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
 				const current = await c.datasets.get(a[0], pk,);
-				const next = deepMerge(current as unknown as Record<string, unknown>, data,);
+				const next = deepMerge(current, data,);
 				return { dryRun: true, action: "update", resource: "dataset", name: a[0], current, next, };
 			}
 			await c.datasets.update(a[0], data, pk,);

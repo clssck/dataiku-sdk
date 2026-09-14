@@ -250,7 +250,8 @@ describe("CLI command behavioral smoke coverage", () => {
 				}
 				if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
 					recipeCreateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
-					sendJson(res, { ok: true, },);
+					// Documented creation receipt: the final unique recipe name.
+					sendJson(res, { name: "compute_orders", },);
 					return;
 				}
 				if (

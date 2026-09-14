@@ -23,19 +23,26 @@ import { CodeEnvsResource, } from "./resources/code-envs.js";
 import { ConnectionsResource, } from "./resources/connections.js";
 import { ContinuousActivitiesResource, } from "./resources/continuous-activities.js";
 import { DashboardsResource, } from "./resources/dashboards.js";
+import { DataCollectionsResource, } from "./resources/data-collections.js";
 import { DataQualityResource, } from "./resources/data-quality.js";
 import { DatasetsResource, } from "./resources/datasets.js";
 import { DiscussionsResource, } from "./resources/discussions.js";
 import { FlowZonesResource, } from "./resources/flow-zones.js";
 import { FoldersResource, } from "./resources/folders.js";
 import { FuturesResource, } from "./resources/futures.js";
+import { GroupsResource, } from "./resources/groups.js";
 import { InsightsResource, } from "./resources/insights.js";
 import { JobsResource, } from "./resources/jobs.js";
+import { KnowledgeBanksResource, } from "./resources/knowledge-banks.js";
+import { LlmsResource, } from "./resources/llms.js";
+import { MacrosResource, } from "./resources/macros.js";
 import { MeaningsResource, } from "./resources/meanings.js";
 import { MetricsResource, } from "./resources/metrics.js";
 import { MlTasksResource, } from "./resources/ml-tasks.js";
 import { ModelEvaluationStoresResource, } from "./resources/model-evaluation-stores.js";
 import { NotebooksResource, } from "./resources/notebooks.js";
+import { PluginsResource, } from "./resources/plugins.js";
+import { ProjectFoldersResource, } from "./resources/project-folders.js";
 import { ProjectGitResource, } from "./resources/project-git.js";
 import { ProjectLibraryResource, } from "./resources/project-library.js";
 import { ProjectsResource, } from "./resources/projects.js";
@@ -45,6 +52,7 @@ import { ScenariosResource, } from "./resources/scenarios.js";
 import { SqlResource, } from "./resources/sql.js";
 import { StatisticsResource, } from "./resources/statistics.js";
 import { StreamingEndpointsResource, } from "./resources/streaming-endpoints.js";
+import { UsersResource, } from "./resources/users.js";
 import { VariablesResource, } from "./resources/variables.js";
 import { WebappsResource, } from "./resources/webapps.js";
 import { WikiResource, } from "./resources/wiki.js";
@@ -67,6 +75,31 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
  */
 const DEFAULT_MAX_BUFFERED_BODY_BYTES = 50 * 1024 * 1024;
 const RESPONSE_TOO_LARGE_STATUS_TEXT = "Response Too Large";
+
+/** One part of a {@link DataikuClient.uploadForm} multipart/form-data body. */
+export interface UploadFormPart {
+	/** Form field name. */
+	name: string;
+	/** Text field value. Mutually exclusive with `blob`/`fileName` file parts. */
+	value?: string;
+	/** File content. Omit (or null) together with `fileName` for a zero-byte file part. */
+	blob?: Blob | null;
+	/** Filename for file parts. */
+	fileName?: string;
+}
+
+/** Per-call overrides for {@link DataikuClient.get}. */
+export interface DataikuGetOptions {
+	/**
+	 * TOTAL duration budget in milliseconds for this call, measured from call
+	 * start: it bounds every retry attempt's fetch, the backoff sleeps between
+	 * attempts, and the response body read. When the budget is exhausted the
+	 * request is aborted and a timeout DataikuError is thrown. The client-level
+	 * requestTimeoutMs still caps each attempt and buffered body read; this
+	 * budget may shorten those limits but never extends them.
+	 */
+	timeoutMs?: number;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Config                                                             */
@@ -284,6 +317,21 @@ function buildFetchTlsOptions(config: DataikuClientConfig,): FetchTlsOptions | u
 }
 
 /**
+ * Resolve the total-budget request deadline timestamp for a per-call GET
+ * budget: `Date.now() + timeoutMs`. Undefined when no budget is supplied, in
+ * which case the client-level per-attempt timeout applies unchanged.
+ */
+function resolveGetDeadlineAt(
+	options?: DataikuGetOptions,
+): number | undefined {
+	const timeoutMs = options?.timeoutMs;
+	if (timeoutMs === undefined) return undefined;
+	if (!Number.isInteger(timeoutMs,) || timeoutMs < 1) {
+		throw new ClientValidationError("timeoutMs must be a positive integer.",);
+	}
+	return Date.now() + timeoutMs;
+}
+/**
  * True when the URL embeds userinfo (`https://user:password@host`). Embedded
  * credentials are rejected up front so they can never reach the canonical base
  * URL that gets persisted in recorded artifacts (cleanup ledgers, permission
@@ -352,6 +400,14 @@ export class DataikuClient {
 	private mlTasksResource?: MlTasksResource;
 	private savedModelsResource?: SavedModelsResource;
 	private modelEvaluationStoresResource?: ModelEvaluationStoresResource;
+	private projectFoldersResource?: ProjectFoldersResource;
+	private dataCollectionsResource?: DataCollectionsResource;
+	private llmsResource?: LlmsResource;
+	private knowledgeBanksResource?: KnowledgeBanksResource;
+	private macrosResource?: MacrosResource;
+	private pluginsResource?: PluginsResource;
+	private usersResource?: UsersResource;
+	private groupsResource?: GroupsResource;
 
 	get projects(): ProjectsResource {
 		return (this.projectsResource ??= new ProjectsResource(this,));
@@ -461,6 +517,30 @@ export class DataikuClient {
 	get modelEvaluationStores(): ModelEvaluationStoresResource {
 		return (this.modelEvaluationStoresResource ??= new ModelEvaluationStoresResource(this,));
 	}
+	get projectFolders(): ProjectFoldersResource {
+		return (this.projectFoldersResource ??= new ProjectFoldersResource(this,));
+	}
+	get dataCollections(): DataCollectionsResource {
+		return (this.dataCollectionsResource ??= new DataCollectionsResource(this,));
+	}
+	get llms(): LlmsResource {
+		return (this.llmsResource ??= new LlmsResource(this,));
+	}
+	get knowledgeBanks(): KnowledgeBanksResource {
+		return (this.knowledgeBanksResource ??= new KnowledgeBanksResource(this,));
+	}
+	get macros(): MacrosResource {
+		return (this.macrosResource ??= new MacrosResource(this,));
+	}
+	get plugins(): PluginsResource {
+		return (this.pluginsResource ??= new PluginsResource(this,));
+	}
+	get users(): UsersResource {
+		return (this.usersResource ??= new UsersResource(this,));
+	}
+	get groups(): GroupsResource {
+		return (this.groupsResource ??= new GroupsResource(this,));
+	}
 
 	constructor(config?: DataikuClientConfig,) {
 		const envUrl = process.env["DATAIKU_URL"]?.trim();
@@ -529,12 +609,15 @@ export class DataikuClient {
 
 	/* ---- public: HTTP verbs ---- */
 
-	async get<T = unknown,>(path: string,): Promise<T> {
-		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
-			method: "GET",
-			headers: this.getHeaders(),
-		},);
-		return this.parseJsonResponse<T>(res,);
+	async get<T = unknown,>(path: string, options?: DataikuGetOptions,): Promise<T> {
+		const deadlineAt = resolveGetDeadlineAt(options,);
+		const res = await this.fetchWithRetry(
+			`${this.baseUrl}${path}`,
+			{ method: "GET", headers: this.getHeaders(), },
+			undefined,
+			deadlineAt,
+		);
+		return this.parseJsonResponse<T>(res, deadlineAt,);
 	}
 	/**
 	 * GET returning the parsed JSON body plus selected response metadata
@@ -644,6 +727,44 @@ export class DataikuClient {
 		return text;
 	}
 
+	/** Send raw file contents through the shared authenticated transport. */
+	async postRawBody(path: string, body: string | Uint8Array,): Promise<void> {
+		const payload = typeof body === "string"
+			? body
+			: body.buffer instanceof ArrayBuffer
+			? new Uint8Array(body.buffer, body.byteOffset, body.byteLength,)
+			: new Uint8Array(body,);
+		const response = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
+			method: "POST",
+			headers: this.getAnyHeaders(),
+			body: payload,
+		},);
+		await response.text();
+	}
+
+	/** Git endpoints require Basic API-key authentication, unlike the bearer API. */
+	async requestGit(
+		method: string,
+		path: string,
+		body?: unknown,
+		deadlineAt?: number,
+	): Promise<Response> {
+		return this.fetchWithRetry(
+			`${this.baseUrl}${path}`,
+			{
+				method,
+				headers: {
+					Authorization: `Basic ${Buffer.from(`${this.apiKey}:`, "utf8",).toString("base64",)}`,
+					Accept: "application/json",
+					"Content-Type": "application/json",
+				},
+				body: body === undefined ? undefined : JSON.stringify(body,),
+			},
+			undefined,
+			deadlineAt,
+		);
+	}
+
 	async postStream(path: string, body?: unknown,): Promise<Response> {
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "POST",
@@ -675,6 +796,52 @@ export class DataikuClient {
 			headers: this.getHeaders(),
 			body: JSON.stringify(body,),
 		},);
+	}
+
+	/**
+	 * PUT without a request body. A few DSS endpoints (bundle export) reject
+	 * an empty JSON object body with 400 validation, and the official Python
+	 * client sends no body at all for them.
+	 */
+	async putVoidNoBody(path: string,): Promise<void> {
+		await this.fetchWithRetry(`${this.baseUrl}${path}`, {
+			method: "PUT",
+			headers: this.getHeaders(),
+		},);
+	}
+
+	/**
+	 * POST a multipart/form-data body built from explicit parts, with optional
+	 * query parameters appended to the path, returning the parsed JSON body.
+	 *
+	 * A part with `value` becomes a form text field; a part with `blob`
+	 * (or a `fileName` with no blob) becomes a file part — a `fileName` without
+	 * blob yields a zero-byte file part, which some DSS import endpoints
+	 * (e.g. saved-model MLflow version import) require for metadata-only parts.
+	 * The `Content-Type` header is left to the runtime so the multipart
+	 * boundary is set correctly.
+	 */
+	async uploadForm<T = unknown,>(
+		path: string,
+		parts: UploadFormPart[],
+		query?: URLSearchParams,
+	): Promise<T> {
+		const formData = new FormData();
+		for (const part of parts) {
+			if (part.value !== undefined) {
+				formData.append(part.name, part.value,);
+				continue;
+			}
+			const blob = part.blob ?? new Blob([],);
+			formData.append(part.name, blob, part.fileName,);
+		}
+		const suffix = query && [...query.keys(),].length > 0 ? `?${query.toString()}` : "";
+		const res = await this.fetchWithRetry(`${this.baseUrl}${path}${suffix}`, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${this.apiKey}`, },
+			body: formData,
+		},);
+		return this.parseJsonResponse<T>(res,);
 	}
 
 	private async uploadResponse(
@@ -827,8 +994,12 @@ export class DataikuClient {
 		return undefined;
 	}
 
-	private async parseJsonResponse<T,>(res: Response,): Promise<T> {
-		const { text, truncated, } = await this.readBoundedBodyText(res, this.maxResponseBodyBytes,);
+	private async parseJsonResponse<T,>(res: Response, deadlineAt?: number,): Promise<T> {
+		const { text, truncated, } = await this.readBoundedBodyText(
+			res,
+			this.maxResponseBodyBytes,
+			deadlineAt,
+		);
 		if (truncated) throw this.buildResponseTooLargeError(res, this.maxResponseBodyBytes,);
 		// SAFETY: Empty 2xx responses from DSS are surfaced to callers as undefined
 		// cast to T. This keeps existing call sites stable, but callers that rely on
@@ -863,9 +1034,15 @@ export class DataikuClient {
 	private async readBoundedBodyText(
 		res: Response,
 		maxBytes: number,
+		deadlineAt?: number,
 	): Promise<{ text: string; truncated: boolean; }> {
 		const limit = Math.max(0, Math.floor(maxBytes,),);
 		if (!res.body) return { text: "", truncated: false, };
+		// Total-budget mode: the read shares the call's absolute deadline, so
+		// the budget already spent on attempts/backoff is not re-credited here.
+		const bodyTimeoutMs = deadlineAt === undefined
+			? this.requestTimeoutMs
+			: Math.min(this.requestTimeoutMs, Math.max(1, deadlineAt - Date.now(),),);
 
 		const reader = res.body.getReader();
 		const decoder = new TextDecoder();
@@ -900,12 +1077,12 @@ export class DataikuClient {
 
 		try {
 			while (bytesRead < limit) {
-				const remainingMs = this.requestTimeoutMs - (Date.now() - startedAt);
-				if (remainingMs <= 0) throw buildBodyReadTimeoutError(this.requestTimeoutMs,);
+				const remainingMs = bodyTimeoutMs - (Date.now() - startedAt);
+				if (remainingMs <= 0) throw buildBodyReadTimeoutError(bodyTimeoutMs,);
 				const { done, value, } = await readChunkWithDeadline(
 					reader,
 					remainingMs,
-					this.requestTimeoutMs,
+					bodyTimeoutMs,
 				);
 				if (done) break;
 				const room = limit - bytesRead;
@@ -920,12 +1097,12 @@ export class DataikuClient {
 			}
 			if (!truncated && bytesRead >= limit) {
 				// Buffer filled exactly on a chunk boundary; peek whether more data remains.
-				const remainingMs = this.requestTimeoutMs - (Date.now() - startedAt);
-				if (remainingMs <= 0) throw buildBodyReadTimeoutError(this.requestTimeoutMs,);
+				const remainingMs = bodyTimeoutMs - (Date.now() - startedAt);
+				if (remainingMs <= 0) throw buildBodyReadTimeoutError(bodyTimeoutMs,);
 				const { done, } = await readChunkWithDeadline(
 					reader,
 					remainingMs,
-					this.requestTimeoutMs,
+					bodyTimeoutMs,
 				);
 				if (!done) truncated = true;
 			}
@@ -1036,6 +1213,7 @@ export class DataikuClient {
 		url: string,
 		init: RequestInit,
 		retryMaxAttempts?: number,
+		deadlineAt?: number,
 	): Promise<Response> {
 		const method = (init.method ?? "GET").toUpperCase();
 		const retryEnabled = shouldRetryMethod(method,) || retryMaxAttempts !== undefined;
@@ -1049,12 +1227,28 @@ export class DataikuClient {
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 			let timedOut = false;
 			const startedAt = Date.now();
+			// An overall deadline may shorten, but never extend, the attempt cap.
+			const remainingMs = deadlineAt === undefined
+				? undefined
+				: deadlineAt - startedAt;
+			if (remainingMs !== undefined && remainingMs <= 0) {
+				throw new DataikuError(
+					0,
+					"Request Timeout",
+					`Request deadline exceeded after ${
+						attempt - 1
+					} attempt(s) and ${delaysMs.length} backoff delay(s).`,
+					buildRetryMetadata(method, retryEnabled, maxAttempts, attempt, delaysMs, true,),
+				);
+			}
+			const attemptTimeoutMs = remainingMs === undefined
+				? this.requestTimeoutMs
+				: Math.min(remainingMs, this.requestTimeoutMs,);
 			const controller = new AbortController();
 			const timeout = setTimeout(() => {
 				timedOut = true;
 				controller.abort();
-			}, this.requestTimeoutMs,);
-
+			}, attemptTimeoutMs,);
 			this.logTrace({ phase: "request", method, url, attempt, maxAttempts, },);
 
 			try {
@@ -1079,9 +1273,19 @@ export class DataikuClient {
 					const canRetry = retryEnabled && attempt < maxAttempts && isTransientError(res.status, text,);
 					if (canRetry) {
 						const delayMs = computeBackoffDelayMs(attempt,);
-						delaysMs.push(delayMs,);
-						await sleep(delayMs,);
-						continue;
+						// Do not start a retry whose backoff cannot fit in the budget.
+						if (deadlineAt === undefined || Date.now() + delayMs <= deadlineAt) {
+							delaysMs.push(delayMs,);
+							await sleep(delayMs,);
+							continue;
+						}
+						await sleep(Math.max(0, deadlineAt - Date.now(),),);
+						throw new DataikuError(
+							0,
+							"Request Timeout",
+							`Request deadline exceeded before backoff retry ${attempt + 1}.`,
+							buildRetryMetadata(method, retryEnabled, maxAttempts, attempt, delaysMs, true,),
+						);
 					}
 					throw new DataikuError(
 						res.status,
@@ -1097,12 +1301,21 @@ export class DataikuClient {
 				const canRetry = retryEnabled && attempt < maxAttempts;
 				if (canRetry) {
 					const delayMs = computeBackoffDelayMs(attempt,);
-					delaysMs.push(delayMs,);
-					await sleep(delayMs,);
-					continue;
+					if (deadlineAt === undefined || Date.now() + delayMs <= deadlineAt) {
+						delaysMs.push(delayMs,);
+						await sleep(delayMs,);
+						continue;
+					}
+					await sleep(Math.max(0, deadlineAt - Date.now(),),);
+					throw new DataikuError(
+						0,
+						"Request Timeout",
+						`Request deadline exceeded before backoff retry ${attempt + 1}.`,
+						buildRetryMetadata(method, retryEnabled, maxAttempts, attempt, delaysMs, true,),
+					);
 				}
 				const detail = timedOut
-					? `Request timed out after ${this.requestTimeoutMs}ms`
+					? `Request timed out after ${attemptTimeoutMs}ms`
 					: error instanceof Error
 					? error.message
 					: "Unknown transport error";

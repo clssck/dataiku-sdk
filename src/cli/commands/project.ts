@@ -265,12 +265,6 @@ export const projectCommands: Record<string, CommandMeta> = {
 			"Read-only local inspection of a project export archive: member names, sizes, manifest validity, archive issues, and the source project key. Never contacts DSS.",
 		examples: ["dss project inspect-archive ./my_proj.zip",],
 	},
-	"permissions-get": {
-		handler: (c, _a, f,) => c.projects.getPermissions(f["project-key"] as string | undefined,),
-		usage: "dss project permissions-get [--project-key KEY]",
-		description: "Get a project's permissions.",
-		examples: ["dss project permissions-get --project-key MY_PROJ",],
-	},
 	"permissions-set": {
 		handler: async (c, _a, f,) => {
 			const body = requiredJsonInput(
@@ -283,6 +277,71 @@ export const projectCommands: Record<string, CommandMeta> = {
 		usage: "dss project permissions-set (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
 		description: "Replace a project's permissions.",
 		examples: ["dss project permissions-set --data-file perms.json --project-key MY_PROJ",],
+	},
+	"permissions-get": {
+		handler: (c, _a, f,) => c.projects.getPermissions(f["project-key"] as string | undefined,),
+		usage: "dss project permissions-get [--project-key KEY]",
+		description: "Get a project's permissions.",
+		examples: ["dss project permissions-get --project-key MY_PROJ",],
+	},
+	"metadata-set": {
+		handler: async (c, _a, f,) => {
+			const metadata = requiredJsonInput(
+				f,
+				"--data, --data-file, or --stdin is required (full metadata object).",
+			);
+			if (executionMode(f,).dryRun) {
+				return {
+					dryRun: true,
+					action: "metadata-set",
+					resource: "project",
+					next: metadata,
+				};
+			}
+			await c.projects.setMetadata(f["project-key"] as string | undefined, metadata,);
+			return { updated: true, };
+		},
+		usage:
+			"dss project metadata-set (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
+		description:
+			"Replace project metadata with a full object obtained from a previous metadata GET. Fields absent from the payload are removed.",
+		examples: [
+			"dss project metadata-set --data-file metadata.json --project-key MY_PROJ --dry-run",
+		],
+	},
+	"tags-get": {
+		handler: (c, _a, f,) => c.projects.tags(f["project-key"] as string | undefined,),
+		usage: "dss project tags-get [--project-key KEY]",
+		description: "Get project-level tags as a dictionary of tag name to display settings.",
+		examples: ["dss project tags-get", "dss project tags-get --project-key MY_PROJ",],
+	},
+	"tags-set": {
+		handler: async (c, _a, f,) => {
+			const tags = requiredJsonInput(
+				f,
+				"--data, --data-file, or --stdin is required (full tags object).",
+			);
+			if (executionMode(f,).dryRun) {
+				return {
+					dryRun: true,
+					action: "tags-set",
+					resource: "project",
+					next: tags,
+				};
+			}
+			await c.projects.setTags(
+				f["project-key"] as string | undefined,
+				tags as Parameters<typeof c.projects.setTags>[1],
+			);
+			return { updated: true, };
+		},
+		usage:
+			"dss project tags-set (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
+		description:
+			"Replace project tags with a full object obtained from a previous tags GET. Tags absent from the payload are removed.",
+		examples: [
+			'dss project tags-set --data \'{"tags":{"production":{"color":"#28aadd"}}}\' --project-key MY_PROJ --dry-run',
+		],
 	},
 	"settings-get": {
 		handler: (c, _a, f,) => c.projects.getSettings(f["project-key"] as string | undefined,),
@@ -298,7 +357,7 @@ export const projectCommands: Record<string, CommandMeta> = {
 			);
 			const projectKey = f["project-key"] as string | undefined;
 			const current = await c.projects.getSettings(projectKey,);
-			const next = deepMerge(current as unknown as Record<string, unknown>, body,);
+			const next = deepMerge(current, body,);
 			await c.projects.setSettings(projectKey, next,);
 			return { updated: true, };
 		},

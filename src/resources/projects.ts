@@ -5,12 +5,14 @@ import {
 	ProjectDetailsSchema,
 	ProjectMetadataSchema,
 	ProjectSummaryArraySchema,
+	ProjectTagsSchema,
 } from "../schemas.js";
 import type {
 	FlowMapOptions,
 	ProjectDetails,
 	ProjectMetadata,
 	ProjectSummary,
+	ProjectTags,
 } from "../schemas.js";
 import type { AnalyzedFlowMap, FlowMapRendering, } from "../utils/flow-analysis.js";
 import { analyzeFlowMap, flowTopologyFingerprint, renderFlowMap, } from "../utils/flow-analysis.js";
@@ -566,6 +568,41 @@ export class ProjectsResource extends BaseResource {
 		const enc = this.enc(projectKey,);
 		const raw = await this.client.get<unknown>(`/public/api/projects/${enc}/metadata`,);
 		return this.client.safeParse(ProjectMetadataSchema, raw, "projects.metadata",);
+	}
+
+	/**
+	 * Replace project metadata with the supplied full object.
+	 *
+	 * DSS PUT semantics replace the whole metadata object: pass a metadata
+	 * object obtained from {@link metadata}, edit it, and send it back — fields
+	 * absent from the payload are removed from the project.
+	 */
+	async setMetadata(projectKey: string | undefined, metadata: ProjectMetadata,): Promise<void> {
+		await this.client.putVoid(
+			`/public/api/projects/${this.enc(projectKey,)}/metadata`,
+			metadata,
+		);
+	}
+
+	/** Get project-level tags (tag name → {color?}). */
+	async tags(projectKey?: string,): Promise<ProjectTags> {
+		const enc = this.enc(projectKey,);
+		const raw = await this.client.get<unknown>(`/public/api/projects/${enc}/tags`,);
+		return this.client.safeParse(ProjectTagsSchema, raw, "projects.tags",);
+	}
+
+	/**
+	 * Replace project-level tags with the supplied full object.
+	 *
+	 * DSS PUT semantics replace the whole tags dictionary: pass a tags object
+	 * obtained from {@link tags}, edit it, and send it back — tags absent from
+	 * the payload are removed from the project.
+	 */
+	async setTags(projectKey: string | undefined, tags: ProjectTags,): Promise<void> {
+		await this.client.putVoid(
+			`/public/api/projects/${this.enc(projectKey,)}/tags`,
+			tags,
+		);
 	}
 
 	/** Get the raw flow graph for a project. */

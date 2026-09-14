@@ -1,7 +1,9 @@
-import { UsageError, } from "../cli/usage.js";
-import { BaseResource, } from "./base.js";
+import { ClientValidationError, } from "../errors.js";
+import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
+import { BaseResource, requireNonEmpty, } from "./base.js";
 
 const TRAIN_POLL_INTERVAL_MS = 5_000;
+const TRAIN_DEFAULT_TIMEOUT_MS = 120_000;
 
 export type MlTaskType = "PREDICTION" | "CLUSTERING";
 
@@ -50,6 +52,19 @@ export interface MlTaskTrainOptions {
 	sessionDescription?: string;
 	runQueue?: boolean;
 	wait?: boolean;
+	/**
+	 * Deadline in milliseconds for the whole `wait` phase after DSS has
+	 * accepted the training request. Validated before any request is sent:
+	 * an invalid deadline must not start training work on the server.
+	 * `timeoutMs: 0` disables waiting (single status check). Requires `wait`.
+	 */
+	timeoutMs?: number;
+	/**
+	 * Fixed poll interval in milliseconds for the training status loop.
+	 * When omitted the loop backs off adaptively (doubles every 3 polls, capped).
+	 * Requires `wait`.
+	 */
+	pollIntervalMs?: number;
 	projectKey?: string;
 }
 
@@ -62,7 +77,21 @@ export interface MlTaskTrainCompletedResult extends Record<string, unknown> {
 	trainedModelIds: string[];
 }
 
-export type MlTaskTrainResult = MlTaskTrainingSession | MlTaskTrainCompletedResult;
+/** Result returned when the training wait budget was exhausted. */
+export interface MlTaskTrainTimedOutResult extends Record<string, unknown> {
+	sessionId: string;
+	trainedModelIds: string[];
+	timedOut: true;
+	success: false;
+	state: "RUNNING";
+	elapsedMs: number;
+	pollCount: number;
+}
+
+export type MlTaskTrainResult =
+	| MlTaskTrainingSession
+	| MlTaskTrainCompletedResult
+	| MlTaskTrainTimedOutResult;
 
 export interface MlTrainedModelDetails extends Record<string, unknown> {
 	id?: string;
@@ -86,13 +115,6 @@ export interface MlTaskDeployResult extends Record<string, unknown> {
 	trainRecipeName?: string;
 }
 
-function requireNonEmpty(value: string, name: string,): string {
-	if (typeof value !== "string" || value.trim().length === 0) {
-		throw new UsageError(`${name} must be a non-empty string.`, "validation_failed",);
-	}
-	return value;
-}
-
 function delay(ms: number,): Promise<void> {
 	const { promise, resolve, } = Promise.withResolvers<void>();
 	setTimeout(resolve, ms,);
@@ -112,7 +134,7 @@ export class MlTasksResource extends BaseResource {
 	/** Create a prediction or clustering task in an existing visual analysis. */
 	async create(opts: MlTaskCreateOptions,): Promise<MlTaskCreateResult> {
 		if (opts.taskType !== "PREDICTION" && opts.taskType !== "CLUSTERING") {
-			throw new UsageError(
+			throw new ClientValidationError(
 				"taskType must be PREDICTION or CLUSTERING.",
 				"invalid_enum",
 			);
@@ -121,7 +143,7 @@ export class MlTasksResource extends BaseResource {
 			opts.taskType === "PREDICTION"
 			&& (typeof opts.targetVariable !== "string" || opts.targetVariable.trim().length === 0)
 		) {
-			throw new UsageError(
+			throw new ClientValidationError(
 				"targetVariable is required for PREDICTION ML tasks.",
 				"missing_required_arg",
 			);
@@ -178,7 +200,7 @@ export class MlTasksResource extends BaseResource {
 		projectKey?: string,
 	): Promise<MlTaskActionResult | undefined> {
 		if (settings === null || typeof settings !== "object" || Array.isArray(settings,)) {
-			throw new UsageError("settings must be an object.", "validation_failed",);
+			throw new ClientValidationError("settings must be an object.", "validation_failed",);
 		}
 		return this.client.post<MlTaskActionResult | undefined>(
 			`${this.taskPath(analysisId, mlTaskId, projectKey,)}/settings`,
@@ -186,12 +208,56 @@ export class MlTasksResource extends BaseResource {
 		);
 	}
 
-	/** Start training, optionally waiting for the task to finish. */
+	/**
+	 * Start training, optionally waiting for the task to finish.
+	 *
+	 * `timeoutMs` is validated BEFORE the training POST: an invalid deadline
+	 * never reaches the server, so bad input cannot start training work. Once
+	 * DSS has accepted the training request, the deadline scopes only the
+	 * wait phase — each status poll is issued with the remaining budget as a
+	 * total request deadline, so a hung status request cannot outlast it.
+	 *
+	 * When the budget is exhausted the returned result keeps the documented
+	 * success shape plus `timedOut: true` and `success: false` instead of
+	 * throwing, so a caller can distinguish "still training" from "finished".
+	 */
 	async train(opts: MlTaskTrainOptions,): Promise<MlTaskTrainResult> {
 		if (opts.sessionName !== undefined) requireNonEmpty(opts.sessionName, "sessionName",);
 		if (opts.sessionDescription !== undefined) {
 			requireNonEmpty(opts.sessionDescription, "sessionDescription",);
 		}
+		// Deadline validation happens before any network request: a malformed
+		// budget must not start training work on the server.
+		const explicitIntervalMs = opts.pollIntervalMs;
+		if (explicitIntervalMs !== undefined && opts.wait !== true) {
+			throw new ClientValidationError(
+				"pollIntervalMs requires wait: true.",
+				"validation_failed",
+			);
+		}
+		if (
+			explicitIntervalMs !== undefined
+			&& (!Number.isFinite(explicitIntervalMs,) || explicitIntervalMs <= 0)
+		) {
+			throw new ClientValidationError(
+				"pollIntervalMs must be a finite positive number.",
+				"validation_failed",
+			);
+		}
+		let timeoutMs: number | undefined;
+		if (opts.timeoutMs !== undefined) {
+			if (opts.wait !== true) {
+				throw new ClientValidationError("timeoutMs requires wait: true.", "validation_failed",);
+			}
+			if (!Number.isFinite(opts.timeoutMs,) || opts.timeoutMs < 0) {
+				throw new ClientValidationError(
+					"timeoutMs must be a finite non-negative number.",
+					"validation_failed",
+				);
+			}
+			timeoutMs = opts.timeoutMs;
+		}
+
 		const taskPath = this.taskPath(opts.analysisId, opts.mlTaskId, opts.projectKey,);
 		const session = await this.client.post<MlTaskTrainingSession>(
 			`${taskPath}/train`,
@@ -203,15 +269,71 @@ export class MlTasksResource extends BaseResource {
 		);
 		if (opts.wait !== true) return session;
 
-		let status = await this.status(opts.analysisId, opts.mlTaskId, opts.projectKey,);
-		while (status.training !== false) {
-			await delay(TRAIN_POLL_INTERVAL_MS,);
-			status = await this.status(opts.analysisId, opts.mlTaskId, opts.projectKey,);
+		const deadlineMs = timeoutMs ?? TRAIN_DEFAULT_TIMEOUT_MS;
+		const baseIntervalMs = Math.max(1, explicitIntervalMs ?? TRAIN_POLL_INTERVAL_MS,);
+		const adaptiveEnabled = explicitIntervalMs === undefined;
+		const startedAt = Date.now();
+		let pollCount = 0;
+
+		// One status observation always happens; the poll precedes the deadline
+		// check, so `timeoutMs: 0` still reports the freshly-started state once.
+		while (true) {
+			pollCount += 1;
+			// One status observation always happens, even when the budget is
+			// already spent (the poll precedes the deadline check); only the
+			// requests issued while budget remains are bounded by the remaining
+			// time, so a stalled status endpoint can never defeat the deadline.
+			const remainingMs = deadlineMs - (Date.now() - startedAt);
+			let status: MlTaskStatus;
+			try {
+				status = await this.client.get<MlTaskStatus>(
+					`${this.taskPath(opts.analysisId, opts.mlTaskId, opts.projectKey,)}/status`,
+					remainingMs > 0
+						? { timeoutMs: remainingMs, }
+						: undefined,
+				);
+			} catch (error) {
+				// The poll budget ran out: report the structured timeout instead
+				// of letting the transport deadline error escape the loop.
+				if (!isRequestDeadlineError(error, startedAt + deadlineMs,)) throw error;
+				return {
+					sessionId: session.sessionId,
+					trainedModelIds: [],
+					timedOut: true,
+					success: false,
+					state: "RUNNING",
+					elapsedMs: Date.now() - startedAt,
+					pollCount,
+				};
+			}
+			const elapsedMs = Date.now() - startedAt;
+
+			if (status.training !== false) {
+				if (elapsedMs >= deadlineMs) {
+					return {
+						sessionId: session.sessionId,
+						trainedModelIds: modelIdsFromStatus(status,),
+						timedOut: true,
+						success: false,
+						state: "RUNNING",
+						elapsedMs,
+						pollCount,
+					} as MlTaskTrainResult;
+				}
+				const nextDelayMs = computeNextPollDelayMs({
+					pollCount,
+					baseIntervalMs,
+					adaptiveEnabled,
+				},);
+				await delay(Math.min(nextDelayMs, deadlineMs - elapsedMs,),);
+				continue;
+			}
+
+			return {
+				sessionId: session.sessionId,
+				trainedModelIds: modelIdsFromStatus(status,),
+			};
 		}
-		return {
-			sessionId: session.sessionId,
-			trainedModelIds: modelIdsFromStatus(status,),
-		};
 	}
 
 	/** List identifiers for every trained model currently present on the task. */

@@ -86,7 +86,7 @@ export const wikiCommands: Record<string, CommandMeta> = {
 			}
 			if (executionMode(f,).dryRun) {
 				const current = await c.wiki.get(a[0], f["project-key"] as string | undefined,);
-				const next = deepMerge(current as unknown as Record<string, unknown>, data ?? {},);
+				const next: Record<string, unknown> = deepMerge(current, data ?? {},);
 				if (name !== undefined) {
 					next.article = {
 						...((next.article && typeof next.article === "object" && !Array.isArray(next.article,))

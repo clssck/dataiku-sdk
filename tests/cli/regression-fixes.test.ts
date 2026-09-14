@@ -853,8 +853,8 @@ describe("CLI regression fixes", () => {
 				resource: "future",
 				action: "abort",
 				id: "missing-future",
-				method: "POST",
-				endpoint: "/public/api/futures/missing-future/abort",
+				method: "DELETE",
+				endpoint: "/public/api/futures/missing-future",
 			},);
 		},);
 		expect(requests,).toEqual([],);

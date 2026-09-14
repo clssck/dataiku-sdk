@@ -244,6 +244,49 @@ describe("Visual ML SDK endpoints", () => {
 		],);
 	});
 
+	it("creates MLflow and proxy saved models on the collection root like the official client", async () => {
+		// The REST reference page documents /savedmodels/create-external, but that
+		// route answers 405 on DSS 15.0.1; the official Python client
+		// (project.create_mlflow_pyfunc_model / create_external_model) POSTs the
+		// collection root. A regression back to /create-external would 405 live.
+		const requests = await recordRequests(async (url,) => {
+			const resource = new SavedModelsResource(createClient(url,),);
+			await resource.createExternal({
+				savedModelType: "MLFLOW_PYFUNC",
+				name: "MLflow demo",
+				predictionType: "BINARY_CLASSIFICATION",
+			}, "PROJECT KEY",);
+			await resource.createExternal({
+				savedModelType: "PROXY_MODEL",
+				name: "SageMaker proxy",
+				predictionType: "REGRESSION",
+				proxyModelConfiguration: { protocol: "sagemaker", region: "eu-west-1", },
+			}, "PROJECT KEY",);
+		},);
+
+		expect(requests,).toEqual([
+			{
+				method: "POST",
+				path: "/public/api/projects/PROJECT%20KEY/savedmodels/",
+				body: {
+					savedModelType: "MLFLOW_PYFUNC",
+					name: "MLflow demo",
+					predictionType: "BINARY_CLASSIFICATION",
+				},
+			},
+			{
+				method: "POST",
+				path: "/public/api/projects/PROJECT%20KEY/savedmodels/",
+				body: {
+					savedModelType: "PROXY_MODEL",
+					name: "SageMaker proxy",
+					predictionType: "REGRESSION",
+					proxyModelConfiguration: { protocol: "sagemaker", region: "eu-west-1", },
+				},
+			},
+		],);
+	});
+
 	it("composes model-evaluation-store endpoints and create payloads", async () => {
 		const requests = await recordRequests(async (url,) => {
 			const resource = new ModelEvaluationStoresResource(createClient(url,),);

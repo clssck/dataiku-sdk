@@ -11,6 +11,15 @@ export const RESOURCE_NAMES = [
 	"bundle",
 	"project-deployer",
 	"project-git",
+	"project-folder",
+	"data-collection",
+	"llm",
+	"knowledge-bank",
+	"macro",
+	"plugin",
+	"user",
+	"group",
+	"project",
 	"project-library",
 	"streaming-endpoint",
 	"continuous-activity",
@@ -46,10 +55,46 @@ export const RESOURCE_NAMES = [
 	"commands",
 	"fixtures",
 	"install-skill",
-	"project",
 	"version",
 ]
 	.sort();
+
+const PROJECT_SCOPED_RESOURCES = new Set([
+	"analysis",
+	"data-quality",
+	"dashboard",
+	"knowledge-bank",
+	"dataset",
+	"llm",
+	"flow-zone",
+	"insight",
+	"folder",
+	"fixtures",
+	"job",
+	"notebook",
+	"macro",
+	"ml-task",
+	"model-evaluation-store",
+	"recipe",
+	"scenario",
+	"sql",
+	"variable",
+	"saved-model",
+	"wiki",
+],);
+
+export function inferRequiresProject(resource: string, action: string, usage: string,): boolean {
+	if (
+		resource === "agent" || resource === "auth" || resource === "doctor" || resource === "commands"
+		|| resource === "install-skill" || resource === "version"
+	) return false;
+	if (resource === "sql" && action === "query") return false;
+	if (PROJECT_SCOPED_RESOURCES.has(resource,)) return true;
+	// Plugin project scope is optional, not a requirement.
+	if (resource === "plugin") return false;
+	if (resource === "project-git") return !action.startsWith("future-",);
+	return usage.includes("--project-key",);
+}
 
 export class UsageError extends Error {
 	readonly code: StableErrorCode;

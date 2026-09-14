@@ -64,7 +64,8 @@ function recordingClient(
 			return Promise.resolve(method in results ? results[method] : {},);
 		},
 	},);
-	return { client: { projectGit, } as unknown as DataikuClient, calls, };
+	const client = { projectGit, } as DataikuClient;
+	return { client, calls, };
 }
 
 /** Normalizes sync-throwing and async handlers into one awaitable shape. */
@@ -259,14 +260,14 @@ describe("project-git read dispatch", () => {
 			error = caught;
 		}
 		expect(error,).toBeInstanceOf(CommandResultFailure,);
-		expect(JSON.stringify((error as CommandResultFailure).result,),).not.toContain(secret,);
-		const failedFuture = {
-			projectGit: {
-				waitForFuture: async () => {
-					throw new Error(`clone failed for ${remoteUrl}`,);
-				},
+		const failure = error as CommandResultFailure;
+		expect(JSON.stringify(failure.result,),).not.toContain(secret,);
+		const failedGit = {
+			waitForFuture: async (): Promise<unknown> => {
+				throw new Error(`clone failed for ${remoteUrl}`,);
 			},
-		} as unknown as DataikuClient;
+		};
+		const failedFuture = { projectGit: failedGit, } as DataikuClient;
 		let futureError: unknown;
 		try {
 			await run("future-wait", failedFuture, ["JOB1",],);
@@ -718,13 +719,17 @@ describe("project-git future lifecycle", () => {
 		],);
 		expect(aborted,).toEqual({ aborted: "JOB1", resource: "project-git-future", },);
 	});
-	it("fails a completed future whose result reports success false", async () => {
+	it("returns a completed future's result verbatim, even with success false", async () => {
 		const { client, } = recordingClient({
-			waitForFuture: { success: false, logs: "remote rejected the push", },
+			waitForFuture: { success: false, logs: "no diagnostics to show", },
 		},);
 
-		await expect(run("future-wait", client, ["JOB1",],),).rejects.toBeInstanceOf(
-			CommandResultFailure,
-		);
+		// Official wait_for_result contract: the future result is
+		// caller-interpreted data returned verbatim; a DSS diagnostic bag's
+		// success:false means "no messages", not an operation failure.
+		await expect(run("future-wait", client, ["JOB1",],),).resolves.toEqual({
+			success: false,
+			logs: "no diagnostics to show",
+		},);
 	});
 });

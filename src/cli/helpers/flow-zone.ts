@@ -190,8 +190,7 @@ export function flowZonePlanPosition(
 }
 
 export function flowZoneCurrentPosition(zone: FlowZone,): FlowZonePosition | undefined {
-	const record = zone as unknown as Record<string, unknown>;
-	const position = plainRecord(record.position,);
+	const position = plainRecord(zone.position,);
 	if (!position) return undefined;
 	const x = position.x;
 	const y = position.y;

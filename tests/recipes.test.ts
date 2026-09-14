@@ -1429,6 +1429,71 @@ describe("RecipesResource", () => {
 			.toEqual(["POST /public/api/projects/TEST/jobs/",],);
 		expect(requests,).toContain("GET /public/api/projects/TEST/jobs/job-summary/log/",);
 	});
+
+	it("builds evaluation recipe outputs as dataset plus model-evaluation-store targets", async () => {
+		// Evaluation recipes declare their store under the "evaluationStore" role.
+		// The official client treats the store as a first-class job target
+		// (recipe.py run object_type_map: COMPUTABLE_MODEL_EVALUATION_STORE ->
+		// MODEL_EVALUATION_STORE), so the store must be sent as its own typed
+		// output — a dataset/folder-only resolution would fail it as "not found".
+		let buildRequestBody: Record<string, unknown> | undefined;
+
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/recipes/eval_recipe"
+			) {
+				sendJson(res, {
+					recipe: {
+						name: "eval_recipe",
+						type: "evaluation",
+						inputs: {
+							main: { items: [{ ref: "scored_dataset", },], },
+							model: { items: [{ ref: "saved-model-id", },], },
+						},
+						outputs: {
+							main: { items: [{ ref: "eval_output", appendMode: false, },], },
+							evaluationStore: { items: [{ ref: "store-1", appendMode: false, },], },
+						},
+					},
+				},);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/datasets/") {
+				sendJson(res, [{ name: "eval_output", type: "Filesystem", },],);
+				return;
+			}
+
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [],);
+				return;
+			}
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/jobs/") {
+				buildRequestBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { id: "job-eval", },);
+				return;
+			}
+
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const result = await client.recipes.run("eval_recipe",);
+
+			expect(result,).toMatchObject({ recipeName: "eval_recipe", jobId: "job-eval", },);
+		},);
+
+		expect(buildRequestBody,).toEqual({
+			outputs: [
+				{ projectKey: "TEST", id: "eval_output", type: "DATASET", },
+				{ projectKey: "TEST", id: "store-1", type: "MODEL_EVALUATION_STORE", },
+			],
+			type: "NON_RECURSIVE_FORCED_BUILD",
+		},);
+	});
 });
 
 describe("RecipesResource.validateGraph", () => {
@@ -1464,6 +1529,11 @@ describe("RecipesResource.validateGraph", () => {
 				return;
 			}
 
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/evaluationstores/") {
+				sendJson(res, [{ id: "store-1", name: "store", },],);
+				return;
+			}
+
 			res.statusCode = 404;
 			res.end("unexpected request",);
 		}, async (url,) => {
@@ -1488,5 +1558,67 @@ describe("RecipesResource.validateGraph", () => {
 				'Declared input "missing_input" was not found in project "TEST".',
 			);
 		},);
+	});
+});
+
+describe("RecipesResource.metadata", () => {
+	it("gets and replaces recipe metadata through the metadata endpoints", async () => {
+		const requests: Array<{ method: string; url: string; body?: unknown; }> = [];
+		const current = { label: "recipe_name", tags: ["tag1", "tag2",], };
+		const replacement = { label: "renamed", tags: ["clean",], description: "kept", };
+
+		await withRecipeServer(async (req, res,) => {
+			const method = req.method ?? "";
+			const url = req.url ?? "";
+			if (method === "GET" && url === "/public/api/projects/TEST/recipes/compute%20orders/metadata") {
+				requests.push({ method, url, },);
+				sendJson(res, current,);
+				return;
+			}
+			if (method === "PUT" && url === "/public/api/projects/TEST/recipes/compute%20orders/metadata") {
+				requests.push({ method, url, body: JSON.parse(await readBody(req,),), },);
+				sendJson(res, replacement,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end(`${method} ${url}`,);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await expect(client.recipes.metadata("compute orders",),).resolves.toEqual(current,);
+			await expect(
+				client.recipes.setMetadata("compute orders", replacement,),
+			).resolves.toBeUndefined();
+		},);
+
+		expect(requests,).toEqual([
+			{
+				method: "GET",
+				url: "/public/api/projects/TEST/recipes/compute%20orders/metadata",
+			},
+			{
+				method: "PUT",
+				url: "/public/api/projects/TEST/recipes/compute%20orders/metadata",
+				body: replacement,
+			},
+		],);
+	});
+
+	it("replaces recipe metadata verbatim, dropping fields absent from the payload", async () => {
+		let putBody: unknown;
+		await withRecipeServer(async (req, res,) => {
+			if (req.method === "PUT" && req.url === "/public/api/projects/TEST/recipes/r1/metadata") {
+				putBody = JSON.parse(await readBody(req,),);
+				sendJson(res, { label: "kept", },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end();
+		}, async (url,) => {
+			const client = createClient(url,);
+			// Caller GET-ed {label, tags, custom} and intentionally removes tags/custom.
+			await client.recipes.setMetadata("r1", { label: "kept", },);
+		},);
+
+		expect(putBody,).toEqual({ label: "kept", },);
 	});
 });

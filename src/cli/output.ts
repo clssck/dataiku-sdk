@@ -139,10 +139,13 @@ export function addTransientTargetContext(
 export function isFailedWaitResult(result: unknown,): boolean {
 	if (result === null || typeof result !== "object" || Array.isArray(result,)) return false;
 	const record = result as Record<string, unknown>;
-	return record.success === false
-		&& typeof record.elapsedMs === "number"
-		&& typeof record.pollCount === "number"
-		&& (typeof record.state === "string" || typeof record.outcome === "string");
+	if (record.success !== false) return false;
+	if (typeof record.elapsedMs !== "number" || typeof record.pollCount !== "number") return false;
+	// Job/future wait results name the terminal state as a string; macro wait
+	// results identify themselves by their runnable identity fields with the
+	// poll state attached as an object (or omitted entirely).
+	if (typeof record.state === "string" || typeof record.outcome === "string") return true;
+	return typeof record.runnableType === "string" && typeof record.runId === "string";
 }
 
 export function isAssertionFailureResult(result: unknown,): boolean {
@@ -205,7 +208,13 @@ export class CommandResultFailure extends Error {
 export function commandFailureMessage(result: unknown,): string {
 	if (isFailedWaitResult(result,)) {
 		const record = result as Record<string, unknown>;
-		const state = typeof record.state === "string" ? record.state : record.outcome;
+		const state = typeof record.state === "string"
+			? record.state
+			: typeof record.outcome === "string"
+			? record.outcome
+			: typeof record.timedOut === "boolean"
+			? "timed out"
+			: undefined;
 		return `Command completed with failed long-running result${state ? `: ${state}` : ""}.`;
 	}
 	if (isAssertionFailureResult(result,)) {

@@ -79,12 +79,6 @@ export interface ProjectLibraryDiffResult {
 	maxLines: number;
 }
 
-type RawBodyClient = {
-	baseUrl: string;
-	fetchWithRetry(url: string, init: RequestInit,): Promise<Response>;
-	getAnyHeaders(): Record<string, string>;
-};
-
 /**
  * The only concurrency control the public project-library API permits. DSS
  * exposes no conditional write (no ETag, no If-Match, no version token), so
@@ -600,7 +594,7 @@ export class ProjectLibraryResource extends BaseResource {
 		}
 		const bytes = typeof content === "string" ? Buffer.from(content, "utf8",) : content;
 		const sha256 = sha256Hex(bytes,);
-		await this.postRawBody(this.contentsPath(valid, projectKey,), content,);
+		await this.client.postRawBody(this.contentsPath(valid, projectKey,), content,);
 		return {
 			path: valid,
 			bytes: bytes.length,
@@ -731,23 +725,6 @@ export class ProjectLibraryResource extends BaseResource {
 	private contentsPath(path: string, projectKey?: string,): string {
 		const projectKeyPart = this.enc(projectKey,);
 		return `/public/api/projects/${projectKeyPart}/libraries/contents/${encodeLibraryPath(path,)}`;
-	}
-
-	private async postRawBody(path: string, body: string | Uint8Array,): Promise<void> {
-		// DSS library writes use dataikuapi's raw_body; route through the client's
-		// transport so auth, retries, TLS options, and DSS error handling stay aligned.
-		// BodyInit rejects plain Uint8Array views, so non-Buffer bytes are copied
-		// into a Buffer (an ArrayBufferView BodyInit accepts).
-		const payload = body instanceof Uint8Array && !(body instanceof Buffer)
-			? Buffer.from(body.buffer, body.byteOffset, body.byteLength,)
-			: body;
-		const rawClient = this.client as unknown as RawBodyClient;
-		const res = await rawClient.fetchWithRetry(`${rawClient.baseUrl}${path}`, {
-			method: "POST",
-			headers: rawClient.getAnyHeaders(),
-			body: payload,
-		},);
-		await res.text();
 	}
 
 	private alreadyExistsError(path: string,): ClientValidationError {

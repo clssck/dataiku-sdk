@@ -138,6 +138,18 @@ export const ProjectMetadataSchema = Type.Object({
 }, { additionalProperties: true, },);
 export type ProjectMetadata = Static<typeof ProjectMetadataSchema>;
 
+export const ProjectTagsSchema = Type.Object({
+	tags: Type.Record(
+		Type.String(),
+		Type.Object(
+			{ color: Type.Optional(Type.String(),), },
+			{ additionalProperties: true, },
+		),
+		{ additionalProperties: true, },
+	),
+}, { additionalProperties: true, },);
+export type ProjectTags = Static<typeof ProjectTagsSchema>;
+
 // ---------------------------------------------------------------------------
 // Datasets
 // ---------------------------------------------------------------------------
@@ -410,6 +422,78 @@ export const ScenarioWaitResultSchema = Type.Object({
 	steps: Type.Optional(Type.Array(ScenarioStepRunSchema,),),
 },);
 export type ScenarioWaitResult = Static<typeof ScenarioWaitResultSchema>;
+
+// ---------------------------------------------------------------------------
+// Macros (runnables)
+// ---------------------------------------------------------------------------
+
+/** A macro definition as returned by GET /projects/{pk}/runnables/{runnableType}. */
+export const MacroDefinitionSchema = Type.Object({
+	runnableType: Type.String(),
+	ownerPluginId: Type.Optional(Type.String(),),
+	meta: Type.Optional(Type.Object({
+		label: Type.Optional(Type.String(),),
+	}, { additionalProperties: true, },),),
+	longDescription: Type.Optional(Type.String(),),
+	resultType: Type.Optional(Type.String(),),
+	extension: Type.Optional(Type.String(),),
+	mimeType: Type.Optional(Type.String(),),
+	resultLabel: Type.Optional(Type.String(),),
+	params: Type.Optional(Type.Array(Type.Object({
+		name: Type.String(),
+		type: Type.Optional(Type.String(),),
+	}, { additionalProperties: true, },),),),
+	adminParams: Type.Optional(Type.Array(Type.Unknown(),),),
+}, { additionalProperties: true, },);
+export type MacroDefinition = Static<typeof MacroDefinitionSchema>;
+
+/** One entry of GET /projects/{pk}/runnables (array[Macro]). */
+export const MacroSummarySchema = Type.Object({
+	runnableType: Type.Optional(Type.String(),),
+	meta: Type.Optional(Type.Object({
+		label: Type.Optional(Type.String(),),
+	}, { additionalProperties: true, },),),
+}, { additionalProperties: true, },);
+export type MacroSummary = Static<typeof MacroSummarySchema>;
+
+export const MacroSummaryArraySchema = Type.Array(MacroSummarySchema,);
+export type MacroSummaryArray = Static<typeof MacroSummaryArraySchema>;
+
+/**
+ * Poll-state response of GET /projects/{pk}/runnables/{runnableType}/state/{run}.
+ * While running: `running: true` and optionally a stack of `progress` entries.
+ * When finished: `running: false`; on failure `resultError`/`storedError` carry
+ * details, otherwise `type` is filled.
+ */
+export const MacroStateSchema = Type.Object({
+	exists: Type.Optional(Type.Boolean(),),
+	running: Type.Optional(Type.Boolean(),),
+	empty: Type.Optional(Type.Boolean(),),
+	type: Type.Optional(Type.String(),),
+	progress: Type.Optional(Type.Unknown(),),
+	resultError: Type.Optional(Type.Unknown(),),
+	storedError: Type.Optional(Type.Unknown(),),
+}, { additionalProperties: true, },);
+export type MacroState = Static<typeof MacroStateSchema>;
+
+/** Run trigger response of POST /projects/{pk}/runnables/{runnableType}. */
+export const MacroRunStartSchema = Type.Object({
+	runId: Type.String(),
+}, { additionalProperties: true, },);
+export type MacroRunStart = Static<typeof MacroRunStartSchema>;
+
+/** Result of {@link MacrosResource.runAndWait}: bounded client-side polling. */
+export const MacroWaitResultSchema = Type.Object({
+	runnableType: Type.String(),
+	runId: Type.String(),
+	running: Type.Boolean(),
+	success: Type.Boolean(),
+	elapsedMs: Type.Number(),
+	pollCount: Type.Number(),
+	timedOut: Type.Optional(Type.Boolean(),),
+	state: Type.Optional(MacroStateSchema,),
+}, { additionalProperties: true, },);
+export type MacroWaitResult = Static<typeof MacroWaitResultSchema>;
 
 // ---------------------------------------------------------------------------
 // Flow zones

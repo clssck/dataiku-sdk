@@ -304,4 +304,34 @@ describe("WebappsResource", () => {
 		expect(requests.slice(1,).every((request,) => request.method === "GET"),).toBe(true,);
 		expect(polls,).toBeGreaterThanOrEqual(2,);
 	});
+
+	it("tolerates an empty restart response instead of crashing", async () => {
+		let requests = 0;
+
+		await withServer((_req, res,) => {
+			requests += 1;
+			res.statusCode = 204;
+			res.end();
+		}, async (url,) => {
+			const resource = new WebappsResource(createClient(url,),);
+			await expect(resource.startOrRestartBackend("webapp-1",),).resolves.toEqual({},);
+		},);
+
+		expect(requests,).toBe(1,);
+	});
+
+	it("reports a clear error when the restart returns no future to wait on", async () => {
+		await withServer((_req, res,) => {
+			res.statusCode = 204;
+			res.end();
+		}, async (url,) => {
+			const resource = new WebappsResource(createClient(url,),);
+			await expect(
+				resource.restartBackendAndWait("webapp-1", undefined, {
+					pollIntervalMs: 1,
+					timeoutMs: 5_000,
+				},),
+			).rejects.toThrow("restart returned no future jobId",);
+		},);
+	});
 });

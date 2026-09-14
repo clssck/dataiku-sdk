@@ -440,3 +440,218 @@ describe("ScenariosResource.runAndWait", () => {
 		},);
 	});
 });
+
+describe("ScenariosResource abort / last runs / run details / log / payload / light", () => {
+	it("aborts a scenario via POST abort", async () => {
+		const requests: string[] = [];
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+			if (
+				req.method === "POST" && url.pathname === "/public/api/projects/TEST/scenarios/nightly/abort"
+			) {
+				sendJson(res, {},);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected",);
+		}, async (client,) => {
+			await client.scenarios.abort("nightly",);
+		},);
+		expect(requests,).toEqual(["POST /public/api/projects/TEST/scenarios/nightly/abort",],);
+	});
+
+	it("retrieves last runs with a limit and maps run summaries", async () => {
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/scenarios/nightly/get-last-runs/"
+			) {
+				expect(url.searchParams.get("limit",),).toBe("2",);
+				sendJson(res, [
+					{
+						runId: "run-1",
+						start: 1460732257757,
+						end: 1460732282032,
+						scenario: { id: "NIGHTLY", type: "step_based", },
+						variables: {},
+						result: { outcome: "SUCCESS", type: "SCENARIO_DONE", },
+					},
+					{ runId: "run-2", result: { outcome: "FAILED", }, },
+					{ notARun: true, },
+				],);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected",);
+		}, async (client,) => {
+			const runs = await client.scenarios.getLastRuns("nightly", { limit: 2, },);
+			expect(runs,).toHaveLength(3,);
+			expect(runs[0],).toMatchObject({
+				runId: "run-1",
+				start: 1460732257757,
+				end: 1460732282032,
+				result: { outcome: "SUCCESS", type: "SCENARIO_DONE", },
+			},);
+			expect(runs[1],).toMatchObject({ runId: "run-2", },);
+			expect(runs[2],).toEqual({ runId: "unknown", },);
+		},);
+	});
+
+	it("rejects non-positive last-runs limits before any request", async () => {
+		await withDataikuServer((req, res,) => {
+			res.statusCode = 500;
+			res.end("no request expected",);
+		}, async (client,) => {
+			expect(client.scenarios.getLastRuns("nightly", { limit: 0, },),).rejects.toThrow(
+				"positive integer",
+			);
+			expect(client.scenarios.getLastRuns("nightly", { limit: 1.5, },),).rejects.toThrow(
+				"positive integer",
+			);
+		},);
+	});
+
+	it("gets run details for a specific run", async () => {
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/scenarios/nightly/2024-09-01-01-02-03-123/"
+			) {
+				sendJson(res, {
+					stepRuns: [{
+						runId: "2024-09-01-01-02-03-123",
+						step: { type: "build_dataset", id: "b0", name: "Build ds", },
+						result: { outcome: "SUCCESS", type: "STEP_DONE", },
+					},],
+					scenarioRun: { runId: "2024-09-01-01-02-03-123", },
+				},);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected",);
+		}, async (client,) => {
+			const details = await client.scenarios.getRunDetails("nightly", "2024-09-01-01-02-03-123",);
+			expect(details.scenarioRun?.runId,).toBe("2024-09-01-01-02-03-123",);
+			expect(details.stepRuns,).toHaveLength(1,);
+		},);
+	});
+
+	it("fetches a bounded run log with step scoping and truncation", async () => {
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/scenarios/nightly/run-9/log"
+			) {
+				expect(url.searchParams.get("stepId",),).toBe("step_0",);
+				res.setHeader("Content-Type", "text/plain",);
+				res.end("line-1\nline-2\nline-3\n",);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected",);
+		}, async (client,) => {
+			const result = await client.scenarios.getRunLog("nightly", "run-9", {
+				stepId: "step_0",
+				maxLogBytes: 6,
+			},);
+			expect(result.text,).toBe("line-1",);
+			expect(result.truncated,).toBe(true,);
+			expect(result.maxLogBytes,).toBe(6,);
+		},);
+	});
+
+	it("gets and sets a custom scenario payload", async () => {
+		const bodies: unknown[] = [];
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/scenarios/custom/payload"
+			) {
+				sendJson(res, { script: "print('hi')\n", extension: "py", },);
+				return;
+			}
+			if (
+				req.method === "PUT" && url.pathname === "/public/api/projects/TEST/scenarios/custom/payload"
+			) {
+				let raw = "";
+				req.on("data", (chunk,) => raw += chunk,);
+				req.on("end", () => {
+					bodies.push(JSON.parse(raw,),);
+					res.statusCode = 204;
+					res.end();
+				},);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected",);
+		}, async (client,) => {
+			const payload = await client.scenarios.getPayload("custom",);
+			expect(payload,).toMatchObject({ script: "print('hi')\n", extension: "py", },);
+			await client.scenarios.setPayload("custom", { script: "print('bye')", extension: "py", },);
+			expect(bodies,).toEqual([{ script: "print('bye')", extension: "py", },],);
+		},);
+	});
+
+	it("toggles active by echoing the full light body and returns observed status", async () => {
+		let active = true;
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/scenarios/nightly/light"
+			) {
+				sendJson(res, {
+					id: "NIGHTLY",
+					name: "Nightly",
+					type: "step_based",
+					running: false,
+					active,
+					projectKey: "TEST",
+				},);
+				return;
+			}
+			if (
+				req.method === "PUT" && url.pathname === "/public/api/projects/TEST/scenarios/nightly/light"
+			) {
+				let raw = "";
+				req.on("data", (chunk,) => raw += chunk,);
+				req.on("end", () => {
+					const body = JSON.parse(raw,) as {
+						id: string;
+						name: string;
+						type: string;
+						running: boolean;
+						active: boolean;
+						projectKey: string;
+					};
+					// DSS parses the light PUT as a full Scenario: name/type/projectKey must survive.
+					expect(body,).toEqual({
+						id: "NIGHTLY",
+						name: "Nightly",
+						type: "step_based",
+						running: false,
+						active: false,
+						projectKey: "TEST",
+					},);
+					active = body.active;
+					res.statusCode = 204;
+					res.end();
+				},);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected",);
+		}, async (client,) => {
+			const result = await client.scenarios.setActive("nightly", false,);
+			expect(result,).toMatchObject({
+				scenarioId: "nightly",
+				active: false,
+				before: true,
+			},);
+			expect(result.status,).toEqual({ id: "NIGHTLY", running: false, active: false, },);
+		},);
+	});
+});

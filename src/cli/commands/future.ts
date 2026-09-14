@@ -41,8 +41,8 @@ export const futureCommands: Record<string, CommandMeta> = {
 			const id = a[0];
 			if (executionMode(f,).dryRun) {
 				return planResult("future", "abort", {
-					method: "POST",
-					endpoint: `/public/api/futures/${encodeURIComponent(id,)}/abort`,
+					method: "DELETE",
+					endpoint: `/public/api/futures/${encodeURIComponent(id,)}`,
 					identifiers: { id, },
 					idempotency: "none",
 					asyncKind: "future",

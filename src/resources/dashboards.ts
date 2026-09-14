@@ -260,12 +260,12 @@ export class DashboardsResource extends BaseResource {
 		const pk = this.resolveProjectKey(opts.projectKey,);
 		const current = await this.get(dashboardId, pk,);
 		const next = deepMerge(
-			current as unknown as Record<string, unknown>,
+			current,
 			opts.data ?? {},
-		) as DashboardDetails;
+		);
 		if (opts.name !== undefined) next.name = opts.name;
 		if (opts.listed !== undefined) next.listed = opts.listed;
-		await this.validateReferences(next as unknown as Record<string, unknown>, pk,);
+		await this.validateReferences(next, pk,);
 		await this.client.put<unknown>(
 			`/public/api/projects/${encodeURIComponent(pk,)}/dashboards/${
 				encodeURIComponent(dashboardId,)

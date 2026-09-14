@@ -129,20 +129,34 @@ export class WebappsResource extends BaseResource {
 	/**
 	 * Start or restart a webapp backend. The documented endpoint returns a
 	 * reference to a future, which is surfaced as-is; settle it with
-	 * {@link restartBackendAndWait} or `client.futures.wait`.
+	 * {@link restartBackendAndWait} or `client.futures.wait`. DSS 15 returns
+	 * an empty body (no future) when no async job was spawned — the official
+	 * Python client tolerates that (`DSSFuture.from_resp` accepts a missing
+	 * jobId), so an empty response surfaces as `{}` rather than crashing.
 	 */
 	async startOrRestartBackend(
 		webappId: string,
 		projectKey?: string,
 	): Promise<Record<string, unknown>> {
 		const id = encodeURIComponent(webappId,);
-		return this.client.put<Record<string, unknown>>(
+		const future = await this.client.put<Record<string, unknown> | undefined>(
 			`/public/api/projects/${this.enc(projectKey,)}/webapps/${id}/backend/actions/restart`,
 			{},
 		);
+		return future ?? {};
 	}
 
-	/** Restart a webapp backend and wait for the returned future to settle. */
+	/**
+	 * Restart a webapp backend and wait for the returned future to settle.
+	 * The documented endpoint returns a reference to a future; with a real
+	 * jobId this polls that future to completion. An empty response carries
+	 * NO future to wait on (observed on DSS 15 for a webapp whose backend is
+	 * not enabled — a no-op restart, not a supported wait target), so the
+	 * wait reports the missing future explicitly instead of fabricating a
+	 * result for it. Enable the backend (params.backendEnabled with the
+	 * params.python code, exactly as the DSS editor does) to get a real
+	 * restart future.
+	 */
 	async restartBackendAndWait(
 		webappId: string,
 		projectKey?: string,
@@ -151,7 +165,12 @@ export class WebappsResource extends BaseResource {
 		const future = await this.startOrRestartBackend(webappId, projectKey,);
 		const jobId = future.jobId;
 		if (typeof jobId !== "string" || jobId.length === 0) {
-			throw new Error("Webapp backend restart did not return a future jobId.",);
+			throw new ClientValidationError(
+				"Webapp backend restart returned no future jobId, so there is nothing to wait on.",
+				"validation_failed",
+				"The restart endpoint returns a future reference only when it starts an async job (a webapp with an enabled Python backend). Enable the backend before restarting with --wait.",
+				{ webappId, restartResponseKeys: Object.keys(future,), },
+			);
 		}
 		return this.client.futures.wait(jobId, {
 			pollIntervalMs: options.pollIntervalMs,

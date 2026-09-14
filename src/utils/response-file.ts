@@ -20,7 +20,7 @@ export async function writeResponseToFile(
 			mode = 0o666 & ~process.umask();
 		}
 	}
-	const input = Readable.fromWeb(response.body as unknown as import("stream/web").ReadableStream,);
+	const input = Readable.from(response.body!, { objectMode: false, },);
 	const temporaryPath = join(dirname(path,), `.${basename(path,)}.tmp-${randomUUID()}`,);
 	const output = createWriteStream(temporaryPath, { flags: "wx", mode: 0o600, },);
 	try {

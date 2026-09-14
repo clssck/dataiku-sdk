@@ -1,10 +1,11 @@
 import { writeFile, } from "node:fs/promises";
 import { resolve, } from "node:path";
 import { DataikuError, } from "../errors.js";
-import { RecipeSummaryArraySchema, } from "../schemas.js";
+import { ProjectMetadataSchema, RecipeSummaryArraySchema, } from "../schemas.js";
 import type {
 	BuildMode,
 	JobWaitResult,
+	ProjectMetadata,
 	RecipeCreateOptions,
 	RecipeCreateResult,
 	RecipeSummary,
@@ -188,6 +189,7 @@ function normalizeRecipeOutputType(value: unknown,): JobBuildTargetType | undefi
 	const normalized = value.trim().toUpperCase().replace(/-/g, "_",);
 	if (normalized === "DATASET") return "DATASET";
 	if (normalized === "MANAGED_FOLDER" || normalized === "FOLDER") return "MANAGED_FOLDER";
+	if (normalized === "MODEL_EVALUATION_STORE") return "MODEL_EVALUATION_STORE";
 	return undefined;
 }
 
@@ -208,7 +210,12 @@ function recipeOutputItems(
 			const seenKey = ref;
 			if (seen.has(seenKey,)) continue;
 			seen.add(seenKey,);
-			const type = normalizeRecipeOutputType(item?.type ?? item?.targetType ?? item?.objectType,);
+			// The evaluation recipe's "evaluationStore" role targets a model
+			// evaluation store even when the item carries no explicit type
+			// (recipe.py EvaluationRecipeCreator.with_output_evaluation_store);
+			// the store is a valid job target (run object_type_map).
+			const type = normalizeRecipeOutputType(item?.type ?? item?.targetType ?? item?.objectType,)
+				?? (role === "evaluationStore" ? "MODEL_EVALUATION_STORE" as const : undefined);
 			result.push({
 				ref,
 				role,
@@ -419,6 +426,39 @@ export class RecipesResource extends BaseResource {
 		return this.client.safeParse(RecipeSummaryArraySchema, raw, "recipes.list",);
 	}
 
+	/** Get recipe metadata (label, tags, description, custom fields). */
+	async metadata(
+		recipeName: string,
+		opts?: { projectKey?: string; },
+	): Promise<ProjectMetadata> {
+		const enc = this.enc(opts?.projectKey,);
+		const rnEnc = encodeURIComponent(recipeName,);
+		const raw = await this.client.get<unknown>(
+			`/public/api/projects/${enc}/recipes/${rnEnc}/metadata`,
+		);
+		return this.client.safeParse(ProjectMetadataSchema, raw, "recipes.metadata",);
+	}
+
+	/**
+	 * Replace recipe metadata with the supplied full object.
+	 *
+	 * DSS PUT semantics replace the whole metadata object: pass a metadata
+	 * object obtained from {@link metadata}, edit it, and send it back — fields
+	 * absent from the payload are removed from the recipe.
+	 */
+	async setMetadata(
+		recipeName: string,
+		metadata: ProjectMetadata,
+		opts?: { projectKey?: string; },
+	): Promise<void> {
+		const enc = this.enc(opts?.projectKey,);
+		const rnEnc = encodeURIComponent(recipeName,);
+		await this.client.putVoid(
+			`/public/api/projects/${enc}/recipes/${rnEnc}/metadata`,
+			metadata,
+		);
+	}
+
 	/**
 	 * Get a recipe definition (and optionally its payload).
 	 * Returns the raw API response shape: `{ recipe, payload }`.
@@ -464,11 +504,13 @@ export class RecipesResource extends BaseResource {
 		const { recipe, } = await this.get(recipeName, { projectKey: pk, },);
 		const inputItems = recipeInputItems(recipe,);
 		const outputItems = recipeOutputItems(recipe,);
-		const [datasets, folders,] = await Promise.all([
+		const [datasets, folders, stores,] = await Promise.all([
 			this.client.datasets.list(pk,),
 			this.client.folders.list(pk,),
+			this.client.modelEvaluationStores.list(pk,),
 		],);
 		const datasetNames = new Set(datasets.map((dataset,) => dataset.name),);
+		const storeIds = new Set(stores.map((store,) => store.id),);
 		const folderIdByRef = new Map<string, string>();
 		for (const folder of folders) {
 			folderIdByRef.set(folder.id, folder.id,);
@@ -483,6 +525,15 @@ export class RecipesResource extends BaseResource {
 			const isDataset = datasetNames.has(item.ref,);
 			if (item.type === "DATASET") {
 				return { ref: item.ref, role: item.role, type: "DATASET", exists: isDataset, id: item.ref, };
+			}
+			if (item.type === "MODEL_EVALUATION_STORE") {
+				return {
+					ref: item.ref,
+					role: item.role,
+					type: "MODEL_EVALUATION_STORE",
+					exists: storeIds.has(item.ref,),
+					id: item.ref,
+				};
 			}
 			if (item.type === "MANAGED_FOLDER") {
 				return {
@@ -571,6 +622,20 @@ export class RecipesResource extends BaseResource {
 					role: item.role,
 					id: item.ref,
 					type: "DATASET",
+					projectKey: pk,
+					partition: opts?.partition,
+				};
+			}
+
+			if (item.type === "MODEL_EVALUATION_STORE") {
+				// The store id is the target id; evaluation builds into the store
+				// exactly like the official client (recipe.run maps
+				// COMPUTABLE_MODEL_EVALUATION_STORE -> MODEL_EVALUATION_STORE).
+				return {
+					ref: item.ref,
+					role: item.role,
+					id: item.ref,
+					type: "MODEL_EVALUATION_STORE",
 					projectKey: pk,
 					partition: opts?.partition,
 				};
@@ -828,17 +893,39 @@ export class RecipesResource extends BaseResource {
 				}
 			}
 		};
+		let finalRecipeName!: string;
 
+		// DSS renames some recipe types server-side (e.g. prediction_scoring
+		// becomes "score_<inputDataset>") and documents the creation response as
+		// the final unique name: Body {"name": "recipe1"} ("Returns the final
+		// unique name of the recipe"). The response name is the contract —
+		// falling back to the requested name would mask a missing/invalid
+		// receipt, so a body without it is an error.
 		try {
 			if (rawConnection) await provisionOutputDatasets();
-			await createRecipe();
+			const created = await createRecipe();
+			const receivedName = asString(created?.["name"],);
+			if (!receivedName) {
+				throw new Error(
+					'DSS create-recipe response did not include the final recipe name (documented body: {"name": ...}).',
+				);
+			}
+			finalRecipeName = receivedName;
 		} catch (error) {
 			if (!shouldRetryRecipeCreateWithOutputProvisioning(error,)) {
 				throw error;
 			}
 			usedOutputProvisioningFallback = true;
 			await provisionOutputDatasets();
-			await createRecipe();
+			const retryCreated = await createRecipe();
+			const retryName = asString(retryCreated?.["name"],);
+			if (!retryName) {
+				throw new Error(
+					'DSS create-recipe response did not include the final recipe name (documented body: {"name": ...}).',
+					{ cause: error, },
+				);
+			}
+			finalRecipeName = retryName;
 		}
 
 		// For sync recipes (a 1:1 copy) DSS does not propagate schema on build, so a
@@ -991,7 +1078,7 @@ export class RecipesResource extends BaseResource {
 		}
 
 		return {
-			recipeName: name,
+			recipeName: finalRecipeName,
 			type,
 			createdDatasets,
 			joinConfigured,

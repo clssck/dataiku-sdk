@@ -173,7 +173,7 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 			}
 			if (executionMode(f,).dryRun) {
 				const current = await c.dashboards.get(a[0], f["project-key"] as string | undefined,);
-				const next = deepMerge(current as unknown as Record<string, unknown>, data ?? {},);
+				const next = deepMerge(current, data ?? {},);
 				if (name !== undefined) next.name = name;
 				if (listed !== undefined) next.listed = listed;
 				return { dryRun: true, action: "update", resource: "dashboard", id: a[0], current, next, };

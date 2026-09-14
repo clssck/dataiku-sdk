@@ -1,6 +1,7 @@
 import type { DataikuClient, } from "../client.js";
-import type { ConnectionSummary, } from "../schemas.js";
-import { BaseResource, } from "./base.js";
+import { ClientValidationError, } from "../errors.js";
+import { type ConnectionSummary, type FutureState, FutureStateSchema, } from "../schemas.js";
+import { BaseResource, requireNonEmpty, } from "./base.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -12,6 +13,33 @@ function normalizeConnectionNames(value: unknown,): string[] {
 		.filter((v,): v is string => typeof v === "string" && v.length > 0)
 		.sort();
 }
+
+/**
+ * Connection definition for admin create/update. `name` and `type` are
+ * required on create; params are connection-type specific per the docs and may
+ * carry credentials (e.g. `params.password`), which this SDK forwards verbatim
+ * over TLS and never logs.
+ */
+export interface ConnectionAdminInput extends Record<string, unknown> {
+	name?: string;
+	type?: string;
+	params?: Record<string, unknown>;
+	allowWrite?: boolean;
+	allowManagedDatasets?: boolean;
+	usableBy?: string;
+	allowedGroups?: string[];
+}
+
+function validateConnectionAdminInput(
+	body: ConnectionAdminInput,
+	method: string,
+): ConnectionAdminInput {
+	if (body === null || body === undefined || typeof body !== "object" || Array.isArray(body,)) {
+		throw new ClientValidationError(`${method}: body must be a Connection object.`,);
+	}
+	return body;
+}
+
 export async function resolveAdminManagedStorageConnection(
 	client: DataikuClient,
 	capability: "allowManagedDatasets" | "allowManagedFolders",
@@ -203,5 +231,188 @@ export class ConnectionsResource extends BaseResource {
 				encodeURIComponent(pk,)
 			}/datasets/tables-import/actions/list-tables?${params.toString()}`,
 		);
+	}
+
+	/* ----------------------------------------------------------------- */
+	/*  Admin connection management (GET/POST/PUT/DELETE /admin/connections) */
+	/* ----------------------------------------------------------------- */
+
+	/**
+	 * Lists all connections on the DSS instance (Admin required). Returns the
+	 * documented dictionary of connection name to Connection object. Connection
+	 * params may contain credentials (e.g. `params.password`); the SDK returns
+	 * the server payload faithfully, and CLI output/plan layers redact them.
+	 */
+	async adminList(): Promise<Record<string, Record<string, unknown>>> {
+		const raw = await this.client.get<unknown>("/public/api/admin/connections",);
+		if (raw === undefined || raw === null || typeof raw !== "object" || Array.isArray(raw,)) {
+			return {};
+		}
+		return raw as Record<string, Record<string, unknown>>;
+	}
+
+	/** Gets one connection by name (Admin required). */
+	async adminGet(connectionName: string,): Promise<Record<string, unknown>> {
+		const enc = requireNonEmpty(connectionName, "connectionName",).trim();
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/admin/connections/${encodeURIComponent(enc,)}`,
+		);
+	}
+
+	/**
+	 * Creates a connection (Admin required). Body is the Connection definition
+	 * (`{name, type, params, ...}`); params are connection-type specific per
+	 * the docs. DSS answers 200 with an empty body.
+	 */
+	async adminCreate(body: ConnectionAdminInput,): Promise<Record<string, unknown>> {
+		const validated = validateConnectionAdminInput(
+			body,
+			"connections.adminCreate",
+		);
+		const raw = await this.client.post<unknown>(
+			"/public/api/admin/connections",
+			validated,
+		);
+		return raw !== undefined && raw !== null && typeof raw === "object" && !Array.isArray(raw,)
+			? raw as Record<string, unknown>
+			: {};
+	}
+
+	/**
+	 * Updates a connection (Admin required). Per the docs the body MUST have
+	 * been obtained from a prior GET at the same URL; `type` and `name` may not
+	 * be modified and undocumented attributes should pass through unchanged.
+	 * DSS answers 204 with an empty body.
+	 */
+	async adminUpdate(
+		connectionName: string,
+		body: ConnectionAdminInput,
+	): Promise<Record<string, unknown>> {
+		const enc = requireNonEmpty(connectionName, "connectionName",).trim();
+		const validated = validateConnectionAdminInput(
+			body,
+			"connections.adminUpdate",
+		);
+		const raw = await this.client.put<unknown>(
+			`/public/api/admin/connections/${encodeURIComponent(enc,)}`,
+			validated,
+		);
+		return raw !== undefined && raw !== null && typeof raw === "object" && !Array.isArray(raw,)
+			? raw as Record<string, unknown>
+			: {};
+	}
+
+	/**
+	 * Deletes a connection (Admin required). Per the docs DSS performs no check
+	 * that the connection is not in use by a dataset, so this is destructive.
+	 */
+	async adminDelete(connectionName: string,): Promise<{ deleted: string; }> {
+		const enc = requireNonEmpty(connectionName, "connectionName",).trim();
+		await this.client.del(`/public/api/admin/connections/${encodeURIComponent(enc,)}`,);
+		return { deleted: enc, };
+	}
+
+	/**
+	 * Tests whether a connection is available. Routed like the official
+	 * dataikuapi Python client (`DSSConnection.test()`):
+	 * `GET /connections/{connectionName}/test` — a pure availability test, not
+	 * a settings read. Returns an error when testing is not supported for the
+	 * connection type; the result carries `connectionOK` (true when available).
+	 * The REST reference documents a same-URL "Test connection" variant of
+	 * `GET /admin/connections/{name}`; this route is preferred because it
+	 * cannot be confused with a settings retrieval.
+	 */
+	async adminTest(connectionName: string,): Promise<Record<string, unknown>> {
+		const enc = requireNonEmpty(connectionName, "connectionName",).trim();
+		const raw = await this.client.get<unknown>(
+			`/public/api/connections/${encodeURIComponent(enc,)}/test`,
+		);
+		return raw !== undefined && raw !== null && typeof raw === "object" && !Array.isArray(raw,)
+			? raw as Record<string, unknown>
+			: {};
+	}
+
+	/* ----------------------------------------------------------------- */
+	/*  Tables import (prepare-from-keys / execute-from-candidates)      */
+	/* ----------------------------------------------------------------- */
+
+	/**
+	 * Prepares the import of selected SQL or Hive tables (WRITE_CONF required).
+	 * `keys` entries carry `{connectionName, name}` plus optional
+	 * `catalog`/`schema`; Hive keys use the `@virtual(hive-jdbc):...`
+	 * connection-name form documented by DSS. Returns a future reference; poll
+	 * with `client.futures` when the result is not inline.
+	 */
+	async prepareTablesImport(
+		opts: {
+			keys: Array<Record<string, unknown>>;
+			projectKey?: string;
+		},
+	): Promise<FutureState> {
+		if (
+			!Array.isArray(opts?.keys,) || opts.keys.length === 0
+			|| opts.keys.some((k,) => k === null || typeof k !== "object" || Array.isArray(k,))
+		) {
+			throw new ClientValidationError(
+				"connections.prepareTablesImport: keys must be a non-empty array of key objects.",
+			);
+		}
+		for (const key of opts.keys) {
+			const connectionName = (key as Record<string, unknown>)["connectionName"];
+			const name = (key as Record<string, unknown>)["name"];
+			if (
+				typeof connectionName !== "string" || connectionName.trim().length === 0
+				|| typeof name !== "string" || name.trim().length === 0
+			) {
+				throw new ClientValidationError(
+					"connections.prepareTablesImport: each key must carry non-empty string connectionName and name per the DSS tables-import contract.",
+				);
+			}
+		}
+		const pk = this.resolveProjectKey(opts.projectKey,);
+		const raw = await this.client.post<unknown>(
+			`/public/api/projects/${
+				encodeURIComponent(pk,)
+			}/datasets/tables-import/actions/prepare-from-keys`,
+			{ keys: opts.keys, },
+		);
+		return this.client.safeParse(FutureStateSchema, raw, "connections.prepareTablesImport",);
+	}
+
+	/**
+	 * Performs an import from table candidates (WRITE_CONF required). At least
+	 * one of `sqlImportCandidates` or `hiveImportCandidates` must be supplied;
+	 * shapes follow the DSS SQL/Hive import candidate objects. Returns a future
+	 * reference; poll with `client.futures`.
+	 */
+	async executeTablesImport(
+		opts: {
+			sqlImportCandidates?: Array<Record<string, unknown>>;
+			hiveImportCandidates?: Array<Record<string, unknown>>;
+			projectKey?: string;
+		},
+	): Promise<FutureState> {
+		const sql = opts?.sqlImportCandidates;
+		const hive = opts?.hiveImportCandidates;
+		if (
+			(sql !== undefined && (!Array.isArray(sql,) || sql.length === 0))
+			|| (hive !== undefined && (!Array.isArray(hive,) || hive.length === 0))
+			|| (sql === undefined && hive === undefined)
+		) {
+			throw new ClientValidationError(
+				"connections.executeTablesImport: sqlImportCandidates or hiveImportCandidates must be a non-empty array (at least one required).",
+			);
+		}
+		const pk = this.resolveProjectKey(opts.projectKey,);
+		const body: Record<string, unknown> = {};
+		if (sql !== undefined) body.sqlImportCandidates = sql;
+		if (hive !== undefined) body.hiveImportCandidates = hive;
+		const raw = await this.client.post<unknown>(
+			`/public/api/projects/${
+				encodeURIComponent(pk,)
+			}/datasets/tables-import/actions/execute-from-candidates`,
+			body,
+		);
+		return this.client.safeParse(FutureStateSchema, raw, "connections.executeTablesImport",);
 	}
 }

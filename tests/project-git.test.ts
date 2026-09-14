@@ -562,6 +562,32 @@ describe("ProjectGitResource libraries", () => {
 		);
 	});
 
+	it("normalizes the DSS 15 gitReferences map into entries", async () => {
+		await withServer(
+			(_req, res,) =>
+				sendJson(res, {
+					gitReferences: {
+						"libs/py lib": { repository: "ssh://git@host/lib.git", checkout: "main", },
+					},
+					pythonPath: ["python",],
+					rsrcPath: ["R",],
+					importLibrariesFromProjects: [],
+				},),
+			async (url, records,) => {
+				const git = new ProjectGitResource(createClient(url,),);
+				const libraries = await git.listLibraries("PROJ",);
+				expect(libraries,).toEqual([{
+					localTargetPath: "libs/py lib",
+					repository: "ssh://git@host/lib.git",
+					checkout: "main",
+				},],);
+				expect(last(records,).url,).toBe(
+					"/dip/publicapi/projects/PROJ/git/lib-git-refs/",
+				);
+			},
+		);
+	});
+
 	it("adds a library with defaults: addToPythonPath true, empty path, null login", async () => {
 		await withServer(
 			(_req, res,) => sendJson(res, { jobId: "j1", },),

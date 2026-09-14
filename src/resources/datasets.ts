@@ -41,6 +41,36 @@ export interface DatasetSchemaColumnInput {
 	comment?: string;
 }
 
+/** Options for creating a managed dataset through the dedicated endpoint. */
+export interface DatasetManagedCreateOptions {
+	/** Name of the new dataset (unique in the project). */
+	name: string;
+	/** Connection where the dataset is stored. */
+	connection: string;
+	/** When the connection accepts several dataset types, the type to use. */
+	typeOptionId?: string;
+	/** Optional identifier of a file format option (e.g. CSV_EXCEL_GZIP, PARQUET_HIVE). */
+	formatOptionId?: string;
+	/**
+	 * Partitioning option id. Use {@link DatasetManagedCreateOptions.copyPartitioningFrom}
+	 * to build one from an existing dataset or folder reference.
+	 */
+	partitioningOptionId?: string;
+	/**
+	 * Copy partitioning from an existing dataset or folder instead of passing a
+	 * raw `partitioningOptionId`. `type` defaults to `DATASET` and may be
+	 * `FOLDER`.
+	 */
+	copyPartitioningFrom?: { ref: string; type?: "DATASET" | "FOLDER"; };
+}
+
+/** Result of creating a managed dataset (the endpoint answers 204 with no body). */
+export interface DatasetManagedCreateResult {
+	datasetName: string;
+	projectKey: string;
+	creationSettings: Record<string, unknown>;
+}
+
 export interface DatasetCloneOptions {
 	projectKey?: string;
 	path?: string;
@@ -961,6 +991,143 @@ export class DatasetsResource extends BaseResource {
 	}
 
 	/**
+	 * Replace dataset metadata with the given object (faithful PUT per the DSS
+	 * API contract: the caller GETs the metadata, edits it, and PUTs the full
+	 * object back — no partial merge is applied client-side). `label`,
+	 * `description`, `tags`, and `custom` are the documented writable fields;
+	 * any additional server-provided metadata fields present in the object are
+	 * preserved verbatim.
+	 */
+	async updateMetadata(
+		datasetName: string,
+		metadata: Record<string, unknown>,
+		projectKey?: string,
+	): Promise<Record<string, unknown>> {
+		if (metadata === null || Array.isArray(metadata,)) {
+			throw new ClientValidationError("metadata must be a JSON object.",);
+		}
+		const dsEnc = encodeURIComponent(datasetName,);
+		return this.client.put<Record<string, unknown>>(
+			`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}/metadata`,
+			metadata,
+		);
+	}
+
+	/**
+	 * Create a managed dataset through the dedicated
+	 * `POST /projects/{projectKey}/datasets/managed` endpoint. DSS handles the
+	 * format/storage details: you select the name, the connection, and optional
+	 * type/format/partitioning options. The endpoint answers `204` with no
+	 * body; the returned settings echo what was sent.
+	 */
+	async createManaged(
+		opts: DatasetManagedCreateOptions,
+		projectKey?: string,
+	): Promise<DatasetManagedCreateResult> {
+		const name = typeof opts.name === "string" ? opts.name.trim() : "";
+		if (name === "") {
+			throw new ClientValidationError("name must be a non-empty dataset name.",);
+		}
+		const connection = typeof opts.connection === "string" ? opts.connection.trim() : "";
+		if (connection === "") {
+			throw new ClientValidationError("connection must be a non-empty connection name.",);
+		}
+		if (opts.partitioningOptionId !== undefined && opts.copyPartitioningFrom !== undefined) {
+			throw new ClientValidationError(
+				"Pass either partitioningOptionId or copyPartitioningFrom, not both.",
+			);
+		}
+		if (
+			opts.copyPartitioningFrom !== undefined
+			&& (typeof opts.copyPartitioningFrom.ref !== "string"
+				|| opts.copyPartitioningFrom.ref.trim() === "")
+		) {
+			throw new ClientValidationError(
+				"copyPartitioningFrom.ref must be a non-empty dataset or folder name.",
+			);
+		}
+
+		const pk = this.resolveProjectKey(projectKey,);
+		const creationSettings: Record<string, unknown> = { connectionId: connection, };
+		if (opts.typeOptionId !== undefined) creationSettings.typeOptionId = opts.typeOptionId;
+		if (
+			opts.formatOptionId !== undefined || opts.partitioningOptionId !== undefined
+			|| opts.copyPartitioningFrom !== undefined
+		) {
+			const specificSettings: Record<string, unknown> = {};
+			if (opts.formatOptionId !== undefined) {
+				specificSettings.formatOptionId = opts.formatOptionId;
+			}
+			if (opts.partitioningOptionId !== undefined) {
+				specificSettings.partitioningOptionId = opts.partitioningOptionId;
+			} else if (opts.copyPartitioningFrom !== undefined) {
+				const code = opts.copyPartitioningFrom.type === "FOLDER" ? "folder" : "dataset";
+				specificSettings.partitioningOptionId = `copy:${code}:${opts.copyPartitioningFrom.ref.trim()}`;
+			}
+			creationSettings.specificSettings = specificSettings;
+		}
+
+		await this.client.post(
+			`/public/api/projects/${encodeURIComponent(pk,)}/datasets/managed`,
+			{ name, creationSettings, },
+		);
+		return { datasetName: name, projectKey: pk, creationSettings, };
+	}
+
+	/**
+	 * Get the full info object for a dataset (type, parameters, last build
+	 * information, schema, etc.). The server returns a complex opaque object;
+	 * it is surfaced without validation.
+	 */
+	async info(datasetName: string, projectKey?: string,): Promise<Record<string, unknown>> {
+		const dsEnc = encodeURIComponent(datasetName,);
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}/info`,
+		);
+	}
+
+	/**
+	 * Get the full column lineage (auto-computed and manual) of a column in
+	 * this dataset. Relations with datasets from both local and foreign
+	 * projects are included.
+	 *
+	 * Route per the official Python client:
+	 * `GET /projects/{projectKey}/datasets/{datasetName}/column-lineage`
+	 * with query `columnName` (required) and `maxDatasetCount` (optional,
+	 * positive integer — the docs page renders a merged project-scoped path,
+	 * but DSS's own client and route registry use this per-dataset form).
+	 */
+	async getColumnLineage(
+		datasetName: string,
+		column: string,
+		opts: { maxDatasetCount?: number; projectKey?: string; } = {},
+	): Promise<unknown> {
+		const trimmed = typeof column === "string" ? column.trim() : "";
+		if (trimmed === "") {
+			throw new ClientValidationError("column must be a non-empty column name.",);
+		}
+		const maxDatasetCount = opts.maxDatasetCount;
+		if (
+			maxDatasetCount !== undefined
+			&& (!Number.isSafeInteger(maxDatasetCount,) || maxDatasetCount <= 0)
+		) {
+			throw new ClientValidationError(
+				"maxDatasetCount must be a positive integer.",
+			);
+		}
+		const dsEnc = encodeURIComponent(datasetName,);
+		const params: string[] = [`columnName=${encodeURIComponent(trimmed,)}`,];
+		if (maxDatasetCount !== undefined) {
+			params.push(`maxDatasetCount=${encodeURIComponent(String(maxDatasetCount,),)}`,);
+		}
+		return this.client.get<unknown>(
+			`/public/api/projects/${this.enc(opts?.projectKey,)}/datasets/${dsEnc}/column-lineage?${
+				params.join("&",)
+			}`,
+		);
+	}
+
+	/**
 	 * Download dataset rows as a gzipped (or .csv) file, capped at `limit` rows
 	 * (default 100k). Returns the written path, the number of data rows written,
 	 * whether the dataset had more rows than the cap (truncated), and the limit
@@ -1011,7 +1178,7 @@ export class DatasetsResource extends BaseResource {
 
 		const shouldGzip = filePath.endsWith(".gz",);
 		const stats = { rows: 0, truncated: false, };
-		const nodeStream = Readable.fromWeb(res.body as unknown as import("stream/web").ReadableStream,);
+		const nodeStream = Readable.from(res.body!, { objectMode: false, },);
 		const csvTransform = tsvToCsvTransform(limit, stats, onHeader, opts?.rawData !== true,);
 		fs.mkdirSync(nodePath.dirname(filePath,), { recursive: true, },);
 		const fileOut = fs.createWriteStream(filePath,);

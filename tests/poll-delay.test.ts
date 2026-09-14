@@ -1,5 +1,5 @@
 import { describe, expect, it, } from "bun:test";
-import { computeNextPollDelayMs, } from "../src/resources/jobs.js";
+import { computeNextPollDelayMs, } from "../src/utils/polling.js";
 
 describe("computeNextPollDelayMs", () => {
 	describe("non-adaptive", () => {

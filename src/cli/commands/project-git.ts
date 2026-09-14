@@ -1,5 +1,6 @@
 import { validateGitReferencePath, } from "../../resources/project-git.js";
 import type { ProjectGitActionResult, } from "../../schemas.js";
+import { sanitizeErrorSecrets, sanitizeSecrets, } from "../../utils/secret-sanitize.js";
 import { num, parseBooleanOption, requiredStringFlag, } from "../coerce.js";
 import { CommandResultFailure, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
@@ -41,46 +42,18 @@ const SENSITIVE_GIT_OUTPUT_KEYS: Record<string, true> = {
 	token: true,
 };
 
+const GIT_SANITIZE_OPTIONS = {
+	sensitiveKeys: SENSITIVE_GIT_OUTPUT_KEYS,
+	redactUrlUserinfo: true,
+} as const;
+
 /**
  * DSS may already contain legacy remotes with credentials in the URL, and Git
  * error text can echo them. Sanitize every server-derived Project Git value
  * before it reaches stdout or a structured command failure.
  */
-function redactGitUrlUserinfo(text: string,): string {
-	return text.replace(/https?:[\\/]{1,2}[^\s"'<>]+/giu, (url,) => {
-		const schemeEnd = url.indexOf(":",) + 1;
-		let authorityStart = schemeEnd;
-		while (url[authorityStart] === "/" || url[authorityStart] === "\\") authorityStart++;
-		const slash = url.slice(authorityStart,).search(/[\\/]/u,);
-		const authorityEnd = slash === -1 ? url.length : authorityStart + slash;
-		const at = url.lastIndexOf("@", authorityEnd - 1,);
-		if (at < authorityStart) return url;
-		return `${url.slice(0, authorityStart,)}[redacted]@${url.slice(at + 1,)}`;
-	},);
-}
-
 function sanitizeProjectGitOutput<T,>(value: T, secrets: string[] = [],): T {
-	if (typeof value === "string") {
-		let sanitized = redactGitUrlUserinfo(value,);
-		for (const secret of secrets) {
-			if (secret !== "") sanitized = sanitized.split(secret,).join("[redacted]",);
-		}
-		return sanitized as T;
-	}
-	if (Array.isArray(value,)) {
-		return value.map((item,) => sanitizeProjectGitOutput(item, secrets,)) as T;
-	}
-	if (value !== null && typeof value === "object") {
-		const sanitized: Record<string, unknown> = {};
-		for (const [key, item,] of Object.entries(value,)) {
-			const normalizedKey = key.replace(/[-_]/g, "",).toLowerCase();
-			sanitized[key] = SENSITIVE_GIT_OUTPUT_KEYS[normalizedKey] === true
-				? "[redacted]"
-				: sanitizeProjectGitOutput(item, secrets,);
-		}
-		return sanitized as T;
-	}
-	return value;
+	return sanitizeSecrets(value, { ...GIT_SANITIZE_OPTIONS, secrets, },);
 }
 
 /**
@@ -103,14 +76,7 @@ function assertGitActionSucceeded(
 	return sanitized;
 }
 function sanitizeProjectGitError(error: unknown,): unknown {
-	if (!(error instanceof Error)) return error;
-	error.message = sanitizeProjectGitOutput(error.message,);
-	if (error.stack !== undefined) error.stack = sanitizeProjectGitOutput(error.stack,);
-	const errorWithBody = error as Error & { body?: unknown; };
-	if (typeof errorWithBody.body === "string") {
-		errorWithBody.body = sanitizeProjectGitOutput(errorWithBody.body,);
-	}
-	return error;
+	return sanitizeErrorSecrets(error, { ...GIT_SANITIZE_OPTIONS, },);
 }
 
 /**
@@ -699,21 +665,18 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, FUTURE_WAIT_USAGE,);
 			try {
-				const result = sanitizeProjectGitOutput(
+				// The official Python client returns the future result verbatim
+				// (wait_for_result never inspects result fields): a completed
+				// future's payload is caller-interpreted data, and a
+				// {success:false} bag from DSS means "no diagnostics to show",
+				// not an operation failure. Only the git ACTION endpoints carry
+				// the {success:false} = failed convention.
+				return sanitizeProjectGitOutput(
 					await c.projectGit.waitForFuture(a[0], {
 						pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
 						timeoutMs: num(f["timeout"], "--timeout",),
 					},),
 				);
-				if (
-					result !== null
-					&& typeof result === "object"
-					&& !Array.isArray(result,)
-					&& (result as { success?: unknown; }).success === false
-				) {
-					return assertGitActionSucceeded(result as ProjectGitActionResult, "future-wait",);
-				}
-				return result;
 			} catch (error) {
 				throw sanitizeProjectGitError(error,);
 			}

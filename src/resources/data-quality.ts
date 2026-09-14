@@ -128,9 +128,9 @@ export class DataQualityResource extends BaseResource {
 	): Promise<DataQualityRule> {
 		const current = await this.getRule(datasetName, ruleId, opts.projectKey,);
 		const next = deepMerge(
-			current as unknown as Record<string, unknown>,
+			current,
 			opts.data,
-		) as DataQualityRule;
+		);
 		const pk = this.resolveProjectKey(opts.projectKey,);
 		await this.client.putVoid(
 			`${datasetPath(pk, datasetName,)}/rules/${encodeURIComponent(ruleId,)}`,

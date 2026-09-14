@@ -41,10 +41,15 @@ export class BundlesResource extends BaseResource {
 	}
 
 	/**
-	 * Create or overwrite an exported Design-node bundle. The documented
-	 * optional parameters are forwarded as query parameters:
-	 * `releaseNotes` when provided, and `evaluateProjectStandardsChecks`
-	 * (defaults to true, matching the official client which always sends it).
+	 * Create an exported Design-node bundle. The documented optional
+	 * parameters are forwarded as query parameters: `releaseNotes` when
+	 * provided, and `evaluateProjectStandardsChecks` (defaults to true,
+	 * matching the official client which always sends it). The official
+	 * client sends this PUT without a request body, and this resource
+	 * mirrors that; DSS 15 additionally refuses re-exporting an existing
+	 * bundle id ("Bundle <id> already exists"), so the documented
+	 * "create or overwrite" claim does not hold — callers must delete the
+	 * bundle first to replace it.
 	 */
 	async exportBundle(
 		bundleId: string,
@@ -57,11 +62,10 @@ export class BundlesResource extends BaseResource {
 			"evaluateProjectStandardsChecks",
 			String(options.evaluateProjectStandardsChecks ?? true,),
 		);
-		await this.client.putVoid(
+		await this.client.putVoidNoBody(
 			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported/${
 				encodeURIComponent(bundleId,)
 			}?${params.toString()}`,
-			{},
 		);
 	}
 
