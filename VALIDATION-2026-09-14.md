@@ -7,7 +7,7 @@ verified). Suite exit is nonzero ONLY for the three honestly-reported required b
 template; meaning cleanup 405). The 474-action table in Appendix A classifies every
 registered action: demonstrated 380 + setupBaseline 2 + offline 7 + blocked 85 = 474,
 zero failed attempts, zero unrun, zero unrepresented. Historical runs 15–29 are
-supplementary context only (local://dataiku-live-incident-chronology.md); no historical
+supplementary session-local context only (not committed; see §9); no historical
 union is used.
 
 ## 1. Scope — all 474 registered actions, exact
@@ -99,8 +99,8 @@ Classification policy (per-command ledger evidence, not case names):
 
 The 14 nonzero commands are expected negative probes inside passing cases or
 prerequisite-proving probes inside blocked cases; none is an unclassified failure. The
-full per-command list (args → exitCode, mode) is in local://dataiku-action-state.json and
-the generated table /tmp/final-table.md; highlights: `dataset assert-count --expected 999`
+full command logs were reviewed in session-local artifacts (not committed; see §9).
+Highlights: `dataset assert-count --expected 999`
 (exit 4 expected), `job wait`/`job log-url` probes, `dashboard export` (exit 2, blocked
 prereq), `saved-model download-scoring-jar/pmml` (exit 2, blocked), `api-service
 delete-package` (exit 2, probe), `user/group create` (exit 2, 403-blocked prerequisite).
@@ -256,8 +256,9 @@ delete-package` (exit 2, probe), `user/group create` (exit 2, 403-blocked prereq
   unfiltered 474-action accounting basis; the totals above are unchanged.
 
 ### Historical diagnostics (supplementary only)
-Iterations 18–29 development chronology, root-cause probes, and incident history moved to
-local://dataiku-live-incident-chronology.md. Historical pass data is supplementary only —
+Iterations 18–29 development chronology, root-cause probes, and incident history are
+recorded in the session-local chronology (not committed; see §9). Historical pass data
+is supplementary only —
 never a substitute for the accepted final iteration (no historical union).
 
 ## 5. Offline-7 explicit proof (hermetic + actual)
@@ -296,8 +297,8 @@ never a substitute for the accepted final iteration (no historical union).
 
 ## 7. Incidents (detail in the chronology artifact)
 
-Unauthorized-plugin, private-probe, and all recovery events are recorded in
-local://dataiku-live-incident-chronology.md. No unresolved incident affects the accepted
+Recovery events are recorded in the session-local chronology (not committed; see §9).
+No unresolved incident affects the accepted
 iteration-30 evidence.
 
 ## 8. Provenance
@@ -322,7 +323,12 @@ iteration-30 evidence.
   51d10c7fbcaf4b35e2c6c47f28366673419113c4); source completeness confirmed after the two
   omission fixes landed.
 
-## 9. Evidence artifacts
+## 9. Session-local evidence artifacts (not committed)
+
+The following are session-local audit records, not repository-resolvable links.
+Temporary generation files have been removed. The committed reconciliation evidence
+is the blocker catalogue and the complete action table in Appendix A. Generated
+`.live-tests/` reports and inventories also belong to the local lab, not this commit.
 
 - local://dataiku-action-state.json (iteration-30 final-authoritative partition)
 - local://dataiku-case-rows.json (case → actions → owners; 155 cases)
