@@ -88,6 +88,16 @@ export interface UploadFormPart {
 	fileName?: string;
 }
 
+/**
+ * Multipart part modes for {@link DataikuClient.uploadForm}:
+ * - `value`: a form text field;
+ * - neither `blob` nor `fileName`: a filename-less, zero-length field part —
+ *   the official Python client's files={"file": (None, None)} shape required
+ *   by the managed-folder MLflow import (a Blob would add `filename=`, even
+ *   when empty);
+ * - `blob` (optionally with `fileName`): a file part.
+ */
+
 /** Per-call overrides for {@link DataikuClient.get}. */
 export interface DataikuGetOptions {
 	/**
@@ -830,6 +840,14 @@ export class DataikuClient {
 		for (const part of parts) {
 			if (part.value !== undefined) {
 				formData.append(part.name, part.value,);
+				continue;
+			}
+			if ((part.blob ?? null) === null && (part.fileName ?? null) === null) {
+				// Filename-less, zero-length field part — the shape the official
+				// Python client produces with files={"file": (None, None)} and
+				// the one DSS's managed-folder MLflow import requires (a Blob
+				// would always add a `filename=` parameter, even when empty).
+				formData.append(part.name, "",);
 				continue;
 			}
 			const blob = part.blob ?? new Blob([],);

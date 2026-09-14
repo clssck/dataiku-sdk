@@ -152,4 +152,81 @@ describe("Visual ML CLI endpoints", () => {
 		expect(failure.stderr,).toBe("",);
 		expect(failure.stdout,).toContain("--target is required for PREDICTION ML tasks.",);
 	});
+
+	it("sends evaluate-version --sampling as a parsed JSON object", async () => {
+		// The flag carries its own JSON value; the handler must parse the flag
+		// itself (it previously read --data/--stdin and rejected valid JSON).
+		const requests: RecordedRequest[] = [];
+		await withCliServer((req, res,) => {
+			void (async () => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				const text = await readBody(req,);
+				requests.push({
+					method: req.method ?? "GET",
+					path: `${url.pathname}${url.search}`,
+					...(text.length > 0 ? { body: JSON.parse(text,), } : {}),
+				},);
+				sendJson(res, { evaluated: true, },);
+			})();
+		}, async (url,) => {
+			await dss([
+				"saved-model",
+				"evaluate-version",
+				"SM1",
+				"v1",
+				"--dataset",
+				"PROJ.ds",
+				"--sampling",
+				'{"samplingMethod":"HEAD_SEQUENTIAL","maxRecords":24}',
+				"--project-key",
+				"PROJ",
+			], { env: cliEnv(url,), },);
+			// Explicit override: an INHERIT value passes through unchanged.
+			await dss([
+				"saved-model",
+				"evaluate-version",
+				"SM1",
+				"v1",
+				"--dataset",
+				"PROJ.ds",
+				"--container-exec-config",
+				"INHERIT",
+				"--project-key",
+				"PROJ",
+			], { env: cliEnv(url,), },);
+			const failure = await dssFailure([
+				"saved-model",
+				"evaluate-version",
+				"SM1",
+				"v1",
+				"--dataset",
+				"PROJ.ds",
+				"--sampling",
+				"not-json",
+				"--project-key",
+				"PROJ",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stdout,).toContain("Invalid JSON in --sampling",);
+		},);
+
+		expect(requests,).toEqual([
+			{
+				method: "POST",
+				path:
+					"/public/api/projects/PROJ/savedmodels/SM1/versions/v1/external-ml/actions/evaluate?useOptimalThreshold=true&skipExpensiveReports=true",
+				body: {
+					datasetRef: "PROJ.ds",
+					containerExecConfigName: "NONE",
+					samplingParam: { samplingMethod: "HEAD_SEQUENTIAL", maxRecords: 24, },
+				},
+			},
+			{
+				method: "POST",
+				path:
+					"/public/api/projects/PROJ/savedmodels/SM1/versions/v1/external-ml/actions/evaluate?useOptimalThreshold=true&skipExpensiveReports=true",
+				body: { datasetRef: "PROJ.ds", containerExecConfigName: "INHERIT", },
+			},
+		],);
+	});
 });

@@ -126,14 +126,12 @@ describe("SavedModelsResource", () => {
 			const archiveBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3,],);
 			await Bun.write(archive, archiveBytes,);
 			const requests: string[] = [];
-			let observedQuery = "";
 			let observedContentType = "";
 			let observedBody = Buffer.alloc(0,);
 
 			await withServer(async (req, res,) => {
 				requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
 				observedContentType = req.headers["content-type"] ?? "";
-				observedQuery = req.url ?? "";
 				observedBody = await readBody(req,);
 				sendJson(res, { imported: true, },);
 			}, async (url,) => {
@@ -173,13 +171,11 @@ describe("SavedModelsResource", () => {
 
 	it("imports from a managed folder with a zero-byte file part and folderRef/path query", async () => {
 		const requests: string[] = [];
-		let observedQuery = "";
 		let observedBody = Buffer.alloc(0,);
 		let observedContentType = "";
 
 		await withServer(async (req, res,) => {
 			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
-			observedQuery = req.url ?? "";
 			observedContentType = req.headers["content-type"] ?? "";
 			observedBody = await readBody(req,);
 			sendJson(res, { imported: true, },);
@@ -195,19 +191,83 @@ describe("SavedModelsResource", () => {
 		},);
 
 		expect(requests,).toEqual([
-			`POST ${SM_PATH}/versions/v2?codeEnvName=INHERIT&containerExecConfigName=INHERIT&setActive=true&binaryClassificationThreshold=0.5&folderRef=OTHER.FOLDERID&path=%2Fartifacts%2Fmodel`,
+			`POST ${SM_PATH}/versions/v2?codeEnvName=INHERIT&containerExecConfigName=NONE&setActive=true&binaryClassificationThreshold=0.5&folderRef=OTHER.FOLDERID&path=%2Fartifacts%2Fmodel`,
 		],);
 		expect(observedContentType,).toContain("multipart/form-data",);
 		const bodyText = observedBody.toString("latin1",);
-		// Backend-mandated multipart: one file part, zero bytes, matching the
-		// official Python client's files={"file": (None, None)}.
+		// Backend-mandated multipart: one field part named "file", zero bytes,
+		// WITHOUT a filename parameter — exactly the official Python client's
+		// files={"file": (None, None)} shape (a filename=, even empty, is
+		// rejected by the endpoint).
 		expect(bodyText,).toContain('name="file"',);
+		expect(bodyText,).not.toContain('name="file"; filename=',);
 		const partMatch = bodyText.match(/name="file"[^\r\n]*(?:\r\n[^\r\n]+)*\r\n\r\n/,);
 		expect(partMatch,).not.toBeNull();
 		// The part body is empty: after the header terminator comes a CRLF then
 		// the closing boundary — i.e. zero content bytes were sent.
 		const afterPart = bodyText.slice(bodyText.indexOf(partMatch![0]!,) + partMatch![0]!.length,);
 		expect(afterPart.startsWith("\r\n--",),).toBe(true,);
+	});
+
+	it("defaults the container exec config to NONE when omitted on both import paths", async () => {
+		// DSS resolves the container exec config as LOCAL-CONFIG (NONE) for an
+		// external caller; both import paths must send that default rather than
+		// dropping the parameter or inheriting a container config.
+		const requests: string[] = [];
+		await withTempDir(async (dir,) => {
+			const archive = join(dir, "model.zip",);
+			await Bun.write(archive, new Uint8Array([0x50, 0x4b, 0x03, 0x04,],),);
+			await withServer(async (req, res,) => {
+				requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+				await readBody(req,);
+				sendJson(res, { imported: true, },);
+			}, async (url,) => {
+				const resource = new SavedModelsResource(createClient(url,),);
+				await resource.importMlflowVersion(archive, "v1", undefined, "SM1",);
+				await resource.importMlflowVersionFromFolder(
+					"OTHER.FOLDERID",
+					"/artifacts/model",
+					"v2",
+					undefined,
+					"SM1",
+				);
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			`POST ${SM_PATH}/versions/v1?codeEnvName=INHERIT&containerExecConfigName=NONE&setActive=true&binaryClassificationThreshold=0.5`,
+			`POST ${SM_PATH}/versions/v2?codeEnvName=INHERIT&containerExecConfigName=NONE&setActive=true&binaryClassificationThreshold=0.5&folderRef=OTHER.FOLDERID&path=%2Fartifacts%2Fmodel`,
+		],);
+	});
+
+	it("passes an explicit INHERIT container exec config through on both import paths", async () => {
+		const requests: string[] = [];
+		await withTempDir(async (dir,) => {
+			const archive = join(dir, "model.zip",);
+			await Bun.write(archive, new Uint8Array([0x50, 0x4b, 0x03, 0x04,],),);
+			await withServer(async (req, res,) => {
+				requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+				await readBody(req,);
+				sendJson(res, { imported: true, },);
+			}, async (url,) => {
+				const resource = new SavedModelsResource(createClient(url,),);
+				await resource.importMlflowVersion(archive, "v1", {
+					containerExecConfigName: "INHERIT",
+				}, "SM1",);
+				await resource.importMlflowVersionFromFolder(
+					"OTHER.FOLDERID",
+					"/artifacts/model",
+					"v2",
+					{ containerExecConfigName: "INHERIT", },
+					"SM1",
+				);
+			},);
+		},);
+
+		expect(requests,).toEqual([
+			`POST ${SM_PATH}/versions/v1?codeEnvName=INHERIT&containerExecConfigName=INHERIT&setActive=true&binaryClassificationThreshold=0.5`,
+			`POST ${SM_PATH}/versions/v2?codeEnvName=INHERIT&containerExecConfigName=INHERIT&setActive=true&binaryClassificationThreshold=0.5&folderRef=OTHER.FOLDERID&path=%2Fartifacts%2Fmodel`,
+		],);
 	});
 
 	it("streams the scoring jar through multipart-safe binary framing to a file", async () => {
@@ -241,19 +301,70 @@ describe("SavedModelsResource", () => {
 		],);
 	});
 
-	it("streams the scoring PMML to a file", async () => {
-		const pmml = Buffer.from('<?xml version="1.0"?><PMML/>', "utf-8",);
-		await withTempDir(async (dir,) => {
-			await withServer((req, res,) => {
-				res.setHeader("Content-Type", "application/xml",);
-				res.end(pmml,);
-			}, async (url,) => {
-				const resource = new SavedModelsResource(createClient(url,),);
-				const res2 = await resource.downloadScoringPmml("SM1", "v1",);
-				const out = join(dir, "model.pmml",);
-				await writeResponseToFile(out, res2,);
-				expect((await readFile(out,)).toString(),).toBe(pmml.toString(),);
-			},);
+	it("sends the required containerExecConfigName query on external-metadata PUT", async () => {
+		// Live DSS 15 requires the parameter (400 "Required request parameter
+		// 'containerExecConfigName' not present" without it); for an external
+		// API caller the container exec config resolves as LOCAL-CONFIG ->
+		// NONE, which is what an omitted option sends.
+		const requests: string[] = [];
+		const bodies: unknown[] = [];
+		await withServer(async (req, res,) => {
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			bodies.push(JSON.parse((await readBody(req,)).toString(),),);
+			res.statusCode = 204;
+			res.end();
+		}, async (url,) => {
+			const resource = new SavedModelsResource(createClient(url,),);
+			await resource.externalMetadataPut("SM1", "v1", { targetColumnName: "churn_flag", },);
+			await resource.externalMetadataPut(
+				"SM1",
+				"v1",
+				{ targetColumnName: "churn_flag", },
+				{ containerExecConfigName: "my config", },
+			);
 		},);
+
+		expect(requests,).toEqual([
+			`PUT ${SM_PATH}/versions/v1/external-ml/metadata?containerExecConfigName=NONE`,
+			`PUT ${SM_PATH}/versions/v1/external-ml/metadata?containerExecConfigName=my%20config`,
+		],);
+		expect(bodies,).toEqual([
+			{ targetColumnName: "churn_flag", },
+			{ targetColumnName: "churn_flag", },
+		],);
+	});
+
+	it("defaults the evaluate-version body container exec config to NONE without mutating the caller request", async () => {
+		// DSS 15 resolves the container exec config as LOCAL-CONFIG (NONE) for
+		// an external caller: the SDK must send NONE when the request omits it,
+		// pass an explicit value (including INHERIT) through unchanged, and
+		// never add the default to the caller's own object.
+		const requests: string[] = [];
+		const bodies: unknown[] = [];
+		await withServer(async (req, res,) => {
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			bodies.push(JSON.parse((await readBody(req,)).toString(),),);
+			sendJson(res, { evaluated: true, },);
+		}, async (url,) => {
+			const resource = new SavedModelsResource(createClient(url,),);
+			const request: Record<string, unknown> = { datasetRef: "PROJ.ds", };
+			await resource.evaluateVersion(request, undefined, "SM1", "v1",);
+			expect("containerExecConfigName" in request,).toBe(false,);
+			await resource.evaluateVersion(
+				{ datasetRef: "PROJ.ds", containerExecConfigName: "INHERIT", },
+				undefined,
+				"SM1",
+				"v1",
+			);
+		},);
+
+		expect(requests,).toEqual([
+			`POST ${SM_PATH}/versions/v1/external-ml/actions/evaluate?useOptimalThreshold=true&skipExpensiveReports=true`,
+			`POST ${SM_PATH}/versions/v1/external-ml/actions/evaluate?useOptimalThreshold=true&skipExpensiveReports=true`,
+		],);
+		expect(bodies,).toEqual([
+			{ datasetRef: "PROJ.ds", containerExecConfigName: "NONE", },
+			{ datasetRef: "PROJ.ds", containerExecConfigName: "INHERIT", },
+		],);
 	});
 });

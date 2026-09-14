@@ -268,7 +268,7 @@ export class SavedModelsResource extends BaseResource {
 				"validation_failed",
 			);
 		}
-		const query = this.mlflowImportQuery(options, "NONE",);
+		const query = this.mlflowImportQuery(options,);
 		const parts: UploadFormPart[] = [
 			{ name: "file", blob: Bun.file(archive,), fileName: archive.split("/",).pop() ?? "model.zip", },
 		];
@@ -299,10 +299,13 @@ export class SavedModelsResource extends BaseResource {
 		const version = encodeURIComponent(requireNonEmpty(versionId, "versionId",),);
 		const ref = requireNonEmpty(folderRef, "folderRef",);
 		const path = requireNonEmpty(folderPath, "folderPath",);
-		const query = this.mlflowImportQuery(options, "INHERIT",);
+		const query = this.mlflowImportQuery(options,);
 		query.set("folderRef", ref,);
 		query.set("path", path,);
-		const parts: UploadFormPart[] = [{ name: "file", fileName: "", },];
+		// Match the official client exactly: files={"file": (None, None)} — a
+		// filename-less, zero-length field part (a Blob part would carry a
+		// `filename=` parameter, which the endpoint rejects).
+		const parts: UploadFormPart[] = [{ name: "file", },];
 		return this.client.uploadForm<Record<string, unknown>>(
 			`${this.savedModelPath(id, projectKey,)}/versions/${version}`,
 			parts,
@@ -328,7 +331,11 @@ export class SavedModelsResource extends BaseResource {
 	/**
 	 * PUT the external-ml metadata of a saved-model version. The body must be
 	 * the full metadata document as returned by {@link externalMetadataGet}
-	 * (GET-then-PUT), optionally with containerExecConfigName query parameter.
+	 * (GET-then-PUT). DSS requires the containerExecConfigName query parameter
+	 * on this endpoint (live: 400 "Required request parameter
+	 * 'containerExecConfigName' not present" without it); for an external API
+	 * caller the container exec config resolves as LOCAL-CONFIG -> NONE, so an
+	 * omitted option sends NONE rather than dropping the parameter.
 	 */
 	async externalMetadataPut(
 		savedModelId: string,
@@ -339,9 +346,8 @@ export class SavedModelsResource extends BaseResource {
 	): Promise<void> {
 		const version = encodeURIComponent(requireNonEmpty(versionId, "versionId",),);
 		requireObject(metadata, "metadata",);
-		const suffix = options?.containerExecConfigName
-			? `?containerExecConfigName=${encodeURIComponent(options.containerExecConfigName,)}`
-			: "";
+		const containerExecConfigName = options?.containerExecConfigName ?? "NONE";
+		const suffix = `?containerExecConfigName=${encodeURIComponent(containerExecConfigName,)}`;
 		await this.client.putVoid(
 			`${
 				this.savedModelPath(savedModelId, projectKey,)
@@ -365,13 +371,22 @@ export class SavedModelsResource extends BaseResource {
 	): Promise<void> {
 		const id = requireNonEmpty(savedModelId ?? "", "savedModelId",);
 		const version = encodeURIComponent(requireNonEmpty(versionId ?? "", "versionId",),);
-		const body = requireObject(request, "request",);
-		if (typeof body.datasetRef !== "string" || body.datasetRef.trim().length === 0) {
+		const requestBody = requireObject(request, "request",);
+		if (typeof requestBody.datasetRef !== "string" || requestBody.datasetRef.trim().length === 0) {
 			throw new ClientValidationError(
 				"request.datasetRef must be a non-empty string.",
 				"validation_failed",
 			);
 		}
+		// DSS 15 official external-caller semantics: the container exec config
+		// resolves as LOCAL-CONFIG -> NONE, so an omitted value sends NONE
+		// rather than being left out; an explicit value (including INHERIT)
+		// passes through unchanged. The caller's request object is never
+		// mutated — the default is applied to a copy.
+		const body = {
+			...requestBody,
+			containerExecConfigName: requestBody.containerExecConfigName ?? "NONE",
+		};
 		const useOptimal = boolQuery(options?.useOptimalThreshold,);
 		const skipExpensive = boolQuery(options?.skipExpensiveReports,);
 		await this.client.post<SavedModelActionResult | undefined>(
@@ -443,17 +458,17 @@ export class SavedModelsResource extends BaseResource {
 
 	private mlflowImportQuery(
 		options: SavedModelVersionImportOptions | undefined,
-		containerExecConfigDefault: string,
 	): URLSearchParams {
-		// The official client always sends all four params; its defaults are
-		// codeEnvName="INHERIT" and per-method containerExecConfigName ("NONE"
-		// for archive import, "INHERIT" for managed-folder import). DSS
-		// validates their presence (400 when omitted).
+		// DSS 15 official semantics: both import endpoints resolve the
+		// container exec config as LOCAL-CONFIG, i.e. NONE for an external
+		// caller, and DSS validates the parameter's presence (400 when
+		// omitted) — so an omitted option sends NONE. An explicit option
+		// (including INHERIT) passes through unchanged.
 		const query = new URLSearchParams();
 		query.set("codeEnvName", options?.codeEnvName ?? "INHERIT",);
 		query.set(
 			"containerExecConfigName",
-			options?.containerExecConfigName ?? containerExecConfigDefault,
+			options?.containerExecConfigName ?? "NONE",
 		);
 		query.set("setActive", boolQuery(options?.setActive,),);
 		query.set(

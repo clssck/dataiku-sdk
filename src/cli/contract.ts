@@ -3550,6 +3550,11 @@ export function commandPlanShape(
 					...(typeof flags["code-env"] === "string"
 						? { codeEnvName: flags["code-env"], }
 						: {}),
+					// Execute always sends the query parameter with the
+					// external-caller default NONE; the plan mirrors it.
+					containerExecConfigName: typeof flags["container-exec-config"] === "string"
+						? flags["container-exec-config"]
+						: "NONE",
 					setActive: parseBooleanOption(flags["set-active"], "--set-active",) ?? true,
 					...(flags["binary-classification-threshold"] !== undefined
 						? {
@@ -3575,28 +3580,50 @@ export function commandPlanShape(
 						path: flags["path"] as string | undefined,
 					},
 					...(typeof flags["code-env"] === "string" ? { codeEnvName: flags["code-env"], } : {}),
+					// Execute always sends the query parameter with the
+					// external-caller default NONE; the plan mirrors it.
+					containerExecConfigName: typeof flags["container-exec-config"] === "string"
+						? flags["container-exec-config"]
+						: "NONE",
 					setActive: parseBooleanOption(flags["set-active"], "--set-active",) ?? true,
 				},
 			};
-		case "saved-model.external-metadata-put":
+		case "saved-model.external-metadata-put": {
+			// DSS requires containerExecConfigName on this endpoint; for an
+			// external API caller it resolves as LOCAL-CONFIG -> NONE, so the
+			// plan mirrors the NONE default unless --container-exec-config
+			// overrides it. Same contract as execute.
+			const containerExecConfigName = typeof flags["container-exec-config"] === "string"
+				? flags["container-exec-config"]
+				: "NONE";
 			return {
 				method: "PUT",
 				endpoint: projectEndpoint(
 					`/savedmodels/${encodeURIComponent(id,)}/versions/${
 						encodeURIComponent(args[1] ?? "",)
-					}/external-ml/metadata`,
+					}/external-ml/metadata?containerExecConfigName=${
+						encodeURIComponent(containerExecConfigName,)
+					}`,
 				),
 				identifiers: { savedModelId: id, versionId: args[1], },
 				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
+		}
 		case "saved-model.evaluate-version": {
 			const payload: Record<string, unknown> = {
 				datasetRef: requiredPlanFlag(flags, "dataset", entry.usage,),
+				// Execute always sends an explicit containerExecConfigName
+				// (official external-caller semantics: LOCAL-CONFIG -> NONE);
+				// the plan mirrors that default and any explicit override.
+				containerExecConfigName: typeof flags["container-exec-config"] === "string"
+					? flags["container-exec-config"]
+					: "NONE",
 			};
-			if (typeof flags["container-exec-config"] === "string") {
-				payload.containerExecConfigName = flags["container-exec-config"];
+			// --sampling is a JSON flag value; the plan carries the parsed
+			// object under the same key as the execute body (samplingParam).
+			if (flags["sampling"] !== undefined) {
+				payload.samplingParam = json(flags["sampling"], "--sampling",);
 			}
-			if (typeof flags["sampling"] === "string") payload.sampling = flags["sampling"];
 			return {
 				method: "POST",
 				endpoint: projectEndpoint(

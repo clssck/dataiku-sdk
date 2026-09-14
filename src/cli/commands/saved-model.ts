@@ -1,5 +1,5 @@
 import { writeResponseToFile, } from "../../utils/response-file.js";
-import { jsonInput, parseBooleanOption, requiredJsonInput, } from "../coerce.js";
+import { json, jsonInput, parseBooleanOption, requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
 import type { CommandMeta, } from "../types.js";
@@ -398,7 +398,7 @@ export const savedModelCommands: Record<string, CommandMeta> = {
 		usage:
 			"dss saved-model external-metadata-put <modelId> <versionId> (--data JSON|--data-file PATH|--stdin) [--container-exec-config NAME] [--dry-run] [--project-key KEY]",
 		description:
-			"Save the external-ml metadata of a saved-model version. The payload must be the full metadata document as returned by external-metadata-get (GET-then-PUT).",
+			"Save the external-ml metadata of a saved-model version. The payload must be the full metadata document as returned by external-metadata-get (GET-then-PUT). DSS requires the containerExecConfigName query parameter; it defaults to NONE for an external API caller (LOCAL-CONFIG resolution) when --container-exec-config is omitted.",
 		examples: [
 			"dss saved-model external-metadata-put MODEL_ID VERSION_ID --data-file metadata.json --project-key PROJECT",
 		],
@@ -411,13 +411,19 @@ export const savedModelCommands: Record<string, CommandMeta> = {
 			const dataset = f["dataset"] as string | undefined;
 			if (!dataset) throw new UsageError("--dataset REF is required.", "missing_required_flag",);
 			const projectKey = f["project-key"] as string | undefined;
-			const sampling = f["sampling"] === undefined
-				? undefined
-				: requiredJsonInput(f, "--sampling must be a JSON object.",);
-			const containerExecConfigName = f["container-exec-config"] as string | undefined;
+			// --sampling carries its own JSON value: parse the flag itself (the
+			// old requiredJsonInput read --data/--stdin, so a valid JSON flag
+			// was rejected as missing).
+			const sampling = json(f["sampling"], "--sampling",);
+			// Official external-caller semantics (DSS 15): the evaluation
+			// container exec resolves as LOCAL-CONFIG -> NONE, so the body
+			// always carries an explicit containerExecConfigName defaulting to
+			// NONE; --container-exec-config still passes an explicit value
+			// (including INHERIT) through unchanged.
+			const containerExecConfigName = (f["container-exec-config"] as string | undefined) ?? "NONE";
 			const body = {
 				datasetRef: dataset,
-				...(containerExecConfigName !== undefined ? { containerExecConfigName, } : {}),
+				containerExecConfigName,
 				...(sampling !== undefined ? { samplingParam: sampling, } : {}),
 			};
 			const options = {

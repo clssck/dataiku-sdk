@@ -768,4 +768,125 @@ describe("CLI planned command coverage", () => {
 			rmSync(filePath, { force: true, },);
 		}
 	});
+
+	it("plans the required containerExecConfigName query on saved-model external-metadata-put", async () => {
+		// Live DSS 15 rejects the PUT without the parameter (400). The plan must
+		// carry the same default (NONE) as execute, with an explicit override
+		// passthrough, so plan and execute cannot diverge.
+		const body = JSON.stringify({ targetColumnName: "churn_flag", },);
+		const planned = JSON.parse(
+			(await dss([
+				"saved-model",
+				"external-metadata-put",
+				"SM1",
+				"v1",
+				"--data",
+				body,
+				"--plan",
+				"--project-key",
+				"TEST",
+			], { env: cliEnv("http://127.0.0.1:1",), },)).stdout,
+		) as Record<string, unknown>;
+		expect(planned,).toMatchObject({
+			plan: true,
+			method: "PUT",
+			endpoint:
+				"/public/api/projects/TEST/savedmodels/SM1/versions/v1/external-ml/metadata?containerExecConfigName=NONE",
+			payload: { targetColumnName: "churn_flag", },
+		},);
+
+		const overridden = JSON.parse(
+			(await dss([
+				"saved-model",
+				"external-metadata-put",
+				"SM1",
+				"v1",
+				"--data",
+				body,
+				"--container-exec-config",
+				"my config",
+				"--plan",
+				"--project-key",
+				"TEST",
+			], { env: cliEnv("http://127.0.0.1:1",), },)).stdout,
+		) as Record<string, unknown>;
+		expect(overridden["endpoint"],).toBe(
+			"/public/api/projects/TEST/savedmodels/SM1/versions/v1/external-ml/metadata?containerExecConfigName=my%20config",
+		);
+	});
+
+	it("plans evaluate-version sampling as a parsed samplingParam object", async () => {
+		// Plan/execute parity: the plan must carry the same parsed
+		// samplingParam object the execute path sends, not the raw JSON string.
+		const planned = JSON.parse(
+			(await dss([
+				"saved-model",
+				"evaluate-version",
+				"SM1",
+				"v1",
+				"--dataset",
+				"PROJ.ds",
+				"--sampling",
+				'{"samplingMethod":"HEAD_SEQUENTIAL","maxRecords":24}',
+				"--plan",
+				"--project-key",
+				"PROJ",
+			], { env: cliEnv("http://127.0.0.1:1",), },)).stdout,
+		) as Record<string, unknown>;
+		expect(planned,).toMatchObject({
+			plan: true,
+			method: "POST",
+			endpoint: "/public/api/projects/PROJ/savedmodels/SM1/versions/v1/external-ml/actions/evaluate",
+			payload: {
+				datasetRef: "PROJ.ds",
+				containerExecConfigName: "NONE",
+				samplingParam: { samplingMethod: "HEAD_SEQUENTIAL", maxRecords: 24, },
+			},
+		},);
+	});
+
+	it("plans the external-caller NONE container default on both mlflow import paths", async () => {
+		const archive = JSON.parse(
+			(await dss([
+				"saved-model",
+				"import-mlflow-version",
+				"SM1",
+				"v1",
+				"--archive",
+				"/tmp/model.zip",
+				"--code-env",
+				"py",
+				"--plan",
+				"--project-key",
+				"PROJ",
+			], { env: cliEnv("http://127.0.0.1:1",), },)).stdout,
+		) as Record<string, unknown>;
+		expect(archive["payload"],).toMatchObject({
+			source: { kind: "local-archive", archive: "/tmp/model.zip", },
+			codeEnvName: "py",
+			containerExecConfigName: "NONE",
+		},);
+
+		const folder = JSON.parse(
+			(await dss([
+				"saved-model",
+				"import-mlflow-version-from-folder",
+				"SM1",
+				"v2",
+				"--folder",
+				"PROJ.FID",
+				"--path",
+				"/model",
+				"--container-exec-config",
+				"INHERIT",
+				"--plan",
+				"--project-key",
+				"PROJ",
+			], { env: cliEnv("http://127.0.0.1:1",), },)).stdout,
+		) as Record<string, unknown>;
+		expect(folder["payload"],).toMatchObject({
+			source: { kind: "managed-folder", folderRef: "PROJ.FID", path: "/model", },
+			containerExecConfigName: "INHERIT",
+		},);
+	});
 });
