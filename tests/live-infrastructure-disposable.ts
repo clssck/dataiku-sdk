@@ -884,6 +884,7 @@ async function codeEnvLifecycle(ctx: LiveContext,): Promise<void> {
 	await withOwnedCodeEnv(ctx, "env", {}, async ({ envLang, envName, },) => {
 		const lang = envLang;
 		ctx.fixtures.codeEnvName = envName;
+		await assertListed(ctx, "code-env", `${lang}/${envName}`,);
 		await ctx.run(["code-env", "get", lang, envName,],);
 		await ctx.run(["code-env", "get-definition", lang, envName,],);
 		// set-definition round-trip: replace the definition with itself under the

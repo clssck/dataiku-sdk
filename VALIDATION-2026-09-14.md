@@ -242,8 +242,18 @@ delete-package` (exit 2, probe), `user/group create` (exit 2, 403-blocked prereq
   clears the requested specs (f458e56).
 - MLflow: canonical `code`/`data`/`env` packaging; `containerExecConfigName=NONE` defaults
   for folder imports, SDK evaluations, and archive imports; owned runtime pins (51d10c7).
+  The pinned package set is a verified fixture baseline, not an isolated cause of the
+  earlier kernel failures: an unpinned runtime with explicit `NONE` was not tested.
+  The earlier diagnostic `versionDetails("v1", id, projectKey)` call reversed the
+  SDK arguments (`savedModelId`, `versionId`, `projectKey`); its 404 is not evidence
+  of an instance outage.
 - Harness interruption: the first signal stops the child and releases the lab lock (no
   stale lock); regression in tests/live-runner.test.ts.
+- Post-run advisory verification (focused iteration-31): the code-env lifecycle now
+  executes its declared `code-env.list` action and verifies the owned environment is
+  listed. The lifecycle passed, recorded the successful list command, and deleted its
+  temporary environment; project integrity was verified. Iteration-30 remains the
+  unfiltered 474-action accounting basis; the totals above are unchanged.
 
 ### Historical diagnostics (supplementary only)
 Iterations 18–29 development chronology, root-cause probes, and incident history moved to

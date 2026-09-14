@@ -1228,6 +1228,9 @@ describe("live sandbox ownership", () => {
 					return { jobId: "CREATE_JOB_1", };
 				}
 				if (argv[0] === "future" && argv[1] === "wait") return { success: true, };
+				if (argv[0] === "code-env" && argv[1] === "list") {
+					return [{ envLang: "PYTHON", envName: "python_stub_env_0", },];
+				}
 				if (argv[0] === "code-env" && argv[1] === "get") {
 					return {
 						definitionHash: "hash-1",
