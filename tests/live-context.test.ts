@@ -10,6 +10,7 @@ import {
 	LiveRunContext,
 	loadLiveManifest,
 	stopLiveCommands,
+	writeLiveJson,
 } from "./live-context.js";
 import { exerciseInfrastructureDisposable, } from "./live-infrastructure-disposable.js";
 import { buildStoredZip, writePluginArchive, } from "./live-plugins.js";
@@ -217,6 +218,18 @@ describe("live sandbox ownership", () => {
 				await expect(ctx.run(["project", "delete", ctx.projectKey, "--if-exists",],),).rejects
 					.toThrow();
 				await expect(ctx.run(["project-git", "push",],),).rejects.toThrow();
+				await expect(
+					ctx.run([
+						"plugin",
+						"set-git-remote",
+						"owned",
+						"--repository",
+						"http://127.0.0.1:1234/fixture.git",
+					],),
+				).rejects.toThrow();
+				await expect(
+					ctx.pluginFromGit("install", "owned", "http://127.0.0.1:1234/fixture.git", "main",),
+				).rejects.toThrow();
 				const target = `SDK_LIVE_${ctx.manifest.runId.toUpperCase()}_TARGET_1`;
 				ctx.manifest.projects.push({
 					key: target,
@@ -1370,6 +1383,61 @@ describe("live sandbox ownership", () => {
 				await expect(ctx.reserveGlobal("code-env", "env",),).rejects.toThrow();
 				expect(ctx.manifest.globals,).toEqual([],);
 			},);
+		},);
+	});
+});
+describe("live owned host receipts", () => {
+	it("rejects directory targets outside the reservation and inactive runners", async () => {
+		await fixture("http://127.0.0.1:1", async ctx => {
+			const nonce = "a".repeat(32,);
+			const directory = {
+				path: `/tmp/sdk_live_${ctx.runId}_${nonce}`,
+				nonce,
+				runId: ctx.runId,
+				projectKey: ctx.projectKey,
+				state: "bound",
+			};
+			for (
+				const changes of [{ path: "/tmp/unrelated", }, { nonce: [nonce,], }, {
+					projectKey: "FOREIGN",
+				},]
+			) {
+				await writeLiveJson(ctx.manifestPath, {
+					...ctx.manifest,
+					ownedDirectories: [{ ...directory, ...changes, },],
+				},);
+				await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(Error,);
+			}
+			ctx.manifest.projects[0]!.state = "deleted";
+			await writeLiveJson(ctx.manifestPath, { ...ctx.manifest, ownedDirectories: [directory,], },);
+			await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(Error,);
+		},);
+	});
+	it("rejects unsafe process identities and foreign repository receipts", async () => {
+		await fixture("http://127.0.0.1:1", async ctx => {
+			const nonce = "a".repeat(32,);
+			const directory = {
+				path: `/tmp/sdk_live_${ctx.runId}_${nonce}`,
+				nonce,
+				runId: ctx.runId,
+				projectKey: ctx.projectKey,
+				state: "bound",
+			};
+			const daemon = {
+				pid: 4242,
+				startTime: "1234",
+				port: 20001,
+				repositories: [`${directory.path}/fixture.git`,],
+			};
+			for (
+				const changes of [{ pid: 1, }, { startTime: 1234, }, { repositories: ["/tmp/foreign.git",], },]
+			) {
+				await writeLiveJson(ctx.manifestPath, {
+					...ctx.manifest,
+					ownedDirectories: [{ ...directory, daemon: { ...daemon, ...changes, }, },],
+				},);
+				await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(Error,);
+			}
 		},);
 	});
 });

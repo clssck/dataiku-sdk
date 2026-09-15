@@ -22,9 +22,17 @@ import {
 } from "../src/utils/secret-sanitize.js";
 
 import { type LiveCaseId, matchesLiveCase, } from "./live-cases.js";
+import {
+	type HostDaemon,
+	type HostDirectory,
+	hostDirectoryScript,
+	type OwnedHostDirectory,
+	readBare,
+} from "./live-host.js";
 
 export const LIVE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url,),), "..",);
 const commandRegistry = buildCommandRegistry();
+const GIT_AUTHORITY = Symbol("owned Git command",);
 const activeCommands = new Set<ReturnType<typeof Bun.spawn>>();
 export async function stopLiveCommands(): Promise<void> {
 	const children = [...activeCommands,];
@@ -154,6 +162,7 @@ export interface LiveManifest {
 	fixtures: LiveFixtures;
 	projects: OwnedProject[];
 	globals: OwnedGlobal[];
+	ownedDirectories: OwnedHostDirectory[];
 	/** Future ids started by commands of this lab; only these may be aborted. */
 	futures: string[];
 	cases: CaseResult[];
@@ -166,6 +175,7 @@ export interface LiveManifest {
 	capabilities: Record<string, unknown>;
 	cleanup: { status: "pending" | "kept" | "passed" | "failed"; errors: string[]; };
 }
+type OwnedGitTarget = { kind: "project"; key: string; } | { kind: "plugin"; id: string; };
 export interface LiveContext {
 	projectKey: string;
 	connection: string;
@@ -188,6 +198,22 @@ export interface LiveContext {
 		body: () => Promise<void>,
 		options?: { capability?: string; required?: boolean; },
 	): Promise<void>;
+	withOwnedHostDirectory<T,>(
+		label: string,
+		body: (directory: HostDirectory,) => Promise<T>,
+	): Promise<T>;
+	withOwnedGitScope<T,>(
+		target: OwnedGitTarget,
+		directory: HostDirectory,
+		repositoryPaths: readonly string[],
+		body: (urls: readonly string[],) => Promise<T>,
+	): Promise<T>;
+	pluginFromGit(
+		action: "install" | "update",
+		name: string,
+		url: string,
+		revision: string,
+	): Promise<OwnedGlobal>;
 	writeFile(name: string, content: string | Uint8Array,): Promise<string>;
 	save(): Promise<void>;
 	createProject(label: string,): Promise<string>;
@@ -284,6 +310,37 @@ export async function loadLiveManifest(file: string,): Promise<LiveManifest> {
 	}
 	if (!Array.isArray(data.globals,)) data.globals = [];
 	if (!Array.isArray(data.futures,)) data.futures = [];
+	if (data.ownedDirectories === undefined) data.ownedDirectories = [];
+	if (!Array.isArray(data.ownedDirectories,)) throw new Error("Invalid owned host directories",);
+	const directoryPaths = new Set<string>();
+	for (const directory of data.ownedDirectories) {
+		if (
+			!directory || directory.runId !== data.runId || typeof directory.nonce !== "string"
+			|| !/^[a-f0-9]{32}$/.test(directory.nonce,)
+			|| directory.path !== `/tmp/sdk_live_${data.runId}_${directory.nonce}`
+			|| directoryPaths.has(directory.path,)
+			|| !["pending", "bound", "deleted",].includes(directory.state,)
+			|| !data.projects.some(p =>
+				p.key === directory.projectKey && (directory.state === "deleted" || p.state === "bound")
+			)
+		) throw new Error("Invalid owned host directory",);
+		const daemon = directory.daemon;
+		if (
+			daemon !== undefined && (
+				!daemon || directory.state === "deleted" || !Number.isSafeInteger(daemon.pid,)
+				|| daemon.pid <= 1
+				|| typeof daemon.startTime !== "string" || !/^\d+$/.test(daemon.startTime,)
+				|| !Number.isInteger(daemon.port,) || daemon.port < 1024 || daemon.port > 65535
+				|| !Array.isArray(daemon.repositories,) || daemon.repositories.length === 0
+				|| new Set(daemon.repositories,).size !== daemon.repositories.length
+				|| daemon.repositories.some(repo =>
+					typeof repo !== "string" || path.posix.dirname(repo,) !== directory.path
+					|| path.posix.normalize(repo,) !== repo
+				)
+			)
+		) throw new Error("Invalid owned Git daemon receipt",);
+		directoryPaths.add(directory.path,);
+	}
 	const seen = new Set<string>();
 	for (const project of data.projects) {
 		if (
@@ -524,6 +581,7 @@ type GlobalRule = {
 };
 type CreationAuthority =
 	| { kind: "plugin-json"; name: string; }
+	| { kind: "plugin-git"; name: string; repository: string; checkout: string; }
 	| { kind: "plugin-archive" | "project-bundle"; name: string; file: string; };
 const GLOBAL_RULES: Record<string, GlobalRule> = {
 	"user.create": { kind: "user", create: true, },
@@ -560,6 +618,8 @@ const GLOBAL_RULES: Record<string, GlobalRule> = {
 	"code-env.delete": { kind: "code-env", target: true, },
 	"plugin.create-dev": { kind: "plugin", create: true, },
 	"plugin.install-from-zip": { kind: "plugin", create: true, },
+	"plugin.install-from-git": { kind: "plugin", create: true, },
+	"plugin.update-from-git": { kind: "plugin", target: true, },
 	"plugin.delete": { kind: "plugin", target: true, },
 	"plugin.settings-set": { kind: "plugin", target: "settings", },
 	"plugin.contents-put": { kind: "plugin", target: "settings", },
@@ -625,7 +685,19 @@ function assertOwnedGlobalScope(
 		if (archiveInstall && (!pluginArchiveArmed || flags["file"] !== pluginArchiveArmed.file)) {
 			throw new Error("Plugin archive installation requires a validated private reservation",);
 		}
-		const name = archiveInstall ? pluginArchiveArmed?.name : createNameArg(rule, args, flags,);
+		const gitInstall = resource === "plugin" && action === "install-from-git";
+		if (
+			gitInstall
+			&& (authority?.kind !== "plugin-git" || flags.repository !== authority.repository
+				|| flags.checkout !== authority.checkout)
+		) {
+			throw new Error("Git plugin installation requires an inspected owned reservation",);
+		}
+		const name = gitInstall
+			? authority?.name
+			: archiveInstall
+			? pluginArchiveArmed?.name
+			: createNameArg(rule, args, flags,);
 		const entry = typeof name === "string" ? globalEntry(rule.kind, manifest, name,) : undefined;
 		if (!entry || entry.state !== "pending") {
 			throw new Error(
@@ -662,6 +734,7 @@ export function assertLiveCommandScope(
 	manifest: LiveManifest,
 	selectedProject: string,
 	authority?: CreationAuthority,
+	gitAuthority?: typeof GIT_AUTHORITY,
 ): void {
 	const { positional: args, flags, } = parseArgs(argv,);
 	const resource = args[0] ?? "";
@@ -747,7 +820,22 @@ export function assertLiveCommandScope(
 		}
 		return;
 	}
-	if (resource === "project-git" && entry.mutatesDss) {
+	if (
+		resource === "plugin"
+		&& [
+			"install-from-git",
+			"update-from-git",
+			"set-git-remote",
+			"delete-git-remote",
+			"fetch",
+			"push",
+			"pull",
+			"reset-remote",
+		].includes(action,) && gitAuthority !== GIT_AUTHORITY
+	) {
+		throw new Error("Plugin Git mutation requires an owned Git scope",);
+	}
+	if (resource === "project-git" && entry.mutatesDss && gitAuthority !== GIT_AUTHORITY) {
 		const local: Record<string, true> = {
 			"commit": true,
 			"create-branch": true,
@@ -849,6 +937,315 @@ export class LiveRunContext implements LiveContext {
 	/** JobIds harvested from successful future-producing commands, with their origin command. */
 	private readonly futureReceipts = new Map<string, string>();
 	private creationAuthority: CreationAuthority | undefined;
+	private gitScope?: {
+		target: OwnedGitTarget;
+		directory: OwnedHostDirectory;
+		urls: ReadonlySet<string>;
+	};
+
+	private async runHost(
+		directory: OwnedHostDirectory,
+		operation: Parameters<typeof hostDirectoryScript>[1],
+		repositories: readonly string[] = [],
+	): Promise<string> {
+		const file = await this.writeFile(
+			`host-${directory.nonce}-${operation}.py`,
+			hostDirectoryScript(directory, operation, repositories,),
+		);
+		const result = await this.run<{ success: boolean; output: string; }>([
+			"code",
+			"run",
+			"--file",
+			file,
+			"--timeout",
+			"120000",
+		], { projectKey: directory.projectKey, },);
+		if (!result.success || !result.output.split("\n",).includes("HOST_OK",)) {
+			throw new Error(`Owned host operation failed: ${operation}`,);
+		}
+		return result.output;
+	}
+
+	async withOwnedHostDirectory<T,>(
+		label: string,
+		body: (directory: HostDirectory,) => Promise<T>,
+	): Promise<T> {
+		const projectKey = await this.createProject(`host_${label}`,);
+		const nonce = randomUUID().replaceAll("-", "",);
+		const directory: OwnedHostDirectory = {
+			path: `/tmp/sdk_live_${this.runId}_${nonce}`,
+			nonce,
+			projectKey,
+			runId: this.runId,
+			state: "pending",
+		};
+		this.manifest.ownedDirectories.push(directory,);
+		try {
+			await this.save();
+			await this.runHost(directory, "create",);
+			directory.state = "bound";
+			await this.save();
+			return await body(directory,);
+		} finally {
+			await this.cleanupHostDirectory(directory,);
+			await this.deleteProject(projectKey,);
+		}
+	}
+
+	private async cleanupHostDirectory(directory: OwnedHostDirectory,): Promise<void> {
+		if (directory.state === "deleted") return;
+		await this.runHost(directory, "delete",);
+		directory.state = "deleted";
+		delete directory.daemon;
+		await this.save();
+	}
+
+	async withOwnedGitScope<T,>(
+		target: OwnedGitTarget,
+		handle: HostDirectory,
+		repositoryPaths: readonly string[],
+		body: (urls: readonly string[],) => Promise<T>,
+	): Promise<T> {
+		if (this.gitScope) throw new Error("Nested Git scopes are not allowed",);
+		const directory = this.manifest.ownedDirectories.find(d =>
+			d.path === handle.path && d.nonce === handle.nonce && d.projectKey === handle.projectKey
+			&& d.state === "bound"
+		);
+		const targetOwned = target.kind === "project"
+			? this.projects.some(p => p.key === target.key && p.state === "bound")
+			: this.globals.some(g =>
+				g.kind === "plugin" && g.name === target.id && (g.state === "pending" || g.state === "bound")
+			);
+		if (!directory || !targetOwned) {
+			throw new Error("Git scope requires owned directory and reserved target",);
+		}
+		try {
+			const output = await this.runHost(directory, "start", repositoryPaths,);
+			const line = output.split("\n",).find(value => value.startsWith("HOST_RESULT=",));
+			if (!line) throw new Error("Git daemon returned no ownership receipt",);
+			const daemon = JSON.parse(line.slice("HOST_RESULT=".length,),) as HostDaemon;
+			if (
+				!Number.isSafeInteger(daemon.pid,) || daemon.pid <= 1 || !/^\d+$/.test(daemon.startTime,)
+				|| !Number.isInteger(daemon.port,) || daemon.port < 1024 || daemon.port > 65535
+				|| JSON.stringify(daemon.repositories,) !== JSON.stringify(repositoryPaths,)
+			) throw new Error("Invalid Git daemon receipt",);
+			directory.daemon = daemon;
+			await this.save();
+			const urls = repositoryPaths.map(repo =>
+				`http://127.0.0.1:${daemon.port}/${encodeURIComponent(path.posix.basename(repo,),)}`
+			);
+			this.gitScope = { target, directory, urls: new Set(urls,), };
+			return await body(urls,);
+		} finally {
+			this.gitScope = undefined;
+			await this.runHost(directory, "stop",);
+			delete directory.daemon;
+			await this.save();
+		}
+	}
+
+	private async authorizeGit(
+		argv: string[],
+		projectKey: string,
+		authority?: CreationAuthority,
+	): Promise<typeof GIT_AUTHORITY | undefined> {
+		const { positional, flags, } = parseArgs(argv,);
+		if (positional[0] === "plugin") return this.authorizePluginGit(positional, flags, authority,);
+		if (positional[0] !== "project-git") return;
+		const action = positional[1]!;
+		const scoped = [
+			"set-remote",
+			"remove-remote",
+			"fetch",
+			"push",
+			"pull",
+			"reset-to-upstream",
+			"add-library",
+			"set-library",
+			"remove-library",
+			"reset-library",
+			"push-library",
+			"push-all-libraries",
+			"reset-all-libraries",
+		];
+		if (!scoped.includes(action,)) return;
+		const grant = this.gitScope;
+		if (!grant) {
+			if (
+				action === "reset-all-libraries"
+				&& (await this.client.projectGit.listLibraries(projectKey,)).length
+			) throw new Error("Resetting attached libraries requires an owned Git scope",);
+			return;
+		}
+		if (
+			grant.target.kind !== "project" || grant.target.key !== projectKey
+			|| grant.directory.state !== "bound"
+		) {
+			throw new Error("Git scope belongs to another project",);
+		}
+		for (
+			const flag of [
+				"remote",
+				"delete-remotely",
+				"target-project-key",
+				"target-project-folder-id",
+				"login",
+				"password-env",
+			]
+		) {
+			if (flags[flag] !== undefined) throw new Error(`Unsupported scoped Git flag: ${flag}`,);
+		}
+		if (action.includes("library",) || action.endsWith("libraries",)) {
+			const libraries = await this.client.projectGit.listLibraries(projectKey,);
+			if (
+				libraries.some(library =>
+					!("remote" in library) || typeof library.remote !== "string"
+					|| !grant.urls.has(library.remote,)
+				)
+			) {
+				throw new Error("Git scope contains a foreign library",);
+			}
+			if (action === "add-library" || action === "set-library") {
+				if (typeof flags.repository !== "string" || !grant.urls.has(flags.repository,)) {
+					throw new Error("Git library URL is not owned",);
+				}
+			}
+		} else {
+			const name = typeof flags.name === "string" ? flags.name : "origin";
+			const remote = await this.client.projectGit.getRemote(projectKey, name,);
+			if (remote.url && !grant.urls.has(remote.url,)) {
+				throw new Error("Current Git remote is not owned",);
+			}
+			if (action === "set-remote") {
+				if (typeof flags.repository !== "string" || !grant.urls.has(flags.repository,)) {
+					throw new Error("Git remote URL is not owned",);
+				}
+			} else if (action !== "remove-remote" && !remote.url) {
+				throw new Error("Owned Git remote is missing",);
+			}
+		}
+		await this.runHost(grant.directory, "verify",);
+		return GIT_AUTHORITY;
+	}
+	private async authorizePluginGit(
+		args: string[],
+		flags: Record<string, string | boolean>,
+		authority?: CreationAuthority,
+	): Promise<typeof GIT_AUTHORITY | undefined> {
+		const action = args[1]!;
+		if (
+			![
+				"install-from-git",
+				"update-from-git",
+				"set-git-remote",
+				"delete-git-remote",
+				"fetch",
+				"push",
+				"pull",
+				"reset-remote",
+			].includes(action,)
+		) return;
+		const grant = this.gitScope;
+		if (!grant || grant.target.kind !== "plugin" || grant.directory.state !== "bound") {
+			throw new Error("Plugin Git mutation requires an owned Git scope",);
+		}
+		if (flags["path-in-repository"] !== undefined) {
+			throw new Error("Scoped plugin sources must use the repository root",);
+		}
+		if (action === "install-from-git" || action === "update-from-git") {
+			if (
+				authority?.kind !== "plugin-git" || authority.name !== grant.target.id
+				|| flags.repository !== authority.repository || flags.checkout !== authority.checkout
+				|| !grant.urls.has(authority.repository,)
+				|| action === "update-from-git" && args[2] !== authority.name
+			) throw new Error("Plugin Git source was not inspected",);
+		} else {
+			if (args[2] !== grant.target.id) throw new Error("Git scope belongs to another plugin",);
+			await this.assertGlobalIdentity("plugin", grant.target.id,);
+			const remote = await this.client.plugins.getGitRemote(grant.target.id,);
+			if (remote.repositoryUrl && !grant.urls.has(remote.repositoryUrl,)) {
+				throw new Error("Plugin Git remote is not owned",);
+			}
+			if (action === "set-git-remote") {
+				if (typeof flags.repository !== "string" || !grant.urls.has(flags.repository,)) {
+					throw new Error("Plugin Git URL is not owned",);
+				}
+			} else if (action !== "delete-git-remote" && !remote.repositoryUrl) {
+				throw new Error("Owned plugin Git remote is missing",);
+			}
+		}
+		await this.runHost(grant.directory, "verify",);
+		return GIT_AUTHORITY;
+	}
+	async pluginFromGit(
+		action: "install" | "update",
+		name: string,
+		url: string,
+		revision: string,
+	): Promise<OwnedGlobal> {
+		const grant = this.gitScope;
+		if (
+			!grant || grant.target.kind !== "plugin" || grant.target.id !== name || !grant.urls.has(url,)
+		) throw new Error("Plugin installation requires the exact owned Git scope",);
+		const owned = this.globals.find(g => g.kind === "plugin" && g.name === name);
+		if (!owned || owned.state !== (action === "install" ? "pending" : "bound")) {
+			throw new Error("Plugin Git mutation requires a matching reservation state",);
+		}
+		const repositoryPath = grant.directory.daemon!.repositories.find(repo =>
+			new URL(url,).pathname === `/${encodeURIComponent(path.posix.basename(repo,),)}`
+		);
+		if (!repositoryPath) throw new Error("Plugin repository is not in the daemon receipt",);
+		const checkout = await readBare(this, grant.directory, repositoryPath, [
+			"rev-parse",
+			"--verify",
+			"--end-of-options",
+			`${revision}^{commit}`,
+		],);
+		if (!/^[a-f0-9]{40}$/.test(checkout,)) {
+			throw new Error("Plugin revision did not resolve to a commit",);
+		}
+		const manifest = asRecord(
+			safeParseJson(
+				await readBare(this, grant.directory, repositoryPath, ["show", `${checkout}:plugin.json`,],),
+			),
+		);
+		const description = asRecord(manifest?.meta,)?.description;
+		if (
+			manifest?.id !== name || typeof description !== "string"
+			|| !description.includes(this.markerFor("plugin", name,),)
+		) throw new Error("Plugin Git manifest must match its reserved id and nonce",);
+		if (action === "install") await this.assertGlobalAbsent("plugin", name,);
+		else await this.assertGlobalIdentity("plugin", name,);
+		this.creationAuthority = { kind: "plugin-git", name, repository: url, checkout, };
+		try {
+			const receipt = asRecord(
+				await this.run([
+					"plugin",
+					`${action}-from-git`,
+					...(action === "update" ? [name,] : []),
+					"--repository",
+					url,
+					"--checkout",
+					checkout,
+				],),
+			);
+			if (receipt?.[action === "install" ? "installed" : "updated"] !== true) {
+				throw new Error("Plugin Git mutation returned no success receipt",);
+			}
+		} catch (error) {
+			if (action === "install") {
+				owned.state = "unconfirmed";
+				owned.reason = this.redact(error,);
+				await this.save();
+			}
+			throw error;
+		} finally {
+			this.creationAuthority = undefined;
+		}
+		return action === "install"
+			? this.bindGlobal("plugin", name,)
+			: this.assertGlobalIdentity("plugin", name,);
+	}
 	constructor(
 		readonly manifestPath: string,
 		readonly manifest: LiveManifest,
@@ -996,7 +1393,8 @@ export class LiveRunContext implements LiveContext {
 			args[2] = file;
 			authority = { kind: "project-bundle", name: key, file, };
 		}
-		assertLiveCommandScope(args, this.manifest, selected, authority,);
+		const gitAuthority = await this.authorizeGit(args, selected, authority,);
+		assertLiveCommandScope(args, this.manifest, selected, authority, gitAuthority,);
 		if (
 			entry?.mutatesDss && (entry.requiresProject || resource === "sql" && action === "query")
 			&& !executionMode(parsed.flags,).plan
@@ -1307,6 +1705,9 @@ export class LiveRunContext implements LiveContext {
 		return key;
 	}
 	async deleteProject(key: string,): Promise<void> {
+		if (this.manifest.ownedDirectories.some(d => d.projectKey === key && d.state !== "deleted")) {
+			throw new Error("Owned host directory must be cleaned before its runner project",);
+		}
 		const project = this.manifest.projects.find(p => p.key === key);
 		if (!project) throw new Error("Project is not owned by this run",);
 		if (project.state === "deleted") return;
@@ -1894,6 +2295,14 @@ export class LiveRunContext implements LiveContext {
 				errors.push(this.redact(error,),);
 			}
 		}
+		for (let index = this.manifest.ownedDirectories.length - 1; index >= 0; index--) {
+			const directory = this.manifest.ownedDirectories[index]!;
+			try {
+				await this.cleanupHostDirectory(directory,);
+			} catch (error) {
+				errors.push(this.redact(error,),);
+			}
+		}
 		for (let index = this.manifest.projects.length - 1; index >= 0; index--) {
 			const project = this.manifest.projects[index]!;
 			try {
@@ -1935,6 +2344,7 @@ export async function initializeLiveManifest(
 		fixtures: { datasets: {}, expectedRows: {}, recipes: {}, },
 		projects: [],
 		globals: [],
+		ownedDirectories: [],
 		futures: [],
 		cases: [],
 		commands: [],

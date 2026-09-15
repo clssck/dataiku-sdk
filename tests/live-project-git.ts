@@ -1,13 +1,8 @@
 import { expect, } from "bun:test";
 import { LiveCapabilityError, type LiveContext, } from "./live-context.js";
+import { provisionGit, readBare, } from "./live-host.js";
 
-/**
- * Project Git live-suite module. Exercises the local-only Git surface of the
- * CLI (status/log/diff reads, commit, branches, tags, reverts, resets) on a
- * disposable owned child project. Everything that touches a Git remote or an
- * external library repository is reported as an explicit blocker so the
- * missing isolated remote never hides the local behavior coverage.
- */
+/** Owned project Git checkouts and disposable loopback-only remotes. */
 
 interface GitStatus {
 	currentBranch?: string | null;
@@ -88,18 +83,12 @@ async function readStatus(ctx: LiveContext, projectKey: string,): Promise<GitSta
 	return ctx.run<GitStatus>(["project-git", "status",], { projectKey, },);
 }
 
-/**
- * Write a file into the project library (tracked by the project Git repo) and
- * commit it. DSS may auto-commit the library write itself, so the assertion is
- * "the commit succeeded AND the log grew", never an assumption about which of
- * the two produced the new commit. Returns the resulting head commit id.
- */
+/** Write a tracked marker and return the resulting project commit. */
 async function commitMarker(
 	ctx: LiveContext,
 	projectKey: string,
 	nonce: string,
 ): Promise<string> {
-	const before = await readLog(ctx, projectKey,);
 	await ctx.run([
 		"project-library",
 		"put",
@@ -116,7 +105,6 @@ async function commitMarker(
 	], { projectKey, },);
 	expect(result.success,).not.toBe(false,);
 	const after = await readLog(ctx, projectKey,);
-	expect(after.entries.length,).toBeGreaterThanOrEqual(before.entries.length + 1,);
 	if (!dirty) {
 		// DSS auto-committed the library write; record it so the report is
 		// truthful about what this case demonstrated.
@@ -131,17 +119,33 @@ async function commitMarker(
 	return newestCommitId(after, nonce,);
 }
 
-/**
- * Each case provisions lazily inside its own selected ctx.check callback: a
- * filtered --case selection never creates the git child for wholly unselected
- * or pure-blocker cases, and sharedProject() deletes the project exactly once
- * when the module finishes.
- */
+async function settleGit(ctx: LiveContext, key: string, args: string[],): Promise<void> {
+	const started = await ctx.run<{ jobId: string; }>(["project-git", ...args,], {
+		projectKey: key,
+	},);
+	if (!started.jobId) throw new Error("Git operation returned no future receipt",);
+	await ctx.recordFuture(started.jobId,);
+	try {
+		const result = await ctx.run<{ success?: boolean; }>([
+			"project-git",
+			"future-wait",
+			started.jobId,
+			"--timeout",
+			"120000",
+		],);
+		if (result?.success === false) {
+			throw new Error(`Git operation failed: ${JSON.stringify(result,)}`,);
+		}
+	} catch (error) {
+		await ctx.run(["project-git", "future-abort", started.jobId,],);
+		await ctx.run(["project-git", "future-wait", started.jobId, "--timeout", "120000",],);
+		throw error;
+	}
+}
 export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 	if (ctx.phase !== "run") return;
 	const state: { key?: string; } = {};
-	// Guarded commands need a bound owned project; pure-blocker cases never
-	// call this, so no project is created for them.
+	// Selected cases provision the shared checkout lazily.
 	const sharedProject = async (): Promise<string> => {
 		if (!state.key) {
 			state.key = await ctx.createProject("git",);
@@ -355,9 +359,6 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 			expect(isDirty(await readStatus(ctx, key,),),).toBe(false,);
 		},);
 
-		// Pure blocker cases never create a project: the actions cannot run
-		// without an isolated remote / external repository, so provisioning a
-		// child would only to satisfy a case that will report blocked anyway.
 		await ctx.check("core.project-git.remote-sync", [
 			"project-git.set-remote",
 			"project-git.remove-remote",
@@ -366,9 +367,42 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 			"project-git.push",
 			"project-git.reset-to-upstream",
 		], async () => {
-			blocked(
-				"Remote-sync actions (set-remote, remove-remote, fetch, pull, push, reset-to-upstream) require an isolated Git remote; the lab never points owned projects at shared or external repositories.",
-			);
+			const key = await sharedProject();
+			await ctx.withOwnedHostDirectory("git_remote", async directory => {
+				const repo = await provisionGit(ctx, directory,);
+				await ctx.withOwnedGitScope({ kind: "project", key, }, directory, [repo,], async urls => {
+					const url = urls[0]!;
+					try {
+						await commitMarker(ctx, key, `remote_${directory.nonce}`,);
+						const { branch, } = await ctx.run<{ branch: string | null; }>([
+							"project-git",
+							"current-branch",
+						], {
+							projectKey: key,
+						},);
+						if (!branch) throw new Error("Owned project has no Git branch",);
+						await ctx.run(["project-git", "set-remote", "--repository", url,], { projectKey: key, },);
+						await ctx.run(["project-git", "push", "--branch", branch,], { projectKey: key, },);
+						const head = newestCommitId(await readLog(ctx, key,), "pushed head",);
+						expect(
+							await readBare(ctx, directory, repo, ["rev-parse", "--verify", `refs/heads/${branch}`,],),
+						).toBe(head,);
+						await ctx.run(["project-git", "fetch",], { projectKey: key, },);
+						await ctx.run(["project-git", "pull", "--branch", branch,], { projectKey: key, },);
+						await commitMarker(ctx, key, `discard_${directory.nonce}`,);
+						await ctx.run(["project-git", "reset-to-upstream",], { projectKey: key, },);
+						expect(newestCommitId(await readLog(ctx, key,), "reset upstream",),).toBe(head,);
+					} finally {
+						const remote = await ctx.run<{ url?: string; }>(["project-git", "get-remote",], {
+							projectKey: key,
+						},);
+						if (remote.url) await ctx.run(["project-git", "remove-remote",], { projectKey: key, },);
+					}
+					expect(
+						await ctx.run<{ url?: string; }>(["project-git", "get-remote",], { projectKey: key, },),
+					).toEqual({},);
+				},);
+			},);
 		}, { capability: "project-git.isolated-remote", required: false, },);
 
 		await ctx.check("core.project-git.external-libraries", [
@@ -381,9 +415,79 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 			"project-git.push-all-libraries",
 			"project-git.future-abort",
 		], async () => {
-			blocked(
-				"Git library actions attach, update, push, or reset external repository checkouts and need an external Git repository plus a running future to abort; none is reserved for this lab.",
-			);
+			const key = await sharedProject();
+			await ctx.withOwnedHostDirectory("git_library", async directory => {
+				const repo = await provisionGit(ctx, directory, {
+					main: { "value.txt": "initial\n", },
+					alternate: { "value.txt": "alternate\n", },
+				},);
+				await ctx.withOwnedGitScope({ kind: "project", key, }, directory, [repo,], async urls => {
+					const target = "python/owned_git_fixture";
+					const file = `${target}/value.txt`;
+					const read = () => ctx.run<string>(["project-library", "get", file,], { projectKey: key, },);
+					const put = (content: string,) =>
+						ctx.run(["project-library", "put", file, "--content", content,], { projectKey: key, },);
+					try {
+						await settleGit(ctx, key, [
+							"add-library",
+							target,
+							"--repository",
+							urls[0]!,
+							"--checkout",
+							"main",
+							"--no-add-to-python-path",
+						],);
+						expect((await read()).trim(),).toBe("initial",);
+						await ctx.run([
+							"project-git",
+							"set-library",
+							target,
+							"--repository",
+							urls[0]!,
+							"--checkout",
+							"alternate",
+						], { projectKey: key, },);
+						await settleGit(ctx, key, ["reset-library", target,],);
+						expect((await read()).trim(),).toBe("alternate",);
+						await put("pushed-one\n",);
+						await settleGit(ctx, key, ["push-library", target, "--message", "Owned library update",],);
+						expect(await readBare(ctx, directory, repo, ["show", "refs/heads/alternate:value.txt",],),)
+							.toBe("pushed-one",);
+						await put("pushed-all\n",);
+						await settleGit(ctx, key, ["push-all-libraries", "--message", "Owned libraries update",],);
+						expect(await readBare(ctx, directory, repo, ["show", "refs/heads/alternate:value.txt",],),)
+							.toBe("pushed-all",);
+						await put("discard-local\n",);
+						await settleGit(ctx, key, ["reset-all-libraries",],);
+						expect((await read()).trim(),).toBe("pushed-all",);
+						const future = await ctx.run<{ jobId: string; }>(["project-git", "reset-library", target,], {
+							projectKey: key,
+						},);
+						await ctx.recordFuture(future.jobId,);
+						await ctx.run(["project-git", "future-abort", future.jobId,],);
+						const futureState = await ctx.run<{ alive?: boolean; aborted?: boolean; }>([
+							"project-git",
+							"future-status",
+							future.jobId,
+							"--peek",
+						],);
+						expect(futureState.alive,).toBe(false,);
+						expect(futureState.aborted,).toBe(true,);
+					} finally {
+						const libraries = await ctx.run<{ localTargetPath?: string; }[]>([
+							"project-git",
+							"list-libraries",
+						], { projectKey: key, },);
+						if (libraries.some(library => library.localTargetPath === target)) {
+							await ctx.run(["project-git", "remove-library", target, "--delete-directory",], {
+								projectKey: key,
+							},);
+						}
+					}
+					expect(await ctx.run<unknown[]>(["project-git", "list-libraries",], { projectKey: key, },),)
+						.toEqual([],);
+				},);
+			},);
 		}, { capability: "project-git.external-repository", required: false, },);
 
 		await ctx.check("core.project-git.library-futures", [

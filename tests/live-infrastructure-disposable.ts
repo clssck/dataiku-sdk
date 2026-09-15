@@ -618,45 +618,71 @@ async function connectionLifecycle(ctx: LiveContext,): Promise<void> {
 	},);
 }
 
-/**
- * Canonical disposable SQLite connection shared by live modules. Creates a
- * named in-memory SQLite JDBC connection whose URL embeds the safety marker,
- * runs body with the connection name, and deletes the connection in finally.
- * Consumers: the SQL notebook lifecycle, the connection CRUD lifecycle above,
- * and the infrastructure.sql-select capability case (owned fallback when no
- * explicit target is configured) — all via the owned-global ledger. Callers
- * own any throwaway projects; the helper never touches fixtures so multiple
- * consumers never fight over fixture ids.
- */
+/** Disposable SQLite: memory for simple queries, a seeded owned file for catalog imports. */
 export async function withOwnedSqlConnection<T,>(
 	ctx: LiveContext,
 	label: string,
 	body: (connectionName: string,) => Promise<T>,
+	options: { persistent?: boolean; } = {},
 ): Promise<T> {
-	const entry = await ctx.createGlobal("connection", label, (name, marker,) => [
-		"connection",
-		"create",
-		"--data",
-		JSON.stringify({
-			name,
-			type: "JDBC",
-			usableBy: "ALLOWED",
-			allowedGroups: [],
-			allowWrite: false,
-			allowManagedDatasets: false,
-			params: {
-				driver: "org.sqlite.JDBC",
-				jdbcurl: `jdbc:sqlite:file:${marker}?mode=memory&cache=shared`,
-				properties: [],
-			},
-		},),
-	],);
-	requireBound(entry, "connection",);
-	try {
-		return await body(entry.id!,);
-	} finally {
-		await ctx.deleteGlobal("connection", entry.id!,);
-	}
+	const run = async (directory?: { path: string; projectKey: string; },): Promise<T> => {
+		let database = "";
+		const entry = await ctx.createGlobal("connection", label, (name, marker,) => {
+			database = directory ? `${directory.path}/${marker}.sqlite` : "";
+			return [
+				"connection",
+				"create",
+				"--data",
+				JSON.stringify({
+					name,
+					type: "JDBC",
+					usableBy: "ALLOWED",
+					allowedGroups: [],
+					allowWrite: false,
+					allowManagedDatasets: false,
+					params: {
+						driver: "org.sqlite.JDBC",
+						jdbcurl: directory
+							? `jdbc:sqlite:file:${database}?mode=ro`
+							: `jdbc:sqlite:file:${marker}?mode=memory&cache=shared`,
+						properties: [],
+					},
+				},),
+			];
+		},);
+		requireBound(entry, "connection",);
+		try {
+			if (directory) {
+				const script = await ctx.writeFile(
+					`sql-catalog-${entry.name}.py`,
+					[
+						"import json, os, sqlite3",
+						`database = json.loads(${JSON.stringify(JSON.stringify(database,),)})`,
+						"fd = os.open(database, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)",
+						"os.close(fd)",
+						"with sqlite3.connect(database) as connection:",
+						"    connection.execute('CREATE TABLE live_fixture (id INTEGER PRIMARY KEY, value TEXT)')",
+						"    connection.execute(\"INSERT INTO live_fixture VALUES (1, 'owned')\")",
+						"connection.close()",
+						"os.chmod(database, 0o644)",
+					].join("\n",),
+				);
+				const result = await ctx.run<{ success: boolean; }>([
+					"code",
+					"run",
+					"--file",
+					script,
+					"--timeout",
+					"120000",
+				], { projectKey: directory.projectKey, },);
+				if (!result.success) throw new Error("SQLite catalog fixture creation failed",);
+			}
+			return await body(entry.id!,);
+		} finally {
+			await ctx.deleteGlobal("connection", entry.id!,);
+		}
+	};
+	return options.persistent ? ctx.withOwnedHostDirectory(label, run,) : run();
 }
 
 export interface OwnedCodeEnvHandle {

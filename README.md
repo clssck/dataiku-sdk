@@ -93,13 +93,13 @@ prerequisites are recorded as **blocked**, never passed. Required blocked cases 
 nonzero; optional blocked cases remain visible in reports. Global administration,
 external Git mutations and unsupported capabilities are not silently exercised.
 
-For an admin-only disposable SQL target (verified on the hosted trial), create a uniquely
-named connection with `POST /public/api/admin/connections/` and body
-`{"name":"<unique-name>","type":"JDBC","params":{"driver":"org.sqlite.JDBC","jdbcurl":"jdbc:sqlite::memory:","properties":[]},"usableBy":"ALLOWED","allowedGroups":[],"allowWrite":false,"allowManagedDatasets":false}`.
-Run `DATAIKU_SQL_CONNECTION=<name> bun run test:live all --profile infrastructure --case infrastructure.sql-select`.
-In a `finally` block, verify that the connection still matches the created definition, then
-remove it with `DELETE /public/api/admin/connections/<name>`. `all` cleans the owned projects,
-not this separately created connection. The in-memory database creates no database file.
+SQL catalog/import cases can provision an owned file-backed SQLite connection and
+seed a real table. Project and plugin Git cases use owned bare repositories served on loopback
+through the server's `git-http-backend`; they never change global Git rules. These
+fixtures require server-side Python execution and the relevant admin/Git permissions.
+Host paths and process identities are recorded in the manifest. Cleanup verifies
+ownership before stopping services and deleting directories; failed cleanup retains
+the runner project for recovery.
 
 State is ignored by Git under `.live-tests/<server-hash>/`. Use `--state-dir PATH` to keep
 a persistent demo or verification lab outside the default root — the directory is
@@ -137,7 +137,7 @@ metrics and quality rules. Project export/import/duplicate cases use separate ow
 projects. Managed dataset types, paths and recipe output schemas come from DSS rather
 than tutorial-specific connection guesses. Expanded case families beyond the original
 core set cover bundles (export/publish lifecycles), Project Git (inspect, commit,
-library-scoped push/pull to local disposable remotes only), scenario statistics and
+remote and external-library lifecycles against owned loopback repositories), scenario statistics and
 payload round-trips, application template and instance manifests, webapp backend state,
 infrastructure reads (connections, users, groups, macros, code-envs, project folders,
 data collections), disposable global lifecycles under the ownership-marker contract,
@@ -154,9 +154,8 @@ model-path layouts fail with READ_META `ModuleNotFoundError`.
 Some capabilities have external prerequisites the lab cannot self-provision; each
 affected action records an explicit per-action blocker instead of passing or being
 silently omitted: an installed application template (`DATAIKU_LIVE_APP_TEMPLATE_ID`),
-external SQL connectivity (`DATAIKU_SQL_CONNECTION`/`DATAIKU_SQL_DATASET_FULL_NAME`),
-external Git remotes for plugin and project-Git push/fetch operations, an external
-auth backend (LDAP/SAML) for user external-directory reads and resyncs, plugin-store
+external SQL connectivity for non-fixture workloads (`DATAIKU_SQL_CONNECTION`/`DATAIKU_SQL_DATASET_FULL_NAME`),
+an external auth backend (LDAP/SAML) for user external-directory reads and resyncs, plugin-store
 access, and any cost-bearing surface (LLM completions/embeddings bill per call; macros
 execute plugin code). Missing credentials, templates, external infrastructure or billing
 eligibility are reported as **blocked**, never as success.

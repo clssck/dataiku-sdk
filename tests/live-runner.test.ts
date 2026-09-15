@@ -37,6 +37,7 @@ function manifestWithProjects(
 		connection: "filesystem",
 		profiles: ["core",],
 		globals: [],
+		ownedDirectories: [],
 		futures: [],
 		fixtures: { datasets: {}, expectedRows: {}, recipes: {}, },
 		projects: keys.map(({ key, state, },) => ({

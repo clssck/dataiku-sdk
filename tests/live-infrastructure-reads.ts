@@ -166,21 +166,7 @@ async function discoverExistingSqlConnection(ctx: LiveContext,): Promise<string 
 	return undefined;
 }
 
-/**
- * SQL catalog surface plus the full tables-import lifecycle (prepare →
- * wait → execute prepared candidates with checked:true → wait → dataset
- * read/schema assertion) against the resolved SQL connection inside a
- * throwaway case-owned project. execute-import consumes the ACTUAL candidate
- * objects prepare-import returned (passed through verbatim; only
- * checked/datasetName/existingDatasetsNames are overridden) — a
- * checked:false candidate silently imports nothing. The disposable
- * in-memory SQLite connection is session-scoped: a seeded table is visible
- * only inside the seeding call and the catalog resets between executor
- * sessions (proven by Main's raw probe), so unless a persistent SQL catalog
- * exists the case reports the exact completed empty catalog as a genuine
- * prerequisite block. A missing JDBC driver for a configured connection is a
- * genuine external prerequisite blocker; every implemented step runs.
- */
+/** Prefer an explicit SQL connection; otherwise provision an owned persistent catalog. */
 async function exerciseConnectionImportSurface(ctx: LiveContext,): Promise<void> {
 	const explicit = process.env["DATAIKU_SQL_CONNECTION"]?.trim();
 	if (explicit) {
@@ -194,32 +180,17 @@ async function exerciseConnectionImportSurface(ctx: LiveContext,): Promise<void>
 		await runImportLifecycle(ctx, discovered, false,);
 		return;
 	}
-	// Self-provision the canonical disposable in-memory SQLite connection:
-	// create + marker-verified bind + deleteGlobal are owned by the helper.
+	// Catalog discovery and import run in different JDBC sessions.
 	await withOwnedSqlConnection(ctx, "sqlimport", async (connectionName,) => {
 		await runImportLifecycle(ctx, connectionName, true,);
-	},);
+	}, { persistent: true, },);
 }
 
-/**
- * The full tables-import lifecycle (schemas → tables → prepare → wait →
- * execute prepared candidates with checked:true → wait → dataset
- * read/schema assertion) against ONE SQL connection inside a throwaway
- * case-owned project. execute-import consumes the ACTUAL candidate objects
- * prepare-import returned (passed through verbatim; only
- * checked/datasetName/existingDatasetsNames are overridden) — a
- * checked:false candidate silently imports nothing. `sessionScoped` marks
- * the disposable in-memory SQLite connection, whose catalog resets between
- * executor sessions (Main's raw probe: a seeded table is visible only inside
- * the seeding call), so an empty settled catalog is reported as the exact
- * session-lifetime prerequisite block; configured connections report the
- * same completed catalog without that explanation. A missing JDBC driver is
- * a genuine external prerequisite blocker; every implemented step runs.
- */
+/** Import the actual prepared candidates; checked:false would silently import nothing. */
 async function runImportLifecycle(
 	ctx: LiveContext,
 	connection: string,
-	sessionScoped: boolean,
+	ownedFixture: boolean,
 ): Promise<void> {
 	const projectKey = await ctx.createProject("sqlimport",);
 	try {
@@ -277,11 +248,9 @@ async function runImportLifecycle(
 		const tableNames = catalogTableNames(catalog,);
 		if (tableNames.length === 0) {
 			const completedCatalog = JSON.stringify(catalog,).slice(0, 300,);
-			capabilityBlocked(
-				sessionScoped
-					? `No importable table was reported by connection tables for ${connection}: completed catalog ${completedCatalog}. The disposable in-memory SQLite connection is session-scoped — a seeded table is visible only inside the seeding call and the catalog resets between executor sessions — so no persistent SQL catalog is available; a file-backed SQLite would need owned-file cleanup the lab does not perform. prepare/execute-import need at least one table listed by a persistent catalog.`
-					: `No importable table was reported by connection tables for ${connection}: completed catalog ${completedCatalog}. prepare/execute-import need at least one table listed by the connection's persistent catalog.`,
-			);
+			const message = `No importable table in ${connection}: completed catalog ${completedCatalog}`;
+			if (ownedFixture) throw new Error(message,);
+			capabilityBlocked(message,);
 		}
 		const tableName = tableNames[0]!;
 
@@ -359,6 +328,25 @@ async function runImportLifecycle(
 		);
 		if (schema === undefined) {
 			throw new Error(`dataset schema for ${datasetName} returned no object.`,);
+		}
+		if (ownedFixture) {
+			const preview = await ctx.run<
+				{ columns: { name: string; }[]; rows: string[][]; rowCount: number; }
+			>([
+				"dataset",
+				"preview",
+				datasetName,
+				"--max-rows",
+				"2",
+			], { projectKey, },);
+			const id = preview.columns.findIndex(column => column.name === "id");
+			const value = preview.columns.findIndex(column => column.name === "value");
+			if (
+				id < 0 || value < 0 || preview.rowCount !== 1
+				|| preview.rows[0]?.[id] !== "1" || preview.rows[0]?.[value] !== "owned"
+			) {
+				throw new Error("Imported SQL fixture did not preserve its seeded row",);
+			}
 		}
 	} finally {
 		await ctx.deleteProject(projectKey,);

@@ -1,26 +1,13 @@
-// Plugin lifecycle for the infrastructure profile: every case drives real CLI
-// verbs against a plugin this run created through a receipt-gated helper
-// (ctx.createPluginDev for EMPTY dev plugins, ctx.installPluginFromZip for a
-// locally built archive), then deletes it in finally through ctx.deleteGlobal
-// — including on assertion failures. Genuinely external prerequisites (a
-// lab-owned Git remote, a store-published plugin) are separate cases reported
-// as explicit LiveCapabilityError blockers, never successes, never silent
-// skips. Case ids are registered by Main; nothing here runs without the
-// serialized live-suite dispatcher.
+// Owned plugin lifecycles; each fixture is receipt-bound and cleaned after use.
 import { readFile, } from "node:fs/promises";
 import { join, } from "node:path";
 import { crc32, } from "node:zlib";
 import type { LiveContext, OwnedGlobal, } from "./live-context.js";
 import { LiveCapabilityError, LiveCommandError, } from "./live-context.js";
+import { provisionGit, readBare, } from "./live-host.js";
 
 type JsonRecord = Record<string, unknown>;
 
-/**
- * Operator-designated Git remote owned by the lab and reachable from the DSS
- * host (SSH or credential-free HTTPS; the CLI rejects embedded credentials).
- * Only with it do the remote-sync actions run; never a discovered remote.
- */
-const PLUGIN_GIT_REMOTE_ENV = "DATAIKU_LIVE_PLUGIN_GIT_REMOTE";
 /** Design-managed env mirrored for the plugin code-env interpreter. */
 const TEMPLATE_CODE_ENV = "default_v1";
 const CODE_ENV_TIMEOUT_MS = 240_000;
@@ -726,39 +713,67 @@ async function pluginGitRemote(ctx: LiveContext,): Promise<void> {
 	},);
 }
 
-/**
- * Remote sync on an owned dev plugin against the operator-designated lab
- * remote: declare → observe → branches → fetch → push → pull → reset-remote →
- * undeclare. Without DATAIKU_LIVE_PLUGIN_GIT_REMOTE the case blocks before any
- * plugin exists. reset-remote runs last because it discards local work; the
- * marker is re-read afterwards so a discarded identity fails loudly.
- */
+/** Exercise only repositories created by this run and served on loopback. */
 async function pluginGitSync(ctx: LiveContext,): Promise<void> {
-	const remoteUrl = process.env[PLUGIN_GIT_REMOTE_ENV]?.trim();
-	if (!remoteUrl) {
-		blocked(
-			`plugin set-git-remote/fetch/push/pull/reset-remote/delete-git-remote need a lab-owned Git remote reachable from the DSS host: set ${PLUGIN_GIT_REMOTE_ENV} to an SSH or credential-free HTTPS URL of a repository this lab owns. No remote is guessed.`,
-		);
-	}
 	const entry = await ctx.createPluginDev("gitsync", pluginJson,);
 	const marker = ctx.markerFor("plugin", entry.name,);
 	await withOwnedPlugin(ctx, entry, async id => {
-		await ctx.run(["plugin", "set-git-remote", id, "--repository", remoteUrl,],);
-		const remote = await ctx.run<JsonRecord>(["plugin", "get-git-remote", id,],);
-		if (asString(remote["repositoryUrl"],) !== remoteUrl) {
-			throw new Error(`plugin get-git-remote ${id} does not echo the declared remote`,);
-		}
-		await ctx.run(["plugin", "git-branches", id,],);
-		await ctx.run(["plugin", "fetch", id,],);
-		await ctx.run(["plugin", "push", id,],);
-		await ctx.run(["plugin", "pull", id,],);
-		await ctx.run(["plugin", "reset-remote", id,],);
-		await assertMarkerPresent(ctx, id, marker,);
-		await ctx.run(["plugin", "delete-git-remote", id,],);
-		const cleared = await ctx.run<JsonRecord>(["plugin", "get-git-remote", id,],);
-		if (asString(cleared["repositoryUrl"],) !== undefined) {
-			throw new Error(`plugin delete-git-remote ${id} left the remote declared`,);
-		}
+		await ctx.withOwnedHostDirectory("plugin_sync", async directory => {
+			const repo = await provisionGit(ctx, directory,);
+			await ctx.withOwnedGitScope({ kind: "plugin", id, }, directory, [repo,], async urls => {
+				const url = urls[0]!;
+				try {
+					await ctx.run(["plugin", "set-git-remote", id, "--repository", url,],);
+					const branches = await ctx.run<string[]>(["plugin", "git-branches", id,],);
+					if (branches.length !== 1 || !branches[0]) {
+						throw new Error("Fresh plugin must expose one identifiable branch",);
+					}
+					const branch = branches[0];
+					await ctx.run(["plugin", "push", id,],);
+					const published = JSON.parse(
+						await readBare(ctx, directory, repo, ["show", `refs/heads/${branch}:plugin.json`,],),
+					);
+					if (published.id !== id || published.meta?.description !== marker) {
+						throw new Error("Plugin push did not publish its owned manifest",);
+					}
+					await ctx.run(["plugin", "fetch", id,],);
+					await ctx.run(["plugin", "pull", id,],);
+					const changed = pluginJson(id, marker, "9.9.9",);
+					await ctx.run(["plugin", "contents-put", id, "plugin.json", "--content", changed,],);
+					await ctx.run(["plugin", "reset-remote", id,],);
+					await assertContent(ctx, id, "plugin.json", pluginJson(id, marker,),);
+				} finally {
+					const remote = await ctx.run<JsonRecord>(["plugin", "get-git-remote", id,],);
+					if (remote.repositoryUrl) await ctx.run(["plugin", "delete-git-remote", id,],);
+				}
+				const cleared = await ctx.run<JsonRecord>(["plugin", "get-git-remote", id,],);
+				if (cleared.repositoryUrl) throw new Error("Plugin remote remained attached",);
+			},);
+		},);
+	},);
+}
+async function pluginGitInstall(ctx: LiveContext,): Promise<void> {
+	await ctx.withOwnedHostDirectory("plugin_install", async directory => {
+		const name = await ctx.reserveGlobal("plugin", "gitinstall",);
+		const marker = ctx.markerFor("plugin", name,);
+		const repo = await provisionGit(ctx, directory, {
+			main: { "plugin.json": pluginJson(name, marker,), },
+			updated: { "plugin.json": pluginJson(name, marker, "1.1.0",), },
+		},);
+		await ctx.withOwnedGitScope({ kind: "plugin", id: name, }, directory, [repo,], async urls => {
+			const entry = await ctx.pluginFromGit("install", name, urls[0]!, "main",);
+			await withOwnedPlugin(ctx, entry, async id => {
+				if ((await listedPlugin(ctx, id,)).version !== "1.0.0") {
+					throw new Error("Git plugin installation returned the wrong version",);
+				}
+				await ctx.pluginFromGit("update", name, urls[0]!, "updated",);
+				if ((await listedPlugin(ctx, id,)).version !== "1.1.0") {
+					throw new Error("Git plugin update did not change the installed version",);
+				}
+				await ctx.run(["plugin", "move-to-dev", id,],);
+				await assertMarkerPresent(ctx, id, marker,);
+			},);
+		},);
 	},);
 }
 
@@ -864,15 +879,15 @@ export async function exercisePlugins(ctx: LiveContext,): Promise<void> {
 	);
 	await ctx.check(
 		"infrastructure.plugin.git-install",
-		["plugin.install-from-git", "plugin.update-from-git",],
+		[
+			"plugin.install-from-git",
+			"plugin.update-from-git",
+			"plugin.move-to-dev",
+			"plugin.contents-get",
+			"plugin.delete",
+		],
 		async () => {
-			// The CLI has no plugin commit action, so a marker-bearing
-			// plugin.json cannot be published to a remote by this lab; every
-			// reachable repository installs a plugin whose identity the ledger
-			// cannot bind. No git request is made.
-			blocked(
-				"plugin install-from-git/update-from-git need a lab-owned repository whose plugin.json meta.description carries this run's ownership marker; the CLI exposes no plugin commit action, so the lab cannot publish one and every reachable repository is a foreign artifact. No git request is made.",
-			);
+			await pluginGitInstall(ctx,);
 		},
 		{ capability: "infrastructure.plugin-git-install", required: false, },
 	);
