@@ -347,14 +347,12 @@ export class PluginsResource extends BaseResource {
 	}
 
 	/**
-	 * Update a plugin from Git. Note the documented route lives at
-	 * `/plugins/actions/updateFromGit` (no pluginId in the path); the plugin
-	 * is selected server-side by the zip/checkout's plugin.json. Resolves
-	 * only after the update completed (future receipt settled).
+	 * Update an installed plugin from Git. Fails if the plugin is not already
+	 * installed. Resolves only after the update completed (future settled).
 	 */
-	async updateFromGit(options: PluginGitInstallOptions,): Promise<void> {
+	async updateFromGit(pluginId: string, options: PluginGitInstallOptions,): Promise<void> {
 		const receipt = await this.client.post<Record<string, unknown>>(
-			"/public/api/plugins/actions/updateFromGit",
+			`/public/api/plugins/${enc(pluginId,)}/actions/updateFromGit`,
 			{
 				gitRepositoryUrl: validatedPluginGitUrl(options.gitRepositoryUrl,),
 				gitCheckout: options.gitCheckout ?? null,

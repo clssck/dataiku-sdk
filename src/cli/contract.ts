@@ -3788,7 +3788,8 @@ export function commandPlanShape(
 		case "plugin.update-from-git":
 			return {
 				method: "POST",
-				endpoint: "/public/api/plugins/actions/updateFromGit",
+				endpoint: pluginActionEndpoint(id, "updateFromGit",),
+				identifiers: { pluginId: id, },
 				payload: pluginGitPlanPayload(flags,),
 			};
 		case "plugin.settings-set": {

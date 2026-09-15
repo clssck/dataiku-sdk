@@ -149,34 +149,33 @@ describe("PluginsResource against a fake DSS (all documented endpoints)", () => 
 		);
 	});
 
-	it("installs and updates from git with credential-free bodies", async () => {
-		await withFakeDss(
-			(routes,) => {
-				routes.set("POST /public/api/plugins/actions/installFromGit", async (req, res,) => {
-					const body = JSON.parse((await readBody(req,)).toString("utf8",),);
-					expect(body,).toEqual({
-						gitRepositoryUrl: "git@github.com:acme/p.git",
-						gitCheckout: "main",
-						gitSubpath: null,
-					},);
-					res.statusCode = 204;
-					res.end();
-				},);
-				routes.set("POST /public/api/plugins/actions/updateFromGit", async (req, res,) => {
-					const body = JSON.parse((await readBody(req,)).toString("utf8",),);
-					expect(body.gitRepositoryUrl,).toBe("git@github.com:acme/p.git",);
-					res.statusCode = 204;
-					res.end();
-				},);
-			},
-			async (_url, plugins,) => {
-				await plugins.installFromGit({
-					gitRepositoryUrl: "git@github.com:acme/p.git",
-					gitCheckout: "main",
-				},);
-				await plugins.updateFromGit({ gitRepositoryUrl: "git@github.com:acme/p.git", },);
-			},
-		);
+	it("updates only the selected installed plugin from Git", async () => {
+		const installed = [{ id: "my-plugin", version: "1.0.0", }, {
+			id: "unrelated",
+			version: "1.0.0",
+		},];
+		await withFakeDss(routes => {
+			routes.set("POST /public/api/plugins/my-plugin/actions/updateFromGit", async (req, res,) => {
+				const body = JSON.parse((await readBody(req,)).toString("utf8",),);
+				if (body.gitRepositoryUrl !== "git@github.com:acme/p.git" || body.gitCheckout !== "release") {
+					json(res, { errorType: "InvalidGitSource", }, 400,);
+					return;
+				}
+				installed[0]!.version = "2.0.0";
+				res.statusCode = 204;
+				res.end();
+			},);
+			routes.set("GET /public/api/plugins/", (_req, res,) => json(res, installed,),);
+		}, async (_url, plugins,) => {
+			await plugins.updateFromGit("my-plugin", {
+				gitRepositoryUrl: "git@github.com:acme/p.git",
+				gitCheckout: "release",
+			},);
+			expect(await plugins.list(),).toEqual([{ id: "my-plugin", version: "2.0.0", }, {
+				id: "unrelated",
+				version: "1.0.0",
+			},],);
+		},);
 	});
 
 	it("downloads a dev plugin zip as a binary stream", async () => {

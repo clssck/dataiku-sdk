@@ -3858,7 +3858,7 @@
 				"subsection": "Plugin",
 				"name": "Update a plugin from Git",
 				"method": "POST",
-				"uri": "/plugins/actions/updateFromGit",
+				"uri": "/plugins/{pluginId}/actions/updateFromGit",
 				"docAnchor": "#plugins-plugin-post-2",
 				"status": "implemented",
 				"sdk": [
@@ -3867,7 +3867,7 @@
 				"cli": [
 					"dss plugin update-from-git"
 				],
-				"note": null
+				"note": "The DSS 15 reference lists /plugins/actions/updateFromGit without pluginId, but that route answers 404 on live DSS 15; the server serves the per-plugin route used by the official Python client: /plugins/{pluginId}/actions/updateFromGit."
 			},
 			{
 				"section": "Plugins",

@@ -104,7 +104,7 @@ const DOWNLOAD_USAGE = "dss plugin download <pluginId> --output PATH";
 const UPDATE_ZIP_USAGE = "dss plugin update-from-zip <pluginId> --file PATH [--dry-run] [--plan]";
 const UPDATE_STORE_USAGE = "dss plugin update-from-store <pluginId> [--dry-run] [--plan]";
 const UPDATE_GIT_USAGE =
-	"dss plugin update-from-git --repository URL [--checkout REF] [--path-in-repository PATH] [--dry-run] [--plan]";
+	"dss plugin update-from-git <pluginId> --repository URL [--checkout REF] [--path-in-repository PATH] [--dry-run] [--plan]";
 const SETTINGS_GET_USAGE = "dss plugin settings-get <pluginId> [--project-key KEY]";
 const SETTINGS_SET_USAGE =
 	"dss plugin settings-set <pluginId> (--content JSON|--file PATH|--stdin) [--project-key KEY] [--dry-run] [--plan]";
@@ -287,8 +287,9 @@ export const pluginCommands: Record<string, CommandMeta> = {
 		examples: ["dss plugin update-from-store my-plugin",],
 	},
 	"update-from-git": {
-		handler: async (c, _a, f,) => {
-			requireNoArgs(_a, UPDATE_GIT_USAGE,);
+		handler: async (c, a, f,) => {
+			requireArgs(a, 1, UPDATE_GIT_USAGE,);
+			const pluginId = validatePluginId(a[0],);
 			const repository = optionalStringFlag(f, "repository",);
 			const checkout = optionalStringFlag(f, "checkout",);
 			const subpath = optionalStringFlag(f, "path-in-repository",);
@@ -299,8 +300,8 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			if (executionMode(f,).dryRun) {
 				return pluginPlan("update-from-git", {
 					method: "POST",
-					endpoint: "/public/api/plugins/actions/updateFromGit",
-					identifiers: { repositoryUrl: url, },
+					endpoint: pluginActionEndpoint(pluginId, "updateFromGit",),
+					identifiers: { pluginId, repositoryUrl: url, },
 					payload: {
 						gitRepositoryUrl: url,
 						gitCheckout: checkout ?? null,
@@ -308,7 +309,7 @@ export const pluginCommands: Record<string, CommandMeta> = {
 					},
 				},);
 			}
-			await c.plugins.updateFromGit({
+			await c.plugins.updateFromGit(pluginId, {
 				gitRepositoryUrl: url,
 				gitCheckout: checkout,
 				gitSubpath: subpath,
@@ -317,9 +318,9 @@ export const pluginCommands: Record<string, CommandMeta> = {
 		},
 		usage: UPDATE_GIT_USAGE,
 		description:
-			"Update a plugin from a Git repository (must contain plugin.json). Note: the documented route has no pluginId in the path. Fails when not installed. HTTP(S) URLs must not embed credentials.",
+			"Update an installed plugin from a Git repository (must contain plugin.json). Fails when not installed. HTTP(S) URLs must not embed credentials.",
 		examples: [
-			"dss plugin update-from-git --repository git@github.com:acme/my-plugin.git --checkout v2",
+			"dss plugin update-from-git my-plugin --repository git@github.com:acme/my-plugin.git --checkout v2",
 		],
 	},
 	"settings-get": {

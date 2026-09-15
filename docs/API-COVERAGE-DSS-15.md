@@ -444,7 +444,7 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `GET` | `/plugins/{pluginId}/download` | yes | PluginsResource.download | `dss plugin download` |  |
 | `POST` | `/plugins/{pluginId}/actions/updateFromZip` | yes | PluginsResource.updateFromZip | `dss plugin update-from-zip` |  |
 | `POST` | `/plugins/{pluginId}/actions/updateFromStore` | yes | PluginsResource.updateFromStore | `dss plugin update-from-store` |  |
-| `POST` | `/plugins/actions/updateFromGit` | yes | PluginsResource.updateFromGit | `dss plugin update-from-git` |  |
+| `POST` | `/plugins/{pluginId}/actions/updateFromGit` | yes | PluginsResource.updateFromGit | `dss plugin update-from-git` | The DSS 15 reference lists `/plugins/actions/updateFromGit` without pluginId, but that route answers 404 on live DSS 15; the server serves the per-plugin route used by the official Python client. |
 | `GET` | `/plugins/{pluginId}/settings{?projectKey}` | yes | PluginsResource.getSettings | `dss plugin settings-get` |  |
 | `POST` | `/plugins/{pluginId}/settings{?projectKey}` | yes | PluginsResource.setSettings | `dss plugin settings-set` |  |
 | `POST` | `/plugins/{pluginId}/code-env/actions/create` | yes | PluginsResource.createCodeEnv | `dss plugin code-env-create` |  |

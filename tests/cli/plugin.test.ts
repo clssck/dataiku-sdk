@@ -185,7 +185,16 @@ describe("plugin CLI argument validation before any request", () => {
 
 	it("rejects invalid plugin ids without contacting the resource", async () => {
 		const { client, calls, } = recordingClient();
-		for (const action of ["settings-get", "usages", "delete", "git-branches", "push",] as const) {
+		for (
+			const action of [
+				"settings-get",
+				"usages",
+				"delete",
+				"git-branches",
+				"push",
+				"update-from-git",
+			] as const
+		) {
 			await expect(run(action, client, ["../escape",],),).rejects.toBeInstanceOf(
 				ClientValidationError,
 			);
@@ -226,6 +235,17 @@ describe("plugin CLI argument validation before any request", () => {
 		).rejects.toThrow(/--repository/,);
 		expect(calls,).toEqual([],);
 	});
+
+	it("requires the plugin id for update-from-git", async () => {
+		const { client, calls, } = recordingClient();
+		await expect(
+			run("update-from-git", client, [], { repository: "git@github.com:acme/p.git", },),
+		).rejects.toThrow(Error,);
+		await expect(
+			run("update-from-git", client, ["p",],),
+		).rejects.toThrow(Error,);
+		expect(calls,).toEqual([],);
+	});
 });
 
 describe("plugin CLI dry-run plans make zero requests", () => {
@@ -261,6 +281,22 @@ describe("plugin CLI dry-run plans make zero requests", () => {
 		expect(git,).toMatchObject({
 			plan: true,
 			endpoint: "/public/api/plugins/actions/installFromGit",
+			payload: {
+				gitRepositoryUrl: "git@github.com:acme/p.git",
+				gitCheckout: "main",
+				gitSubpath: null,
+			},
+		},);
+		const updateGit = await run("update-from-git", client, ["my-plugin",], {
+			repository: "git@github.com:acme/p.git",
+			checkout: "main",
+			"dry-run": true,
+		},);
+		expect(updateGit,).toMatchObject({
+			plan: true,
+			endpoint: "/public/api/plugins/my-plugin/actions/updateFromGit",
+			pluginId: "my-plugin",
+			repositoryUrl: "git@github.com:acme/p.git",
 			payload: {
 				gitRepositoryUrl: "git@github.com:acme/p.git",
 				gitCheckout: "main",
