@@ -765,15 +765,16 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 			expect(timeline.length,).toBeGreaterThan(0,);
 			for (const entry of timeline) expect(isPlainObject(entry,),).toBe(true,);
 
-			// DSS rejects a minTimestamp in the future with 400 (verified against DSS 15.0.1),
-			// so exercise the window parameters with verified-legal shapes: a max-only window
-			// before all data yields [], and a bounded window that spans the computation day
-			// is non-empty.
+			// The retained lab may have history from earlier days. Bound the empty
+			// window before its oldest recorded bucket, not relative to the current day.
+			const firstTimestamp = Math.min(
+				...timeline.map(entry => requireNumber(entry.timestamp, "timeline timestamp",)),
+			);
 			const emptyWindow = await ctx.run<Array<Record<string, unknown>>>([
 				"data-quality",
 				"project-timeline",
 				"--max-timestamp",
-				String(before - 86_400_000,),
+				String(firstTimestamp - 1,),
 			],);
 			expect(Array.isArray(emptyWindow,),).toBe(true,);
 			expect(emptyWindow.length,).toBe(0,);
