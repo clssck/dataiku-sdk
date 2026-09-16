@@ -584,6 +584,118 @@ describe("CLI execution behavior", () => {
 		},);
 	});
 
+	it("preserves the bounded DSS diagnostic on ambiguous mutation failures", async () => {
+		let startAttempts = 0;
+		await withCliServer((req, res,) => {
+			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+				startAttempts++;
+				sendJson(res, {
+					errorType: "java.lang.IllegalStateException",
+					message: "Streaming is not available on this instance",
+				}, 500,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"sql",
+				"query",
+				"SELECT 1",
+				"--connection",
+				"CONN",
+				"--retries",
+				"2",
+			], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(2,);
+			expect(failure.stderr,).toBe("",);
+			expect(startAttempts,).toBe(1,);
+			const report = JSON.parse(failure.stdout,) as {
+				code: string;
+				error: string;
+				retryable: boolean;
+				details?: {
+					dssCategory?: string;
+					statusText?: string;
+					idempotency?: string;
+					dssMessage?: string;
+					dssErrorType?: string;
+					retry?: { enabled?: boolean; maxAttempts?: number; };
+				};
+			};
+			expect(report,).toMatchObject({
+				code: "ambiguous_outcome",
+				retryable: false,
+				error: "The POST request failed after dispatch; the mutation outcome is unknown.",
+			},);
+			expect(report.details,).toMatchObject({
+				dssCategory: "transient",
+				statusText: "Internal Server Error",
+				idempotency: "none",
+				dssMessage: "Streaming is not available on this instance",
+				dssErrorType: "java.lang.IllegalStateException",
+				retry: { enabled: false, maxAttempts: 1, },
+			},);
+			expect(failure.stdout,).toContain("Streaming is not available on this instance",);
+		},);
+	});
+
+	it("redacts credentials echoed in a preserved DSS diagnostic message", async () => {
+		await withCliServer((req, res,) => {
+			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+				sendJson(res, {
+					errorType: "java.lang.SecurityException",
+					message: 'Invalid API key "test-key" for https://user:hunter2@dss.example.com/public/api/',
+				}, 500,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"sql",
+				"query",
+				"SELECT 1",
+				"--connection",
+				"CONN",
+			], { env: cliEnv(url,), },);
+			const report = JSON.parse(failure.stdout,) as {
+				code: string;
+				details?: { dssMessage?: string; };
+			};
+			expect(report,).toMatchObject({ code: "ambiguous_outcome", },);
+			expect(report.details?.dssMessage,).toContain("[redacted]",);
+			expect(failure.stdout,).not.toContain("test-key",);
+			expect(failure.stdout,).not.toContain("hunter2",);
+		},);
+	});
+
+	it("bounds the preserved DSS diagnostic text", async () => {
+		await withCliServer((req, res,) => {
+			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+				sendJson(res, {
+					errorType: "java.lang.IllegalStateException",
+					message: "S".repeat(400,),
+				}, 500,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("not found",);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"sql",
+				"query",
+				"SELECT 1",
+				"--connection",
+				"CONN",
+			], { env: cliEnv(url,), },);
+			const report = JSON.parse(failure.stdout,) as { details?: { dssMessage?: string; }; };
+			const dssMessage = report.details?.dssMessage ?? "";
+			expect(dssMessage.length,).toBe(301,);
+			expect(dssMessage.endsWith("…",),).toBe(true,);
+		},);
+	});
+
 	it("does not replay SQLite schema failures despite explicit start retries", async () => {
 		for (const detail of ["no such column: missing_column", "no such table: missing_table",]) {
 			let startAttempts = 0;

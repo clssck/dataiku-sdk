@@ -61,6 +61,7 @@ import {
 	reserveCleanupLedgerDssUrl,
 } from "./utils/cleanup-ledger.js";
 import { canonicalDssUrl, } from "./utils/dss-url.js";
+import { sanitizeSecrets, } from "./utils/secret-sanitize.js";
 let contract: typeof import("./cli/contract.js");
 let commandRuntimeLoad: Promise<void> | undefined;
 
@@ -1629,6 +1630,65 @@ function requestIdFromBody(body: string,): string | undefined {
 	return undefined;
 }
 
+/** DSS diagnostic fields, in the resource layer's read order (detailedMessage → message → errorMessage). */
+const DSS_DIAGNOSTIC_MESSAGE_FIELDS = ["detailedMessage", "message", "errorMessage",] as const;
+const MAX_DSS_DIAGNOSTIC_LENGTH = 300;
+
+/**
+ * Credential material for redacting a server echo in a receipt: resolved
+ * through the same resolver every command uses (flag → env → saved), so the
+ * report path never grows a second credential-precedence convention.
+ */
+function cliSecretValues(): string[] {
+	try {
+		const { apiKey, } = resolveCredentials(parseArgs(process.argv.slice(2,),).flags,);
+		return apiKey ? [apiKey,] : [];
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Bounded, sanitized server diagnostic preserved on an ambiguous mutation
+ * envelope (`dssMessage`/`dssErrorType`, next to the existing `dssCategory`):
+ * the DSS error text and Java error type the response body carried, so the
+ * receipt explains why the server failed while the mutation outcome stays
+ * unknown. Whitespace collapses to one line, credential material is redacted,
+ * long text truncates, and the raw body/stack never pass through.
+ */
+function dssDiagnosticDetails(err: DataikuError,): Record<string, string> {
+	try {
+		const parsed: unknown = JSON.parse(err.body,);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed,)) return {};
+		const record = parsed as Record<string, unknown>;
+		let secrets: string[] | undefined;
+		const diagnostic = (value: unknown,): string | undefined => {
+			if (typeof value !== "string" || value.trim() === "") return undefined;
+			secrets ??= cliSecretValues();
+			const sanitized = sanitizeSecrets(value.replace(/\s+/g, " ",).trim(), {
+				sensitiveKeys: {},
+				secrets,
+				redactUrlUserinfo: true,
+			},);
+			return sanitized.length > MAX_DSS_DIAGNOSTIC_LENGTH
+				? `${sanitized.slice(0, MAX_DSS_DIAGNOSTIC_LENGTH,)}…`
+				: sanitized;
+		};
+		let message: string | undefined;
+		for (const field of DSS_DIAGNOSTIC_MESSAGE_FIELDS) {
+			message = diagnostic(record[field],);
+			if (message !== undefined) break;
+		}
+		const errorType = diagnostic(record["errorType"],);
+		return {
+			...(message !== undefined ? { dssMessage: message, } : {}),
+			...(errorType !== undefined ? { dssErrorType: errorType, } : {}),
+		};
+	} catch {
+		return {};
+	}
+}
+
 const MISSING_PROJECT_KEY_ERROR_PREFIX = "projectKey is required";
 
 function isAmbiguousMutationFailure(
@@ -1742,6 +1802,7 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			requestId: err.requestId ?? requestIdFromBody(err.body,),
 			details: {
 				dssCategory: err.category,
+				...dssDiagnosticDetails(err,),
 				statusText: canonicalStatusText(err.status,),
 				idempotency: "none",
 				...(err.retry ? { retry: err.retry, } : {}),
