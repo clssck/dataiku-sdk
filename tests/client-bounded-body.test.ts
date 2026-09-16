@@ -51,11 +51,66 @@ async function withDataikuServer(
 }
 
 describe("DataikuClient bounded response bodies", () => {
+	for (const format of ["seconds", "date",] as const) {
+		it(`honors Retry-After expressed as ${format}`, async () => {
+			let attempts = 0;
+			let earliestRetry = 0;
+			let actualRetry = 0;
+			await withDataikuServer((_req, res,) => {
+				attempts++;
+				if (attempts === 1) {
+					const header = format === "seconds" ? "3" : new Date(Date.now() + 4_000,).toUTCString();
+					earliestRetry = format === "seconds" ? Date.now() + 3_000 : Date.parse(header,);
+					res.writeHead(429, { "Retry-After": header, },);
+					res.end("rate limited",);
+				} else {
+					actualRetry = Date.now();
+					res.end('{"recovered":true}',);
+				}
+			}, async client => {
+				expect(await client.get("/server-backoff",),).toEqual({ recovered: true, },);
+				expect(attempts,).toBe(2,);
+				expect(actualRetry,).toBeGreaterThanOrEqual(earliestRetry - 20,);
+			},);
+		}, 10_000,);
+	}
+
+	it("does not extend a total deadline to honor Retry-After", async () => {
+		let attempts = 0;
+		await withDataikuServer((_req, res,) => {
+			attempts++;
+			res.writeHead(503, { "Retry-After": "30", },);
+			res.end("busy",);
+		}, async client => {
+			const failure = await client.get("/deadline", { timeoutMs: 100, },).catch((error: unknown,) =>
+				error
+			);
+			if (!(failure instanceof DataikuError)) throw new Error("Expected timeout",);
+			expect(failure.retry?.timedOut,).toBe(true,);
+			expect(attempts,).toBe(1,);
+		},);
+	});
+
+	it("declines excessive server waits instead of overflowing the timer into an early retry", async () => {
+		let attempts = 0;
+		await withDataikuServer((_req, res,) => {
+			attempts++;
+			res.writeHead(429, { "Retry-After": "999999999999999999999", },);
+			res.end("rate limited",);
+		}, async client => {
+			const failure = await client.get("/excessive-backoff",).catch((error: unknown,) => error);
+			if (!(failure instanceof DataikuError)) throw new Error("Expected original error",);
+			expect(failure.status,).toBe(429,);
+			expect(failure.retry?.delaysMs,).toEqual([],);
+			expect(attempts,).toBe(1,);
+		},);
+	});
+
 	it("bounds mutation errors at UTF-8 boundaries without retrying or losing request identity", async () => {
 		let attempts = 0;
 		await withDataikuServer((_req, res,) => {
 			attempts++;
-			res.writeHead(503, { "x-request-id": "bounded-error-request", },);
+			res.writeHead(503, { "x-request-id": "bounded-error-request", "Retry-After": "1", },);
 			res.end("😀".repeat(2_000,),);
 		}, async (client,) => {
 			const failure = await client.post("/oversized-mutation-error", {},).catch((error: unknown,) =>

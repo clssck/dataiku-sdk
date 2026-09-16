@@ -196,6 +196,17 @@ function computeBackoffDelayMs(retryNumber: number,): number {
 	return Math.floor(Math.random() * (cap + 1),);
 }
 
+/** Server-directed waits never bypass the existing automatic backoff cap. */
+function retryAfterDelayMs(value: string | null,): number {
+	if (value === null) return 0;
+	const text = value.trim();
+	if (/^\d+$/.test(text,)) return Number(text,) * 1_000;
+	// Accept HTTP dates, not Date.parse's permissive numeric date shorthand.
+	if (!/^[A-Za-z]{3,9},? /.test(text,)) return 0;
+	const date = Date.parse(text,);
+	return Number.isFinite(date,) ? Math.max(0, date - Date.now(),) : 0;
+}
+
 function isTransientError(status: number, body: string,): boolean {
 	return classifyDataikuError(status, body,).category === "transient";
 }
@@ -1293,8 +1304,10 @@ export class DataikuClient {
 						startedAt + attemptTimeoutMs,
 					);
 					const canRetry = retryEnabled && attempt < maxAttempts && isTransientError(res.status, text,);
-					if (canRetry) {
-						const delayMs = computeBackoffDelayMs(attempt,);
+					const serverDelayMs = canRetry ? retryAfterDelayMs(res.headers.get("retry-after",),) : 0;
+					// A longer server wait declines automatic retry; never clamp it into an early request.
+					if (canRetry && serverDelayMs <= MAX_BACKOFF_DELAY_MS) {
+						const delayMs = Math.max(computeBackoffDelayMs(attempt,), serverDelayMs,);
 						// Do not start a retry whose backoff cannot fit in the budget.
 						if (deadlineAt === undefined || Date.now() + delayMs <= deadlineAt) {
 							delaysMs.push(delayMs,);
