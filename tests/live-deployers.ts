@@ -851,6 +851,155 @@ async function projectDeployerReads(ctx: LiveContext,): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Deployer details against NEW owned metadata stacks
+// ---------------------------------------------------------------------------
+
+/**
+ * The full deployer-details surface (every action of the old
+ * infrastructure.deployer-details case) against NEW, case-owned metadata
+ * stacks, so details have a guaranteed real target instead of depending on
+ * pre-existing instance objects. Every response is validated against the
+ * exact owned identities (ledger nonce-bearing ids) and the observable
+ * control-plane contract — never a bare mock echo and never a faked
+ * healthy deployment. No deploy and no redeploy is issued — the owned STATIC
+ * infras carry no API/Automation node (see apiDeployerDeploy /
+ * projectDeployerDeploy for the exact external prerequisite) — and
+ * deployment-status runs as a plain getter whose raw failure propagates
+ * unclassified: any SDK/auth/route/shape error stays a visible failure
+ * instead of being converted into an invented unavailable claim. Teardown
+ * is the standard reverse-order
+ * error-aggregating helpers: deployments before services/infra, published
+ * projects before the source project.
+ */
+export async function exerciseOwnedDeployerDetails(ctx: LiveContext,): Promise<void> {
+	await withApiDeployerStack(ctx, "apidet", { predictionEndpoint: false, }, async stack => {
+		await publishApiVersion(ctx, stack, stack.version,);
+		const deployment = await createApiDeployment(ctx, "apidet", stack,);
+		await withOwnedGlobal(ctx, "api-deployer-deployment", deployment, async deploymentId => {
+			require(
+				listHas(
+					await ctx.run<unknown>(["api-deployer", "list-infras",],),
+					"infraBasicInfo",
+					stack.infraId,
+				),
+				`owned infra ${stack.infraId} missing from api-deployer list-infras`,
+			);
+			require(
+				listHas(
+					await ctx.run<unknown>(["api-deployer", "list-services",],),
+					"serviceBasicInfo",
+					stack.serviceId,
+				),
+				`owned service ${stack.serviceId} missing from api-deployer list-services`,
+			);
+			require(
+				listHas(
+					await ctx.run<unknown>(["api-deployer", "list-deployments",],),
+					"deploymentBasicInfo",
+					deploymentId,
+				),
+				`owned deployment ${deploymentId} missing from api-deployer list-deployments`,
+			);
+			const infra = await ctx.run<JsonRecord>(["api-deployer", "get-infra", stack.infraId,],);
+			require(
+				deployerId(infra, "infraBasicInfo",) === stack.infraId
+					&& asRecord(infra["infraBasicInfo"],)?.["type"] === "STATIC",
+				`api-deployer get-infra did not return the owned STATIC infra ${stack.infraId}`,
+			);
+			const service = await ctx.run<JsonRecord>(["api-deployer", "get-service", stack.serviceId,],);
+			require(
+				deployerId(service, "serviceBasicInfo",) === stack.serviceId,
+				`api-deployer get-service did not return the owned service ${stack.serviceId}`,
+			);
+			require(
+				packageIds(service,).includes(stack.version,),
+				`api-deployer get-service does not list the owned published version ${stack.version}`,
+			);
+			const light = await ctx.run<JsonRecord>(["api-deployer", "get-deployment", deploymentId,],);
+			const basic = asRecord(light["deploymentBasicInfo"],);
+			require(
+				basic !== undefined && basic["publishedServiceId"] === stack.serviceId
+					&& basic["infraId"] === stack.infraId,
+				`api-deployer get-deployment ${deploymentId} does not reference the owned service/infra`,
+			);
+			const settings = await ctx.run<JsonRecord>([
+				"api-deployer",
+				"deployment-settings",
+				deploymentId,
+			],);
+			require(
+				settings["publishedServiceId"] === stack.serviceId && settings["infraId"] === stack.infraId,
+				`api-deployer deployment-settings ${deploymentId} do not reference the owned service/infra`,
+			);
+			const status = await ctx.run<unknown>([
+				"api-deployer",
+				"deployment-status",
+				deploymentId,
+			],);
+			require(asRecord(status,) !== undefined, "api-deployer deployment-status returned no object",);
+		}, id => disableApiDeployment(ctx, id,),);
+	},);
+	await withProjectDeployerStack(ctx, "pddet", async stack => {
+		const { entry, receipt, } = await createProjectDeployment(ctx, "pddet", stack,);
+		await withOwnedGlobal(ctx, "project-deployer-deployment", entry, async deploymentId => {
+			require(
+				listHas(
+					await ctx.run<unknown>(["project-deployer", "list-projects",],),
+					"projectBasicInfo",
+					stack.publishedProjectKey,
+				),
+				`owned published project ${stack.publishedProjectKey} missing from project-deployer list-projects`,
+			);
+			require(
+				listHas(
+					await ctx.run<unknown>(["project-deployer", "list-deployments",],),
+					"deploymentBasicInfo",
+					deploymentId,
+				),
+				`owned deployment ${deploymentId} missing from project-deployer list-deployments`,
+			);
+			const light = await ctx.run<JsonRecord>([
+				"project-deployer",
+				"get-deployment",
+				deploymentId,
+			],);
+			require(
+				deployerId(light, "deploymentBasicInfo",) === deploymentId,
+				`project-deployer get-deployment did not return the owned deployment ${deploymentId}`,
+			);
+			const publishedStatus = await ctx.run<JsonRecord>([
+				"project-deployer",
+				"project-status",
+				stack.publishedProjectKey,
+			],);
+			require(
+				packageIds(publishedStatus,).includes(stack.bundleId,),
+				`project-deployer project-status ${stack.publishedProjectKey} does not list the owned bundle ${stack.bundleId}`,
+			);
+			// GET /settings is not exposed by the SDK for the project deployer;
+			// the settings document is observable through the create receipt or
+			// the light status only (the identity read-only contract — no
+			// partial PUT is ever sent here).
+			const settings = projectDeploymentSettings([receipt, light,],);
+			require(
+				settings !== undefined && settings["publishedProjectKey"] === stack.publishedProjectKey
+					&& settings["infraId"] === stack.infraId && settings["bundleId"] === stack.bundleId,
+				`project-deployer settings of deployment ${deploymentId} do not carry the owned publishedProjectKey/infraId/bundleId`,
+			);
+			const status = await ctx.run<unknown>([
+				"project-deployer",
+				"deployment-status",
+				deploymentId,
+			],);
+			require(
+				asRecord(status,) !== undefined,
+				"project-deployer deployment-status returned no object",
+			);
+		},);
+	},);
+}
+
+// ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
 

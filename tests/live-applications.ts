@@ -12,9 +12,17 @@
 // hide unrelated behaviors. Missing prerequisites are explicit "blocked"
 // results via LiveCapabilityError — never mock passes — while genuine command
 // defects remain ordinary failures.
+//
+// App-instance creation from an OWNED template runs in generated-key mode
+// through the shared LiveContext.runGeneratedAppCreation authorization: the
+// payload omits targetProjectKey, the CLI generates the target key, the
+// harness binds the created project, and the precursor carries the
+// pendingDependentCreation marker until the creation outcome is proven. The
+// strict explicit-target path (reserved key, --to) is retained for the
+// read-only EXTERNAL template binding only.
 import { expect, } from "bun:test";
 import { provisionTrainedSavedModel, } from "./live-capabilities.js";
-import { LiveCapabilityError, type LiveContext, } from "./live-context.js";
+import { LiveCapabilityError, LiveCommandError, type LiveContext, } from "./live-context.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -42,9 +50,11 @@ function requireId(value: unknown, what: string,): string {
 const WEBAPP_MARKER_PREFIX = "live_webapp_marker_i";
 
 /**
- * Explicit opt-ins for external application resources. Templates are never
- * guessed from list output and never modified: an unset variable is an
- * explicit blocker, not a silent skip.
+ * Explicit opt-in for the EXTERNAL application resources. An external
+ * template is only ever named by this variable — never guessed from list
+ * output — and external templates/business apps are read-only surfaces: they
+ * are never written. When the variable is unset, the dss app cases that need
+ * a template self-provision a disposable owned one instead of blocking.
  */
 const APP_TEMPLATE_ID_ENV = "DATAIKU_LIVE_APP_TEMPLATE_ID";
 const BUSINESS_APP_ID_ENV = "DATAIKU_LIVE_BUSINESS_APP_ID";
@@ -78,20 +88,147 @@ async function listEvidence(ctx: LiveContext, resource: "app" | "business-app",)
 }
 
 /**
- * Resolve the template prerequisite shared by every template-gated case: an
- * explicit DATAIKU_LIVE_APP_TEMPLATE_ID, else an exact blocker citing the
- * live list observation from this run (never a guessed template).
+ * A template binding names the template surface a case exercises. An owned
+ * self-provisioned template is identified by its own case-owned projectKey,
+ * which is bound and therefore cleanup-guarded. An external template (explicit
+ * DATAIKU_LIVE_APP_TEMPLATE_ID opt-in) is identified by its appId ONLY: an app
+ * id is not a project key, so the external member carries no projectKey and
+ * every project-scoped use must narrow to the owned member first.
  */
-async function requireTemplateId(ctx: LiveContext,): Promise<string> {
-	const appId = process.env[APP_TEMPLATE_ID_ENV]?.trim();
-	if (appId) return appId;
-	throw new LiveCapabilityError(
-		`No Dataiku App template prerequisite: set ${APP_TEMPLATE_ID_ENV} to an app template this key can read; ${await listEvidence(
-			ctx,
+interface OwnedTemplateBinding {
+	appId: string;
+	projectKey: string;
+	external: false;
+}
+
+interface ExternalTemplateBinding {
+	appId: string;
+	external: true;
+}
+
+type TemplateBinding = OwnedTemplateBinding | ExternalTemplateBinding;
+
+/**
+ * Precursor recovery guard, shared by the owned-template fixture, the
+ * successor lifecycle and the successor preflight: armed with the PRECURSOR
+ * (template or predecessor instance) project key, it reports whether the
+ * precursor may still be the source of an unresolved descendant creation. Two
+ * independent signals retain the precursor for recovery instead of deleting it
+ * under a possible in-flight clone: (1) a `pendingDependentCreation` marker on
+ * the precursor — a generated-mode creation's target key does not exist before
+ * the creation POST, so the marker (not any receipt) is the only truthful
+ * in-flight evidence; (2) a descendant reservation created since arming that
+ * is still pending — a creation whose POST outcome is unconfirmed. The
+ * precursor is then retained for recovery. A strict no-POST refusal clears its
+ * reservation intent centrally (and the shared generated-creation
+ * authorization clears the marker), so it never trips this guard and normal
+ * strict cleanup still runs. A `null` precursor (external-template cases,
+ * whose template is never owned by this run) only observes new pending
+ * reservations.
+ */
+function unconfirmedDescendantGuard(
+	ctx: LiveContext,
+	precursorKey: string | null,
+): () => boolean {
+	const snapshot = new Set(ctx.projects.map(project => project.key),);
+	return () =>
+		(precursorKey !== null
+			&& Boolean(
+				ctx.projects.find(project => project.key === precursorKey)?.pendingDependentCreation,
+			))
+		|| ctx.projects.some(project => !snapshot.has(project.key,) && project.state === "pending");
+}
+
+/**
+ * Callback-scoped owned Dataiku App template fixture: a case-owned project is
+ * converted to APP_TEMPLATE through the generic `project settings-set`
+ * surface (live-proven: settings and project details both report
+ * APP_TEMPLATE, and the initialized app manifest is readable), then its
+ * DSS-initialized manifest plus owned version markers are persisted through
+ * `app save-instance-manifest` (template-only by the SDK guard). The appId is
+ * read from the persisted manifest's `id` field and is never assumed to equal
+ * the project key. The case-owned project is deleted in `finally`, so an
+ * unselected case never provisions and a selected case always cleans up —
+ * with one recovery guard: a body failure that leaves an unresolved
+ * descendant creation (a generated-mode pendingDependentCreation marker on
+ * this template, or a NEW pending explicit reservation) may have an in-flight
+ * creation POST, so the template is retained for recovery instead of being
+ * deleted under a possible clone; the failure itself is always reported.
+ */
+async function withOwnedAppTemplate<T,>(
+	ctx: LiveContext,
+	label: string,
+	body: (template: OwnedTemplateBinding,) => Promise<T>,
+): Promise<T> {
+	const projectKey = await ctx.createProject(label,);
+	const hasUnconfirmedChild = unconfirmedDescendantGuard(ctx, projectKey,);
+	let retainedForRecovery = false;
+	try {
+		await ctx.run([
+			"project",
+			"settings-set",
+			"--data",
+			JSON.stringify({ projectAppType: "APP_TEMPLATE", },),
+		], { projectKey, },);
+		const settings = await ctx.run<JsonRecord>(["project", "settings-get",], { projectKey, },);
+		expect(settings["projectAppType"],).toBe("APP_TEMPLATE",);
+
+		const initialized = await ctx.run<JsonRecord>(["app", "instance-manifest",], {
+			projectKey,
+		},);
+		const appId = asString(initialized["id"],);
+		if (!appId) {
+			throw new Error(
+				`Owned template project ${projectKey} exposed no generated app id in its initialized manifest.`,
+			);
+		}
+		const knownManifest = {
+			...initialized,
+			version: `live-${ctx.iteration}`,
+			versionNotes: `Live applications owned template ${ctx.iteration}`,
+		};
+		await ctx.run([
 			"app",
-		)}. The applications profile does not guess templates from app list and never writes to external template manifests.`,
-		"blocked",
-	);
+			"save-instance-manifest",
+			"--data",
+			JSON.stringify(knownManifest,),
+			"--project-key",
+			projectKey,
+		],);
+		const persisted = await ctx.run<JsonRecord>(["app", "instance-manifest",], { projectKey, },);
+		expect(persisted["version"],).toBe(knownManifest.version,);
+
+		return await body({ appId, projectKey, external: false, },);
+	} catch (error) {
+		// A creation whose POST outcome is indeterminate leaves its descendant
+		// unresolved — a generated-mode creation carries the
+		// pendingDependentCreation marker on this template instead of a
+		// reserved receipt — so this template may be the source of an
+		// in-flight clone: it is retained for recovery and the failure is
+		// re-thrown. An exact no-POST refusal clears its reservation intent
+		// centrally (and the marker), so the normal strict cleanup still runs.
+		retainedForRecovery = hasUnconfirmedChild();
+		throw error;
+	} finally {
+		if (!retainedForRecovery) await ctx.deleteProject(projectKey,);
+	}
+}
+
+/**
+ * Resolve the template prerequisite for a template-gated case: an explicit
+ * DATAIKU_LIVE_APP_TEMPLATE_ID selects the external read-only template (its
+ * appId only — no project key is derived for it), else the case
+ * self-provisions an owned disposable template through withOwnedAppTemplate
+ * (and its cleanup contract).
+ */
+async function withTemplateBinding<T,>(
+	ctx: LiveContext,
+	label: string,
+	body: (template: TemplateBinding,) => Promise<T>,
+): Promise<T> {
+	const appId = process.env[APP_TEMPLATE_ID_ENV]?.trim();
+	if (appId) return await body({ appId, external: true, },);
+	return await withOwnedAppTemplate(ctx, label, body,);
 }
 
 // ---------------------------------------------------------------------------
@@ -586,9 +723,14 @@ async function exerciseAppDiscovery(ctx: LiveContext,): Promise<void> {
 }
 
 /**
- * Create an app instance from a template into a reserved owned project and
- * wait for the creation future. Shared by every template-gated case; a
- * non-terminal creation state is a genuine failure, never masked.
+ * Strict explicit-target path for the EXTERNAL template binding: create an
+ * app instance from a template into a reserved owned project (the reserved
+ * key is named as targetProjectKey and proven absent before the POST) and wait
+ * for the creation future. A non-terminal creation state is a genuine
+ * failure, never masked, and the pre-POST target-absence refusal propagates
+ * untouched for central classification instead of being re-mapped here. Owned
+ * templates never take this path: createTemplateInstance runs them in
+ * generated mode instead.
  */
 async function createAppInstance(
 	ctx: LiveContext,
@@ -625,35 +767,324 @@ async function createAppInstance(
 }
 
 /**
- * The configured-template surface case: only an explicit
- * DATAIKU_LIVE_APP_TEMPLATE_ID is accepted; templates are never guessed and
- * never modified. Reads the template manifest version, creates a case-owned
- * instance, and exercises the read-only instance surface.
+ * Create an app instance from the bound template and return the created
+ * project key, dispatching on the template kind:
+ * - EXTERNAL binding: the strict explicit path (createAppInstance into a
+ *   reserved owned project, then bind) — an app id is never treated as a
+ *   project key.
+ * - OWNED binding: generated mode through the shared
+ *   LiveContext.runGeneratedAppCreation authorization, with the template
+ *   project as the precursor. The payload omits targetProjectKey, so the CLI
+ *   generates the target key client-side; the returned key is already
+ *   reserved and incarnation-bound by that shared contract, and the precursor
+ *   carries the pendingDependentCreation marker until the outcome is proven.
+ * Nothing here ever fabricates a projectKey from the app id, and a partial
+ * binding failure propagates untouched (never a source-skipping catch).
  */
-async function exerciseAppTemplateSurface(ctx: LiveContext, appId: string,): Promise<void> {
-	const templateVersion = await ctx.run<JsonRecord>(["app", "manifest-version",], {
-		projectKey: appId,
-	},);
-	expect(asRecord(templateVersion,) === undefined,).toBe(false,);
-
-	const reservedKey = await ctx.reserveProject("appsurf",);
-	const label = `Live applications surface ${ctx.iteration}`;
-	let created = false;
-	try {
-		await createAppInstance(ctx, appId, reservedKey, label,);
-		created = true;
+async function createTemplateInstance(
+	ctx: LiveContext,
+	template: TemplateBinding,
+	reserveLabel: string,
+	label: string,
+): Promise<string> {
+	if (template.external) {
+		const reservedKey = await ctx.reserveProject(reserveLabel,);
+		await createAppInstance(ctx, template.appId, reservedKey, label,);
 		await ctx.bindProject(reservedKey,);
+		return reservedKey;
+	}
+	return await ctx.runGeneratedAppCreation(
+		[
+			"app",
+			"create-instance",
+			template.appId,
+			"--data",
+			JSON.stringify({ targetProjectName: label, },),
+			"--wait",
+			"--timeout",
+			"180000",
+			"--poll-interval",
+			"3000",
+		],
+		template.projectKey,
+	);
+}
+
+/** Tile types present in a manifest's homepage sections, sorted for comparison. */
+function manifestTileTypes(manifest: JsonRecord,): string[] {
+	const types = new Set<string>();
+	const sections = Array.isArray(manifest["homepageSections"],) ? manifest["homepageSections"] : [];
+	for (const section of sections) {
+		const record = asRecord(section,);
+		const tiles = record && Array.isArray(record["tiles"],) ? record["tiles"] : [];
+		for (const tile of tiles) {
+			const type = asString(asRecord(tile,)?.["type"],);
+			if (type) types.add(type,);
+		}
+	}
+	return [...types,].sort();
+}
+
+/**
+ * The live-proven owned-template Designer flow, seeded exactly once (this
+ * case only, on the owned path): a project variable feeds a runtime form tile
+ * (PROJECT_VARIABLES_EDIT), a custom-Python scenario (SCENARIO_RUN) reads that
+ * variable and writes result.json into a managed folder, and a download tile
+ * (DOWNLOAD_MANAGED_FOLDER_FILE) points at that exact file. Every step stays
+ * inside the case-owned template project — the external override never enters
+ * this function, so an external template is never written.
+ */
+async function exerciseOwnedTemplateDesignerFlow(
+	ctx: LiveContext,
+	template: OwnedTemplateBinding,
+): Promise<void> {
+	const { projectKey, } = template;
+	await ctx.run([
+		"variable",
+		"set",
+		"--standard",
+		JSON.stringify({ designer_name: "Ada", },),
+	], { projectKey, },);
+	const folder = await ctx.run<JsonRecord>([
+		"folder",
+		"create",
+		"--name",
+		"Designer results",
+		"--connection",
+		ctx.connection,
+	], { projectKey, },);
+	const folderId = requireId(folder["id"], "created managed folder",);
+
+	const scenario = "DESIGNER_RUN";
+	await ctx.run([
+		"scenario",
+		"create",
+		scenario,
+		"Generate Designer result",
+		"--type",
+		"custom_python",
+	], { projectKey, },);
+	await ctx.run([
+		"scenario",
+		"update",
+		scenario,
+		"--data",
+		JSON.stringify({ params: { envSelection: { envMode: "INHERIT", }, }, },),
+	], { projectKey, },);
+	// The scenario inherits the project's Python env, reads the project
+	// variable, and writes the result file into the managed folder.
+	const script = "import dataiku,json\n"
+		+ `folder_id=json.loads(${JSON.stringify(JSON.stringify(folderId,),)},)\n`
+		+ "name=dataiku.get_custom_variables()['designer_name']\n"
+		+ "with dataiku.Folder(folder_id).get_writer('result.json') as writer:\n"
+		+ "    writer.write(json.dumps(dict(name=name,message='Hello '+name)).encode('utf-8'))\n";
+	await ctx.run([
+		"scenario",
+		"payload-set",
+		scenario,
+		"--data",
+		JSON.stringify({ script, extension: "py", },),
+	], { projectKey, },);
+
+	const initialized = await ctx.run<JsonRecord>(["app", "instance-manifest",], { projectKey, },);
+	await ctx.run([
+		"app",
+		"save-instance-manifest",
+		"--data",
+		JSON.stringify({
+			...initialized,
+			version: `live-${ctx.iteration}`,
+			homepageSections: [
+				{
+					title: "Designer workflow",
+					tiles: [
+						{
+							type: "PROJECT_VARIABLES_EDIT",
+							behavior: "MODAL",
+							params: [{ name: "designer_name", label: "Name", type: "STRING", },],
+						},
+						{ type: "SCENARIO_RUN", scenarioId: scenario, buttonText: "Generate result", },
+						{ type: "DOWNLOAD_MANAGED_FOLDER_FILE", folderId, itemPath: "result.json", },
+					],
+				},
+			],
+		},),
+		"--project-key",
+		projectKey,
+	],);
+
+	// The source API strips section titles, so only the tile contract is
+	// asserted from the persisted manifest — never a byte-identical echo.
+	const persisted = await ctx.run<JsonRecord>(["app", "instance-manifest",], { projectKey, },);
+	expect(manifestTileTypes(persisted,),).toEqual([
+		"DOWNLOAD_MANAGED_FOLDER_FILE",
+		"PROJECT_VARIABLES_EDIT",
+		"SCENARIO_RUN",
+	],);
+
+	// validate-manifest must CHECK every source-verifiable kind (form variable,
+	// scenario id, managed-folder id) — a skipped kind would be a false pass.
+	const validation = await ctx.run<JsonRecord>(["app", "validate-manifest",], { projectKey, },);
+	expect(validation["valid"],).toBe(true,);
+	expect(validation["errors"],).toEqual([],);
+	const checks = Array.isArray(validation["checks"],) ? validation["checks"] : [];
+	for (const kind of ["scenario", "folder", "variable",] as const) {
+		const check = checks.map(entry => asRecord(entry,))
+			.find(entry => asString(entry?.["kind"],) === kind);
+		expect(check?.["status"],).toBe("ok",);
+	}
+
+	// The runtime form variable must reach the scenario output: change it and
+	// prove the exact downloaded result reflects the new value.
+	await ctx.run([
+		"variable",
+		"set",
+		"--standard",
+		JSON.stringify({ designer_name: "Grace", },),
+	], { projectKey, },);
+	const run = await ctx.run<JsonRecord>([
+		"scenario",
+		"run",
+		scenario,
+		"--wait",
+		"--timeout",
+		"120000",
+	], { projectKey, },);
+	expect(run["success"],).toBe(true,);
+	expect(run["outcome"],).toBe("SUCCESS",);
+
+	const output = await ctx.writeFile(`designer-result-i${ctx.iteration}.json`, "",);
+	await ctx.run(["folder", "download", folderId, "result.json", output,], { projectKey, },);
+	expect(await Bun.file(output,).json(),).toEqual({ name: "Grace", message: "Hello Grace", },);
+
+	// Download-tile safety: once the referenced folder is gone the same
+	// manifest must NOT validate — a missing folder reference is a real
+	// defect, never a silently skipped check.
+	await ctx.run(["folder", "delete", folderId,], { projectKey, },);
+	const afterDeletion = await ctx.client.applications.validateAppManifest(persisted, projectKey,);
+	expect(afterDeletion.valid,).toBe(false,);
+	expect(afterDeletion.errors.some(issue => issue.code === "MISSING_FOLDER"),).toBe(true,);
+}
+
+/**
+ * The template-prerequisite case, consolidated from the capabilities module
+ * with its original case id, capability and required flag. The external
+ * override (explicit DATAIKU_LIVE_APP_TEMPLATE_ID) stays strictly read-only:
+ * manifest + instances by appId, never a project-scoped read or write. Without
+ * the override an owned template is self-provisioned (withOwnedAppTemplate
+ * owns its teardown) and executes its reads plus the Designer flow
+ * independently of any app-instance creation.
+ */
+async function exerciseAppTemplatePrerequisite(ctx: LiveContext,): Promise<void> {
+	await withTemplateBinding(ctx, "apptmpl", async (template,) => {
+		const manifest = await ctx.run<JsonRecord>(["app", "manifest", template.appId,],);
+		expect(asRecord(manifest,) === undefined,).toBe(false,);
+		const instances = await ctx.run<unknown[]>(["app", "instances", template.appId,],);
+		expect(Array.isArray(instances,),).toBe(true,);
+		if (template.external) return;
+		// Owned template reads, independent of instance creation: the stored
+		// instance manifest and the raw persisted version markers of the
+		// case-owned template project.
+		const stored = await ctx.run<JsonRecord>(["app", "instance-manifest",], {
+			projectKey: template.projectKey,
+		},);
+		expect(asRecord(stored,) === undefined,).toBe(false,);
+		const version = await ctx.run<JsonRecord>(["app", "manifest-version",], {
+			projectKey: template.projectKey,
+		},);
+		expect(asRecord(version,) === undefined,).toBe(false,);
+		await exerciseOwnedTemplateDesignerFlow(ctx, template,);
+	},);
+}
+
+/**
+ * The instance-lifecycle case, consolidated from the capabilities module with
+ * its original case id, actions and required flag: create an app instance from
+ * the bound template, then verify API readiness and compare the instance
+ * manifest with the template. External templates keep the strict
+ * reserved-target path; owned templates run generated mode through
+ * createTemplateInstance and the returned key is already reserved and
+ * incarnation-bound. The template itself is never modified; the created
+ * project is torn down incarnation-guarded in `finally` — an unresolved
+ * creation returns no key and is never guessed at (the template fixture's
+ * recovery guard retains the precursor).
+ */
+async function exerciseAppInstanceLifecycle(
+	ctx: LiveContext,
+	template: TemplateBinding,
+): Promise<void> {
+	let targetKey: string | undefined;
+	try {
+		targetKey = await createTemplateInstance(
+			ctx,
+			template,
+			"appinst",
+			`Live applications instance ${ctx.iteration}`,
+		);
+
+		const verification = await ctx.run<JsonRecord>([
+			"app",
+			"verify-instance",
+			template.appId,
+			"--project-key",
+			targetKey,
+		],);
+		expect(verification["valid"] === true && verification["apiReady"] === true,).toBe(true,);
+
+		const comparison = await ctx.run<JsonRecord>([
+			"app",
+			"compare-manifest",
+			template.appId,
+			"--project-key",
+			targetKey,
+		],);
+		expect(asRecord(comparison,) === undefined,).toBe(false,);
+	} finally {
+		if (targetKey !== undefined) await ctx.deleteProject(targetKey,);
+	}
+}
+
+/**
+ * The template-surface case: with an explicit DATAIKU_LIVE_APP_TEMPLATE_ID the
+ * external template is used read-only; otherwise a case-owned template is
+ * self-provisioned (see withOwnedAppTemplate) and deleted in the case
+ * teardown. Templates are never guessed and external ones are never modified.
+ * Reads the template manifest version, creates a case-owned instance (strict
+ * reserved target for the external template, generated mode for the owned
+ * one), and exercises the read-only instance surface. A pre-POST
+ * target-absence refusal (external path) propagates untouched for central
+ * classification, never bypassed.
+ */
+async function exerciseAppTemplateSurface(
+	ctx: LiveContext,
+	template: TemplateBinding,
+): Promise<void> {
+	const { appId, } = template;
+	if (template.external === false) {
+		// The OWNED template's project key is bound and known, so its raw
+		// persisted version markers are readable (an external template is
+		// identified only by appId; its project key is not derivable here).
+		const templateVersion = await ctx.run<JsonRecord>(["app", "manifest-version",], {
+			projectKey: template.projectKey,
+		},);
+		expect(asRecord(templateVersion,) === undefined,).toBe(false,);
+	}
+
+	const label = `Live applications surface ${ctx.iteration}`;
+	let targetKey: string | undefined;
+	try {
+		targetKey = await createTemplateInstance(ctx, template, "appsurf", label,);
 
 		const instanceVersion = await ctx.run<JsonRecord>(["app", "manifest-version",], {
-			projectKey: reservedKey,
+			projectKey: targetKey,
 		},);
 		expect(asRecord(instanceVersion,) === undefined,).toBe(false,);
 		const instanceManifest = await ctx.run<JsonRecord>(["app", "instance-manifest",], {
-			projectKey: reservedKey,
+			projectKey: targetKey,
 		},);
 		expect(asRecord(instanceManifest,) === undefined,).toBe(false,);
 		const validation = await ctx.run<JsonRecord>(["app", "validate-manifest",], {
-			projectKey: reservedKey,
+			projectKey: targetKey,
 		},);
 		expect(validation["valid"],).toBe(true,);
 		const comparison = await ctx.run<JsonRecord>([
@@ -661,7 +1092,7 @@ async function exerciseAppTemplateSurface(ctx: LiveContext, appId: string,): Pro
 			"compare-manifest",
 			appId,
 			"--project-key",
-			reservedKey,
+			targetKey,
 		],);
 		expect(asRecord(comparison,) === undefined,).toBe(false,);
 		const verification = await ctx.run<JsonRecord>([
@@ -669,11 +1100,11 @@ async function exerciseAppTemplateSurface(ctx: LiveContext, appId: string,): Pro
 			"verify-instance",
 			appId,
 			"--project-key",
-			reservedKey,
+			targetKey,
 		],);
 		expect(verification["valid"] === true && verification["apiReady"] === true,).toBe(true,);
 	} finally {
-		if (created) await ctx.deleteProject(reservedKey,);
+		if (targetKey !== undefined) await ctx.deleteProject(targetKey,);
 	}
 }
 
@@ -692,22 +1123,27 @@ function boundIncarnation(ctx: LiveContext, key: string,): string {
 
 /**
  * The app instance-ops surface on a case-owned instance project: permission
- * snapshot + diff against the live project, an instance-manifest save
- * round-trip (the case-owned INSTANCE manifest, never the template), and the
+ * snapshot + diff against the live project, an app-manifest save round-trip
+ * against a case-owned APP_TEMPLATE project (save-instance-manifest is
+ * template-only by the SDK guard, which is never suppressed — classic app
+ * instance manifests are read-only through that endpoint), and the
  * instance's own app.delete-instance (the official disposal path — verified
  * against the Python client, whose DSSBusinessAppInstance.delete delegates to
- * a project delete) with the bound incarnation guard. Template-surface
- * (manifest/version/validate/compare/verify) stays in the template-surface
- * case. All reads/writes target the case-owned instance only.
+ * a project delete) with the bound incarnation guard. The instance is created
+ * through createTemplateInstance (strict reserved target for an external
+ * template, generated mode for an owned one); both paths return a bound
+ * project identity. Template-surface (manifest/version/validate/compare/
+ * verify) stays in the template-surface case. All reads/writes target
+ * case-owned projects only.
  */
-async function exerciseAppInstanceOps(ctx: LiveContext, appId: string,): Promise<void> {
-	const reservedKey = await ctx.reserveProject("appops",);
+async function exerciseAppInstanceOps(
+	ctx: LiveContext,
+	template: TemplateBinding,
+): Promise<void> {
 	const label = `Live applications ops ${ctx.iteration}`;
-	let created = false;
+	let targetKey: string | undefined;
 	try {
-		await createAppInstance(ctx, appId, reservedKey, label,);
-		created = true;
-		await ctx.bindProject(reservedKey,);
+		targetKey = await createTemplateInstance(ctx, template, "appops", label,);
 
 		// Snapshot the owned instance permissions, then diff it against the
 		// live project (a faithful snapshot produces an empty difference).
@@ -718,7 +1154,7 @@ async function exerciseAppInstanceOps(ctx: LiveContext, appId: string,): Promise
 			"--output",
 			snapshotPath,
 			"--project-key",
-			reservedKey,
+			targetKey,
 		],);
 		expect(asRecord(snapshot,) === undefined,).toBe(false,);
 		const diff = await ctx.run<JsonRecord>([
@@ -727,27 +1163,45 @@ async function exerciseAppInstanceOps(ctx: LiveContext, appId: string,): Promise
 			"--file",
 			snapshotPath,
 			"--project-key",
-			reservedKey,
+			targetKey,
 		],);
 		expect(asRecord(diff,) === undefined,).toBe(false,);
 
-		// Instance-manifest save round-trip: read the case-owned instance
-		// manifest, save it back verbatim, and confirm the read-back matches.
-		const manifestBefore = await ctx.run<JsonRecord>(["app", "instance-manifest",], {
-			projectKey: reservedKey,
+		// Manifest save round-trip on a case-owned APP_TEMPLATE project (the
+		// save guard accepts templates only, so the successful save itself
+		// re-proves the template type): read the owned template manifest, save
+		// it back verbatim, and confirm the read-back still carries the
+		// persisted manifest identity. projectAppType is re-read from the
+		// settings surface it actually lives on: live DSS's app-manifest
+		// response omits it (the SDK's own fallback probes document this), so
+		// asserting it on the raw manifest is asserting a field DSS never
+		// returns there.
+		await withOwnedAppTemplate(ctx, "appopstmpl", async (manifestTemplate,) => {
+			const manifestBefore = await ctx.run<JsonRecord>(["app", "instance-manifest",], {
+				projectKey: manifestTemplate.projectKey,
+			},);
+			await ctx.run([
+				"app",
+				"save-instance-manifest",
+				"--data",
+				JSON.stringify(manifestBefore,),
+				"--project-key",
+				manifestTemplate.projectKey,
+			],);
+			const manifestAfter = await ctx.run<JsonRecord>(["app", "instance-manifest",], {
+				projectKey: manifestTemplate.projectKey,
+			},);
+			expect(asRecord(manifestAfter,) === undefined,).toBe(false,);
+			// The save round-trip persisted the manifest identity verbatim.
+			expect(manifestAfter["id"],).toBe(manifestBefore["id"],);
+			expect(manifestAfter["version"],).toBe(manifestBefore["version"],);
+			// The template type is sourced from project settings (its raw
+			// shape), not from the app-manifest response.
+			const settings = await ctx.run<JsonRecord>(["project", "settings-get",], {
+				projectKey: manifestTemplate.projectKey,
+			},);
+			expect(settings["projectAppType"],).toBe("APP_TEMPLATE",);
 		},);
-		await ctx.run([
-			"app",
-			"save-instance-manifest",
-			"--data",
-			JSON.stringify(manifestBefore,),
-			"--project-key",
-			reservedKey,
-		],);
-		const manifestAfter = await ctx.run<JsonRecord>(["app", "instance-manifest",], {
-			projectKey: reservedKey,
-		},);
-		expect(asRecord(manifestAfter,) === undefined,).toBe(false,);
 
 		// The official disposal of an app-instance project (the Python
 		// client's DSSBusinessAppInstance.delete delegates to a project
@@ -757,70 +1211,113 @@ async function exerciseAppInstanceOps(ctx: LiveContext, appId: string,): Promise
 			"app",
 			"delete-instance",
 			"--project-key",
-			reservedKey,
+			targetKey,
 			"--expect-project-incarnation",
-			boundIncarnation(ctx, reservedKey,),
+			boundIncarnation(ctx, targetKey,),
 		],);
 	} finally {
 		// app.delete-instance already removed the project on the success path;
 		// ctx.deleteProject is idempotent (deleted state short-circuits) and is
-		// the fallback when the case failed before deletion.
-		if (created) await ctx.deleteProject(reservedKey,);
+		// the fallback when the case failed before deletion. An unresolved
+		// creation returns no key and is never guessed at.
+		if (targetKey !== undefined) await ctx.deleteProject(targetKey,);
 	}
 }
 
 /**
- * Read-only successor preflight between the template's owned predecessor
- * instance and a fresh reserved target: validates the template, verifies the
- * predecessor, and proves target absence without changing anything.
+ * Read-only successor preflight between the case-owned predecessor instance
+ * and a fresh successor target: validates the template, verifies the
+ * predecessor, and proves the target gates without changing anything. An
+ * EXTERNAL template names a strictly reserved target (--to) — the pre-POST
+ * target-absence refusal propagates untouched for central classification and
+ * the never-created reservation is left to the run-end reservation
+ * accounting. An OWNED template runs GENERATED-mode preflight: the successor
+ * would be created with no --to, so the CLI generates the target key itself
+ * and the read-only preflight runs without naming any target — nothing is
+ * reserved and no key is fabricated. A preflight is read-only either way, so
+ * a failure here is reported as-is, never reinterpreted as an expected
+ * environment outcome.
  */
 async function exerciseAppSuccessorPreflight(
 	ctx: LiveContext,
-	appId: string,
+	template: TemplateBinding,
 	predecessorKey: string,
 ): Promise<void> {
-	const targetKey = await ctx.reserveProject("appnew",);
-	try {
+	if (template.external) {
+		const targetKey = await ctx.reserveProject("appnew",);
 		const preflight = await ctx.run<JsonRecord>([
 			"app",
 			"successor-preflight",
-			appId,
+			template.appId,
 			"--from",
 			predecessorKey,
 			"--to",
 			targetKey,
 		],);
 		expect(asRecord(preflight,) === undefined,).toBe(false,);
-	} finally {
-		// The preflight target is never created; drop the reservation without
-		// deleting anything on the server.
-		await ctx.deleteProject(targetKey,);
+		return;
 	}
+	const preflight = await ctx.run<JsonRecord>([
+		"app",
+		"successor-preflight",
+		template.appId,
+		"--from",
+		predecessorKey,
+	],);
+	expect(asRecord(preflight,) === undefined,).toBe(false,);
+	// Frozen generated-mode contract (source-verified): the read-only preflight
+	// allocates nothing, so it reports the generated-apply mode instead of
+	// naming or probing a target project key — a silent fallback to an explicit
+	// target would be a real regression, not an environment outcome. The
+	// receipt therefore omits target.projectKey entirely.
+	expect(preflight["targetPreflight"],).toBe("not-applicable-generated-key",);
+	expect(preflight["targetProjectKeyGeneratedDuringApply"],).toBe(true,);
+	expect(asString(asRecord(preflight["target"],)?.["projectKey"],),).toBeUndefined();
 }
 
 /**
  * Full successor lifecycle from a case-owned predecessor: create the
- * successor instance into a new reserved project, bind it, verify it, then
- * dispose of BOTH instance projects through the sanctioned project-delete
- * path (the predecessor is never modified by the successor creation).
+ * predecessor instance from the template, create the successor instance
+ * beside it, verify the successor, then dispose of BOTH instance projects
+ * through the sanctioned project-delete path (the predecessor is never
+ * modified by the successor creation).
+ *
+ * An EXTERNAL template keeps the strict explicit path (reserved target keys,
+ * successor named via --to). An OWNED template runs generated mode end to
+ * end: the predecessor comes from createTemplateInstance (the template is its
+ * precursor) and the successor from the shared runGeneratedAppCreation
+ * authorization with the predecessor as precursor and NO --to — the CLI
+ * generates the successor key, and the returned key is already
+ * incarnation-bound.
+ *
+ * Recovery semantics: an unresolved successor creation leaves the
+ * predecessor carrying its pendingDependentCreation marker (or, on the strict
+ * path, a fresh pending successor reservation), so the predecessor is
+ * retained for recovery instead of being deleted under a possible in-flight
+ * clone. The failure itself is always re-thrown — never swallowed to skip
+ * source steps.
  */
-async function exerciseAppSuccessorLifecycle(ctx: LiveContext, appId: string,): Promise<void> {
-	const predecessorKey = await ctx.reserveProject("appold",);
-	const predecessorLabel = `Live applications predecessor ${ctx.iteration}`;
-	let predecessorCreated = false;
+async function exerciseAppSuccessorLifecycle(
+	ctx: LiveContext,
+	template: TemplateBinding,
+): Promise<void> {
+	const predecessorKey = await createTemplateInstance(
+		ctx,
+		template,
+		"appold",
+		`Live applications predecessor ${ctx.iteration}`,
+	);
+	const hasUnconfirmedSuccessor = unconfirmedDescendantGuard(ctx, predecessorKey,);
+	const successorLabel = `Live applications successor ${ctx.iteration}`;
+	let predecessorRetainedForRecovery = false;
 	try {
-		await createAppInstance(ctx, appId, predecessorKey, predecessorLabel,);
-		predecessorCreated = true;
-		await ctx.bindProject(predecessorKey,);
-
-		const successorKey = await ctx.reserveProject("appnew",);
-		let successorCreated = false;
-		try {
-			const successorLabel = `Live applications successor ${ctx.iteration}`;
-			await ctx.run([
+		let successorKey: string;
+		if (template.external) {
+			successorKey = await ctx.reserveProject("appnew",);
+			const creation = await ctx.run<JsonRecord>([
 				"app",
 				"create-successor-instance",
-				appId,
+				template.appId,
 				"--from",
 				predecessorKey,
 				"--to",
@@ -832,22 +1329,53 @@ async function exerciseAppSuccessorLifecycle(ctx: LiveContext, appId: string,): 
 				"--poll-interval",
 				"3000",
 			],);
-			successorCreated = true;
+			if (creation["success"] !== true) {
+				// CREATE_FAILED / INDETERMINATE / VERIFICATION_FAILED are
+				// genuine defects or ambiguous outcomes: reported as failures,
+				// never masked.
+				const state = asString(creation["state"],) ?? "UNKNOWN";
+				throw new Error(
+					`Successor instance creation did not complete (state=${state}): ${
+						JSON.stringify(creation,).slice(0, 300,)
+					}`,
+				);
+			}
 			await ctx.bindProject(successorKey,);
-
+		} else {
+			successorKey = await ctx.runGeneratedAppCreation(
+				[
+					"app",
+					"create-successor-instance",
+					template.appId,
+					"--from",
+					predecessorKey,
+					"--name",
+					successorLabel,
+					"--timeout",
+					"180000",
+					"--poll-interval",
+					"3000",
+				],
+				predecessorKey,
+			);
+		}
+		try {
 			const verification = await ctx.run<JsonRecord>([
 				"app",
 				"verify-instance",
-				appId,
+				template.appId,
 				"--project-key",
 				successorKey,
 			],);
 			expect(verification["valid"] === true && verification["apiReady"] === true,).toBe(true,);
 		} finally {
-			if (successorCreated) await ctx.deleteProject(successorKey,);
+			await ctx.deleteProject(successorKey,);
 		}
+	} catch (error) {
+		predecessorRetainedForRecovery = hasUnconfirmedSuccessor();
+		throw error;
 	} finally {
-		if (predecessorCreated) await ctx.deleteProject(predecessorKey,);
+		if (!predecessorRetainedForRecovery) await ctx.deleteProject(predecessorKey,);
 	}
 }
 
@@ -857,23 +1385,22 @@ async function exerciseAppSuccessorLifecycle(ctx: LiveContext, appId: string,): 
  * project permissions-set), restore from the snapshot, and verify the live
  * permissions match the snapshot again. The alteration is real (a concrete
  * permission rule lands), so the restore proves an actual write, never a
- * no-op echo.
+ * no-op echo. The instance is created through createTemplateInstance (strict
+ * reserved target for an external template, generated mode for an owned
+ * one); an unresolved creation returns no key and is never guessed at.
  */
 async function exerciseAppPermissionsRestoreCycle(
 	ctx: LiveContext,
-	appId: string,
+	template: TemplateBinding,
 ): Promise<void> {
-	const reservedKey = await ctx.reserveProject("appperm",);
-	let created = false;
+	let targetKey: string | undefined;
 	try {
-		await createAppInstance(
+		targetKey = await createTemplateInstance(
 			ctx,
-			appId,
-			reservedKey,
+			template,
+			"appperm",
 			`Live applications permissions ${ctx.iteration}`,
 		);
-		created = true;
-		await ctx.bindProject(reservedKey,);
 
 		const snapshotPath = `${ctx.dir}/app-permissions-restore-${ctx.iteration}.json`;
 		await ctx.run([
@@ -882,13 +1409,13 @@ async function exerciseAppPermissionsRestoreCycle(
 			"--output",
 			snapshotPath,
 			"--project-key",
-			reservedKey,
+			targetKey,
 		],);
 
 		// Real alteration of the OWNED instance's permissions: borrow the
 		// run-owner identity as a non-admin extra rule the snapshot does not
 		// have, then restore the snapshot and verify the extra rule is gone.
-		const before = await ctx.client.projects.getPermissions(reservedKey,);
+		const before = await ctx.client.projects.getPermissions(targetKey,);
 		const baseline = before.permissions ?? [];
 		const ownerLogin = ctx.owner;
 		const alreadyThere = baseline.some(rule => rule.user === ownerLogin && rule.admin === false);
@@ -906,8 +1433,8 @@ async function exerciseAppPermissionsRestoreCycle(
 				"permissions-set",
 				"--data",
 				JSON.stringify({ ...before, permissions: [...baseline, added,], },),
-			], { projectKey: reservedKey, },);
-			const altered = await ctx.client.projects.getPermissions(reservedKey,);
+			], { projectKey: targetKey, },);
+			const altered = await ctx.client.projects.getPermissions(targetKey,);
 			expect(
 				altered.permissions?.some(rule => rule.user === ownerLogin && rule.admin === false),
 			).toBe(true,);
@@ -919,10 +1446,10 @@ async function exerciseAppPermissionsRestoreCycle(
 			"--file",
 			snapshotPath,
 			"--project-key",
-			reservedKey,
+			targetKey,
 		],);
 		expect(asRecord(restored,) === undefined,).toBe(false,);
-		const after = await ctx.client.projects.getPermissions(reservedKey,);
+		const after = await ctx.client.projects.getPermissions(targetKey,);
 		if (added) {
 			expect(
 				after.permissions?.some(rule => rule.user === ownerLogin && rule.admin === false),
@@ -930,7 +1457,7 @@ async function exerciseAppPermissionsRestoreCycle(
 		}
 		expect(after.permissions?.length,).toBe(baseline.length,);
 	} finally {
-		if (created) await ctx.deleteProject(reservedKey,);
+		if (targetKey !== undefined) await ctx.deleteProject(targetKey,);
 	}
 }
 
@@ -951,7 +1478,10 @@ async function exerciseAppPermissionsRestoreCycle(
  * package lifecycle, APIDeployer publication, webapp lifecycle, app
  * discovery, business-app settings, and the configured-template surface are
  * independent cases so one unavailable export or prerequisite (a trained
- * model, an API Deployer, a configured template) cannot hide the others.
+ * model, an API Deployer, a configured template) cannot hide the others. This
+ * module is also the single owner of applications.template-prerequisite and
+ * applications.instance-lifecycle (consolidated from the capabilities module
+ * with their original case ids, actions and required flags).
  */
 export async function exerciseApplications(ctx: LiveContext,): Promise<void> {
 	if (ctx.phase !== "run") return;
@@ -1115,9 +1645,35 @@ export async function exerciseApplications(ctx: LiveContext,): Promise<void> {
 	);
 
 	await ctx.check(
+		"applications.template-prerequisite",
+		[
+			"app.manifest",
+			"app.instances",
+			"app.instance-manifest",
+			"app.manifest-version",
+			"app.save-instance-manifest",
+			"variable.set",
+			"folder.create",
+			"scenario.create",
+			"scenario.update",
+			"scenario.payload-set",
+			"app.validate-manifest",
+			"scenario.run",
+			"folder.download",
+			"folder.delete",
+		],
+		async () => {
+			await exerciseAppTemplatePrerequisite(ctx,);
+		},
+		{ capability: "applications.template-read", required: false, },
+	);
+
+	await ctx.check(
 		"applications.app.template-surface",
 		[
+			"project.settings-set",
 			"app.manifest-version",
+			"app.save-instance-manifest",
 			"app.create-instance",
 			"app.instance-manifest",
 			"app.validate-manifest",
@@ -1125,14 +1681,36 @@ export async function exerciseApplications(ctx: LiveContext,): Promise<void> {
 			"app.verify-instance",
 		],
 		async () => {
-			const appId = await requireTemplateId(ctx,);
-			await exerciseAppTemplateSurface(ctx, appId,);
+			await withTemplateBinding(
+				ctx,
+				"appsurf",
+				(template,) => exerciseAppTemplateSurface(ctx, template,),
+			);
 		},
 		{ capability: "applications.template-surface", required: false, },
 	);
 	await ctx.check(
+		"applications.instance-lifecycle",
+		[
+			"project.create",
+			"app.create-instance",
+			"app.verify-instance",
+			"app.compare-manifest",
+			"project.delete",
+		],
+		async () => {
+			await withTemplateBinding(
+				ctx,
+				"appinst",
+				(template,) => exerciseAppInstanceLifecycle(ctx, template,),
+			);
+		},
+		{ capability: "applications.instance-lifecycle", },
+	);
+	await ctx.check(
 		"applications.app.instance-ops",
 		[
+			"project.settings-set",
 			"app.create-instance",
 			"app.permissions-snapshot",
 			"app.permissions-diff",
@@ -1140,8 +1718,7 @@ export async function exerciseApplications(ctx: LiveContext,): Promise<void> {
 			"app.delete-instance",
 		],
 		async () => {
-			const appId = await requireTemplateId(ctx,);
-			await exerciseAppInstanceOps(ctx, appId,);
+			await withTemplateBinding(ctx, "appops", (template,) => exerciseAppInstanceOps(ctx, template,),);
 		},
 		{ capability: "applications.app-instance-ops", required: false, },
 	);
@@ -1149,26 +1726,39 @@ export async function exerciseApplications(ctx: LiveContext,): Promise<void> {
 	await ctx.check(
 		"applications.app.successor-preflight",
 		[
+			"project.settings-set",
 			"app.create-instance",
 			"app.successor-preflight",
 		],
 		async () => {
-			const appId = await requireTemplateId(ctx,);
-			const predecessorKey = await ctx.reserveProject("apppred",);
-			let created = false;
-			try {
-				await createAppInstance(
+			await withTemplateBinding(ctx, "apppred", async (template,) => {
+				const predecessorKey = await createTemplateInstance(
 					ctx,
-					appId,
-					predecessorKey,
+					template,
+					"apppred",
 					`Live applications preflight predecessor ${ctx.iteration}`,
 				);
-				created = true;
-				await ctx.bindProject(predecessorKey,);
-				await exerciseAppSuccessorPreflight(ctx, appId, predecessorKey,);
-			} finally {
-				if (created) await ctx.deleteProject(predecessorKey,);
-			}
+				const hasUnconfirmedDescendant = unconfirmedDescendantGuard(ctx, predecessorKey,);
+				let retainedForRecovery = false;
+				try {
+					// The preflight itself is read-only (external path names a
+					// reserved target; owned path runs generated mode with no
+					// target at all), so only the predecessor creation can have
+					// an unresolved descendant.
+					await exerciseAppSuccessorPreflight(ctx, template, predecessorKey,);
+				} catch (error) {
+					// A descendant whose outcome is indeterminate (generated
+					// marker, or a fresh pending reservation on the strict path)
+					// retains the predecessor — the possible clone source — for
+					// recovery; a strict no-POST refusal clears its intent
+					// centrally and still cleans up. The failure is never
+					// reinterpreted as an expected environment outcome.
+					retainedForRecovery = hasUnconfirmedDescendant();
+					throw error;
+				} finally {
+					if (!retainedForRecovery) await ctx.deleteProject(predecessorKey,);
+				}
+			},);
 		},
 		{ capability: "applications.app-successor-preflight", required: false, },
 	);
@@ -1176,14 +1766,18 @@ export async function exerciseApplications(ctx: LiveContext,): Promise<void> {
 	await ctx.check(
 		"applications.app.successor-lifecycle",
 		[
+			"project.settings-set",
 			"app.create-instance",
 			"app.create-successor-instance",
 			"app.verify-instance",
 			"project.delete",
 		],
 		async () => {
-			const appId = await requireTemplateId(ctx,);
-			await exerciseAppSuccessorLifecycle(ctx, appId,);
+			await withTemplateBinding(
+				ctx,
+				"appsucc",
+				(template,) => exerciseAppSuccessorLifecycle(ctx, template,),
+			);
 		},
 		{ capability: "applications.app-successor-lifecycle", required: false, },
 	);
@@ -1191,6 +1785,7 @@ export async function exerciseApplications(ctx: LiveContext,): Promise<void> {
 	await ctx.check(
 		"applications.app.permissions-restore-cycle",
 		[
+			"project.settings-set",
 			"app.create-instance",
 			"app.permissions-snapshot",
 			"project.permissions-set",
@@ -1198,28 +1793,102 @@ export async function exerciseApplications(ctx: LiveContext,): Promise<void> {
 			"project.delete",
 		],
 		async () => {
-			const appId = await requireTemplateId(ctx,);
-			await exerciseAppPermissionsRestoreCycle(ctx, appId,);
+			await withTemplateBinding(
+				ctx,
+				"appperm",
+				(template,) => exerciseAppPermissionsRestoreCycle(ctx, template,),
+			);
 		},
 		{ capability: "applications.app-permissions-restore", required: false, },
 	);
 
 	await ctx.check(
 		"applications.app.set-manifest-version",
-		["app.set-manifest-version",],
+		[
+			"project.settings-set",
+			"app.save-instance-manifest",
+			"app.set-manifest-version",
+			"app.manifest-version",
+		],
 		async () => {
-			// set-manifest-version publishes a template version that new
-			// instances inherit: it may only ever target a template owned by
-			// this run. There is no owned-template provisioning verb, so the
-			// case blocks with the exact constraint until an owned-template
-			// fixture contract exists; external templates are never written.
-			throw new LiveCapabilityError(
-				`No owned Dataiku App template: set-manifest-version publishes the persisted template version that new instances inherit, so it is denied against external templates (never written by live cases); no CLI verb creates an owned template from nothing, so the case stays blocked until an owned-template provisioning contract exists; ${await listEvidence(
-					ctx,
+			// set-manifest-version publishes the persisted template version
+			// that new instances inherit, so it is ALWAYS exercised against a
+			// self-provisioned owned template (never an external one, which is
+			// never written): publish, read back, prove the dry-run persists
+			// nothing, and prove a stale expected hash is rejected before any
+			// PUT.
+			await withOwnedAppTemplate(ctx, "appver", async (template,) => {
+				const baseline = await ctx.run<JsonRecord>(["app", "manifest-version",], {
+					projectKey: template.projectKey,
+				},);
+				const baselineHash = asString(baseline["manifestHash"],);
+				expect(baselineHash,).toBeTruthy();
+
+				const published = await ctx.run<JsonRecord>([
 					"app",
-				)}.`,
-				"blocked",
-			);
+					"set-manifest-version",
+					"--manifest-version",
+					"1.0.0",
+					"--version-notes",
+					`Live owned publish ${ctx.iteration}`,
+					"--expect-hash",
+					baselineHash!,
+					"--project-key",
+					template.projectKey,
+				],);
+				expect(published["outcome"],).toBe("persisted",);
+				expect(published["persisted"],).toBe(true,);
+
+				const readBack = await ctx.run<JsonRecord>(["app", "manifest-version",], {
+					projectKey: template.projectKey,
+				},);
+				expect(readBack["version"],).toBe("1.0.0",);
+				expect(readBack["versionNotes"],).toBe(`Live owned publish ${ctx.iteration}`,);
+				const readBackHash = asString(readBack["manifestHash"],);
+				expect(readBackHash,).toBeTruthy();
+
+				const dryRun = await ctx.run<JsonRecord>([
+					"app",
+					"set-manifest-version",
+					"--manifest-version",
+					"9.9.9",
+					"--dry-run",
+					"--project-key",
+					template.projectKey,
+				],);
+				expect(dryRun["dryRun"],).toBe(true,);
+				expect(dryRun["persisted"],).toBe(false,);
+				const afterDryRun = await ctx.run<JsonRecord>(["app", "manifest-version",], {
+					projectKey: template.projectKey,
+				},);
+				expect(afterDryRun["version"],).toBe("1.0.0",);
+				expect(afterDryRun["manifestHash"],).toBe(readBackHash,);
+
+				// A stale expected hash is refused before any PUT: the write
+				// must fail nonzero and the manifest must stay untouched.
+				let staleRefused = false;
+				try {
+					await ctx.run([
+						"app",
+						"set-manifest-version",
+						"--manifest-version",
+						"3.0.0",
+						"--expect-hash",
+						"0".repeat(64,),
+						"--project-key",
+						template.projectKey,
+					],);
+				} catch (error) {
+					if (!(error instanceof LiveCommandError)) throw error;
+					staleRefused = true;
+				}
+				expect(staleRefused,).toBe(true,);
+				const afterStale = await ctx.run<JsonRecord>(["app", "manifest-version",], {
+					projectKey: template.projectKey,
+				},);
+				expect(afterStale["version"],).toBe("1.0.0",);
+				expect(afterStale["manifestHash"],).toBe(readBackHash,);
+			},);
 		},
 		{ capability: "applications.app-set-manifest-version", required: false, },
 	);

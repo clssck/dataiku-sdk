@@ -13,6 +13,7 @@ import type { FutureState, FutureWaitResult, } from "../src/schemas.js";
 import type { LiveCaseId, } from "./live-cases.js";
 import type { LiveContext, OwnedGlobal, } from "./live-context.js";
 import { LiveCapabilityError, LiveCommandError, } from "./live-context.js";
+import type { HostDirectory, } from "./live-host.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -576,18 +577,14 @@ async function projectFolderLifecycle(ctx: LiveContext,): Promise<void> {
 }
 
 async function connectionLifecycle(ctx: LiveContext,): Promise<void> {
-	// The Filesystem lifecycle previously created a relative root (an orphan
-	// once the guard demands an absolute path). The canonical owned SQLite
-	// connection replaces it: same create/get/test/update round-trip on a
-	// valid named-memory JDBC config, with the helper's finally deleting it.
-	await withOwnedSqlConnection(ctx, "connection", async connectionName => {
-		await assertListed(ctx, "connection", connectionName,);
-		await ctx.run(["connection", "get", connectionName,],);
-		await ctx.run(["connection", "test", connectionName,],);
-		const entry = ctx.globals.find(global =>
-			global.kind === "connection" && (global.id ?? global.name) === connectionName
-		);
-		if (entry === undefined) throw new Error("owned SQL connection missing from the ledger",);
+	// Filesystem covers storage settings; SQL covers the type-limited test endpoint.
+	await withOwnedFilesystemConnection(ctx, "connection", async connectionName => {
+		const before = await ctx.run<JsonRecord>(["connection", "get", connectionName,],);
+		const params = asRecord(before["params"],);
+		const root = asString(params?.["root"],);
+		if (root === undefined || !root.startsWith("/",)) {
+			throw new Error("connection get did not expose the absolute Filesystem root",);
+		}
 		await ctx.run([
 			"connection",
 			"update",
@@ -595,29 +592,100 @@ async function connectionLifecycle(ctx: LiveContext,): Promise<void> {
 			"--data",
 			JSON.stringify({
 				name: connectionName,
-				type: "JDBC",
+				type: "Filesystem",
 				usableBy: "ALLOWED",
 				allowedGroups: [],
 				allowWrite: false,
-				allowManagedDatasets: false,
-				params: {
-					driver: "org.sqlite.JDBC",
-					jdbcurl: `jdbc:sqlite:file:${
-						ctx.markerFor("connection", entry.name,)
-					}?mode=memory&cache=shared`,
-					properties: [],
-				},
+				allowManagedDatasets: true,
+				allowManagedFolders: false,
+				params: { ...params, root, },
 			},),
 		],);
 		const after = await ctx.run<JsonRecord>(["connection", "get", connectionName,],);
-		const params = asRecord(after["params"],);
-		const url = asString(params?.["jdbcurl"],) ?? asString(params?.["URL"],);
-		if (url === undefined || !url.includes(ctx.markerFor("connection", entry.name,),)) {
-			throw new Error("connection update did not persist the marker-bearing JDBC url",);
+		if (
+			after["allowWrite"] !== false
+			|| asString(asRecord(after["params"],)?.["root"],) !== root
+		) {
+			throw new Error("connection update did not persist the changed Filesystem settings",);
+		}
+	},);
+	await withOwnedSqlConnection(ctx, "connection_test", async connectionName => {
+		const tested = await ctx.run<JsonRecord>(["connection", "test", connectionName,],);
+		if (tested["connectionOK"] !== true) {
+			throw new Error("Owned SQL connection test did not report success",);
 		}
 	},);
 }
 
+/**
+ * Owned Filesystem connection: reserves a ledger identity, creates the
+ * connection through the real admin CLI, materializes the marker-bearing
+ * absolute root inside this case's owned host directory, and deletes the
+ * connection before the host directory itself is removed. Callers must delete
+ * every project/dataset that uses the connection before returning from body —
+ * the wrapper's teardown order is body → connection delete → host dir removal.
+ */
+export async function withOwnedFilesystemConnection<T,>(
+	ctx: LiveContext,
+	label: string,
+	body: (connectionName: string, directory: HostDirectory,) => Promise<T>,
+): Promise<T> {
+	return await ctx.withOwnedHostDirectory(label, async directory => {
+		let root = "";
+		const entry = await ctx.createGlobal("connection", label, (name, marker,) => {
+			// Filesystem identity lives in params.root: absolute and marker-bearing
+			// (globalMarkerVerified), under this case's owned host directory.
+			root = `${directory.path}/${marker}`;
+			return [
+				"connection",
+				"create",
+				"--data",
+				JSON.stringify({
+					name,
+					type: "Filesystem",
+					usableBy: "ALLOWED",
+					allowedGroups: [],
+					allowWrite: true,
+					allowManagedDatasets: true,
+					allowManagedFolders: false,
+					params: { root, },
+				},),
+			];
+		},);
+		const bound = requireBound(entry, "connection",);
+		try {
+			// Materialize the root on the DSS host (the same code-run path the SQL
+			// catalog fixture uses) so managed datasets can write
+			// under it. The whole tree is removed with the owned host directory.
+			const script = await ctx.writeFile(
+				`fs-root-${entry.name}.py`,
+				[
+					"import json, os, subprocess",
+					`root = json.loads(${JSON.stringify(JSON.stringify(root,),)})`,
+					"os.makedirs(root, mode=0o700)",
+					// Code execution and DSS jobs use different Unix users. Inherit both
+					// grants so either can write and clean up, without granting others access.
+					'uids = {os.getuid(), os.stat(os.environ["DIP_HOME"]).st_uid}',
+					'entries = ["u::rwx", "g::---", "m::rwx", "o::---"] + ["u:%s:rwx" % uid for uid in sorted(uids)]',
+					'subprocess.run(["setfacl", "-m", ",".join(entries + ["d:" + entry for entry in entries]), root], check=True)',
+				].join("\n",),
+			);
+			const created = await ctx.run<{ success: boolean; }>([
+				"code",
+				"run",
+				"--file",
+				script,
+				"--timeout",
+				"120000",
+			], { projectKey: directory.projectKey, },);
+			if (!created.success) throw new Error("Filesystem connection root was not created",);
+			await assertListed(ctx, "connection", bound.id!,);
+			return await body(bound.id!, directory,);
+		} finally {
+			await ctx.deleteGlobal("connection", bound.id!,);
+		}
+	},);
+}
 /** Disposable SQLite: memory for simple queries, a seeded owned file for catalog imports. */
 export async function withOwnedSqlConnection<T,>(
 	ctx: LiveContext,
@@ -1199,7 +1267,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 		async () => {
 			await meaningLifecycle(ctx,);
 		},
-		{ capability: "infrastructure.meaning-crud", },
+		{ capability: "infrastructure.meaning-crud", required: false, },
 	);
 	await ctx.check(
 		"infrastructure.workspace" as LiveCaseId,

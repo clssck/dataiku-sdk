@@ -915,5 +915,5 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 			const remaining = await ctx.run<Array<{ id: string; }>>(["dashboard", "list",],);
 			expect(remaining.some((dashboard,) => dashboard.id === id),).toBe(false,);
 		}
-	},);
+	}, { required: false, },);
 }

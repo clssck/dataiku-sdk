@@ -684,6 +684,7 @@ describeIntegration("Rigorous integration: gated unproven SDK coverage", () => {
 				"notebook delete-jupyter",
 			) as { deleted?: string; };
 			expect(deleteJupyter.deleted,).toBe(cliJupyterName,);
+			jupyterToDelete.delete(cliJupyterName,);
 			addFinding({
 				id: "jupyter-unload-needs-running-session",
 				category: "resource-gap",
@@ -815,22 +816,46 @@ describeIntegration("Rigorous integration: gated unproven SDK coverage", () => {
 
 			const definition = await client.codeEnvs.getDefinition(envLang, envName,);
 			expect(definition,).toBeDefined();
-			await client.codeEnvs.setDefinition(envLang, envName, definition,);
+			// The native fixture must not build container images for every container
+			// backend, so PUT the four canonical selectors and read them back.
+			await client.codeEnvs.setDefinition(envLang, envName, {
+				...definition,
+				allContainerConfs: false,
+				allSparkKubernetesConfs: false,
+				containerConfs: [],
+				sparkKubernetesConfs: [],
+			},);
+			const nativeDefinition = await client.codeEnvs.getDefinition(envLang, envName,);
+			expect(nativeDefinition.allContainerConfs,).toBe(false,);
+			expect(nativeDefinition.allSparkKubernetesConfs,).toBe(false,);
+			expect(nativeDefinition.containerConfs,).toEqual([],);
+			expect(nativeDefinition.sparkKubernetesConfs,).toEqual([],);
 			await client.codeEnvs.setPackages(envLang, envName, [],);
 			await client.codeEnvs.setJupyterSupport(envLang, envName, false, { wait: true, },);
 			expect(Array.isArray(await client.codeEnvs.listUsages(envLang, envName,),),).toBe(true,);
 
 			const updatePackages = await client.codeEnvs.updatePackages(envLang, envName, {
 				forceRebuildEnv: false,
-				wait: false,
+				wait: true,
 			},);
-			expect(updatePackages,).toBeDefined();
+			// The live wait:true payload nests the aggregate under `messages`.
+			expect(
+				updatePackages,
+				`code-env update response=${JSON.stringify(updatePackages,)}`,
+			).toMatchObject({ messages: { success: true, error: false, fatal: false, }, },);
+
+			const updatedDefinition = await client.codeEnvs.getDefinition(envLang, envName,);
+			expect(updatedDefinition.allContainerConfs,).toBe(false,);
+			expect(updatedDefinition.containerConfs,).toEqual([],);
+			expect(
+				(updatedDefinition.desc as Record<string, unknown> | undefined)?.pythonInterpreter,
+			).toBe("PYTHON311",);
 
 			await client.codeEnvs.delete(envLang, envName, { wait: true, },);
 			created = false;
 		} finally {
 			if (created) {
-				await client.codeEnvs.delete(envLang, envName, { wait: true, },).catch(() => undefined);
+				await client.codeEnvs.delete(envLang, envName, { wait: true, },);
 			}
 		}
 	}, 300_000,);
@@ -1371,15 +1396,6 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			},);
 
 			const terminalAbortStates = ["ABORTED", "KILLED", "CANCELED", "CANCELLED",];
-			const terminalStates = new Set([
-				"DONE",
-				"FAILED",
-				"ABORTED",
-				"KILLED",
-				"CANCELED",
-				"CANCELLED",
-				"ERROR",
-			],);
 			const addJobAbortFixtureFinding = (observed: string,): void => {
 				addFinding({
 					id: "job-abort-needs-long-running-fixture",
@@ -1400,19 +1416,25 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 					},);
 				} catch (error) {
 					addJobAbortFixtureFinding(
-						`${label} abort fixture build could not start: ${
+						`${label} abort fixture build for ${abortOutputDataset} could not start: ${
 							error instanceof Error ? error.message : String(error,)
 						}`,
 					);
 					return undefined;
 				}
-				await new Promise((resolve,) => setTimeout(resolve, 5_000,));
-				const jobDetails = await client.jobs.get(started.jobId,);
-				const state = ((jobDetails.baseStatus as { state?: string; } | undefined)?.state ?? "")
-					.toUpperCase();
-				if (terminalStates.has(state,)) {
+				// Await the real condition rather than a fixed sleep: a job that is
+				// still running when the bounded wait window expires is abortable.
+				const preAbort = await client.jobs.wait(started.jobId, {
+					includeLogs: true,
+					maxLogLines: 30,
+					pollIntervalMs: 1_000,
+					timeoutMs: 5_000,
+				},);
+				if (!preAbort.timedOut) {
 					addJobAbortFixtureFinding(
-						`${label} abort fixture job ${started.jobId} reached terminal state ${state} before abort could be issued.`,
+						`${label} abort fixture job finished before abort could be issued: job ${started.jobId} state ${preAbort.state}; log tail:\n${
+							preAbort.log ?? "(not retrieved)"
+						}`,
 					);
 					return undefined;
 				}
@@ -1428,10 +1450,11 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				pollIntervalMs: 1_000,
 				timeoutMs: 120_000,
 			},);
-			expect(sdkAbortWait.success, `SDK abort job ${sdkAbortJobId} state ${sdkAbortWait.state}`,).toBe(
-				false,
-			);
-			expect(terminalAbortStates,).toContain(sdkAbortWait.state.toUpperCase(),);
+			const sdkAbortDiagnostic = `SDK abort job ${sdkAbortJobId} state ${sdkAbortWait.state} log=${
+				sdkAbortWait.log ?? "(not retrieved)"
+			}`;
+			expect(sdkAbortWait.success, sdkAbortDiagnostic,).toBe(false,);
+			expect(terminalAbortStates, sdkAbortDiagnostic,).toContain(sdkAbortWait.state.toUpperCase(),);
 
 			const cliAbortJobId = await startAbortableJob("CLI",);
 			if (!cliAbortJobId) return;
@@ -1442,13 +1465,16 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			expect(cliAbort.aborted,).toBe(cliAbortJobId,);
 			expect(cliAbort.resource,).toBe("job",);
 			const cliAbortWait = await client.jobs.wait(cliAbortJobId, {
+				includeLogs: true,
+				maxLogLines: 20,
 				pollIntervalMs: 1_000,
 				timeoutMs: 120_000,
 			},);
-			expect(cliAbortWait.success, `CLI abort job ${cliAbortJobId} state ${cliAbortWait.state}`,).toBe(
-				false,
-			);
-			expect(terminalAbortStates,).toContain(cliAbortWait.state.toUpperCase(),);
+			const cliAbortDiagnostic = `CLI abort job ${cliAbortJobId} state ${cliAbortWait.state} log=${
+				cliAbortWait.log ?? "(not retrieved)"
+			}`;
+			expect(cliAbortWait.success, cliAbortDiagnostic,).toBe(false,);
+			expect(terminalAbortStates, cliAbortDiagnostic,).toContain(cliAbortWait.state.toUpperCase(),);
 		} finally {
 			await cleanup.run();
 		}
@@ -1497,52 +1523,33 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 
 	it("round-trips files through a disposable managed folder", async () => {
 		const client = createClient();
-		const storageConnection = await resolveStorageConnection(client,);
-		const folderName = uniqueTestName("sdk_cli_it_folder",);
-		let folderId: string | undefined;
-		try {
-			const folder = await client.folders.create({
-				name: folderName,
-				type: "Filesystem",
-				connection: storageConnection,
-			},);
-			folderId = folder.id;
-			expect(folderId, "created folder id",).toBeTruthy();
-		} catch (error) {
-			addFinding({
-				id: "folder-file-workflow-needs-disposable-folder-create",
-				category: "resource-gap",
-				status: "skipped",
-				severity: "medium",
-				observed: `Could not create disposable managed folder for file workflow validation: ${
-					error instanceof Error ? error.message : String(error,)
-				}`,
-				expected:
-					"Disposable filesystem managed-folder creation is available so folder file workflow coverage never touches existing folders.",
-				cleanupVerified: true,
-			},);
-			return;
-		}
-
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dss-rigorous-",),);
 		const remotePath = `/${uniqueTestName("sdk_cli_it_file",)}.txt`;
-		const localPath = path.join(tempDir, "upload.txt",);
-		const downloadPath = path.join(tempDir, "download.txt",);
-		await fs.writeFile(localPath, "hello rigorous integration\n", "utf-8",);
-
+		// Let DSS select managed-folder storage instead of imposing a dataset connection/type.
+		const folder = await client.folders.create({ name: uniqueTestName("sdk_cli_it_folder",), },);
+		const folderId = folder.id;
+		if (!folderId) throw new Error("Managed-folder creation returned no id",);
+		const cleanup = createCleanupStack();
+		cleanup.defer(async () => {
+			const contents = await client.folders.contents(folderId,);
+			if (contents.some(item => item.path === remotePath || item.path === remotePath.slice(1,))) {
+				await client.folders.deleteFile(folderId, remotePath,);
+			}
+			await client.folders.delete(folderId,);
+		},);
 		try {
-			await client.folders.upload(folderId!, remotePath, localPath,);
-			const contents = await client.folders.contents(folderId!,);
-			expect(contents.some((item,) => item.path === remotePath || item.path === remotePath.slice(1,)),)
+			const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dss-rigorous-",),);
+			cleanup.defer(() => fs.rm(tempDir, { recursive: true, force: true, },));
+			const localPath = path.join(tempDir, "upload.txt",);
+			const downloadPath = path.join(tempDir, "download.txt",);
+			await fs.writeFile(localPath, "hello rigorous integration\n", "utf-8",);
+			await client.folders.upload(folderId, remotePath, localPath,);
+			const contents = await client.folders.contents(folderId,);
+			expect(contents.some(item => item.path === remotePath || item.path === remotePath.slice(1,)),)
 				.toBe(true,);
-			await client.folders.download(folderId!, remotePath, { localPath: downloadPath, },);
+			await client.folders.download(folderId, remotePath, { localPath: downloadPath, },);
 			expect(await fs.readFile(downloadPath, "utf-8",),).toBe("hello rigorous integration\n",);
 		} finally {
-			if (folderId) {
-				await client.folders.deleteFile(folderId, remotePath,).catch(() => undefined);
-				await client.folders.delete(folderId,).catch(() => undefined);
-			}
-			await fs.rm(tempDir, { recursive: true, force: true, },);
+			await cleanup.run();
 		}
 	});
 },);

@@ -6,6 +6,7 @@ import { fileURLToPath, } from "node:url";
 import { jsonInput, } from "../src/cli/coerce.js";
 import { buildCommandRegistry, } from "../src/cli/contract.js";
 import { executionMode, parseArgs, } from "../src/cli/flags.js";
+import { futureTargetIdentity, } from "../src/cli/helpers/app-successor.js";
 import { DataikuClient, } from "../src/client.js";
 import { DataikuError, } from "../src/errors.js";
 import {
@@ -104,11 +105,37 @@ export interface LiveCommand {
 	durationMs: number;
 	mode: "execute" | "plan" | "dry-run";
 }
+/**
+ * Accurate in-flight record of one generated-key app creation racing on a
+ * precursor project. Set just before the creation POST; cleared only by a
+ * proven no-POST refusal, a definitive rejection, or a terminal-bound child.
+ * An unknown outcome keeps the marker (with `outcome` documenting it) so no
+ * cleanup may touch the precursor while a dependent project may exist.
+ */
+export interface PendingDependentCreation {
+	appId: string;
+	mode: "direct" | "successor";
+	startedAt: string;
+	/** Set only once the outcome is known-but-unresolved; absent while racing. */
+	outcome?: "indeterminate";
+}
+
 export interface OwnedProject {
 	key: string;
 	state: "pending" | "bound" | "deleted";
 	incarnation?: string;
 	createdAt: string;
+	/** Present while a generated-key app creation may be racing on this precursor. */
+	pendingDependentCreation?: PendingDependentCreation;
+	/**
+	 * Receipt-derived origin of a generated app-instance key: the owned
+	 * precursor this creation was verified against. Set only after the trusted
+	 * CLI receipt proved the target identity; the manifest validator admits an
+	 * APP_ key only when this names a project the same manifest already
+	 * validated, so the chain anchors at this run's reserved keys and a bare
+	 * foreign APP_ key can never be adopted.
+	 */
+	generatedFrom?: string;
 }
 /** Project-less resources with guarded CLI or private harness cleanup paths. */
 export const OWNED_GLOBAL_KINDS = [
@@ -202,6 +229,7 @@ export interface LiveContext {
 		label: string,
 		body: (directory: HostDirectory,) => Promise<T>,
 	): Promise<T>;
+	startOwnedSseServer(handle: HostDirectory,): Promise<HostDaemon>;
 	withOwnedGitScope<T,>(
 		target: OwnedGitTarget,
 		directory: HostDirectory,
@@ -222,7 +250,19 @@ export interface LiveContext {
 	importProject(archive: string, label: string,): Promise<string>;
 	deleteProject(key: string,): Promise<void>;
 	reserveProject(label: string,): Promise<string>;
-	bindProject(key: string,): Promise<void>;
+	bindProject(key: string, expectedHash?: string,): Promise<void>;
+	/**
+	 * Run exactly one generated-key app-instance creation (direct from an owned
+	 * APP_TEMPLATE, or successor from an owned APP_INSTANCE predecessor) under a
+	 * private one-shot authorization, returning the canonical generated target
+	 * key only once the child project is incarnation-verified and bound into the
+	 * cleanup ledger. The precursor carries an accurate in-flight
+	 * `pendingDependentCreation` marker from before the POST until a proven
+	 * no-POST refusal, a definitive rejection, or the bound child clears it; any
+	 * unknown outcome retains the marker truthfully. Never relaxes the strict
+	 * explicit-key path: an argv naming a target key is refused here.
+	 */
+	runGeneratedAppCreation(argv: string[], precursorProjectKey: string,): Promise<string>;
 	createManagedDataset(name: string,): Promise<void>;
 	propagateRecipeSchema(name: string,): Promise<void>;
 	globals: OwnedGlobal[];
@@ -272,6 +312,61 @@ export class LiveCommandError extends Error {
 		this.name = "LiveCommandError";
 	}
 }
+/**
+ * The exact structured CLI refusal that proves app-instance creation was
+ * refused BEFORE the creation POST: target-project absence could not be
+ * verified under this identity, so no artifact was created. The flag must be
+ * exactly `false`; a missing or `true` value is not this shape.
+ */
+function noPostTargetAbsenceDetails(result: unknown,): Record<string, unknown> | undefined {
+	const receipt = asRecord(result,);
+	if (receipt?.["code"] !== "target_absence_unverifiable") return undefined;
+	const details = asRecord(receipt["details"],);
+	return details?.["creationPostAttempted"] === false ? details : undefined;
+}
+/**
+ * Structured CLI proof that a generated-key app creation never created a
+ * project. Only the CLI's own error-report envelope is trusted: the exact
+ * target-absence refusal shape, a CLI-authored probe `details.creationPostAttempted
+ * === false`, or the failed command result the CLI wraps as `details.result`
+ * (its handler-authored `state`/`outcome`/`creationPostAttempted` verdict).
+ * Remote payloads echoed inside that receipt — its future `result`, `instance`
+ * or error bodies — are never scanned for a claim a server could have written,
+ * so anything else (5xx, transport failure, unknown state, unparseable output,
+ * truncated envelope) leaves the outcome unknown and retains the marker.
+ */
+function provenNoCreationOutcome(result: unknown,): boolean {
+	const envelope = asRecord(result,);
+	if (!envelope) return false;
+	if (noPostTargetAbsenceDetails(envelope,)) return true;
+	const details = asRecord(envelope["details"],);
+	if (details?.["creationPostAttempted"] === false) return true;
+	const receipt = asRecord(details?.["result"],);
+	return receipt?.["creationPostAttempted"] === false
+		|| receipt?.["outcome"] === "rejected"
+		|| receipt?.["state"] === "CREATE_FAILED";
+}
+/**
+ * The canonical generated target key of a trusted creation receipt: the
+ * creation future's own result names the project it created, and DSS echoes
+ * `projectKey` there for the *source* template, so `targetProjectKey` always
+ * wins (the same precedence the CLI uses before it sets
+ * `futureTargetVerified`). The inline POST response is consulted second.
+ */
+function generatedCreationTarget(receipt: Record<string, unknown>,): string | undefined {
+	const result = asRecord(receipt["result"],)
+		?? asRecord(asRecord(receipt["instance"],)?.["result"],);
+	return result === undefined ? undefined : futureTargetIdentity(result,)?.projectKey;
+}
+/** The target key an app-creation argv names: JSON `targetProjectKey` or successor `--to`. */
+function appCreateTarget(
+	action: string,
+	flags: Record<string, string | boolean>,
+): string | undefined {
+	return action === "create-successor-instance"
+		? asString(flags["to"],)
+		: asString(jsonInput(flags,)?.["targetProjectKey"],);
+}
 export type LiveCredentials = {
 	url: string;
 	apiKey: string;
@@ -294,6 +389,25 @@ export async function writeLiveJson(file: string, value: unknown,): Promise<void
 		await fs.rm(temporary, { force: true, },);
 	}
 }
+function isHostDaemon(value: unknown, directory: HostDirectory,): value is HostDaemon {
+	const daemon = asRecord(value,);
+	if (
+		!daemon || !Number.isSafeInteger(daemon.pid,) || (daemon.pid as number) <= 1
+		|| typeof daemon.startTime !== "string" || !/^\d+$/.test(daemon.startTime,)
+		|| !Number.isInteger(daemon.port,) || (daemon.port as number) < 1024
+		|| (daemon.port as number) > 65535
+		|| (daemon.service !== undefined && daemon.service !== "sse")
+		|| !Array.isArray(daemon.repositories,)
+	) return false;
+	const repositories = daemon.repositories;
+	return (daemon.service === "sse" ? repositories.length === 0 : repositories.length > 0)
+		&& new Set(repositories,).size === repositories.length
+		&& repositories.every(repo =>
+			typeof repo === "string" && path.posix.dirname(repo,) === directory.path
+			&& path.posix.normalize(repo,) === repo
+		);
+}
+
 export async function loadLiveManifest(file: string,): Promise<LiveManifest> {
 	const data = JSON.parse(await fs.readFile(file, "utf8",),) as LiveManifest;
 	if (
@@ -326,25 +440,29 @@ export async function loadLiveManifest(file: string,): Promise<LiveManifest> {
 		) throw new Error("Invalid owned host directory",);
 		const daemon = directory.daemon;
 		if (
-			daemon !== undefined && (
-				!daemon || directory.state === "deleted" || !Number.isSafeInteger(daemon.pid,)
-				|| daemon.pid <= 1
-				|| typeof daemon.startTime !== "string" || !/^\d+$/.test(daemon.startTime,)
-				|| !Number.isInteger(daemon.port,) || daemon.port < 1024 || daemon.port > 65535
-				|| !Array.isArray(daemon.repositories,) || daemon.repositories.length === 0
-				|| new Set(daemon.repositories,).size !== daemon.repositories.length
-				|| daemon.repositories.some(repo =>
-					typeof repo !== "string" || path.posix.dirname(repo,) !== directory.path
-					|| path.posix.normalize(repo,) !== repo
-				)
-			)
-		) throw new Error("Invalid owned Git daemon receipt",);
+			daemon !== undefined && (directory.state === "deleted" || !isHostDaemon(daemon, directory,))
+		) {
+			throw new Error("Invalid owned host daemon receipt",);
+		}
 		directoryPaths.add(directory.path,);
 	}
 	const seen = new Set<string>();
 	for (const project of data.projects) {
+		// Two provenances only. A reserved key belongs to this run by its
+		// prefix. A generated app-instance key (APP_ + 32 uppercase hex, the
+		// CLI's Designer-friendly client-side format) is admitted only with a
+		// receipt-derived origin naming a project this same manifest already
+		// validated: the chain therefore anchors at this run's reserved keys,
+		// and self-references, forward references, cycles and foreign origins
+		// are all rejected — a bare foreign APP_ key can never be adopted.
+		const reservedKey = project.key.startsWith(`SDK_LIVE_${data.runId.toUpperCase()}_`,);
+		const generatedKey = /^APP_[0-9A-F]{32}$/.test(project.key,);
+		const origin = project.generatedFrom;
+		const originValid = generatedKey
+			? typeof origin === "string" && seen.has(origin,)
+			: origin === undefined;
 		if (
-			!project.key.startsWith(`SDK_LIVE_${data.runId.toUpperCase()}_`,) || seen.has(project.key,)
+			(!reservedKey && !generatedKey) || seen.has(project.key,) || !originValid
 			|| Object.hasOwn(data.beforeProjects, project.key,)
 			|| !["pending", "bound", "deleted",].includes(project.state,)
 			|| (project.state === "bound" && !/^[a-f0-9]{64}$/.test(project.incarnation ?? "",))
@@ -582,7 +700,8 @@ type GlobalRule = {
 type CreationAuthority =
 	| { kind: "plugin-json"; name: string; }
 	| { kind: "plugin-git"; name: string; repository: string; checkout: string; }
-	| { kind: "plugin-archive" | "project-bundle"; name: string; file: string; };
+	| { kind: "plugin-archive" | "project-bundle"; name: string; file: string; }
+	| { kind: "app-generated"; appId: string; mode: "direct" | "successor"; };
 const GLOBAL_RULES: Record<string, GlobalRule> = {
 	"user.create": { kind: "user", create: true, },
 	"user.update": { kind: "user", target: true, },
@@ -694,7 +813,7 @@ function assertOwnedGlobalScope(
 			throw new Error("Git plugin installation requires an inspected owned reservation",);
 		}
 		const name = gitInstall
-			? authority?.name
+			? authority?.kind === "plugin-git" ? authority.name : undefined
 			: archiveInstall
 			? pluginArchiveArmed?.name
 			: createNameArg(rule, args, flags,);
@@ -801,9 +920,21 @@ export function assertLiveCommandScope(
 		if (action === "create-successor-instance" && !owned(flags.from,)) {
 			throw new Error("Cannot create successor from an unowned project",);
 		}
-		const target = action === "create-successor-instance"
-			? flags.to
-			: jsonInput(flags,)?.targetProjectKey;
+		const target = appCreateTarget(action, flags,);
+		if (target === undefined) {
+			// Generated-key mode: the CLI generates the APP_<uuid> target
+			// client-side, so no key exists to reserve and none may be adopted
+			// here. The ONLY pass is the private one-shot grant armed by
+			// runGeneratedAppCreation for exactly this action and app id; a
+			// direct ctx.run of the same shape (without the grant) is refused,
+			// and a caller-supplied target key still takes the strict path below.
+			const grant = authority?.kind === "app-generated" ? authority : undefined;
+			const mode = action === "create-successor-instance" ? "successor" : "direct";
+			if (!grant || grant.mode !== mode || grant.appId !== args[2]) {
+				throw new Error("Generated-key app creation requires the private one-shot authorization",);
+			}
+			return;
+		}
 		if (!owned(target, true,) || manifest.projects.find(p => p.key === target)?.state !== "pending") {
 			throw new Error("App creation requires a reserved project target",);
 		}
@@ -947,10 +1078,11 @@ export class LiveRunContext implements LiveContext {
 		directory: OwnedHostDirectory,
 		operation: Parameters<typeof hostDirectoryScript>[1],
 		repositories: readonly string[] = [],
+		service: "sse" | undefined = directory.daemon?.service,
 	): Promise<string> {
 		const file = await this.writeFile(
 			`host-${directory.nonce}-${operation}.py`,
-			hostDirectoryScript(directory, operation, repositories,),
+			hostDirectoryScript(directory, operation, repositories, service,),
 		);
 		const result = await this.run<{ success: boolean; output: string; }>([
 			"code",
@@ -964,6 +1096,35 @@ export class LiveRunContext implements LiveContext {
 			throw new Error(`Owned host operation failed: ${operation}`,);
 		}
 		return result.output;
+	}
+
+	private async startHostDaemon(
+		directory: OwnedHostDirectory,
+		repositories: readonly string[],
+		service?: "sse",
+	): Promise<HostDaemon> {
+		const output = await this.runHost(directory, "start", repositories, service,);
+		const line = output.split("\n",).find(value => value.startsWith("HOST_RESULT=",));
+		if (!line) throw new Error("Host daemon returned no ownership receipt",);
+		const daemon: unknown = JSON.parse(line.slice("HOST_RESULT=".length,),);
+		if (
+			!isHostDaemon(daemon, directory,) || daemon.service !== service
+			|| JSON.stringify(daemon.repositories,) !== JSON.stringify(repositories,)
+		) throw new Error("Invalid host daemon receipt",);
+		directory.daemon = daemon;
+		await this.save();
+		return daemon;
+	}
+
+	async startOwnedSseServer(handle: HostDirectory,): Promise<HostDaemon> {
+		const directory = this.manifest.ownedDirectories.find(d =>
+			d.path === handle.path && d.nonce === handle.nonce && d.projectKey === handle.projectKey
+			&& d.state === "bound"
+		);
+		if (!directory || directory.daemon) {
+			throw new Error("SSE server requires an owned directory without an active daemon",);
+		}
+		return await this.startHostDaemon(directory, [], "sse",);
 	}
 
 	async withOwnedHostDirectory<T,>(
@@ -1020,17 +1181,7 @@ export class LiveRunContext implements LiveContext {
 			throw new Error("Git scope requires owned directory and reserved target",);
 		}
 		try {
-			const output = await this.runHost(directory, "start", repositoryPaths,);
-			const line = output.split("\n",).find(value => value.startsWith("HOST_RESULT=",));
-			if (!line) throw new Error("Git daemon returned no ownership receipt",);
-			const daemon = JSON.parse(line.slice("HOST_RESULT=".length,),) as HostDaemon;
-			if (
-				!Number.isSafeInteger(daemon.pid,) || daemon.pid <= 1 || !/^\d+$/.test(daemon.startTime,)
-				|| !Number.isInteger(daemon.port,) || daemon.port < 1024 || daemon.port > 65535
-				|| JSON.stringify(daemon.repositories,) !== JSON.stringify(repositoryPaths,)
-			) throw new Error("Invalid Git daemon receipt",);
-			directory.daemon = daemon;
-			await this.save();
+			const daemon = await this.startHostDaemon(directory, repositoryPaths,);
 			const urls = repositoryPaths.map(repo =>
 				`http://127.0.0.1:${daemon.port}/${encodeURIComponent(path.posix.basename(repo,),)}`
 			);
@@ -1508,6 +1659,7 @@ export class LiveRunContext implements LiveContext {
 			);
 		}
 		if (exit !== (options.expectedExit ?? 0)) {
+			await this.retireUnusedAppCreateTarget(resource, action, parsed.flags, result,);
 			throw new LiveCommandError(
 				`${resource}.${action} exited ${exit}: ${
 					this.redact(JSON.stringify(result,),).slice(0, 2500,)
@@ -1515,6 +1667,22 @@ export class LiveRunContext implements LiveContext {
 				exit,
 				result,
 			);
+		}
+		if (
+			exit === 0 && resource === "app" && action === "delete-instance"
+			&& !mode.plan && !mode.dryRun
+			&& typeof parsed.flags["expect-project-incarnation"] === "string"
+		) {
+			const receipt = asRecord(result,);
+			const project = this.manifest.projects.find(p =>
+				p.key === selected && p.state === "bound"
+				&& p.incarnation === parsed.flags["expect-project-incarnation"]
+			);
+			if (project && receipt?.["deleted"] === true && receipt["projectKey"] === selected) {
+				// A guarded deletion already succeeded; a later GET may mask absence as 403.
+				project.state = "deleted";
+				await this.save();
+			}
 		}
 		if (
 			exit === 0 && entry?.mutatesDss && entry.async === "future"
@@ -1560,6 +1728,13 @@ export class LiveRunContext implements LiveContext {
 				if (payload?.status === 403 || payload?.status === 401) result.status = "blocked";
 				if (payload?.status === 501) result.status = "unsupported";
 			}
+			if (error instanceof LiveCommandError && noPostTargetAbsenceDetails(error.result,)) {
+				// The CLI refused BEFORE the creation POST on real-environment
+				// grounds (target project-key absence cannot be verified under
+				// this identity). No instance exists and creation never ran, so
+				// the case is blocked by the environment, not failed.
+				result.status = "blocked";
+			}
 			result.error = this.redact(error,);
 		}
 		result.durationMs = Date.now() - started;
@@ -1583,13 +1758,51 @@ export class LiveRunContext implements LiveContext {
 			}\n`,
 		);
 	}
+	/**
+	 * An app-instance creation the CLI refused BEFORE the creation POST (exact
+	 * structured target-absence refusal) leaves its reserved target project
+	 * unused: the reservation is an intent, not an owned artifact, so retire
+	 * only that receipt from the manifest — never a server DELETE/GET. Every
+	 * condition is exact; anything indeterminate or mismatched keeps the
+	 * receipt for inspection.
+	 */
+	private async retireUnusedAppCreateTarget(
+		resource: string,
+		action: string,
+		flags: Record<string, string | boolean>,
+		result: unknown,
+	): Promise<void> {
+		if (
+			resource !== "app"
+			|| (action !== "create-instance" && action !== "create-successor-instance")
+		) return;
+		const details = noPostTargetAbsenceDetails(result,);
+		const target = appCreateTarget(action, flags,);
+		if (!details || target === undefined || details["targetProjectKey"] !== target) return;
+		const index = this.manifest.projects.findIndex(project =>
+			project.key === target && project.state === "pending"
+		);
+		if (index < 0) return;
+		this.manifest.projects.splice(index, 1,);
+		await this.save();
+	}
 	async reserveProject(label: string,): Promise<string> {
 		const suffix = label.toUpperCase().replace(/[^A-Z0-9_]/g, "_",).slice(0, 16,);
-		const key =
-			`SDK_LIVE_${this.manifest.runId.toUpperCase()}_${suffix}_${this.manifest.projects.length}`;
-		return this.reserveProjectKey(key,);
+		const prefix = `SDK_LIVE_${this.manifest.runId.toUpperCase()}_${suffix}_`;
+		// Retiring unused reservations shrinks the array but leaves other receipts.
+		// Skip every recorded key, including deleted projects.
+		let index = this.manifest.projects.length;
+		while (this.manifest.projects.some(project => project.key === `${prefix}${index}`)) {
+			index += 1;
+		}
+		return this.reserveProjectKey(`${prefix}${index}`,);
 	}
 	private async reserveProjectKey(key: string,): Promise<string> {
+		if (this.manifest.projects.some(project => project.key === key)) {
+			// A recorded receipt in ANY state already owns this key: re-reserving
+			// it would alias a deleted or bound identity onto a new intent.
+			throw new Error(`Refusing to re-reserve a recorded project key: ${key}`,);
+		}
 		// DSS can return 403 for nonexistent keys; creation is exclusive and never updates a collision.
 		const visible = await this.client.projects.list();
 		if (visible.some(project => project.projectKey === key)) {
@@ -1599,12 +1812,178 @@ export class LiveRunContext implements LiveContext {
 		await this.save();
 		return key;
 	}
-	async bindProject(key: string,): Promise<void> {
+	/**
+	 * Run exactly one generated-key app-instance creation against an owned
+	 * precursor. This is the CLI's own Designer-friendly mode: the target key is
+	 * generated inside the CLI (never reserved here), so nothing can be adopted
+	 * from the environment and the strict explicit-key path — a reserved pending
+	 * receipt plus ctx.run — stays untouched. The private one-shot authority
+	 * arms exactly this argv; a direct ctx.run of the same shape without the
+	 * grant is refused by the scope check.
+	 *
+	 * Truthfulness: the precursor carries the in-flight marker from before the
+	 * POST. Only a structured no-creation proof, a definitive rejection, or a
+	 * fully bound child (canonical future target identity, matching fresh
+	 * APP_INSTANCE incarnation, unrecorded key) clears it; every unknown
+	 * outcome retains it so deleteProject keeps refusing the precursor.
+	 */
+	async runGeneratedAppCreation(argv: string[], precursorProjectKey: string,): Promise<string> {
+		// Snapshot the caller-owned array at entry: the exact command parsed and
+		// validated here is the exact command the one-shot grant authorizes and
+		// run() executes, never a mutable alias a caller could retarget later.
+		const command = [...argv,];
+		const parsed = parseArgs(command,);
+		const resource = parsed.positional[0] ?? "";
+		const action = parsed.positional[1] ?? "";
+		if (
+			resource !== "app"
+			|| (action !== "create-instance" && action !== "create-successor-instance")
+		) {
+			throw new Error("runGeneratedAppCreation authorizes only app instance creation",);
+		}
+		const mode: "direct" | "successor" = action === "create-successor-instance"
+			? "successor"
+			: "direct";
+		// An explicit target key is the strict reserved path, never generated
+		// mode: refusing it here keeps that guard unrelaxed.
+		if (appCreateTarget(action, parsed.flags,) !== undefined) {
+			throw new Error(
+				"runGeneratedAppCreation refuses an explicit target key: reserve it and use ctx.run",
+			);
+		}
+		if (executionMode(parsed.flags,).plan || executionMode(parsed.flags,).dryRun) {
+			throw new Error("runGeneratedAppCreation binds a real creation; plan/dry-run is refused",);
+		}
+		if (parsed.flags["record-cleanup"] !== undefined) {
+			throw new Error("runGeneratedAppCreation refuses caller-supplied --record-cleanup",);
+		}
+		if (mode === "direct" && parsed.flags["wait"] !== true) {
+			throw new Error("runGeneratedAppCreation requires --wait to bind a terminal creation",);
+		}
+		const appId = parsed.positional[2] ?? "";
+		if (!appId) throw new Error("App creation requires an appId",);
+		if (mode === "successor" && parsed.flags["from"] !== precursorProjectKey) {
+			throw new Error("Successor creation requires --from to name the owned precursor instance",);
+		}
+		const precursor = this.manifest.projects.find(p => p.key === precursorProjectKey);
+		if (!precursor || precursor.state !== "bound" || !precursor.incarnation) {
+			throw new Error(
+				`Generated app creation requires a bound owned precursor: ${precursorProjectKey}`,
+			);
+		}
+		if (precursor.pendingDependentCreation) {
+			throw new Error(`Precursor already carries an unresolved dependent creation: ${precursor.key}`,);
+		}
+		const precursorDetails = asRecord(await this.client.projects.get(precursor.key,),);
+		if (projectIncarnationHash(precursor.key, precursorDetails,) !== precursor.incarnation) {
+			throw new Error(`Precursor incarnation changed before app creation: ${precursor.key}`,);
+		}
+		const precursorManifest = asRecord(
+			await this.client.applications.getInstanceManifest(precursor.key,),
+		);
+		const precursorType = asString(precursorManifest?.["projectAppType"],)
+			?? asString(precursorDetails?.["projectAppType"],);
+		if (mode === "direct" && precursorType !== "APP_TEMPLATE") {
+			throw new Error(`Direct app creation requires an APP_TEMPLATE precursor: ${precursor.key}`,);
+		}
+		if (mode === "successor" && precursorType !== "APP_INSTANCE") {
+			throw new Error(`Successor creation requires an APP_INSTANCE precursor: ${precursor.key}`,);
+		}
+		const manifestAppId = asString(precursorManifest?.["id"],);
+		if (manifestAppId !== appId) {
+			throw new Error(
+				`App id ${appId} does not match the precursor manifest id ${manifestAppId ?? "<absent>"}`,
+			);
+		}
+		// Accurate in-flight marker BEFORE the POST: from here a creation may be
+		// racing whose target key only the CLI receipt knows.
+		precursor.pendingDependentCreation = { appId, mode, startedAt: new Date().toISOString(), };
+		await this.save();
+		this.creationAuthority = { kind: "app-generated", appId, mode, };
+		let receipt: Record<string, unknown> | undefined;
+		try {
+			receipt = asRecord(await this.run(command,),);
+		} catch (error) {
+			if (provenNoCreationOutcome(error instanceof LiveCommandError ? error.result : undefined,)) {
+				// Proven no-POST or DSS refused the request itself: nothing was
+				// created, so the precursor is clean again.
+				delete precursor.pendingDependentCreation;
+				await this.save();
+			} else if (precursor.pendingDependentCreation) {
+				precursor.pendingDependentCreation.outcome = "indeterminate";
+				await this.save();
+			}
+			throw error;
+		}
+		if (!receipt || receipt["success"] !== true || receipt["futureTargetVerified"] !== true) {
+			// Exit 0 without a terminal verified future is still an unknown
+			// outcome: retain the marker and record no identity.
+			precursor.pendingDependentCreation.outcome = "indeterminate";
+			await this.save();
+			throw new Error(
+				`Generated app creation did not prove a verified terminal target: ${
+					this.redact(JSON.stringify(receipt ?? null,),).slice(0, 500,)
+				}`,
+			);
+		}
+		const target = generatedCreationTarget(receipt,);
+		const requested = asString(receipt["projectKey"],);
+		const incarnation = asString(receipt["projectIncarnationHash"],);
+		if (
+			!target || target !== requested || !incarnation || !/^APP_[0-9A-F]{32}$/.test(target,)
+		) {
+			// No trustworthy generated identity: never adopt the receipt.
+			precursor.pendingDependentCreation.outcome = "indeterminate";
+			await this.save();
+			throw new Error("Generated app creation receipt names no trustworthy target identity",);
+		}
+		const details = asRecord(await this.client.projects.get(target,),);
+		if (asString(details?.["projectAppType"],) !== "APP_INSTANCE") {
+			precursor.pendingDependentCreation.outcome = "indeterminate";
+			await this.save();
+			throw new Error(`Generated target is not an APP_INSTANCE project: ${target}`,);
+		}
+		if (projectIncarnationHash(target, details,) !== incarnation) {
+			precursor.pendingDependentCreation.outcome = "indeterminate";
+			await this.save();
+			throw new Error(`Fresh APP_INSTANCE incarnation does not match the receipt: ${target}`,);
+		}
+		if (this.manifest.projects.some(project => project.key === target)) {
+			// A recorded receipt in ANY state already owns this key: the CLI
+			// naming it again would alias a bound or deleted identity.
+			precursor.pendingDependentCreation.outcome = "indeterminate";
+			await this.save();
+			throw new Error(`Generated target key collides with a recorded receipt: ${target}`,);
+		}
+		this.manifest.projects.push({
+			key: target,
+			state: "pending",
+			createdAt: new Date().toISOString(),
+			// Receipt-derived origin: the verified precursor anchors this
+			// generated key to the run's owned chain before it is persisted.
+			generatedFrom: precursor.key,
+		},);
+		await this.save();
+		// Canonical cleanup-ledger binding: bindProject re-reads the project and
+		// compares the receipt hash before it changes the bound state or writes
+		// the single create entry, so an unconfirmed child is never deletable.
+		await this.bindProject(target, incarnation,);
+		delete precursor.pendingDependentCreation;
+		await this.save();
+		return target;
+	}
+	async bindProject(key: string, expectedHash?: string,): Promise<void> {
 		const project = this.manifest.projects.find(p => p.key === key && p.state === "pending");
 		if (!project) throw new Error("Project was not reserved",);
 		const details = await this.client.projects.get(key,);
 		const identity = projectIncarnationHash(key, details,);
 		if (!identity) throw new Error(`DSS did not return a verifiable project incarnation for ${key}`,);
+		if (expectedHash !== undefined && identity !== expectedHash) {
+			// Compare BEFORE the bound state or cleanup authority changes: a
+			// mismatch proves the project is not the incarnation the creation
+			// receipt bound, so the pending receipt stays unconfirmed.
+			throw new Error(`Project incarnation does not match the creation receipt: ${key}`,);
+		}
 		project.incarnation = identity;
 		project.state = "bound";
 		await this.save();
@@ -1711,6 +2090,12 @@ export class LiveRunContext implements LiveContext {
 		const project = this.manifest.projects.find(p => p.key === key);
 		if (!project) throw new Error("Project is not owned by this run",);
 		if (project.state === "deleted") return;
+		if (project.pendingDependentCreation) {
+			// A dependent app creation may exist whose key only the creation
+			// receipt knows (or never returns): the precursor stays until the
+			// marker is cleared by proof, never by assumption.
+			throw new Error(`Unresolved dependent app creation; refusing deletion: ${key}`,);
+		}
 		let details: unknown;
 		try {
 			details = await this.client.projects.get(key,);

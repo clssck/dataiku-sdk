@@ -4,10 +4,13 @@
 // ctx.check callback so a selected subcase never depends on an unselected
 // discovery case, and one unavailable export never hides independent
 // successful behaviors. Missing but genuinely configured prerequisites
-// (SQL connection, streaming broker, knowledge bank, cost-bearing LLM)
-// produce explicit blocked CaseResults via LiveCapabilityError — never mock
-// passes, never fictitious defaults. Real command defects stay failures.
-import { LiveCapabilityError, type LiveContext, } from "./live-context.js";
+// (SQL connection, knowledge bank, cost-bearing LLM) produce explicit blocked
+// CaseResults via LiveCapabilityError — never mock passes, never fictitious
+// defaults. Streaming endpoints and continuous activities provision their own
+// owned HTTPSSE fixture, so no broker prerequisite exists for the default
+// path. Real command defects stay failures.
+import { LiveCapabilityError, LiveCommandError, type LiveContext, } from "./live-context.js";
+import { exerciseOwnedDeployerDetails, } from "./live-deployers.js";
 import { withOwnedSqlConnection, } from "./live-infrastructure-disposable.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -703,222 +706,575 @@ async function exerciseKnowledgeBank(ctx: LiveContext,): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve a streaming-capable connection for endpoint creation. DSS streaming
- * endpoints require a broker connection (Kafka/MQTT/stream); without any
- * broker connection the lifecycle is factually blocked.
+ * Streaming fixture resolution. HTTP-SSE endpoints need NO broker connection
+ * at all — the official client documents the endpoint connection as "None for
+ * HTTP SSE endpoints" and creates it with body {id, projectKey,
+ * type:"httpsse", params:{url}} — so the default fixture is a case-owned SSE
+ * daemon served from the owned host directory at
+ * http://127.0.0.1:<port>/events (owned-sse-host contract). An explicitly
+ * user-configured broker connection (DATAIKU_LIVE_STREAMING_CONNECTION) is
+ * still honored and switches the case to a broker (kafka) endpoint created
+ * through that connection. That is an opt-in, never a prerequisite: no broker
+ * is required for the default path.
  */
-async function resolveStreamingConnection(ctx: LiveContext,): Promise<string> {
+type StreamingFixture =
+	| { mode: "httpsse"; url: string; }
+	| { mode: "broker"; connection: string; };
+
+/**
+ * Run `body` with a resolved streaming fixture. The owned SSE daemon is
+ * started inside the case-owned host directory and torn down by
+ * withOwnedHostDirectory's own receipt-verified cleanup (pid + startTime +
+ * process group), so the default path needs no .env broker entry and leaks no
+ * process.
+ */
+async function withStreamingFixture<T,>(
+	ctx: LiveContext,
+	label: string,
+	body: (fixture: StreamingFixture,) => Promise<T>,
+): Promise<T> {
 	const explicit = process.env["DATAIKU_LIVE_STREAMING_CONNECTION"]?.trim();
-	if (explicit) return explicit;
-	for (const name of await listConnectionNames(ctx,)) {
-		const normalized = ((await resolveConnectionType(ctx, name,)) ?? "").toLowerCase();
-		if (
-			normalized.includes("kafka",) || normalized.includes("stream",) || normalized.includes("mqtt",)
-		) {
-			return name;
-		}
-	}
-	capabilityBlocked(
-		"No streaming-capable connection (Kafka/MQTT/stream) is configured on this instance: connection list + get type inspection found none and DATAIKU_LIVE_STREAMING_CONNECTION is unset.",
-	);
+	if (explicit) return await body({ mode: "broker", connection: explicit, },);
+	return await ctx.withOwnedHostDirectory(label, async directory => {
+		const daemon = await ctx.startOwnedSseServer(directory,);
+		return await body({
+			mode: "httpsse",
+			url: `http://127.0.0.1:${daemon.port}/events`,
+		},);
+	},);
 }
 
-async function exerciseStreamingEndpoints(ctx: LiveContext,): Promise<void> {
-	const connection = await resolveStreamingConnection(ctx,);
-	const projectKey = await ctx.createProject("streaming",);
+/**
+ * Create one streaming endpoint with the officially documented body shape and
+ * return its creation receipt.
+ */
+async function createStreamingEndpoint(
+	ctx: LiveContext,
+	endpointId: string,
+	fixture: StreamingFixture,
+	projectKey: string,
+): Promise<JsonRecord> {
+	const params = fixture.mode === "httpsse"
+		? { url: fixture.url, }
+		: { connection: fixture.connection, topic: `live-suite-${ctx.iteration}`, };
+	let created: JsonRecord | undefined;
 	try {
-		const endpointId = `live_stream_i${ctx.iteration}`;
-		const created = asRecord(
+		created = asRecord(
 			await ctx.run<unknown>([
 				"streaming-endpoint",
 				"create",
 				endpointId,
-				"kafka",
+				fixture.mode === "httpsse" ? "httpsse" : "kafka",
 				"--data",
-				JSON.stringify({ connection, topic: `live-suite-${ctx.iteration}`, },),
+				JSON.stringify(params,),
 				"--project-key",
 				projectKey,
 			],),
 		);
-		if (created === undefined) {
-			throw new Error(`streaming-endpoint create ${endpointId} returned no object.`,);
-		}
-		try {
-			const settings = asRecord(
-				await ctx.run<unknown>([
-					"streaming-endpoint",
-					"get",
-					endpointId,
-					"--project-key",
-					projectKey,
-				],),
+	} catch (error) {
+		const evidence = streamingDisabledEvidence(error,);
+		if (evidence !== undefined) {
+			capabilityBlocked(
+				`This DSS instance reports streaming as unavailable while creating the ${
+					fixture.mode === "httpsse" ? "http-sse" : "broker"
+				} streaming endpoint: ${evidence}`,
 			);
-			if (settings === undefined) {
-				throw new Error(`streaming-endpoint get ${endpointId} returned no object.`,);
-			}
-			if (asString(settings["id"],) !== endpointId) {
-				throw new Error(
-					`streaming-endpoint get returned a different id: ${JSON.stringify(settings["id"],)}.`,
-				);
-			}
-			const updated = await ctx.run<unknown>([
-				"streaming-endpoint",
-				"update-settings",
-				endpointId,
-				"--data",
-				JSON.stringify(settings,),
-				"--project-key",
-				projectKey,
-			],);
-			if (asRecord(updated,) === undefined) {
-				throw new Error("streaming-endpoint update-settings returned no object.",);
-			}
-		} finally {
-			await ctx.run<unknown>([
-				"streaming-endpoint",
-				"delete",
-				endpointId,
-				"--project-key",
-				projectKey,
-			],);
 		}
-		// The list after cleanup must not still contain the throwaway endpoint.
-		const remaining = asArray(
-			await ctx.run<unknown>(["streaming-endpoint", "list", "--project-key", projectKey,],),
-		);
-		if (remaining.some((item,) => asString(asRecord(item,)?.["id"],) === endpointId)) {
-			throw new Error(`streaming-endpoint delete left ${endpointId} behind.`,);
-		}
-	} finally {
-		await ctx.deleteProject(projectKey,);
+		throw error;
 	}
+	if (created === undefined) {
+		throw new Error(`streaming-endpoint create ${endpointId} returned no object.`,);
+	}
+	return created;
 }
 
-// ---------------------------------------------------------------------------
-// Continuous activities: streaming chain provisioned inside the same case
-// ---------------------------------------------------------------------------
-
-/**
- * Continuous activities require a continuous recipe, which requires a
- * streaming endpoint plus a streaming input. The lifecycle below provisions
- * the full chain in a throwaway project and starts/stops the activity, so
- * the coverage never depends on pre-existing project state. Dataset/recipe
- * creation uses server-known shapes; any DSS rejection of the documented
- * chain is a genuine failure, never masked as a blocker.
- */
-async function exerciseContinuousActivities(ctx: LiveContext,): Promise<void> {
-	const connection = await resolveStreamingConnection(ctx,);
-	const projectKey = await ctx.createProject("contact",);
-	try {
-		const endpointId = `live_stream_i${ctx.iteration}`;
-		await ctx.run<unknown>([
-			"streaming-endpoint",
-			"create",
-			endpointId,
-			"kafka",
-			"--data",
-			JSON.stringify({ connection, topic: `live-cont-actor-${ctx.iteration}`, },),
-			"--project-key",
-			projectKey,
-		],);
+async function exerciseStreamingEndpoints(ctx: LiveContext,): Promise<void> {
+	await withStreamingFixture(ctx, "streaming_sse", async fixture => {
+		const projectKey = await ctx.createProject("streaming",);
 		try {
-			await ctx.run<unknown>([
-				"dataset",
-				"create",
-				"--name",
-				"live_stream_input",
-				"--type",
-				"Kafka",
-				"--connection",
-				connection,
-				"--project-key",
-				projectKey,
-			],);
-			await ctx.run<unknown>([
-				"recipe",
-				"create",
-				"--type",
-				"sync",
-				"--input",
-				"live_stream_input",
-				"--output",
-				"live_stream_output",
-				"--name",
-				"live_cont_recipe",
-				"--project-key",
-				projectKey,
-			],);
-			const listed = asArray(
-				await ctx.run<unknown>([
-					"continuous-activity",
-					"list",
-					"--project-key",
-					projectKey,
-				],),
-			);
-			const recipeId = firstListField(listed, ["recipeId", "id",],);
-			if (recipeId === undefined) {
-				capabilityBlocked(
-					"continuous-activity list returned no continuous activity after provisioning a streaming endpoint and continuous recipe; DSS may not expose continuous activities for this recipe type.",
-				);
-			}
-			const status = asRecord(
-				await ctx.run<unknown>([
-					"continuous-activity",
-					"status",
-					recipeId,
-					"--project-key",
-					projectKey,
-				],),
-			);
-			if (status === undefined) {
-				throw new Error(`continuous-activity status ${recipeId} returned no object.`,);
-			}
-			await ctx.run<unknown>([
-				"continuous-activity",
-				"start",
-				recipeId,
-				"--project-key",
-				projectKey,
-			],);
+			const endpointId = `live_stream_i${ctx.iteration}`;
+			await createStreamingEndpoint(ctx, endpointId, fixture, projectKey,);
 			try {
-				const runningStatus = asRecord(
+				const settings = asRecord(
 					await ctx.run<unknown>([
-						"continuous-activity",
-						"status",
-						recipeId,
+						"streaming-endpoint",
+						"get",
+						endpointId,
 						"--project-key",
 						projectKey,
 					],),
 				);
-				if (asString(runningStatus?.["desiredState"],) !== "STARTED") {
+				if (settings === undefined) {
+					throw new Error(`streaming-endpoint get ${endpointId} returned no object.`,);
+				}
+				if (asString(settings["id"],) !== endpointId) {
 					throw new Error(
-						`continuous activity did not reach desiredState STARTED: ${
-							JSON.stringify(runningStatus,).slice(0, 300,)
-						}.`,
+						`streaming-endpoint get returned a different id: ${JSON.stringify(settings["id"],)}.`,
 					);
+				}
+				if (fixture.mode === "httpsse") {
+					// The created settings must reflect the official httpsse shape:
+					// no broker connection anywhere (connection is None for HTTP SSE
+					// endpoints) and the params carry the owned daemon URL.
+					if (settings["connection"] !== undefined && settings["connection"] !== null) {
+						throw new Error(
+							`httpsse streaming endpoint unexpectedly declares a connection: ${
+								JSON.stringify(settings["connection"],)
+							}.`,
+						);
+					}
+					const params = asRecord(settings["params"],);
+					if (asString(params?.["url"],) !== fixture.url) {
+						throw new Error(
+							`httpsse streaming endpoint params.url is not the owned daemon URL: ${
+								JSON.stringify(params?.["url"],)
+							}.`,
+						);
+					}
+				}
+				const updated = await ctx.run<unknown>([
+					"streaming-endpoint",
+					"update-settings",
+					endpointId,
+					"--data",
+					JSON.stringify(settings,),
+					"--project-key",
+					projectKey,
+				],);
+				if (asRecord(updated,) === undefined) {
+					throw new Error("streaming-endpoint update-settings returned no object.",);
 				}
 			} finally {
 				await ctx.run<unknown>([
-					"continuous-activity",
-					"stop",
-					recipeId,
+					"streaming-endpoint",
+					"delete",
+					endpointId,
 					"--project-key",
 					projectKey,
 				],);
 			}
+			// The list after cleanup must not still contain the throwaway endpoint.
+			const remaining = asArray(
+				await ctx.run<unknown>(["streaming-endpoint", "list", "--project-key", projectKey,],),
+			);
+			if (remaining.some((item,) => asString(asRecord(item,)?.["id"],) === endpointId)) {
+				throw new Error(`streaming-endpoint delete left ${endpointId} behind.`,);
+			}
 		} finally {
+			await ctx.deleteProject(projectKey,);
+		}
+	},);
+}
+
+// ---------------------------------------------------------------------------
+// Continuous activities: full streaming chain provisioned inside the same case
+// ---------------------------------------------------------------------------
+
+/** Bounded wait between live activity/output polls (never an unbounded loop). */
+const CONTINUOUS_POLL_INTERVAL_MS = 4_000;
+/** Bounded attempts for reaching desiredState STARTED and for output rows. */
+const CONTINUOUS_POLL_ATTEMPTS = 30;
+/** Bounded attempts for confirming a stop before the chain is retained. */
+const CONTINUOUS_STOP_POLL_ATTEMPTS = 10;
+
+/**
+ * Schema of the owned SSE daemon's bounded record stream (contract locked with
+ * the owned host worker): data events {"n":1,"value":"one"} ..
+ * {"n":5,"value":"five"} at ~0.2s cadence followed by ": heartbeat" comments;
+ * n is an integer and maps to the DSS bigint storage type, value a string.
+ */
+const OWNED_SSE_COLUMNS = [
+	{ name: "n", type: "bigint", },
+	{ name: "value", type: "string", },
+];
+/** Stream values that prove rows flowed from the owned daemon into DSS. */
+const OWNED_SSE_VALUES = ["one", "two", "three", "four", "five",];
+
+/** Bounded sleep between live polls (same helper shape as sibling live modules). */
+function sleep(ms: number,): Promise<void> {
+	const { promise, resolve, } = Promise.withResolvers<void>();
+	setTimeout(resolve, ms,);
+	return promise;
+}
+
+/**
+ * Narrow classifier for an instance-level streaming capability gap: only an
+ * error whose own text states streaming is not enabled/available on this DSS
+ * instance is reported as a blocked prerequisite. Payload-shape, permission,
+ * and worker-reachability errors stay real failures — a recipe or command
+ * defect is never masked as "streaming disabled".
+ */
+function streamingDisabledEvidence(error: unknown,): string | undefined {
+	const result = error instanceof LiveCommandError ? JSON.stringify(error.result,) : "";
+	const evidence = `${error instanceof Error ? error.message : String(error,)} ${result}`.trim();
+	const text = evidence.toLowerCase();
+	if (
+		text.includes("streaming",)
+		&& (text.includes("not enabled",) || text.includes("disabled",)
+			|| text.includes("not available",) || text.includes("not activated",))
+	) {
+		return evidence.slice(0, 500,);
+	}
+	return undefined;
+}
+
+/** Case-owned continuous-chain ids plus the existence flags cleanup needs. */
+interface ContinuousChain {
+	endpointId: string;
+	outputName: string;
+	recipeName: string;
+	recipeId?: string;
+	endpointCreated: boolean;
+	outputCreated: boolean;
+	recipeCreated: boolean;
+	activityStarted: boolean;
+	activityConfirmedStopped: boolean;
+}
+
+/**
+ * Provision the continuous chain in creation order: streaming endpoint →
+ * managed file output dataset (schema declared from the owned stream) → csync
+ * recipe through the generic recipe-create route. Official single-output
+ * creator semantics: the streaming endpoint is the csync `main` input
+ * ({"items":[{"ref":"<endpoint>","deps":[]}]}) and the managed dataset the
+ * `main` output. The endpoint schema is declared with the documented GET →
+ * modify → PUT settings flow so the chain consumes a typed stream.
+ */
+async function provisionContinuousChain(
+	ctx: LiveContext,
+	projectKey: string,
+	chain: ContinuousChain,
+	fixture: StreamingFixture,
+): Promise<void> {
+	await createStreamingEndpoint(ctx, chain.endpointId, fixture, projectKey,);
+	chain.endpointCreated = true;
+	const settings = asRecord(
+		await ctx.run<unknown>([
+			"streaming-endpoint",
+			"get",
+			chain.endpointId,
+			"--project-key",
+			projectKey,
+		],),
+	);
+	if (settings === undefined) {
+		throw new Error(`streaming-endpoint get ${chain.endpointId} returned no object.`,);
+	}
+	await ctx.run<unknown>([
+		"streaming-endpoint",
+		"update-settings",
+		chain.endpointId,
+		"--data",
+		JSON.stringify({ ...settings, schema: { columns: OWNED_SSE_COLUMNS, }, },),
+		"--project-key",
+		projectKey,
+	],);
+	await ctx.run<unknown>([
+		"dataset",
+		"create-managed",
+		"--name",
+		chain.outputName,
+		"--connection",
+		ctx.connection,
+		"--project-key",
+		projectKey,
+	],);
+	chain.outputCreated = true;
+	await ctx.run<unknown>([
+		"dataset",
+		"refresh-schema",
+		chain.outputName,
+		"--data",
+		JSON.stringify({ columns: OWNED_SSE_COLUMNS, },),
+		"--project-key",
+		projectKey,
+	],);
+	await ctx.run<unknown>([
+		"recipe",
+		"create",
+		"--type",
+		"csync",
+		"--input",
+		chain.endpointId,
+		"--output",
+		chain.outputName,
+		"--name",
+		chain.recipeName,
+		"--project-key",
+		projectKey,
+	],);
+	chain.recipeCreated = true;
+}
+
+/**
+ * Start the continuous activity and prove the loop consumed the owned stream
+ * by polling status to desiredState STARTED and reading the daemon's records
+ * back from the output dataset — status alone is never accepted as success.
+ * The stop is always attempted exactly once and confirmed with bounded status
+ * polls; an unconfirmed stop leaves activityConfirmedStopped false so the
+ * caller retains the chain instead of deleting it underneath a live loop.
+ */
+async function runContinuousActivityLifecycle(
+	ctx: LiveContext,
+	projectKey: string,
+	chain: ContinuousChain,
+): Promise<void> {
+	const statusArgv = (recipeId: string,): string[] => [
+		"continuous-activity",
+		"status",
+		recipeId,
+		"--project-key",
+		projectKey,
+	];
+	let failure: unknown;
+	try {
+		const listed = asArray(
+			await ctx.run<unknown>(["continuous-activity", "list", "--project-key", projectKey,],),
+		);
+		const exact = listed.find(item => asString(asRecord(item,)?.["recipeId"],) === chain.recipeName);
+		// The throwaway project holds exactly one continuous recipe, so a single
+		// listed activity is provably this recipe's; anything else is ambiguous.
+		const activity = asRecord(exact,) ?? (listed.length === 1 ? asRecord(listed[0],) : undefined);
+		const recipeId = asString(activity?.["recipeId"],) ?? asString(activity?.["id"],);
+		if (recipeId === undefined) {
+			throw new Error(
+				`continuous-activity list found no activity for the freshly created csync recipe ${chain.recipeName}: ${
+					JSON.stringify(listed,).slice(0, 300,)
+				}.`,
+			);
+		}
+		chain.recipeId = recipeId;
+		// Verify the created recipe really is the documented csync chain.
+		const recipeDoc = asRecord(
+			await ctx.run<unknown>(["recipe", "get", chain.recipeName, "--project-key", projectKey,],),
+		);
+		const recipeBody = asRecord(recipeDoc?.["recipe"],);
+		if (asString(recipeBody?.["type"],)?.toLowerCase() !== "csync") {
+			throw new Error(
+				`recipe get ${chain.recipeName} did not report a csync recipe: ${
+					JSON.stringify(recipeBody?.["type"],)
+				}.`,
+			);
+		}
+		const inputRefs = asArray(asRecord(asRecord(recipeBody?.["inputs"],)?.["main"],)?.["items"],)
+			.map(item => asString(asRecord(item,)?.["ref"],))
+			.filter((ref,): ref is string => ref !== undefined);
+		if (!inputRefs.includes(chain.endpointId,)) {
+			throw new Error(
+				`csync recipe ${chain.recipeName} does not declare the streaming endpoint ${chain.endpointId} as a main input: ${
+					JSON.stringify(inputRefs,)
+				}.`,
+			);
+		}
+		const initial = asRecord(await ctx.run<unknown>(statusArgv(recipeId,),),);
+		if (initial === undefined) {
+			throw new Error(`continuous-activity status ${recipeId} returned no object.`,);
+		}
+		await ctx.run<unknown>([
+			"continuous-activity",
+			"start",
+			recipeId,
+			"--project-key",
+			projectKey,
+		],);
+		chain.activityStarted = true;
+		let status: JsonRecord | undefined;
+		for (let attempt = 0; attempt < CONTINUOUS_POLL_ATTEMPTS; attempt++) {
+			status = asRecord(await ctx.run<unknown>(statusArgv(recipeId,),),);
+			if (asString(status?.["desiredState"],) === "STARTED") break;
+			await sleep(CONTINUOUS_POLL_INTERVAL_MS,);
+		}
+		if (asString(status?.["desiredState"],) !== "STARTED") {
+			throw new Error(
+				`continuous activity ${recipeId} never reached desiredState STARTED within the bounded poll (${
+					(CONTINUOUS_POLL_ATTEMPTS * CONTINUOUS_POLL_INTERVAL_MS) / 1000
+				}s): ${JSON.stringify(status,).slice(0, 300,)}.`,
+			);
+		}
+		let preview: JsonRecord | undefined;
+		for (let attempt = 0; attempt < CONTINUOUS_POLL_ATTEMPTS; attempt++) {
+			preview = asRecord(
+				await ctx.run<unknown>([
+					"dataset",
+					"preview",
+					chain.outputName,
+					"--max-rows",
+					"20",
+					"--project-key",
+					projectKey,
+				],),
+			);
+			if (asArray(preview?.["rows"],).length > 0) break;
+			await sleep(CONTINUOUS_POLL_INTERVAL_MS,);
+		}
+		const rows = asArray(preview?.["rows"],);
+		if (
+			rows.length === 0
+			|| !OWNED_SSE_VALUES.some(value => JSON.stringify(rows,).includes(`"${value}"`,))
+		) {
+			throw new Error(
+				`continuous activity ${recipeId} started but the output dataset ${chain.outputName} never showed the owned stream records within the bounded poll (last preview: ${
+					JSON.stringify(preview,).slice(0, 300,)
+				}).`,
+			);
+		}
+	} catch (error) {
+		failure = error;
+	}
+	const recipeId = chain.recipeId;
+	if (recipeId === undefined || !chain.activityStarted) {
+		if (failure !== undefined) throw failure;
+		return;
+	}
+	try {
+		await ctx.run<unknown>([
+			"continuous-activity",
+			"stop",
+			recipeId,
+			"--project-key",
+			projectKey,
+		],);
+	} catch (error) {
+		failure = failure === undefined
+			? error
+			: new Error(`${String(failure,)}; stop failed: ${String(error,)}`,);
+	}
+	let stopped: JsonRecord | undefined;
+	for (let attempt = 0; attempt < CONTINUOUS_STOP_POLL_ATTEMPTS; attempt++) {
+		try {
+			stopped = asRecord(await ctx.run<unknown>(statusArgv(recipeId,),),);
+		} catch (error) {
+			failure = failure === undefined ? error : failure;
+			break;
+		}
+		if (asString(stopped?.["desiredState"],) !== "STARTED") break;
+		await sleep(CONTINUOUS_POLL_INTERVAL_MS,);
+	}
+	chain.activityConfirmedStopped = asString(stopped?.["desiredState"],) !== "STARTED";
+	if (!chain.activityConfirmedStopped && failure === undefined) {
+		failure = new Error(
+			`continuous activity ${recipeId} still reports desiredState STARTED after stop and bounded polling: ${
+				JSON.stringify(stopped,).slice(0, 300,)
+			}.`,
+		);
+	}
+	if (failure !== undefined) throw failure;
+}
+
+/**
+ * Ordered teardown once the activity is stopped (or never started): recipe →
+ * endpoint → output dataset → project, best-effort per step so one failed
+ * delete never hides the others, with every cleanup error reported.
+ */
+async function releaseContinuousChain(
+	ctx: LiveContext,
+	projectKey: string,
+	chain: ContinuousChain,
+): Promise<void> {
+	const cleanupErrors: string[] = [];
+	if (chain.recipeCreated) {
+		try {
 			await ctx.run<unknown>([
-				"streaming-endpoint",
+				"recipe",
 				"delete",
-				endpointId,
+				chain.recipeName,
+				"--if-exists",
 				"--project-key",
 				projectKey,
 			],);
+		} catch (error) {
+			cleanupErrors.push(`recipe delete ${chain.recipeName}: ${String(error,)}`,);
 		}
-	} finally {
-		await ctx.deleteProject(projectKey,);
 	}
+	if (chain.endpointCreated) {
+		try {
+			await ctx.run<unknown>([
+				"streaming-endpoint",
+				"delete",
+				chain.endpointId,
+				"--project-key",
+				projectKey,
+			],);
+		} catch (error) {
+			cleanupErrors.push(`streaming-endpoint delete ${chain.endpointId}: ${String(error,)}`,);
+		}
+	}
+	if (chain.outputCreated) {
+		try {
+			await ctx.run<unknown>([
+				"dataset",
+				"delete",
+				chain.outputName,
+				"--if-exists",
+				"--project-key",
+				projectKey,
+			],);
+		} catch (error) {
+			cleanupErrors.push(`dataset delete ${chain.outputName}: ${String(error,)}`,);
+		}
+	}
+	try {
+		await ctx.deleteProject(projectKey,);
+	} catch (error) {
+		cleanupErrors.push(`project delete ${projectKey}: ${String(error,)}`,);
+	}
+	if (cleanupErrors.length > 0) {
+		throw new Error(`Continuous-chain cleanup failed: ${cleanupErrors.join("; ",)}.`,);
+	}
+}
+
+/**
+ * Continuous activities: the lifecycle provisions the whole chain in a
+ * throwaway project — owned HTTPSSE endpoint (or the explicitly
+ * user-configured broker connection when DATAIKU_LIVE_STREAMING_CONNECTION is
+ * set), managed file output dataset declared with the owned stream schema, and
+ * a csync recipe created through the generic recipe-create route — then starts
+ * the activity, proves rows from the owned stream landed in the output dataset,
+ * and stops it. HTTP-SSE endpoints are read-only by product design, so no
+ * producer/push coverage is claimed here. Any DSS rejection of this documented
+ * chain is a genuine failure: only an instance error whose own text states
+ * streaming is unavailable is classified as a blocker (see
+ * streamingDisabledEvidence on the endpoint create). Cleanup order: stop the
+ * activity, delete the recipe and endpoint, then the dataset and project; an
+ * unconfirmed stop retains the case-owned chain for diagnosis.
+ */
+async function exerciseContinuousActivities(ctx: LiveContext,): Promise<void> {
+	await withStreamingFixture(ctx, "continuous_sse", async fixture => {
+		const projectKey = await ctx.createProject("contact",);
+		const chain: ContinuousChain = {
+			endpointId: `live_stream_i${ctx.iteration}`,
+			outputName: `live_stream_output_${ctx.iteration}`,
+			recipeName: `live_cont_sync_${ctx.iteration}`,
+			endpointCreated: false,
+			outputCreated: false,
+			recipeCreated: false,
+			activityStarted: false,
+			activityConfirmedStopped: false,
+		};
+		let failure: unknown;
+		try {
+			await provisionContinuousChain(ctx, projectKey, chain, fixture,);
+			await runContinuousActivityLifecycle(ctx, projectKey, chain,);
+		} catch (error) {
+			failure = error;
+		}
+		if (chain.activityStarted && !chain.activityConfirmedStopped) {
+			throw new Error(
+				`Retaining the case-owned continuous chain in project ${projectKey} (recipe ${chain.recipeName}, endpoint ${chain.endpointId}, dataset ${chain.outputName}) because the activity could not be confirmed stopped${
+					failure === undefined ? "" : `; original failure: ${String(failure,)}`
+				}.`,
+			);
+		}
+		try {
+			await releaseContinuousChain(ctx, projectKey, chain,);
+		} catch (error) {
+			if (failure !== undefined) {
+				throw new Error(`${String(failure,)}; ${String(error,)}`, { cause: error, },);
+			}
+			throw error;
+		}
+		if (failure !== undefined) throw failure;
+	},);
 }
 
 // ---------------------------------------------------------------------------
@@ -927,15 +1283,12 @@ async function exerciseContinuousActivities(ctx: LiveContext,): Promise<void> {
 
 interface DeployerDiscovered {
 	infraId?: string;
-	serviceId?: string;
 	deploymentId?: string;
-	pdProjectKey?: string;
-	pdDeploymentId?: string;
 }
 
 /**
  * Instance-scoped deployer lists, verified as arrays, with the first infra
- * and deployment id extracted for the details case in the same callback.
+ * and deployment id extracted for the deployer-lists fixtures.
  */
 async function discoverDeployers(ctx: LiveContext,): Promise<DeployerDiscovered> {
 	const infras = asArray(await ctx.run<unknown>(["api-deployer", "list-infras",],),);
@@ -960,10 +1313,7 @@ async function discoverDeployers(ctx: LiveContext,): Promise<DeployerDiscovered>
 	}
 	return {
 		infraId: firstListField(infras, ["id", "infraId",],),
-		serviceId: firstListField(services, ["id", "serviceId", "publishedServiceId",],),
 		deploymentId: firstListField(deployments, ["id", "deploymentId",],),
-		pdProjectKey: firstListField(pdProjects, ["id", "projectKey", "publishedProjectKey",],),
-		pdDeploymentId: firstListField(pdDeployments, ["id", "deploymentId",],),
 	};
 }
 
@@ -974,66 +1324,11 @@ async function exerciseDeployerLists(ctx: LiveContext,): Promise<void> {
 }
 
 /**
- * Follow-up details for deployer objects discovered in THIS callback (never
- * across case boundaries): each empty list produces a precise per-action
- * blocker instead of hiding the remaining independent gets.
+ * Follow-up details for deployer objects are covered by
+ * exerciseOwnedDeployerDetails (tests/live-deployers.ts), which provisions the
+ * owned API/project-deployer metadata stack and asserts the detail gets
+ * against it; the instance-scoped list discovery below stays read-only.
  */
-async function exerciseDeployerDetails(ctx: LiveContext,): Promise<void> {
-	const discovered = await discoverDeployers(ctx,);
-	if (discovered.infraId !== undefined) {
-		const infra = asRecord(
-			await ctx.run<unknown>(["api-deployer", "get-infra", discovered.infraId,],),
-		);
-		if (infra === undefined) {
-			throw new Error(`api-deployer get-infra ${discovered.infraId} returned no object.`,);
-		}
-	}
-	if (discovered.serviceId !== undefined) {
-		const service = asRecord(
-			await ctx.run<unknown>(["api-deployer", "get-service", discovered.serviceId,],),
-		);
-		if (service === undefined) {
-			throw new Error(`api-deployer get-service ${discovered.serviceId} returned no object.`,);
-		}
-	}
-	if (discovered.deploymentId !== undefined) {
-		const deployment = asRecord(
-			await ctx.run<unknown>(["api-deployer", "get-deployment", discovered.deploymentId,],),
-		);
-		if (deployment === undefined) {
-			throw new Error(`api-deployer get-deployment ${discovered.deploymentId} returned no object.`,);
-		}
-		await ctx.run<unknown>(["api-deployer", "deployment-status", discovered.deploymentId,],);
-		await ctx.run<unknown>(["api-deployer", "deployment-settings", discovered.deploymentId,],);
-	}
-	if (discovered.pdProjectKey !== undefined) {
-		await ctx.run<unknown>(["project-deployer", "project-status", discovered.pdProjectKey,],);
-	}
-	if (discovered.pdDeploymentId !== undefined) {
-		const pdDeployment = asRecord(
-			await ctx.run<unknown>(["project-deployer", "get-deployment", discovered.pdDeploymentId,],),
-		);
-		if (pdDeployment === undefined) {
-			throw new Error(
-				`project-deployer get-deployment ${discovered.pdDeploymentId} returned no object.`,
-			);
-		}
-		await ctx.run<unknown>([
-			"project-deployer",
-			"deployment-status",
-			discovered.pdDeploymentId,
-		],);
-	}
-	if (
-		discovered.infraId === undefined && discovered.deploymentId === undefined
-		&& discovered.serviceId === undefined && discovered.pdDeploymentId === undefined
-		&& discovered.pdProjectKey === undefined
-	) {
-		capabilityBlocked(
-			"No API deployer or project deployer object exists on this instance (infras, services, deployments, and published projects all empty), so the detail gets have no target; the lists themselves were verified in the same case.",
-		);
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Instance directories: user/group/meaning/workspace/data-collection/folders
@@ -1113,9 +1408,11 @@ async function exerciseDirectoryReads(ctx: LiveContext,): Promise<void> {
  * not billing authorization, so a probe runs only against an explicitly
  * user-designated free/local LLM id (DATAIKU_LIVE_FREE_LLM_ID) and is a
  * precise billing blocker otherwise. Genuine environment gaps (no SQL
- * connection, no streaming broker, no knowledge bank, no code env, no
- * plugin) are explicit blocked results naming the exact gap — never mock
- * passes and never blanket blockers hiding sibling behaviors.
+ * connection, no knowledge bank, no code env, no plugin) are explicit blocked
+ * results naming the exact gap — never mock passes and never blanket blockers
+ * hiding sibling behaviors. Streaming endpoints and continuous activities
+ * need no broker: they self-provision the owned HTTPSSE fixture, and only an
+ * instance error whose own text reports streaming unavailable blocks them.
  */
 export async function exerciseInfrastructureReads(ctx: LiveContext,): Promise<void> {
 	if (!ctx.profiles.includes("infrastructure",)) return;
@@ -1209,13 +1506,20 @@ export async function exerciseInfrastructureReads(ctx: LiveContext,): Promise<vo
 		"infrastructure.continuous-activities",
 		[
 			"streaming-endpoint.create",
-			"dataset.create",
+			"streaming-endpoint.get",
+			"streaming-endpoint.update-settings",
+			"streaming-endpoint.delete",
+			"dataset.create-managed",
+			"dataset.refresh-schema",
+			"dataset.preview",
+			"dataset.delete",
 			"recipe.create",
+			"recipe.get",
+			"recipe.delete",
 			"continuous-activity.list",
 			"continuous-activity.status",
 			"continuous-activity.start",
 			"continuous-activity.stop",
-			"streaming-endpoint.delete",
 			"project.delete",
 		],
 		async () => {
@@ -1243,6 +1547,7 @@ export async function exerciseInfrastructureReads(ctx: LiveContext,): Promise<vo
 		"infrastructure.deployer-details",
 		[
 			"api-deployer.list-infras",
+			"api-deployer.list-stages",
 			"api-deployer.list-services",
 			"api-deployer.list-deployments",
 			"api-deployer.get-infra",
@@ -1250,14 +1555,28 @@ export async function exerciseInfrastructureReads(ctx: LiveContext,): Promise<vo
 			"api-deployer.get-deployment",
 			"api-deployer.deployment-status",
 			"api-deployer.deployment-settings",
+			"api-deployer.create-infra",
+			"api-deployer.create-service",
+			"api-deployer.publish-version",
+			"api-deployer.create-deployment",
+			"api-deployer.save-deployment-settings",
+			"api-deployer.delete-deployment",
+			"api-deployer.delete-service",
+			"api-deployer.delete-infra",
+			"bundle.export",
+			"bundle.download-exported",
 			"project-deployer.list-projects",
 			"project-deployer.list-deployments",
 			"project-deployer.get-deployment",
 			"project-deployer.deployment-status",
 			"project-deployer.project-status",
+			"project-deployer.create-infra",
+			"project-deployer.upload-bundle",
+			"project-deployer.create-deployment",
+			"project-deployer.delete-deployment",
 		],
 		async () => {
-			await exerciseDeployerDetails(ctx,);
+			await exerciseOwnedDeployerDetails(ctx,);
 		},
 		{ capability: "infrastructure.deployer-details", required: false, },
 	);
@@ -1268,6 +1587,8 @@ export async function exerciseInfrastructureReads(ctx: LiveContext,): Promise<vo
 			"user.get",
 			"user.activity",
 			"user.activity-get",
+			"group.list",
+			"group.get",
 			"meaning.list",
 			"meaning.get",
 			"workspace.list",

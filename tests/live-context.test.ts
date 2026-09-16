@@ -2,11 +2,20 @@ import { describe, expect, it, } from "bun:test";
 import * as fs from "node:fs/promises";
 import { tmpdir, } from "node:os";
 import { join, } from "node:path";
+import { readCleanupLedger, } from "../src/utils/cleanup-ledger.js";
 import { projectIncarnationHash, } from "../src/utils/project-incarnation.js";
-import { readBody, sendJson, withCliServer, } from "./cli/_harness.js";
+import {
+	type IncomingMessage,
+	readBody,
+	sendJson,
+	type ServerResponse,
+	withCliServer,
+} from "./cli/_harness.js";
+import type { LiveCaseId, } from "./live-cases.js";
 import {
 	assertLiveCommandScope,
 	initializeLiveManifest,
+	LiveCommandError,
 	LiveRunContext,
 	loadLiveManifest,
 	stopLiveCommands,
@@ -14,6 +23,8 @@ import {
 } from "./live-context.js";
 import { exerciseInfrastructureDisposable, } from "./live-infrastructure-disposable.js";
 import { buildStoredZip, writePluginArchive, } from "./live-plugins.js";
+
+const generated = (suffix: string,) => `APP_${suffix.repeat(32,).slice(0, 32,)}`;
 
 /**
  * Minimal stub context driving the PUBLIC exercise entry: check invokes only
@@ -1438,6 +1449,921 @@ describe("live owned host receipts", () => {
 				},);
 				await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(Error,);
 			}
+		},);
+	});
+	it("rejects unknown or mismatched daemon services and accepts canonical receipts", async () => {
+		await fixture("http://127.0.0.1:1", async ctx => {
+			const nonce = "a".repeat(32,);
+			const directory = {
+				path: `/tmp/sdk_live_${ctx.runId}_${nonce}`,
+				nonce,
+				runId: ctx.runId,
+				projectKey: ctx.projectKey,
+				state: "bound",
+			};
+			const base = { pid: 4242, startTime: "1234", port: 20001, };
+			const malformed: Array<Record<string, unknown>> = [
+				{ ...base, service: "ftp", repositories: [], },
+				{ ...base, service: "sse", repositories: [`${directory.path}/fixture.git`,], },
+				{ ...base, repositories: [], },
+			];
+			for (const daemon of malformed) {
+				await writeLiveJson(ctx.manifestPath, {
+					...ctx.manifest,
+					ownedDirectories: [{ ...directory, daemon, },],
+				},);
+				await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(Error,);
+			}
+			// Canonical receipts round-trip: Git carries repositories and no
+			// service marker; SSE carries an empty repositories array.
+			const canonical: Array<{ daemon: Record<string, unknown>; service: "sse" | undefined; }> = [
+				{
+					daemon: { ...base, repositories: [`${directory.path}/fixture.git`,], },
+					service: undefined,
+				},
+				{ daemon: { ...base, service: "sse", repositories: [], }, service: "sse", },
+			];
+			for (const { daemon, service, } of canonical) {
+				await writeLiveJson(ctx.manifestPath, {
+					...ctx.manifest,
+					ownedDirectories: [{ ...directory, daemon, },],
+				},);
+				const manifest = await loadLiveManifest(ctx.manifestPath,);
+				expect(manifest.ownedDirectories[0]?.daemon?.service,).toBe(service,);
+			}
+		},);
+	});
+});
+
+describe("live app-create reservation safety", () => {
+	it("retires the unused reservation when creation refuses before the POST", async () => {
+		const requests: string[] = [];
+		let boundKey = "";
+		await withCliServer((req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			if (req.method === "GET" && req.url === "/public/api/projects/") {
+				// The accessible list cannot see the target: absence is unverifiable.
+				sendJson(res, [],);
+				return;
+			}
+			if (req.method === "GET" && req.url?.startsWith("/public/api/apps/",)) {
+				sendJson(res, [],);
+				return;
+			}
+			if (req.method === "GET" && req.url?.startsWith("/public/api/projects/",)) {
+				const key = decodeURIComponent(req.url.split("/",)[4] ?? "",);
+				if (key === boundKey) {
+					sendJson(res, details(key, 1,),);
+					return;
+				}
+				// The direct probe is forbidden and the project stays hidden.
+				sendJson(res, { errorType: "Forbidden", message: "denied", }, 403,);
+				return;
+			}
+			res.writeHead(500,);
+			res.end();
+		}, async url => {
+			await fixture(url, async ctx => {
+				boundKey = ctx.projectKey;
+				const runId = ctx.manifest.runId.toUpperCase();
+				const targetKey = `SDK_LIVE_${runId}_APPTARGET_2`;
+				const otherKey = `SDK_LIVE_${runId}_APPTARGET_3`;
+				ctx.manifest.projects.push(
+					{ key: targetKey, state: "pending", createdAt: new Date().toISOString(), },
+					{ key: otherKey, state: "pending", createdAt: new Date().toISOString(), },
+				);
+				await ctx.save();
+				await ctx.check(
+					"applications.app.instance-ops" as LiveCaseId,
+					["app.create-instance",],
+					async () => {
+						await ctx.run([
+							"app",
+							"create-instance",
+							"template-app",
+							"--data",
+							JSON.stringify({ targetProjectKey: targetKey, },),
+							"--project-key",
+							ctx.projectKey,
+						],);
+					},
+				);
+				const manifest = await loadLiveManifest(ctx.manifestPath,);
+				expect(manifest.cases.at(-1,)?.status,).toBe("blocked",);
+				expect(manifest.commands.at(-1,)?.exitCode,).not.toBe(0,);
+				expect(manifest.projects.some(project => project.key === targetKey),).toBe(false,);
+				expect(manifest.projects.find(project => project.key === otherKey)?.state,).toBe("pending",);
+				expect(manifest.projects.find(project => project.key === ctx.projectKey)?.state,).toBe(
+					"bound",
+				);
+				expect(requests.filter(request => request.startsWith("DELETE",)),).toEqual([],);
+				// Exactly one target read: the CLI preflight probe, never a cleanup readback.
+				expect(requests.filter(request => request.includes(targetKey,)),).toEqual([
+					`GET /public/api/projects/${targetKey}/`,
+				],);
+			},);
+		},);
+	});
+	it("preserves the pending receipt when creation is indeterminate after the POST", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			if (req.method === "POST" && req.url?.startsWith("/public/api/apps/",)) {
+				// The POST ran; its outcome is unknown, so cleanup cannot be authorized.
+				sendJson(res, { errorType: "InternalError", message: "boom", }, 500,);
+				return;
+			}
+			if (req.method === "GET" && req.url === "/public/api/projects/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (req.method === "GET" && req.url?.startsWith("/public/api/projects/",)) {
+				// The direct probe proves absence: the preflight passes and the POST runs.
+				sendJson(res, { errorType: "NotFound", message: "missing", }, 404,);
+				return;
+			}
+			res.writeHead(500,);
+			res.end();
+		}, async url => {
+			await fixture(url, async ctx => {
+				const targetKey = `SDK_LIVE_${ctx.manifest.runId.toUpperCase()}_APPINDET_2`;
+				ctx.manifest.projects.push({
+					key: targetKey,
+					state: "pending",
+					createdAt: new Date().toISOString(),
+				},);
+				await ctx.save();
+				await expect(
+					ctx.run([
+						"app",
+						"create-instance",
+						"template-app",
+						"--data",
+						JSON.stringify({ targetProjectKey: targetKey, },),
+					],),
+				).rejects.toThrow();
+				const manifest = await loadLiveManifest(ctx.manifestPath,);
+				expect(requests.some(request => request.startsWith("POST",)),).toBe(true,);
+				expect(manifest.projects.find(project => project.key === targetKey)?.state,).toBe("pending",);
+				expect(requests.filter(request => request.startsWith("DELETE",)),).toEqual([],);
+			},);
+		},);
+	});
+	it("preserves the pending receipt when the target already exists", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			if (req.method === "GET" && req.url === "/public/api/projects/") {
+				sendJson(res, [],);
+				return;
+			}
+			if (req.method === "GET" && req.url?.startsWith("/public/api/projects/",)) {
+				const key = decodeURIComponent(req.url.split("/",)[4] ?? "",);
+				sendJson(res, details(key, 1,),);
+				return;
+			}
+			res.writeHead(500,);
+			res.end();
+		}, async url => {
+			await fixture(url, async ctx => {
+				const targetKey = `SDK_LIVE_${ctx.manifest.runId.toUpperCase()}_APPEXISTS_2`;
+				ctx.manifest.projects.push({
+					key: targetKey,
+					state: "pending",
+					createdAt: new Date().toISOString(),
+				},);
+				await ctx.save();
+				await expect(
+					ctx.run([
+						"app",
+						"create-instance",
+						"template-app",
+						"--data",
+						JSON.stringify({ targetProjectKey: targetKey, },),
+					],),
+				).rejects.toThrow();
+				const manifest = await loadLiveManifest(ctx.manifestPath,);
+				expect(manifest.projects.find(project => project.key === targetKey)?.state,).toBe("pending",);
+				expect(requests.filter(request => request.startsWith("DELETE",)),).toEqual([],);
+			},);
+		},);
+	});
+	it("classifies only the exact no-POST refusal as blocked", async () => {
+		await fixture("http://127.0.0.1:1", async ctx => {
+			const samples = [
+				{
+					expected: "blocked",
+					result: { code: "target_absence_unverifiable", details: { creationPostAttempted: false, }, },
+				},
+				{ expected: "failed", result: { code: "target_absence_unverifiable", details: {}, }, },
+				{
+					expected: "failed",
+					result: { code: "target_absence_unverifiable", details: { creationPostAttempted: true, }, },
+				},
+				{
+					expected: "failed",
+					result: { code: "validation_failed", details: { creationPostAttempted: false, }, },
+				},
+				{ expected: "failed", result: null, },
+			] as const;
+			for (const [index, sample,] of samples.entries()) {
+				await ctx.check("applications.app.instance-ops" as LiveCaseId, [], async () => {
+					throw new LiveCommandError(`sample ${index}`, 1, sample.result,);
+				},);
+			}
+			const manifest = await loadLiveManifest(ctx.manifestPath,);
+			expect(manifest.cases.map(kase => kase.status),).toEqual(
+				samples.map(sample => sample.expected),
+			);
+		},);
+	});
+	it("never reuses a recorded project key after a reservation was retired", async () => {
+		await withCliServer((req, res,) => {
+			if (req.method === "GET" && req.url === "/public/api/projects/") {
+				sendJson(res, [],);
+				return;
+			}
+			sendJson(res, {},);
+		}, async url => {
+			await fixture(url, async ctx => {
+				const prefix = `SDK_LIVE_${ctx.manifest.runId.toUpperCase()}_APPINST_`;
+				// Cancellation can shrink the array past an already recorded project suffix.
+				const retired = `${prefix}${ctx.manifest.projects.length + 1}`;
+				const incarnation = "a".repeat(64,);
+				ctx.manifest.projects.push({
+					key: retired,
+					state: "deleted",
+					incarnation,
+					createdAt: new Date().toISOString(),
+				},);
+				await ctx.save();
+				const next = await ctx.reserveProject("appinst",);
+				expect(next,).not.toBe(retired,);
+				expect(ctx.manifest.projects.filter(project => project.key === next),).toHaveLength(1,);
+				const retiredEntry = ctx.manifest.projects.find(project => project.key === retired);
+				expect(retiredEntry?.state,).toBe("deleted",);
+				expect(retiredEntry?.incarnation,).toBe(incarnation,);
+				expect(new Set(ctx.manifest.projects.map(project => project.key),).size,).toBe(
+					ctx.manifest.projects.length,
+				);
+				expect(() =>
+					assertLiveCommandScope(
+						[
+							"app",
+							"create-instance",
+							"template-app",
+							"--data",
+							JSON.stringify({ targetProjectKey: next, },),
+						],
+						ctx.manifest,
+						ctx.projectKey,
+					)
+				).not.toThrow();
+			},);
+		},);
+	});
+});
+
+/**
+ * Bind an APP_INSTANCE project receipt owned by this run: the target of the
+ * guarded deletion bookkeeping regressions.
+ */
+function withOwnedAppInstance(ctx: LiveRunContext,): string {
+	const key = `SDK_LIVE_${ctx.manifest.runId.toUpperCase()}_APPINSTANCE_0`;
+	ctx.manifest.projects.push({
+		key,
+		state: "bound",
+		incarnation: projectIncarnationHash(key, details(key, 1,),),
+		createdAt: new Date().toISOString(),
+	},);
+	return key;
+}
+
+/**
+ * Mock DSS for guarded project deletion: the CLI pre-delete probes (app
+ * manifest, project details), the incarnation-bound project DELETE (first
+ * attempt optionally failing), and the masked-absence behavior — once a
+ * project DELETE succeeded, later reads of that key answer 403 like live DSS,
+ * so a re-probe can never confirm the deletion.
+ */
+function appInstanceDeleteHandler(
+	requests: string[],
+	options: { readonly firstDeleteStatus?: number; } = {},
+) {
+	const deletedKeys = new Set<string>();
+	let deletes = 0;
+	return (req: IncomingMessage, res: ServerResponse,) => {
+		requests.push(`${req.method} ${req.url}`,);
+		const url = req.url ?? "";
+		if (req.method === "GET" && url.endsWith("/app-manifest",)) {
+			sendJson(res, { id: "template-app", projectAppType: "APP_INSTANCE", version: "1.0.0", },);
+			return;
+		}
+		if (req.method === "GET" && url.startsWith("/public/api/projects/",)) {
+			const key = decodeURIComponent(url.split("/",)[4] ?? "",);
+			if (deletedKeys.has(key,)) {
+				sendJson(res, { errorType: "Forbidden", message: "Project is not visible", }, 403,);
+				return;
+			}
+			sendJson(res, details(key, 1,),);
+			return;
+		}
+		if (req.method === "DELETE" && url.startsWith("/public/api/projects/",)) {
+			deletes += 1;
+			const key = decodeURIComponent(url.split("/",)[4] ?? "",);
+			if (options.firstDeleteStatus !== undefined && deletes === 1) {
+				// The DELETE ran and failed: the target is still alive, so
+				// reads keep proving its identity.
+				sendJson(res, { errorType: "InternalError", message: "boom", }, options.firstDeleteStatus,);
+				return;
+			}
+			deletedKeys.add(key,);
+			sendJson(res, { deleted: true, projectKey: key, },);
+			return;
+		}
+		res.writeHead(500,);
+		res.end();
+	};
+}
+
+describe("live app delete bookkeeping", () => {
+	it("books the guarded app deletion from the CLI receipt without re-probing the deleted project", async () => {
+		const requests: string[] = [];
+		await withCliServer(appInstanceDeleteHandler(requests,), async url => {
+			await fixture(url, async ctx => {
+				const key = withOwnedAppInstance(ctx,);
+				const incarnation = ctx.manifest.projects.find(project => project.key === key)!.incarnation!;
+				await ctx.run([
+					"app",
+					"delete-instance",
+					"--project-key",
+					key,
+					"--expect-project-incarnation",
+					incarnation,
+				],);
+				// The verified receipt alone retires the owned entry and
+				// persists the retirement.
+				expect(ctx.manifest.projects.find(project => project.key === key)?.state,).toBe("deleted",);
+				expect(
+					(await loadLiveManifest(ctx.manifestPath,)).projects.find(project => project.key === key)
+						?.state,
+				).toBe("deleted",);
+				// Exactly one guarded DELETE, and no request of any kind after
+				// it: a later probe would only ever see the masked 403.
+				expect(
+					requests.filter(request => request.startsWith("DELETE",))
+						.map(request => request.split("?",)[0]!),
+				).toEqual([
+					`DELETE /public/api/projects/${key}`,
+				],);
+				const deleteAt = requests.findIndex(request => request.startsWith("DELETE",));
+				expect(requests.slice(deleteAt + 1,),).toEqual([],);
+				// Cleanup after the booked deletion is a no-op, not a re-probe
+				// that would hit the masked 403.
+				await ctx.deleteProject(key,);
+				expect(requests,).toHaveLength(deleteAt + 1,);
+				// The mock stands in for live DSS: once deleted, the project
+				// answers only a masked 403, so a re-probe could never confirm
+				// the deletion it is asked about.
+				expect((await fetch(`${url}/public/api/projects/${key}/`,)).status,).toBe(403,);
+			},);
+		},);
+	});
+	it("keeps ownership after a failed guarded delete and deletes only after an explicit identity check", async () => {
+		const requests: string[] = [];
+		await withCliServer(
+			appInstanceDeleteHandler(requests, { firstDeleteStatus: 500, },),
+			async url => {
+				await fixture(url, async ctx => {
+					const key = withOwnedAppInstance(ctx,);
+					const incarnation = ctx.manifest.projects.find(project => project.key === key)!.incarnation!;
+					await expect(
+						ctx.run([
+							"app",
+							"delete-instance",
+							"--project-key",
+							key,
+							"--expect-project-incarnation",
+							incarnation,
+						],),
+					).rejects.toThrow(LiveCommandError,);
+					// A failed delete is ambiguous, never a retirement: the
+					// receipt stays bound with its recorded incarnation.
+					expect(ctx.manifest.projects.find(project => project.key === key)?.state,).toBe("bound",);
+					expect(ctx.manifest.projects.find(project => project.key === key)?.incarnation,)
+						.toBe(incarnation,);
+					expect(
+						(await loadLiveManifest(ctx.manifestPath,)).projects.find(project => project.key === key)
+							?.state,
+					).toBe("bound",);
+					const firstDeleteAt = requests.findIndex(request => request.startsWith("DELETE",));
+					expect(firstDeleteAt,).toBeGreaterThanOrEqual(0,);
+					expect(requests.slice(firstDeleteAt + 1,),).toEqual([],);
+					// The target is still alive: the explicit delete verifies the
+					// live identity with a GET, then deletes the actual target.
+					await ctx.deleteProject(key,);
+					expect(
+						requests.filter(request => request.startsWith("DELETE",))
+							.map(request => request.split("?",)[0]!),
+					).toEqual([
+						`DELETE /public/api/projects/${key}`,
+						`DELETE /public/api/projects/${key}`,
+					],);
+					const secondDeleteAt = requests.findIndex(
+						(request, index,) => index > firstDeleteAt && request.startsWith("DELETE",),
+					);
+					expect(
+						requests.slice(firstDeleteAt + 1, secondDeleteAt,).filter(request =>
+							request.startsWith(`GET /public/api/projects/${key}`,)
+						),
+					).not.toEqual([],);
+					expect(ctx.manifest.projects.find(project => project.key === key)?.state,).toBe("deleted",);
+				},);
+			},
+		);
+	});
+});
+/**
+ * Mock DSS for generated-key app creation: the precursor app manifest, project
+ * reads (counted per key so a diverging fresh incarnation read can be staged),
+ * and the creation POST (inline success with the CLI's generated key, or 500).
+ */
+function generatedAppHandler(options: {
+	readonly post: "inline" | "error" | "rejected";
+	readonly requests?: string[];
+	readonly divergeAt?: number;
+	readonly precursorType?: string;
+	readonly manifestId?: string;
+	readonly appId?: string;
+	/** Runs while the creation POST is in flight, before any response is sent. */
+	readonly onPost?: () => void | Promise<void>;
+	/** Runs when the precursor project is read, before the response is sent. */
+	readonly onPrecursorRead?: () => void;
+},) {
+	const reads = new Map<string, number>();
+	const appId = options.appId ?? "template-app";
+	return (req: IncomingMessage, res: ServerResponse,) => {
+		options.requests?.push(`${req.method} ${req.url}`,);
+		const url = req.url ?? "";
+		if (req.method === "GET" && url.endsWith("/app-manifest",)) {
+			sendJson(res, {
+				id: options.manifestId ?? appId,
+				projectAppType: options.precursorType ?? "APP_TEMPLATE",
+				version: "1.0.0",
+			},);
+			return;
+		}
+		if (req.method === "GET" && url.startsWith("/public/api/projects/",)) {
+			const key = decodeURIComponent(url.split("/",)[4] ?? "",);
+			if (!key.startsWith("APP_",)) options.onPrecursorRead?.();
+			const count = (reads.get(key,) ?? 0) + 1;
+			reads.set(key, count,);
+			const tag = options.divergeAt !== undefined && count >= options.divergeAt ? 2 : 1;
+			sendJson(res, {
+				...details(key, tag,),
+				projectAppType: key.startsWith("APP_",)
+					? "APP_INSTANCE"
+					: options.precursorType ?? "APP_TEMPLATE",
+			},);
+			return;
+		}
+		if (req.method === "POST" && url.endsWith("/instances",)) {
+			void readBody(req,).then(async body => {
+				// Observe the pre-POST state (the marker must already be on
+				// disk) before this POST is answered.
+				await options.onPost?.();
+				if (options.post === "error") {
+					// The POST ran; its outcome is unknown, so nothing may be adopted.
+					sendJson(res, { errorType: "InternalError", message: "boom", }, 500,);
+					return;
+				}
+				if (options.post === "rejected") {
+					// A definitive 4xx refusal: DSS rejected the request itself.
+					sendJson(res, {
+						errorType: "ValidationError",
+						message: "invalid instance creation request",
+					}, 400,);
+					return;
+				}
+				const target = (JSON.parse(body,) as { targetProjectKey?: string; }).targetProjectKey ?? "";
+				sendJson(res, {
+					jobId: "future-1",
+					hasResult: true,
+					targetProjectKey: target,
+					result: { projectKey: appId, targetProjectKey: target, },
+				},);
+			},);
+			return;
+		}
+		res.writeHead(500,);
+		res.end();
+	};
+}
+
+/** Bind an APP_TEMPLATE precursor receipt owned by this run. */
+async function withAppPrecursor(ctx: LiveRunContext,): Promise<string> {
+	const key = `SDK_LIVE_${ctx.manifest.runId.toUpperCase()}_APPTEMPLATE_0`;
+	ctx.manifest.projects.push({
+		key,
+		state: "bound",
+		incarnation: projectIncarnationHash(key, details(key, 1,),),
+		createdAt: new Date().toISOString(),
+	},);
+	await ctx.save();
+	return key;
+}
+
+/** Ledger entries, treating a never-created ledger file as empty. */
+async function cleanupEntries(ctx: LiveRunContext,) {
+	try {
+		return await readCleanupLedger(join(ctx.dir, "cleanup.jsonl",),);
+	} catch (error) {
+		if ((error as { code?: string; }).code === "ENOENT") return [];
+		throw error;
+	}
+}
+
+const GENERATED_DIRECT = [
+	"app",
+	"create-instance",
+	"template-app",
+	"--data",
+	JSON.stringify({ targetProjectName: "generated", },),
+	"--wait",
+];
+
+describe("live generated app creation", () => {
+	it("denies every generated-shape run that lacks the private one-shot authorization", async () => {
+		await fixture("http://127.0.0.1:1", async ctx => {
+			await expect(ctx.run(GENERATED_DIRECT,),).rejects.toThrow(
+				/private one-shot authorization/,
+			);
+			await expect(
+				ctx.run([
+					"app",
+					"create-successor-instance",
+					"template-app",
+					"--from",
+					ctx.projectKey,
+					"--name",
+					"generated",
+				],),
+			).rejects.toThrow(/private one-shot authorization/,);
+			// The strict explicit-key guard is untouched: a caller-named target
+			// still needs its reserved pending receipt.
+			await expect(
+				ctx.run([
+					"app",
+					"create-instance",
+					"template-app",
+					"--data",
+					JSON.stringify({ targetProjectKey: "NEWPROJ", },),
+				],),
+			).rejects.toThrow(/requires a reserved project target/,);
+			// The private method itself never accepts an explicit target.
+			await expect(
+				ctx.runGeneratedAppCreation([
+					"app",
+					"create-instance",
+					"template-app",
+					"--data",
+					JSON.stringify({ targetProjectKey: "NEWPROJ", },),
+				], ctx.projectKey,),
+			).rejects.toThrow(/refuses an explicit target key/,);
+			await expect(
+				ctx.runGeneratedAppCreation(
+					[...GENERATED_DIRECT, "--record-cleanup", "ledger.jsonl",],
+					ctx.projectKey,
+				),
+			).rejects.toThrow(/refuses caller-supplied --record-cleanup/,);
+			await expect(
+				ctx.runGeneratedAppCreation([
+					"app",
+					"create-successor-instance",
+					"template-app",
+					"--from",
+					"FOREIGN",
+					"--name",
+					"generated",
+				], ctx.projectKey,),
+			).rejects.toThrow(/--from to name the owned precursor instance/,);
+			expect(ctx.manifest.commands,).toEqual([],);
+			expect(ctx.manifest.projects[0]?.pendingDependentCreation,).toBeUndefined();
+		},);
+	});
+	it("binds the one-shot authorization to the exact app id and mode", async () => {
+		await fixture("http://127.0.0.1:1", async ctx => {
+			const grant = { kind: "app-generated", appId: "template-app", mode: "direct", } as const;
+			const successor = [
+				"app",
+				"create-successor-instance",
+				"template-app",
+				"--from",
+				ctx.projectKey,
+				"--name",
+				"generated",
+			];
+			expect(() => assertLiveCommandScope(GENERATED_DIRECT, ctx.manifest, ctx.projectKey, grant,))
+				.not.toThrow();
+			// Without the grant, the same shape is refused.
+			expect(() => assertLiveCommandScope(GENERATED_DIRECT, ctx.manifest, ctx.projectKey,))
+				.toThrow(/private one-shot authorization/,);
+			// The grant cannot ride a different app id...
+			expect(() =>
+				assertLiveCommandScope(
+					["app", "create-instance", "other-app", "--data", JSON.stringify({},),],
+					ctx.manifest,
+					ctx.projectKey,
+					grant,
+				)
+			).toThrow(/private one-shot authorization/,);
+			// ...nor a different creation mode.
+			expect(() => assertLiveCommandScope(successor, ctx.manifest, ctx.projectKey, grant,))
+				.toThrow(/private one-shot authorization/,);
+			// ...and it never retargets an explicit key onto the strict path.
+			expect(() =>
+				assertLiveCommandScope(
+					[
+						"app",
+						"create-instance",
+						"template-app",
+						"--data",
+						JSON.stringify({ targetProjectKey: "NEWPROJ", },),
+					],
+					ctx.manifest,
+					ctx.projectKey,
+					grant,
+				)
+			).toThrow(/requires a reserved project target/,);
+		},);
+	});
+	it("records no identity and keeps the precursor when the outcome is indeterminate", async () => {
+		const requests: string[] = [];
+		let handler: ((req: IncomingMessage, res: ServerResponse,) => void) | undefined;
+		await withCliServer((req, res,) => handler?.(req, res,), async url => {
+			await fixture(url, async ctx => {
+				const templateKey = await withAppPrecursor(ctx,);
+				let markerAtPost: unknown;
+				handler = generatedAppHandler({
+					post: "error",
+					requests,
+					onPost: async () => {
+						markerAtPost = (await loadLiveManifest(ctx.manifestPath,)).projects
+							.find(project => project.key === templateKey)?.pendingDependentCreation;
+					},
+				},);
+				await expect(ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,),)
+					.rejects.toThrow();
+				expect(markerAtPost,).toMatchObject({ appId: "template-app", mode: "direct", },);
+				expect(
+					ctx.manifest.projects.find(project => project.key === templateKey)
+						?.pendingDependentCreation?.outcome,
+				).toBe("indeterminate",);
+				// No future identity was adopted, and cleanup was never authorized.
+				expect(ctx.manifest.projects.filter(project => project.key.startsWith("APP_",)),)
+					.toEqual([],);
+				expect(requests.some(request => request.startsWith("DELETE",)),).toBe(false,);
+				expect(await cleanupEntries(ctx,),).toEqual([],);
+				// The precursor itself stays until the marker is cleared.
+				await expect(ctx.deleteProject(templateKey,),).rejects.toThrow(
+					/Unresolved dependent app creation/,
+				);
+				const manifest = await loadLiveManifest(ctx.manifestPath,);
+				expect(
+					manifest.projects.find(project => project.key === templateKey)
+						?.pendingDependentCreation?.appId,
+				).toBe("template-app",);
+			},);
+		},);
+	});
+	it("binds the verified child and clears the precursor marker only on terminal binding", async () => {
+		const requests: string[] = [];
+		await withCliServer(generatedAppHandler({ post: "inline", requests, },), async url => {
+			await fixture(url, async ctx => {
+				const templateKey = await withAppPrecursor(ctx,);
+				const target = await ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,);
+				expect(target,).toMatch(/^APP_[0-9A-F]{32}$/,);
+				const child = ctx.manifest.projects.find(project => project.key === target);
+				expect(child?.state,).toBe("bound",);
+				const incarnation = child?.incarnation;
+				expect(incarnation,).toBe(projectIncarnationHash(target, details(target, 1,),),);
+				expect(
+					ctx.manifest.projects.find(project => project.key === templateKey)
+						?.pendingDependentCreation,
+				).toBeUndefined();
+				const entries = await cleanupEntries(ctx,);
+				const created = entries.filter(entry =>
+					entry.resource === "project" && entry.projectKey === target
+				);
+				expect(created,).toHaveLength(1,);
+				expect(created[0]?.cleanup.argv,).toEqual([
+					"project",
+					"delete",
+					target,
+					"--drop-data",
+					"--if-exists",
+					"--expect-project-incarnation",
+					incarnation!,
+				],);
+				expect(requests.some(request => request.startsWith("DELETE",)),).toBe(false,);
+				// The one-shot grant is consumed by that single execution.
+				await expect(ctx.run(GENERATED_DIRECT,),).rejects.toThrow(
+					/private one-shot authorization/,
+				);
+				// The bound generated key round-trips through manifest validation.
+				const manifest = await loadLiveManifest(ctx.manifestPath,);
+				expect(manifest.projects.find(project => project.key === target)?.state,).toBe("bound",);
+			},);
+		},);
+	});
+	it("refuses to bind a child whose fresh incarnation does not match the receipt", async () => {
+		const requests: string[] = [];
+		await withCliServer(
+			generatedAppHandler({ post: "inline", divergeAt: 2, requests, },),
+			async url => {
+				await fixture(url, async ctx => {
+					const templateKey = await withAppPrecursor(ctx,);
+					await expect(ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,),)
+						.rejects.toThrow(/does not match the receipt/,);
+					// Nothing was recorded: no child receipt, no cleanup authority.
+					expect(ctx.manifest.projects.filter(project => project.key.startsWith("APP_",)),)
+						.toEqual([],);
+					expect(
+						ctx.manifest.projects.find(project => project.key === templateKey)
+							?.pendingDependentCreation?.outcome,
+					).toBe("indeterminate",);
+					expect(await cleanupEntries(ctx,),).toEqual([],);
+					expect(requests.some(request => request.startsWith("DELETE",)),).toBe(false,);
+				},);
+			},
+		);
+	});
+	it("admits generated keys only with a receipt-derived origin anchoring to this run", async () => {
+		await fixture("http://127.0.0.1:1", async ctx => {
+			const templateKey = await withAppPrecursor(ctx,);
+			const incarnation = "b".repeat(64,);
+			const child = (key: string, extra: Record<string, unknown> = {},) => ({
+				key,
+				state: "bound",
+				incarnation,
+				createdAt: new Date().toISOString(),
+				...extra,
+			});
+			const write = (projects: Array<Record<string, unknown>>,) =>
+				writeLiveJson(ctx.manifestPath, { ...ctx.manifest, projects, },);
+			const anchor = ctx.manifest.projects.map(project => ({ ...project, }));
+			// A foreign APP_ key with a valid shape and incarnation but no
+			// receipt-derived origin is rejected outright.
+			await write([...anchor, child(generated("A",),),],);
+			await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(
+				"Invalid owned-project identity",
+			);
+			// An origin that was never validated in this manifest (foreign or
+			// forward reference) is rejected just the same.
+			await write([
+				...anchor,
+				child(generated("A",), { generatedFrom: generated("B",), },),
+			],);
+			await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(
+				"Invalid owned-project identity",
+			);
+			// A self-reference is not an origin either.
+			const selfKey = generated("C",);
+			await write([...anchor, child(selfKey, { generatedFrom: selfKey, },),],);
+			await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(
+				"Invalid owned-project identity",
+			);
+			// A reserved key must not carry an origin at all.
+			await write([
+				...anchor,
+				child(`SDK_LIVE_${ctx.runId.toUpperCase()}_FOREIGN_0`, { generatedFrom: templateKey, },),
+			],);
+			await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(
+				"Invalid owned-project identity",
+			);
+			// The receipt-derived chain is accepted: template -> generated
+			// instance -> successor instance, each anchored on its precursor.
+			const instance = generated("D",);
+			const successor = generated("E",);
+			await write([
+				...anchor,
+				child(instance, { generatedFrom: templateKey, },),
+				child(successor, { generatedFrom: instance, },),
+			],);
+			const manifest = await loadLiveManifest(ctx.manifestPath,);
+			expect(manifest.projects.find(project => project.key === successor)?.generatedFrom,).toBe(
+				instance,
+			);
+			// A forward reference to a project validated later in the same
+			// array is not an origin either: the anchor must already be
+			// validated when the entry is read.
+			await write([
+				...anchor,
+				child(instance, { generatedFrom: successor, },),
+				child(successor, { generatedFrom: templateKey, },),
+			],);
+			await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(
+				"Invalid owned-project identity",
+			);
+		},);
+	});
+	it("refuses a precursor that is not the template the argv names", async () => {
+		await withCliServer(
+			generatedAppHandler({ post: "inline", precursorType: "APP_INSTANCE", },),
+			async url => {
+				await fixture(url, async ctx => {
+					const templateKey = await withAppPrecursor(ctx,);
+					await expect(ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,),)
+						.rejects.toThrow(/requires an APP_TEMPLATE precursor/,);
+					expect(
+						ctx.manifest.projects.find(project => project.key === templateKey)
+							?.pendingDependentCreation,
+					).toBeUndefined();
+				},);
+			},
+		);
+		await withCliServer(
+			generatedAppHandler({ post: "inline", manifestId: "other-app", },),
+			async url => {
+				await fixture(url, async ctx => {
+					const templateKey = await withAppPrecursor(ctx,);
+					await expect(ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,),)
+						.rejects.toThrow(/does not match the precursor manifest id/,);
+					expect(
+						ctx.manifest.projects.find(project => project.key === templateKey)
+							?.pendingDependentCreation,
+					).toBeUndefined();
+				},);
+			},
+		);
+	});
+	it("clears the precursor marker on a definitive CLI rejection but records nothing", async () => {
+		const requests: string[] = [];
+		let handler: ((req: IncomingMessage, res: ServerResponse,) => void) | undefined;
+		await withCliServer((req, res,) => handler?.(req, res,), async url => {
+			await fixture(url, async ctx => {
+				const templateKey = await withAppPrecursor(ctx,);
+				let markerAtPost: unknown;
+				handler = generatedAppHandler({
+					post: "rejected",
+					requests,
+					onPost: async () => {
+						// Read the persisted manifest while the POST is in
+						// flight: the in-flight marker must already be on disk.
+						markerAtPost = (await loadLiveManifest(ctx.manifestPath,)).projects
+							.find(project => project.key === templateKey)?.pendingDependentCreation;
+					},
+				},);
+				await expect(ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,),)
+					.rejects.toThrow();
+				expect(markerAtPost,).toMatchObject({ appId: "template-app", mode: "direct", },);
+				// DSS refused the request itself: no project exists, so the
+				// precursor is clean again and nothing was adopted.
+				expect(
+					ctx.manifest.projects.find(project => project.key === templateKey)
+						?.pendingDependentCreation,
+				).toBeUndefined();
+				expect(ctx.manifest.projects.filter(project => project.key.startsWith("APP_",)),)
+					.toEqual([],);
+				expect(await cleanupEntries(ctx,),).toEqual([],);
+				expect(requests.some(request => request.startsWith("DELETE",)),).toBe(false,);
+				const manifest = await loadLiveManifest(ctx.manifestPath,);
+				expect(
+					manifest.projects.find(project => project.key === templateKey)
+						?.pendingDependentCreation,
+				).toBeUndefined();
+			},);
+		},);
+	});
+	it("keeps the entry-time command when a caller retargets its argv mid-flight", async () => {
+		const requests: string[] = [];
+		let handler: ((req: IncomingMessage, res: ServerResponse,) => void) | undefined;
+		await withCliServer((req, res,) => handler?.(req, res,), async url => {
+			await fixture(url, async ctx => {
+				const templateKey = await withAppPrecursor(ctx,);
+				const argv: string[] = [...GENERATED_DIRECT,];
+				let retargeted = false;
+				handler = generatedAppHandler({
+					post: "inline",
+					requests,
+					onPrecursorRead: () => {
+						if (retargeted) return;
+						retargeted = true;
+						// Mutate the caller-owned array after the method parsed
+						// it but before the creation runs: a live alias would
+						// now retarget the awarded app id and be refused by the
+						// grant binding, while the entry-time snapshot creates
+						// the originally authorized app.
+						argv[2] = "other-app";
+					},
+				},);
+				const target = await ctx.runGeneratedAppCreation(argv, templateKey,);
+				expect(retargeted,).toBe(true,);
+				expect(target,).toMatch(/^APP_[0-9A-F]{32}$/,);
+				expect(ctx.manifest.projects.find(project => project.key === target)?.state,).toBe("bound",);
+				expect(requests,).toContain("POST /public/api/apps/template-app/instances",);
+				expect(requests.some(request => request.includes("other-app",)),).toBe(false,);
+			},);
 		},);
 	});
 });

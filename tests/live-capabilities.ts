@@ -11,13 +11,6 @@ import {
 import { withOwnedCodeEnv, withOwnedSqlConnection, } from "./live-infrastructure-disposable.js";
 
 /**
- * Read-only prerequisite for the Application scenario. The template id must be
- * provided explicitly: this module never guesses a template from `dss app
- * list` and never writes to an external template's manifest or version.
- */
-const APP_TEMPLATE_ID_ENV = "DATAIKU_LIVE_APP_TEMPLATE_ID";
-
-/**
  * Optional explicit SQL targets for the infrastructure SQL case (matches the
  * legacy integration harness gate in tests/integration-harness.ts). The
  * dataset variant is accepted as an alternative. When neither is set, the case
@@ -2099,100 +2092,6 @@ async function exerciseMlflowEvaluate(ctx: LiveContext, codeEnvName: string,): P
 	if (failures.length === 1) throw failures[0];
 	if (failures.length) throw new AggregateError(failures, "Live case or cleanup failed",);
 }
-/**
- * Resolve the read-only app-template prerequisite. Only an explicit
- * DATAIKU_LIVE_APP_TEMPLATE_ID is accepted: guessing a template from
- * `dss app list` would exercise an unrelated tenant artifact, and no supported
- * CLI path exists to create an owned template.
- */
-function appTemplateId(): string {
-	const appId = process.env[APP_TEMPLATE_ID_ENV]?.trim();
-	if (!appId) {
-		capabilityBlocked(
-			`No Dataiku App template prerequisite: set ${APP_TEMPLATE_ID_ENV} to an app template this key can read. The applications profile does not guess templates from app list and never writes to external template manifests.`,
-		);
-	}
-	return appId;
-}
-
-/** Read-only manifest + instance surface of the prerequisite template. */
-async function readTemplateSurface(ctx: LiveContext, appId: string,): Promise<void> {
-	const manifest = await ctx.run<JsonRecord>(["app", "manifest", appId,],);
-	if (asRecord(manifest,) === undefined) throw new Error("app manifest returned no object.",);
-	const instances = await ctx.run<unknown[]>(["app", "instances", appId,],);
-	if (!Array.isArray(instances,)) throw new Error("app instances returned no array.",);
-}
-
-/**
- * Full instance lifecycle against the prerequisite template: reserve a pending
- * project key owned by this run, create the instance with --wait, bind the
- * project (records its incarnation), verify the instance through the API
- * readiness surface, compare the instance manifest against the template, and
- * delete the instance project in finally via ctx.deleteProject
- * (incarnation-gated). The template itself is never modified, and a generic
- * CREATE_FAILED stays a failure — it is never converted into a blocked result
- * without exact license/capability evidence.
- */
-async function exerciseAppInstanceLifecycle(ctx: LiveContext, appId: string,): Promise<void> {
-	const reservedKey = await ctx.reserveProject("appinst",);
-	const label = `Live capability instance ${ctx.iteration}`;
-	let created = false;
-	try {
-		const creation = await ctx.run<JsonRecord>([
-			"app",
-			"create-instance",
-			appId,
-			"--data",
-			JSON.stringify({ targetProjectKey: reservedKey, targetProjectName: label, },),
-			"--wait",
-			"--timeout",
-			"180000",
-			"--poll-interval",
-			"3000",
-		],);
-		if (creation["success"] !== true) {
-			// CREATE_FAILED / INDETERMINATE / VERIFICATION_FAILED are genuine
-			// defects or ambiguous outcomes: reported as failures, never masked.
-			const state = asString(creation["state"],) ?? "UNKNOWN";
-			throw new Error(
-				`App instance creation did not complete (state=${state}): ${
-					JSON.stringify(creation,).slice(0, 300,)
-				}`,
-			);
-		}
-		const echoed = asString(creation["projectKey"],);
-		if (echoed !== undefined && echoed !== reservedKey) {
-			throw new Error(`App instance creation named a different target project: ${echoed}.`,);
-		}
-		created = true;
-		await ctx.bindProject(reservedKey,);
-
-		const verification = await ctx.run<JsonRecord>([
-			"app",
-			"verify-instance",
-			appId,
-			"--project-key",
-			reservedKey,
-		],);
-		if (verification["valid"] !== true || verification["apiReady"] !== true) {
-			throw new Error(
-				`App instance verification failed: ${JSON.stringify(verification,).slice(0, 300,)}`,
-			);
-		}
-		const comparison = await ctx.run<JsonRecord>([
-			"app",
-			"compare-manifest",
-			appId,
-			"--project-key",
-			reservedKey,
-		],);
-		if (asRecord(comparison,) === undefined) {
-			throw new Error("app compare-manifest returned no object.",);
-		}
-	} finally {
-		if (created) await ctx.deleteProject(reservedKey,);
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Infrastructure scenario: read-only SQL constant assertion
@@ -2258,8 +2157,9 @@ async function exerciseInfrastructureSql(ctx: LiveContext,): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Exercise the optional ML, application, and infrastructure capability
- * modules.
+ * Exercise the optional ML and infrastructure capability modules. The
+ * application-profile cases live in the applications module (live-applications)
+ * so their case ids keep one owning module.
  *
  * Phase contract (parent LiveContext): this module creates no persistent
  * fixtures in either phase — setup is a no-op for capability cases and every
@@ -2267,12 +2167,11 @@ async function exerciseInfrastructureSql(ctx: LiveContext,): Promise<void> {
  * finally, so repeated selected runs stay idempotent. ctx.selection filtering
  * is applied automatically by ctx.check.
  *
- * Profiles: ML cases require the "ml" profile, application cases the
- * "applications" profile, the SQL assertion the "infrastructure" profile
- * (explicit target or an owned disposable SQLite connection). Missing
- * prerequisites produce explicit blocked/unsupported CaseResults via
- * LiveCapabilityError — never mock passes; genuine command defects stay
- * failures.
+ * Profiles: ML cases require the "ml" profile, the SQL assertion the
+ * "infrastructure" profile (explicit target or an owned disposable SQLite
+ * connection). Missing prerequisites produce explicit blocked/unsupported
+ * CaseResults via LiveCapabilityError — never mock passes; genuine command
+ * defects stay failures.
  */
 export async function exerciseCapabilities(ctx: LiveContext,): Promise<void> {
 	if (ctx.profiles.includes("ml",)) {
@@ -2321,33 +2220,6 @@ export async function exerciseCapabilities(ctx: LiveContext,): Promise<void> {
 			{ capability: "ml.visual-ml-clustering", required: false, },
 		);
 		await exerciseExpandedMl(ctx,);
-	}
-
-	if (ctx.profiles.includes("applications",)) {
-		await ctx.check(
-			"applications.template-prerequisite",
-			["app.manifest", "app.instances",],
-			async () => {
-				await readTemplateSurface(ctx, appTemplateId(),);
-			},
-			{ capability: "applications.template-read", required: false, },
-		);
-		await ctx.check(
-			"applications.instance-lifecycle",
-			[
-				"project.create",
-				"app.create-instance",
-				"app.verify-instance",
-				"app.compare-manifest",
-				"project.delete",
-			],
-			async () => {
-				const appId = appTemplateId();
-				await readTemplateSurface(ctx, appId,);
-				await exerciseAppInstanceLifecycle(ctx, appId,);
-			},
-			{ capability: "applications.instance-lifecycle", },
-		);
 	}
 
 	if (ctx.profiles.includes("infrastructure",)) {

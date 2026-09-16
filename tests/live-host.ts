@@ -78,6 +78,8 @@ export interface HostDaemon {
 	startTime: string;
 	port: number;
 	repositories: string[];
+	/** Present only for SSE daemons; absent is the canonical Git daemon. */
+	service?: "sse";
 }
 export interface OwnedHostDirectory extends HostDirectory {
 	runId: string;
@@ -89,8 +91,22 @@ export function hostDirectoryScript(
 	directory: OwnedHostDirectory,
 	operation: "create" | "delete" | "start" | "stop" | "verify",
 	repositories: readonly string[] = [],
+	service?: "sse",
 ): string {
-	const config = { ...directory, operation, repositories, serverSource: GIT_HTTP_PYTHON, };
+	if (service === "sse") {
+		if (repositories.length) throw new Error("SSE host daemon takes no repositories",);
+	} else if (service) {
+		throw new Error(`Unsupported host daemon service: ${service}`,);
+	} else if (operation === "start" && !repositories.length) {
+		throw new Error("Git host daemon requires repositories",);
+	}
+	const config = {
+		...directory,
+		operation,
+		repositories,
+		serverSource: service === "sse" ? SSE_HOST_PYTHON : GIT_HTTP_PYTHON,
+		service,
+	};
 	return `import json\nconfig = json.loads(${
 		JSON.stringify(JSON.stringify(config,),)
 	})\n${HOST_PYTHON}`;
@@ -103,9 +119,17 @@ nonce = config['nonce']
 assert isinstance(nonce, str) and len(nonce) == 32 and all(c in "0123456789abcdef" for c in nonce)
 assert isinstance(config["runId"], str) and len(config["runId"]) == 16 and all(c in "0123456789abcdef" for c in config["runId"])
 assert p == '/tmp/sdk_live_' + config['runId'] + '_' + nonce
+service = config.get('service')
+assert service in (None, 'sse'), 'Unknown daemon service'
 assert os.path.realpath('/tmp') == '/tmp'
 owner = p + '/.owner'
 receipt = p + '/.daemon.json'
+def remove_empty_private_directory(_operation, path, error):
+    if not isinstance(error[1], PermissionError): raise error[1]
+    # DSS may leave empty directories owned by its service user with mode 0700.
+    # Removing an empty child needs parent write access, not child read access.
+    try: os.rmdir(path)
+    except OSError: raise error[1]
 def regular_json(file):
     fd = os.open(file, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(fd) as f:
@@ -123,8 +147,12 @@ def proc(pid):
         return fields[19], fields[0], int(fields[2]), command
     except (FileNotFoundError, ProcessLookupError):
         return None
-def command_for(port, repos):
+def command_for(port, repos, svc):
+    assert svc in (None, 'sse'), 'Unknown daemon service'
     assert isinstance(port, int) and 1024 <= port <= 65535
+    if svc == 'sse':
+        assert repos == [], 'SSE daemon serves no repositories'
+        return [sys.executable, p + '/sse-host.py', str(port), p]
     assert repos and len(set(repos)) == len(repos)
     for repo in repos:
         assert isinstance(repo, str) and pathlib.PurePosixPath(repo).parent == pathlib.PurePosixPath(p)
@@ -148,9 +176,10 @@ def stop():
     assert d['nonce'] == nonce
     pid = d['pid']
     assert isinstance(pid, int) and pid > 1
-    expected = command_for(d['port'], d['repositories'])
+    expected = command_for(d['port'], d['repositories'], d.get('service'))
     if config.get('daemon'):
         assert all(config['daemon'][k] == d[k] for k in ('pid', 'startTime', 'port', 'repositories')), 'Daemon receipt changed'
+        assert config['daemon'].get('service') == d.get('service'), 'Daemon service changed'
     info = proc(pid)
     if info:
         assert info[0] == d['startTime'] and info[2] == pid, 'Daemon process identity changed'
@@ -183,20 +212,24 @@ else:
         if op == 'start':
             assert not os.path.lexists(receipt), 'Daemon already recorded'
             repos = config['repositories']
-            for repo in repos:
-                command_for(12345, [repo])
-                assert subprocess.check_output(['git', '--git-dir=' + repo, 'rev-parse', '--is-bare-repository'], text=True).strip() == 'true'
-                subprocess.run(['git', '--git-dir=' + repo, 'config', 'http.receivepack', 'true'], check=True)
-            with open(p + '/git-http.py', 'x') as server: server.write(config['serverSource'])
+            with open(p + ('/sse-host.py' if service == 'sse' else '/git-http.py'), 'x') as server: server.write(config['serverSource'])
+            if service == 'sse':
+                assert repos == [], 'SSE daemon takes no repositories'
+            else:
+                assert repos, 'Git daemon requires repositories'
+                for repo in repos:
+                    command_for(12345, [repo], service)
+                    assert subprocess.check_output(['git', '--git-dir=' + repo, 'rev-parse', '--is-bare-repository'], text=True).strip() == 'true'
+                    subprocess.run(['git', '--git-dir=' + repo, 'config', 'http.receivepack', 'true'], check=True)
             with socket.socket() as s:
                 s.bind(('127.0.0.1', 0))
                 port = s.getsockname()[1]
-            command = command_for(port, repos)
-            bootstrap = "import json,os,sys; c=json.loads(sys.argv[1]); pid=os.getpid(); start=open('/proc/self/stat').read().rsplit(')',1)[1].split()[19]; d=dict(pid=pid,startTime=start,port=c['port'],repositories=c['repositories'],nonce=c['nonce']); f=os.fdopen(os.open(c['receipt'],os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),'w'); json.dump(d,f); f.flush(); os.fsync(f.fileno()); f.close(); os.execv(c['command'][0],c['command'])"
-            child = subprocess.Popen([sys.executable, '-c', bootstrap, json.dumps(dict(command=command,port=port,repositories=repos,nonce=nonce,receipt=receipt))], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            command = command_for(port, repos, service)
+            bootstrap = "import json,os,sys; c=json.loads(sys.argv[1]); pid=os.getpid(); start=open('/proc/self/stat').read().rsplit(')',1)[1].split()[19]; d=dict(pid=pid,startTime=start,port=c['port'],repositories=c['repositories'],nonce=c['nonce'],**({'service':c['service']} if c.get('service') else {})); f=os.fdopen(os.open(c['receipt'],os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),'w'); json.dump(d,f); f.flush(); os.fsync(f.fileno()); f.close(); os.execv(c['command'][0],c['command'])"
+            child = subprocess.Popen([sys.executable, '-c', bootstrap, json.dumps(dict(command=command,port=port,repositories=repos,nonce=nonce,receipt=receipt,service=service))], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             until = time.monotonic() + 10
             while True:
-                if child.poll() is not None: raise RuntimeError('Git daemon failed to start')
+                if child.poll() is not None: raise RuntimeError('Daemon failed to start')
                 try:
                     d = regular_json(receipt)
                     info = proc(d['pid'])
@@ -204,18 +237,27 @@ else:
                         with socket.create_connection(('127.0.0.1', port), timeout=0.2): pass
                         break
                 except (FileNotFoundError, ConnectionError, TimeoutError, json.JSONDecodeError): pass
-                assert time.monotonic() < until, 'Git daemon startup timed out'
+                assert time.monotonic() < until, 'Daemon startup timed out'
                 time.sleep(0.05)
             print('HOST_RESULT=' + json.dumps(d))
         elif op == 'verify':
             d = regular_json(receipt)
-            assert config.get('daemon') and all(config['daemon'][k] == d[k] for k in ('pid','startTime','port','repositories'))
+            assert config.get('daemon') and all(config['daemon'][k] == d[k] for k in ('pid','startTime','port','repositories')) and config['daemon'].get('service') == d.get('service')
             info = proc(d['pid'])
-            assert info and info[0] == d['startTime'] and info[1] != 'Z' and info[2] == d['pid'] and info[3] == command_for(d['port'], d['repositories']), 'Daemon identity changed'
+            assert info and info[0] == d['startTime'] and info[1] != 'Z' and info[2] == d['pid'] and info[3] == command_for(d['port'], d['repositories'], d.get('service')), 'Daemon identity changed'
         elif op in ('stop', 'delete'):
             stop()
             if op == 'delete':
-                shutil.rmtree(p)
+                # Keep recovery receipts until every ordinary child has been removed.
+                for entry in os.scandir(p):
+                    if entry.path in (owner, receipt): continue
+                    if entry.is_dir(follow_symlinks=False):
+                        shutil.rmtree(entry.path, onerror=remove_empty_private_directory)
+                    else: os.unlink(entry.path)
+                verify()
+                if os.path.lexists(receipt): os.unlink(receipt)
+                os.unlink(owner)
+                os.rmdir(p)
                 assert not os.path.lexists(p)
         else: raise ValueError('Unknown host operation')
 print('HOST_OK')
@@ -268,5 +310,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(output)))
         self.end_headers()
         self.wfile.write(output)
+http.server.ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()
+`;
+
+const SSE_HOST_PYTHON = String.raw`import http.server, json, os, sys, time
+port, root = int(sys.argv[1]), sys.argv[2]
+assert os.path.realpath(root) == root and os.path.isdir(root)
+events = ((1, 'one'), (2, 'two'), (3, 'three'), (4, 'four'), (5, 'five'))
+class Handler(http.server.BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
+    def log_message(self, *args): pass
+    def do_GET(self):
+        if self.path.split('?', 1)[0] != '/events':
+            self.send_error(404); return
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream')
+        self.send_header('Cache-Control', 'no-cache')
+        self.end_headers()
+        try:
+            for number, value in events:
+                self.wfile.write(('data: ' + json.dumps({'n': number, 'value': value}) + '\n\n').encode())
+                self.wfile.flush()
+                time.sleep(0.2)
+            while True:
+                self.wfile.write(b': heartbeat\n\n')
+                self.wfile.flush()
+                time.sleep(0.5)
+        except (ConnectionError, OSError): pass
 http.server.ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()
 `;
