@@ -164,10 +164,11 @@ function firstHtmlTextLine(body: string,): string | undefined {
 			.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ",)
 			.replace(/<[^>]+>/g, "\n",),
 	);
-	return text
-		.split(/\r?\n/g,)
-		.map((line,) => line.trim())
-		.find((line,) => line.length > 0);
+	for (const match of text.matchAll(/[^\n]+/g,)) {
+		const line = match[0].trim();
+		if (line.length > 0) return line;
+	}
+	return undefined;
 }
 
 function conciseErrorSummary(text: string,): string {

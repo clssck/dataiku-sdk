@@ -389,6 +389,19 @@ describe("DataikuError", () => {
 		expect(err.message,).not.toContain("/opt/dataiku",);
 	});
 
+	it("keeps the first visible HTML line including embedded carriage returns", () => {
+		const error = new DataikuError(
+			404,
+			"Not Found",
+			"<script>hidden-script</script><style>hidden-style</style><p>  </p>"
+				+ "<p>first\rcontinued &amp; decoded</p><p>later-line</p>",
+		);
+		expect(error.message,).toContain("first\rcontinued & decoded",);
+		expect(error.message,).not.toContain("hidden-script",);
+		expect(error.message,).not.toContain("hidden-style",);
+		expect(error.message,).not.toContain("later-line",);
+	});
+
 	it("truncates long body with ellipsis", () => {
 		const longBody = "x".repeat(300,);
 		const err = new DataikuError(500, "Error", longBody,);
