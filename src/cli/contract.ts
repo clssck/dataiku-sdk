@@ -2172,6 +2172,26 @@ function requiredPlanFlag(
 	throw new UsageError(`--${name} is required. Usage: ${usage}`,);
 }
 
+/**
+ * Optional caller-chosen identifier. Absent selects the command's generated
+ * mode; a present-but-empty value is an input error, never a silent omission.
+ */
+function optionalPlanFlag(
+	flags: Record<string, string | boolean>,
+	name: string,
+	usage: string,
+): string | undefined {
+	const value = flags[name];
+	if (value === undefined) return undefined;
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new UsageError(
+			`--${name} must not be empty when supplied; omit --${name} entirely to generate the successor key during apply. Usage: ${usage}`,
+			"validation_failed",
+		);
+	}
+	return value.trim();
+}
+
 function optionalJsonFlag(
 	flags: Record<string, string | boolean>,
 	name: string,
@@ -3966,6 +3986,44 @@ export function commandPlanShape(
 		}
 		case "app.create-instance": {
 			const payload = requiredPlanJsonInput(flags, entry.usage,);
+			if (payload["targetProjectKey"] === undefined) {
+				// Generated-at-apply mode: --plan never allocates or reserves a
+				// random key. The payload stays exactly as supplied, the runtime
+				// generates the key (and defaults the display name to it) during
+				// apply, and no absence probe runs for a generated key, so the
+				// plan carries no preflight requests and no fake concrete GET
+				// path: `{targetProjectKey}` resolves at apply time.
+				return {
+					method: "POST",
+					endpoint: `/public/api/apps/${encodeURIComponent(id,)}/instances`,
+					identifiers: {
+						appId: id,
+						targetProjectKeyGeneratedDuringApply: true,
+						...(payload["targetProjectName"] === undefined
+							? { targetProjectNameGeneratedDuringApply: true, }
+							: {}),
+						preflightExecuted: false,
+						preflightWillRunDuringApply: false,
+						preflightRequests: [],
+						incarnationControl: "client-side-non-atomic-future-target-and-creation-tag-join",
+						incarnationObservationRequests: [
+							{
+								method: "GET",
+								endpointTemplate: "/public/api/projects/{targetProjectKey}/",
+								when: flags["wait"] === true
+									? "after-terminal-future-target"
+									: "conditional-inline-hasResult-target",
+								intent:
+									"After DSS reports inline or terminal creation success for the generated key, observe creationTag for later cleanup binding.",
+							},
+						],
+						note:
+							"Generated-at-apply: a random APP_ targetProjectKey is generated client-side during apply (never at plan time); targetProjectName defaults to it when omitted. No absent-project preflight runs for a generated key.",
+					},
+					payload,
+					wait: flags["wait"] === true,
+				};
+			}
 			const rawTargetProjectKey = stringField(payload, ["targetProjectKey",],);
 			if (!rawTargetProjectKey || rawTargetProjectKey.trim() === "") {
 				throw new UsageError(
@@ -4077,8 +4135,8 @@ export function commandPlanShape(
 		}
 		case "app.create-successor-instance": {
 			const sourceProjectKey = requiredPlanFlag(flags, "from", entry.usage,);
-			const targetProjectKey = requiredPlanFlag(flags, "to", entry.usage,);
-			if (sourceProjectKey === targetProjectKey) {
+			const targetProjectKey = optionalPlanFlag(flags, "to", entry.usage,);
+			if (targetProjectKey !== undefined && sourceProjectKey === targetProjectKey) {
 				throw new UsageError(
 					"--from and --to must be different project keys.",
 					"validation_failed",
@@ -4088,6 +4146,109 @@ export function commandPlanShape(
 			const targetProjectName = flags["name"] as string | undefined;
 			const copyPermissions = parseBooleanOption(flags["copy-permissions"], "--copy-permissions",)
 				?? false;
+			if (targetProjectKey === undefined) {
+				// Generated-at-apply mode: --plan never allocates a key and no
+				// target exists yet, so the plan makes no target-absence claim
+				// and advertises no target probe. The key is generated once
+				// during apply, immediately before the single instance POST;
+				// `{targetProjectKey}` resolves only after the terminal future
+				// names it. Source and template gates still run before the POST.
+				return {
+					method: "POST",
+					endpoint: `/public/api/apps/${encodeURIComponent(id,)}/instances`,
+					identifiers: {
+						appId: id,
+						sourceProjectKey,
+						targetProjectKeyGeneratedDuringApply: true,
+						targetPreflight: "not-applicable-generated-key",
+						preflightExecuted: false,
+						preflightWillRunDuringApply: true,
+						...(targetProjectName !== undefined
+							? { targetProjectName, }
+							: { targetProjectNameGeneratedDuringApply: true, }),
+						copyPermissions,
+						incarnationControl: "client-side-non-atomic-future-target-and-creation-tag-join",
+						incarnationObservationRequests: [
+							{
+								method: "GET",
+								endpointTemplate: "/public/api/projects/{targetProjectKey}/",
+								when: "after-terminal-future-target",
+								intent:
+									"After the terminal future names the generated successor key, observe creationTag and bind later target checks and cleanup to that hash.",
+							},
+						],
+						preflightRequests: [
+							{
+								method: "GET",
+								endpoint: `/public/api/apps/${encodeURIComponent(id,)}/instances/`,
+								when: "before-create",
+								intent: "Verify the --from project is a registered instance of the app.",
+							},
+							{
+								method: "GET",
+								endpoint: `/public/api/projects/${encodeURIComponent(sourceProjectKey,)}/app-manifest`,
+								when: "before-create",
+								intent: "Verify the --from project is an APP_INSTANCE project.",
+							},
+						],
+						...(copyPermissions
+							? {
+								permissionConcurrencyControl: "client-side-non-atomic-stale-identity-and-hash-checks",
+								permissionRequests: [
+									{
+										method: "GET",
+										endpoint: `/public/api/projects/${encodeURIComponent(sourceProjectKey,)}/permissions`,
+										intent: "Snapshot the predecessor instance ACL before creation.",
+									},
+									{
+										method: "GET",
+										endpointTemplate: "/public/api/projects/{targetProjectKey}/permissions",
+										intent: "Read the generated successor ACL to decide whether the copy is a no-op.",
+									},
+									{
+										method: "GET",
+										endpointTemplate: "/public/api/projects/{targetProjectKey}/",
+										intent:
+											"Recheck generated successor creationTag after reading its ACL; stop if the project key was reused.",
+									},
+									{
+										method: "GET",
+										endpoint: `/public/api/projects/${encodeURIComponent(sourceProjectKey,)}/permissions`,
+										intent:
+											"Recheck the predecessor ACL immediately before the write and stop if its hash drifted.",
+									},
+									{
+										method: "GET",
+										endpointTemplate: "/public/api/projects/{targetProjectKey}/",
+										intent:
+											"Recheck generated successor creationTag immediately before the unconditional permission PUT.",
+									},
+									{
+										method: "PUT",
+										endpointTemplate: "/public/api/projects/{targetProjectKey}/permissions",
+										intent: "Apply the predecessor ACL snapshot to the generated successor instance.",
+									},
+									{
+										method: "GET",
+										endpointTemplate: "/public/api/projects/{targetProjectKey}/permissions",
+										intent: "Verify the generated successor ACL hash equals the predecessor snapshot hash.",
+									},
+									{
+										method: "GET",
+										endpointTemplate: "/public/api/projects/{targetProjectKey}/",
+										intent:
+											"Detect generated successor project-key reuse across the permission write and verification read.",
+									},
+								],
+							}
+							: {}),
+						note:
+							"Generated-at-apply: the successor key is generated once during apply (never at plan time) and no absent-project preflight runs for a generated key, so the plan claims no target absence. Source and template gates run before the single instance POST, then the terminal future's own result names the successor key. The predecessor is never modified or deleted; cleanup targets the generated successor key only.",
+					},
+					payload: targetProjectName !== undefined ? { targetProjectName, } : {},
+					wait: true,
+				};
+			}
 			return {
 				method: "POST",
 				endpoint: `/public/api/apps/${encodeURIComponent(id,)}/instances`,

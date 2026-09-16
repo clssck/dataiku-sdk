@@ -24,6 +24,7 @@ import {
 import {
 	createSuccessorInstance,
 	futureTargetIdentity,
+	generatedInstanceKey,
 	isDefinitiveRejection,
 	preflightSuccessorInstance,
 	requireAbsentProjectTarget,
@@ -41,9 +42,9 @@ const MANIFEST_VERSION_USAGE = "dss app manifest-version [--project-key KEY]";
 const SET_MANIFEST_VERSION_USAGE =
 	"dss app set-manifest-version (--manifest-version V|--version-notes NOTES) [--expect-hash SHA256] [--dry-run] [--project-key KEY]";
 const CREATE_SUCCESSOR_USAGE =
-	"dss app create-successor-instance <appId> --from KEY --to KEY [--name NAME] [--copy-permissions] [--timeout MS] [--poll-interval MS] [--dry-run] [--record-cleanup PATH]";
+	"dss app create-successor-instance <appId> --from KEY [--to KEY] [--name NAME] [--copy-permissions] [--timeout MS] [--poll-interval MS] [--dry-run] [--record-cleanup PATH]";
 const SUCCESSOR_PREFLIGHT_USAGE =
-	"dss app successor-preflight <appId> --from KEY --to KEY [--name NAME] [--copy-permissions]";
+	"dss app successor-preflight <appId> --from KEY [--to KEY] [--name NAME] [--copy-permissions]";
 const VERIFY_INSTANCE_USAGE =
 	"dss app verify-instance <appId> --project-key KEY [--expect-version V]";
 const DELETE_INSTANCE_USAGE =
@@ -51,7 +52,7 @@ const DELETE_INSTANCE_USAGE =
 const CREATE_INSTANCE_INDETERMINATE_REMEDIATION =
 	"DSS may have accepted the creation, but no future ID or project incarnation authorizes cleanup. Inspect `dss app instances <appId>` and DSS task history; delete only after creation is known terminal and the target identity is verified.";
 const CREATE_INSTANCE_REJECTED_REMEDIATION =
-	"DSS refused the creation request, so no instance project was created: fix the reported problem and retry.";
+	"DSS refused the creation request, so no instance project was created: fix the reported problem and retry. If the target key itself is the problem, rerun create-instance with targetProjectKey omitted to generate a fresh random key (the generated key is a new key, never the rejected one).";
 const DELETE_INSTANCE_FUTURE_REMEDIATION =
 	"The supplied creation future could not authorize deletion. Inspect that future and the target project, then retry only with a future whose terminal result reports this project.";
 const DELETE_INSTANCE_UNCONFIRMED_REMEDIATION =
@@ -114,6 +115,28 @@ async function assertProjectIncarnationHash(
 		"Refusing to continue after project-key reuse. Re-read the current project and retry only with an artifact captured from that incarnation.",
 		{ projectKey, expectedProjectIncarnationHash: expected, currentProjectIncarnationHash: current, },
 	);
+}
+
+/**
+ * Optional caller-chosen successor key. Absent selects generated-key mode: the
+ * key is generated exactly once during apply (never during plan, preflight or
+ * dry-run) and no absence probe runs. A present-but-empty value is an input
+ * error, never a silent fallback to a generated key.
+ */
+function optionalSuccessorTarget(
+	flags: Record<string, string | boolean>,
+	usage: string,
+): string | undefined {
+	const value = flags["to"];
+	if (value === undefined) return undefined;
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new UsageError(
+			"--to must not be empty when supplied; omit --to entirely to create the successor with a generated key.",
+			"validation_failed",
+			`Usage: ${usage}`,
+		);
+	}
+	return value.trim();
 }
 
 export const appCommands: Record<string, CommandMeta> = {
@@ -192,18 +215,39 @@ export const appCommands: Record<string, CommandMeta> = {
 				f,
 				"--data, --data-file, or --stdin is required (instance creation payload).",
 			);
-			const requestedProjectKey = stringField(body, ["targetProjectKey",],)?.trim();
-			if (!requestedProjectKey) {
-				throw new UsageError(
-					"Instance creation payload must include a non-empty targetProjectKey.",
-					"validation_failed",
-					`Usage: ${CREATE_INSTANCE_USAGE}`,
-				);
+			let requestedProjectKey: string;
+			if (body["targetProjectKey"] === undefined) {
+				// Designer-friendly generated mode, mirroring the official Python
+				// client and the successor command's generated mode: one shared
+				// generator produces a random APP_ key (122 random bits of
+				// UUIDv4 hex, collisions negligible) that is POSTed as the
+				// authoritative targetProjectKey. No absent-project probe runs
+				// for a generated key, and errors never retry or fall back to
+				// an alternate key.
+				requestedProjectKey = generatedInstanceKey();
+				// Official key-as-name convenience: the display name defaults to
+				// the generated key when no targetProjectName is supplied.
+				if (body["targetProjectName"] === undefined) {
+					body.targetProjectName = requestedProjectKey;
+				}
+			} else {
+				// Explicit keys keep the strict caller-chosen-key contract: the
+				// payload value must be a non-empty string, and the target must
+				// be proven absent before the POST.
+				const explicitKey = stringField(body, ["targetProjectKey",],)?.trim();
+				if (!explicitKey) {
+					throw new UsageError(
+						"Instance creation payload must include a non-empty targetProjectKey.",
+						"validation_failed",
+						`Usage: ${CREATE_INSTANCE_USAGE}`,
+					);
+				}
+				requestedProjectKey = explicitKey;
+				await requireAbsentProjectTarget(c, requestedProjectKey, "targetProjectKey", {
+					appId: a[0],
+				},);
 			}
 			body.targetProjectKey = requestedProjectKey;
-			await requireAbsentProjectTarget(c, requestedProjectKey, "targetProjectKey", {
-				appId: a[0],
-			},);
 			let created: unknown;
 			try {
 				created = await c.applications.createInstance(a[0], body,);
@@ -433,19 +477,21 @@ export const appCommands: Record<string, CommandMeta> = {
 		},
 		usage: CREATE_INSTANCE_USAGE,
 		description:
-			"Create an app instance from a Dataiku App template, optionally waiting for the instance-creation future returned by DSS.",
+			"Create an app instance from a Dataiku App template, optionally waiting for the creation future. Omit targetProjectKey to generate a random APP_ key (the default display name); explicit keys are trimmed and must be absent.",
 		examples: [
 			'dss app create-instance my-app --data \'{"targetProjectKey":"NEWPROJ"}\'',
 			'dss app create-instance my-app --data \'{"targetProjectKey":"NEWPROJ"}\' --wait --timeout 120000 --poll-interval 2000',
+			"dss app create-instance my-app --data '{}' --wait",
 		],
 	},
 	"successor-preflight": {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, SUCCESSOR_PREFLIGHT_USAGE,);
+			const to = optionalSuccessorTarget(f, SUCCESSOR_PREFLIGHT_USAGE,);
 			return preflightSuccessorInstance(c, {
 				appId: a[0],
 				from: requiredStringFlag(f, "from", SUCCESSOR_PREFLIGHT_USAGE,),
-				to: requiredStringFlag(f, "to", SUCCESSOR_PREFLIGHT_USAGE,),
+				...(to !== undefined ? { to, } : {}),
 				...(f["name"] !== undefined ? { name: f["name"] as string, } : {}),
 				copyPermissions: parseBooleanOption(f["copy-permissions"], "--copy-permissions",) ?? false,
 				dryRun: true,
@@ -453,19 +499,21 @@ export const appCommands: Record<string, CommandMeta> = {
 		},
 		usage: SUCCESSOR_PREFLIGHT_USAGE,
 		description:
-			"Run every read-only successor gate before changing the template version: validate the template, verify the predecessor, prove target absence, and optionally snapshot the predecessor ACL.",
+			"Run every read-only successor gate before changing the template version: validate the template, verify the predecessor, prove an explicit --to target absent, and optionally snapshot the predecessor ACL. Omit --to to preflight generated-key mode, where no target exists yet and nothing is probed or allocated.",
 		examples: [
 			"dss app successor-preflight my-app --from OLD_INSTANCE --to NEW_INSTANCE",
 			"dss app successor-preflight my-app --from OLD_INSTANCE --to NEW_INSTANCE --copy-permissions",
+			"dss app successor-preflight my-app --from OLD_INSTANCE",
 		],
 	},
 	"create-successor-instance": {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, CREATE_SUCCESSOR_USAGE,);
+			const to = optionalSuccessorTarget(f, CREATE_SUCCESSOR_USAGE,);
 			return createSuccessorInstance(c, {
 				appId: a[0],
 				from: requiredStringFlag(f, "from", CREATE_SUCCESSOR_USAGE,),
-				to: requiredStringFlag(f, "to", CREATE_SUCCESSOR_USAGE,),
+				...(to !== undefined ? { to, } : {}),
 				...(f["name"] !== undefined ? { name: f["name"] as string, } : {}),
 				copyPermissions: parseBooleanOption(f["copy-permissions"], "--copy-permissions",) ?? false,
 				dryRun: executionMode(f,).dryRun,
@@ -475,10 +523,11 @@ export const appCommands: Record<string, CommandMeta> = {
 		},
 		usage: CREATE_SUCCESSOR_USAGE,
 		description:
-			"Create a new app instance from the current template version alongside an existing instance. The predecessor is never modified and is retired separately and deliberately; the creation future is always awaited.",
+			"Create a new app instance from the current template version alongside an existing instance. An explicit --to keeps the strict caller-chosen-key contract (proven absent before the single POST); omit --to to generate the successor key once during apply and let the terminal future name it. The predecessor is never modified and is retired separately and deliberately; the creation future is always awaited.",
 		examples: [
 			"dss app create-successor-instance my-app --from OLD_INSTANCE --to NEW_INSTANCE",
 			'dss app create-successor-instance my-app --from OLD_INSTANCE --to NEW_INSTANCE --name "Release 2" --copy-permissions',
+			"dss app create-successor-instance my-app --from OLD_INSTANCE",
 		],
 	},
 	"instance-manifest": {

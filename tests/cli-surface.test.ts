@@ -778,10 +778,10 @@ describe("CLI command surface", () => {
 		expect(registry.app["successor-preflight"].dryRun,).toBe(false,);
 		expect(registry.app["successor-preflight"].idempotency,).toBe("safe",);
 		expect(registry.app["successor-preflight"].mutatesDss,).toBe(false,);
-		expect(registry.app["successor-preflight"].usage,).toBe(
-			"dss app successor-preflight <appId> --from KEY --to KEY [--name NAME] [--copy-permissions]",
-		);
-		expect(registry.app["successor-preflight"].requiredFlags,).toEqual(["from", "to",],);
+		// --to is optional: omitting it selects generated-key mode, where the
+		// successor key is generated once during apply. Only --from is required.
+		expect(registry.app["successor-preflight"].requiredFlags,).toEqual(["from",],);
+		expect(registry.app["successor-preflight"].optionalFlags,).toContain("to",);
 		expect(registry.app["successor-preflight"].optionalFlags,).toContain("name",);
 		expect(registry.app["successor-preflight"].optionalFlags,).toContain("copy-permissions",);
 		expect(

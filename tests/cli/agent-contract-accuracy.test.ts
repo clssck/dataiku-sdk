@@ -861,12 +861,6 @@ describe("agent contract accuracy", () => {
 				when: "conditional",
 			},),
 		],);
-		expect(
-			() =>
-				buildMutationPlan("app", "create-instance", createMeta, ["MYAPP",], {
-					data: JSON.stringify({ targetProjectKey: "   ", },),
-				},),
-		).toThrow("non-empty targetProjectKey",);
 
 		const successorMeta = {
 			usage:

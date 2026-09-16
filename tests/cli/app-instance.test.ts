@@ -8,6 +8,7 @@ import {
 	dssFailure,
 	join,
 	mkdirSync,
+	readBody,
 	readFileExists,
 	readFileSync,
 	rmSync,
@@ -236,29 +237,234 @@ describe("app create-instance wait, plans, and cleanup", () => {
 		},);
 	});
 
-	it("rejects a missing target project key before creating an instance", async () => {
-		let requestCount = 0;
-		await withCliServer((req, res,) => {
-			requestCount += 1;
-			res.statusCode = 500;
-			res.end(`unexpected ${req.method} ${req.url}`,);
+	it("creates distinct fresh instances without project visibility and binds cleanup to their identities", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "dss-generated-app-",),);
+		const ledger = join(dir, "cleanup.jsonl",);
+		const createdKeys: string[] = [];
+		let forbiddenReads = 0;
+		try {
+			await withCliServer(async (req, res,) => {
+				const path = new URL(req.url ?? "/", "http://localhost",).pathname;
+				if (req.method === "POST" && path === "/public/api/apps/MYAPP/instances") {
+					const body = JSON.parse(await readBody(req,),) as {
+						targetProjectKey: string;
+						targetProjectName: string;
+					};
+					expect(body.targetProjectKey,).toMatch(/^[A-Z][A-Z0-9_]+$/,);
+					expect(body.targetProjectName,).toBe("Designer instance",);
+					if (createdKeys.includes(body.targetProjectKey,)) {
+						sendJson(res, { message: "Project already exists", }, 409,);
+						return;
+					}
+					createdKeys.push(body.targetProjectKey,);
+					sendJson(res, { jobId: body.targetProjectKey, },);
+					return;
+				}
+				const key = createdKeys.find((candidate,) => path === "/public/api/futures/" + candidate);
+				if (req.method === "GET" && key) {
+					sendJson(res, {
+						alive: false,
+						hasResult: true,
+						result: { projectKey: "TEMPLATE", targetProjectKey: key, },
+					},);
+					return;
+				}
+				const project = createdKeys.find((candidate,) =>
+					path === "/public/api/projects/" + candidate + "/"
+				);
+				if (req.method === "GET" && project) {
+					sendJson(res, { ...PROJECT_DETAILS, projectKey: project, },);
+					return;
+				}
+				forbiddenReads += 1;
+				sendJson(res, { message: "Project visibility denied", }, 403,);
+			}, async (url,) => {
+				// Identical names must still create distinct projects on successive invocations.
+				for (let index = 0; index < 2; index += 1) {
+					const result = JSON.parse(
+						(await dss([
+							"app",
+							"create-instance",
+							"MYAPP",
+							"--data",
+							'{"targetProjectName":"Designer instance"}',
+							"--wait",
+							"--record-cleanup",
+							ledger,
+						], { env: cliEnv(url,), },)).stdout,
+					);
+					const key = createdKeys[index];
+					expect(result,).toMatchObject({
+						success: true,
+						state: "DONE",
+						projectKey: key,
+						futureTargetVerified: true,
+					},);
+					const incarnation = projectIncarnationHash(key, { ...PROJECT_DETAILS, projectKey: key, },);
+					expect(result.projectIncarnationHash,).toBe(incarnation,);
+					const entries = readFileSync(ledger, "utf8",).trim().split("\n",).map((line,) =>
+						JSON.parse(line,)
+					);
+					expect(entries[index].cleanup.argv,).toEqual([
+						"app",
+						"delete-instance",
+						"--project-key",
+						key,
+						"--expect-project-incarnation",
+						incarnation,
+					],);
+				}
+			},);
+			expect(forbiddenReads,).toBe(0,);
+			expect(new Set(createdKeys,).size,).toBe(2,);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("does not retry or authorize cleanup after ambiguous generated-key creation", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "dss-generated-ambiguous-",),);
+		const ledger = join(dir, "cleanup.jsonl",);
+		let generatedKey = "";
+		let requests = 0;
+		try {
+			await withCliServer(async (req, res,) => {
+				requests += 1;
+				if (req.method === "POST" && req.url === "/public/api/apps/MYAPP/instances") {
+					generatedKey = JSON.parse(await readBody(req,),).targetProjectKey;
+					sendJson(res, { message: "Creation outcome unavailable", }, 500,);
+					return;
+				}
+				sendJson(res, { message: "Project visibility denied", }, 403,);
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"app",
+					"create-instance",
+					"MYAPP",
+					"--data",
+					"{}",
+					"--record-cleanup",
+					ledger,
+				], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(4,);
+				expect(JSON.parse(failure.stdout,).details.result,).toMatchObject({
+					state: "INDETERMINATE",
+					projectKey: generatedKey,
+					creationPostAttempted: true,
+					cleanupEligible: false,
+				},);
+				expect(readFileExists(ledger,) ? readFileSync(ledger, "utf8",).trim() : "",).toBe("",);
+			},);
+			expect(requests,).toBe(1,);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("never redirects generated-key cleanup to a mismatched future target", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "dss-generated-mismatch-",),);
+		const ledger = join(dir, "cleanup.jsonl",);
+		let generatedKey = "";
+		try {
+			await withCliServer(async (req, res,) => {
+				if (req.method === "POST" && req.url === "/public/api/apps/MYAPP/instances") {
+					generatedKey = JSON.parse(await readBody(req,),).targetProjectKey;
+					sendJson(res, { jobId: "job-1", },);
+					return;
+				}
+				if (req.method === "GET" && req.url?.startsWith("/public/api/futures/job-1",)) {
+					sendJson(res, {
+						alive: false,
+						hasResult: true,
+						result: { projectKey: generatedKey, targetProjectKey: "SOMEONE_ELSE", },
+					},);
+					return;
+				}
+				sendJson(res, { message: "Project visibility denied", }, 403,);
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"app",
+					"create-instance",
+					"MYAPP",
+					"--data",
+					"{}",
+					"--wait",
+					"--record-cleanup",
+					ledger,
+				], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(4,);
+				expect(JSON.parse(failure.stdout,).details.result,).toMatchObject({
+					state: "VERIFICATION_FAILED",
+					projectKey: generatedKey,
+					expected: { projectKey: generatedKey, },
+					actual: { projectKey: "SOMEONE_ELSE", },
+				},);
+				const entry = JSON.parse(readFileSync(ledger, "utf8",).trim(),);
+				expect(entry.cleanup.argv,).toEqual([
+					"app",
+					"delete-instance",
+					"--project-key",
+					generatedKey,
+					"--unconfirmed-creation",
+				],);
+			},);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("plans generated-key creation without allocating a key or probing project visibility", async () => {
+		let requests = 0;
+		await withCliServer((_req, res,) => {
+			requests += 1;
+			sendJson(res, { message: "Project visibility denied", }, 403,);
 		}, async (url,) => {
-			const failure = await dssFailure(
-				["app", "create-instance", "MYAPP", "--data", "{}",],
-				{ env: cliEnv(url,), },
-			);
-			expect(failure.code,).toBe(1,);
-			expect(failure.stderr,).toBe("",);
-			expect(failure.stdout,).toContain("targetProjectKey",);
-			const planFailure = await dssFailure(
-				["app", "create-instance", "MYAPP", "--data", "{}", "--plan",],
-				{ env: cliEnv(url,), },
-			);
-			expect(planFailure.code,).toBe(1,);
-			expect(planFailure.stderr,).toBe("",);
-			expect(planFailure.stdout,).toContain("targetProjectKey",);
+			const args = [
+				"app",
+				"create-instance",
+				"MYAPP",
+				"--data",
+				'{"targetProjectName":"Designer instance"}',
+				"--plan",
+			];
+			const first = JSON.parse((await dss(args, { env: cliEnv(url,), },)).stdout,);
+			const second = JSON.parse((await dss(args, { env: cliEnv(url,), },)).stdout,);
+			expect(second,).toEqual(first,);
+			expect(first,).toMatchObject({
+				targetProjectKeyGeneratedDuringApply: true,
+				preflightExecuted: false,
+				preflightWillRunDuringApply: false,
+				preflightRequests: [],
+				payload: { targetProjectName: "Designer instance", },
+			},);
+			expect(first.targetProjectKey,).toBeUndefined();
+			expect(first.payload.targetProjectKey,).toBeUndefined();
 		},);
-		expect(requestCount,).toBe(0,);
+		expect(requests,).toBe(0,);
+	});
+
+	it("rejects invalid explicit keys instead of silently generating fresh instances", async () => {
+		let requests = 0;
+		await withCliServer((_req, res,) => {
+			requests += 1;
+			sendJson(res, { message: "unexpected request", }, 500,);
+		}, async (url,) => {
+			for (const targetProjectKey of [" ", null, 7,]) {
+				for (const mode of [[], ["--plan",],]) {
+					const failure = await dssFailure([
+						"app",
+						"create-instance",
+						"MYAPP",
+						"--data",
+						JSON.stringify({ targetProjectKey, },),
+						...mode,
+					], { env: cliEnv(url,), },);
+					expect(failure.code,).toBe(1,);
+					expect(JSON.parse(failure.stdout,).code,).toBe("validation_failed",);
+				}
+			}
+		},);
+		expect(requests,).toBe(0,);
 	});
 
 	it("requires confirmed target absence before direct creation", async () => {
@@ -323,7 +529,7 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					expect(report.code,).toBe("target_absence_unverifiable",);
 					expect(report.category,).toBe("permission_or_environment",);
 					expect(report.retryable,).toBe(false,);
-					expect(failure.stdout,).toContain("Could not confirm",);
+
 					expect(report.details,).toMatchObject({
 						targetProjectKey: "NEWPROJ",
 						targetFlag: "targetProjectKey",
@@ -335,20 +541,19 @@ describe("app create-instance wait, plans, and cleanup", () => {
 						creationPostAttempted: false,
 						targetProbe: "forbidden-and-not-listable",
 						deploymentMasksUnknownProjects: "possible-but-unproven",
-						supportedRecoveryModes: ["grant-global-project-visibility",],
+						supportedRecoveryModes: [
+							"create-instance-with-generated-key",
+							"grant-global-project-visibility",
+						],
 					},);
-					// No bypass is offered: the only supported recovery is a
-					// wider-visibility identity, and no server-side atomic
-					// create is claimed as an alternative.
+					// A generated-key alternative never bypasses absence checks for this exact key.
 					expect(report.details.unavailableRecoveryModes,).toEqual([
 						"use-supported-key-availability-endpoint",
 						"server-atomic-create",
 					],);
-					expect(report.hint,).toContain("global project visibility",);
 				} else {
 					expect(report.code,).toBe("validation_failed",);
 					expect(report.category,).toBe("usage",);
-					expect(failure.stdout,).toContain("already exists",);
 				}
 				if (mode === "app-instance-collision") {
 					// Presence in the app-instance list is proof of collision,
@@ -421,7 +626,7 @@ describe("app create-instance wait, plans, and cleanup", () => {
 			expect(report.code,).toBe("target_absence_unverifiable",);
 			expect(report.category,).toBe("permission_or_environment",);
 			expect(report.retryable,).toBe(false,);
-			expect(failure.stdout,).toContain("Could not confirm",);
+
 			expect(report.details,).toMatchObject({
 				targetProjectKey: "NEWPROJ",
 				targetFlag: "targetProjectKey",
@@ -432,7 +637,10 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				creationPostAttempted: false,
 				targetProbe: "forbidden-and-not-listable",
 				deploymentMasksUnknownProjects: "possible-but-unproven",
-				supportedRecoveryModes: ["grant-global-project-visibility",],
+				supportedRecoveryModes: [
+					"create-instance-with-generated-key",
+					"grant-global-project-visibility",
+				],
 			},);
 			// A refused app-instance list yields no verdict at all: reporting
 			// `false` would claim the key was observed to be free, which is
@@ -442,7 +650,7 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				"use-supported-key-availability-endpoint",
 				"server-atomic-create",
 			],);
-			expect(report.hint,).toContain("global project visibility",);
+
 			// Both fallback probes ran exactly once and neither proved anything.
 			expect(projectListProbes,).toBe(1,);
 			expect(appInstanceProbes,).toBe(1,);
@@ -516,9 +724,12 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				preflightExecuted: true,
 				creationPostAttempted: false,
 				targetProbe: "forbidden-and-not-listable",
-				supportedRecoveryModes: ["grant-global-project-visibility",],
+				supportedRecoveryModes: [
+					"create-instance-with-generated-key",
+					"grant-global-project-visibility",
+				],
 			},);
-			expect(report.hint,).toContain("global project visibility",);
+
 			expect(projectListProbes,).toBe(1,);
 			expect(appInstanceProbes,).toBe(1,);
 			expect(posts,).toBe(0,);

@@ -1,3 +1,4 @@
+import { randomUUID, } from "node:crypto";
 import type { DataikuClient, } from "../../client.js";
 import { DataikuError, } from "../../errors.js";
 import type { AppManifestValidationResult, } from "../../resources/applications.js";
@@ -24,6 +25,17 @@ export const VISUAL_UI_GATE = {
 	evidenceRequired:
 		"Open the instance in the Dataiku Apps UI and exercise the affected tiles, forms, and actions to confirm the release behaves as intended.",
 } as const;
+
+/**
+ * The one generated instance-key shape shared by `app create-instance` and
+ * `app create-successor-instance` when no caller-chosen target is supplied:
+ * `APP_` plus 122 random bits of UUIDv4 hex, matching the official client's
+ * random-key mode. Collisions are negligible, so a generated key is never
+ * probed for absence and is never retried under an alternate key.
+ */
+export function generatedInstanceKey(): string {
+	return `APP_${randomUUID().replace(/-/g, "",).toUpperCase()}`;
+}
 
 export type AppInstanceCheckName =
 	| "project-type"
@@ -66,7 +78,11 @@ export interface AppInstanceVerification {
 export interface SuccessorInstanceRequest {
 	appId: string;
 	from: string;
-	to: string;
+	/**
+	 * Caller-chosen successor key. Omitted for generated-key mode: the key is
+	 * generated once during apply and DSS's own creation future names it.
+	 */
+	to?: string;
 	name?: string;
 	copyPermissions: boolean;
 	dryRun: boolean;
@@ -299,8 +315,10 @@ interface SuccessorPreflight {
 	sourceProjectAppType: string;
 	sourceVersion: string | null;
 	sourceManifestHash: string;
-	targetProjectName: string;
-	targetExists: false;
+	/** True when the caller omitted --to: no target key exists before apply. */
+	generatedTarget: boolean;
+	/** Caller-chosen key, or the caller-supplied name; absent in generated mode without --name. */
+	targetProjectName?: string;
 	templateManifestHash: string;
 	templateVersion: string;
 	templateReferenceValidation: AppManifestValidationResult;
@@ -313,9 +331,12 @@ interface TargetAbsenceContext {
 }
 
 /**
- * Creation cleanup is safe only when the target was proven absent before POST.
- * A hidden 403 is not absence: project listing can prove a collision, but it
- * cannot prove that an inaccessible project does not exist.
+ * Caller-chosen-key guard: when the caller supplies the target key, creation
+ * cleanup is safe only when that target was proven absent before POST. A
+ * hidden 403 is not absence: project listing can prove a collision, but it
+ * cannot prove that an inaccessible project does not exist. Generated keys
+ * (app create-instance with targetProjectKey omitted) skip this guard: a
+ * freshly generated random key does not need an absence probe.
  */
 export async function requireAbsentProjectTarget(
 	client: DataikuClient,
@@ -391,12 +412,15 @@ export async function requireAbsentProjectTarget(
 			throw new UsageError(
 				`Could not confirm target project ${targetProjectKey} is absent.`,
 				"target_absence_unverifiable",
-				"DSS exposes no permission-independent project-key availability endpoint, and app-instance creation has no published atomic duplicate-key guarantee. Retry with an identity that has global project visibility; creation was not attempted.",
+				"Creation was not attempted. For a fresh instance with a different key, omit targetProjectKey from `dss app create-instance`. To keep this exact key, retry with an identity that has global project visibility. DSS exposes no permission-independent key-availability endpoint or published atomic duplicate-key guarantee.",
 				{
 					...probeDetails,
 					targetProbe: "forbidden-and-not-listable",
 					deploymentMasksUnknownProjects: "possible-but-unproven",
-					supportedRecoveryModes: ["grant-global-project-visibility",],
+					supportedRecoveryModes: [
+						"create-instance-with-generated-key",
+						"grant-global-project-visibility",
+					],
 					unavailableRecoveryModes: [
 						"use-supported-key-availability-endpoint",
 						"server-atomic-create",
@@ -429,7 +453,7 @@ async function preflightSuccessor(
 	usage: string,
 ): Promise<SuccessorPreflight> {
 	const { appId, from, to, } = request;
-	if (from === to) {
+	if (to !== undefined && from === to) {
 		throw new UsageError(
 			"--from and --to must be different project keys: a successor instance is created alongside its predecessor.",
 			"validation_failed",
@@ -469,10 +493,16 @@ async function preflightSuccessor(
 			{ sourceProjectKey: from, projectAppType: source.projectAppType ?? null, },
 		);
 	}
-	await requireAbsentProjectTarget(client, to, "--to", {
-		appId,
-		visibleAppInstanceKeys: instances.map((instance,) => instance.projectKey),
-	},);
+	if (to !== undefined) {
+		// Caller-chosen keys must be proven absent before the single POST.
+		// Generated keys skip the probe entirely: the key does not exist yet,
+		// so an absence probe would prove nothing and probe a project the
+		// caller never named.
+		await requireAbsentProjectTarget(client, to, "--to", {
+			appId,
+			visibleAppInstanceKeys: instances.map((instance,) => instance.projectKey),
+		},);
+	}
 	const templateManifest = await client.applications.getAppManifest(appId,);
 	const templateVersion = rawVersion(templateManifest,);
 	if (templateVersion === null) {
@@ -509,8 +539,10 @@ async function preflightSuccessor(
 		sourceProjectAppType: source.projectAppType,
 		sourceVersion: source.version,
 		sourceManifestHash: source.manifestHash,
-		targetProjectName: request.name ?? to,
-		targetExists: false,
+		generatedTarget: to === undefined,
+		...(request.name !== undefined || to !== undefined
+			? { targetProjectName: request.name ?? to, }
+			: {}),
 		templateManifestHash: stableHash(templateManifest,),
 		templateVersion,
 		templateReferenceValidation,
@@ -540,6 +572,7 @@ export async function preflightSuccessorInstance(
 		preflightExecuted: true,
 		creationPostAttempted: false,
 		versionMutationAttempted: false,
+		...(preflight.generatedTarget ? { targetProjectKeyGeneratedDuringApply: true, } : {}),
 		appId: request.appId,
 		source: {
 			projectKey: request.from,
@@ -550,12 +583,28 @@ export async function preflightSuccessorInstance(
 				? { permissionsHash: preflight.sourcePermissionsHash, }
 				: {}),
 		},
-		target: {
-			projectKey: request.to,
-			name: preflight.targetProjectName,
-			exists: false,
-		},
-		targetPreflight: "confirmed-absent",
+		...(preflight.generatedTarget
+			? {
+				// Generated mode: the target key does not exist yet, so no
+				// absence probe ran and none can be claimed. The plan/receipt
+				// names no key at all: it is generated once during apply and
+				// named by DSS's own terminal creation future.
+				target: {
+					targetProjectKeyGeneratedDuringApply: true,
+					...(preflight.targetProjectName !== undefined
+						? { name: preflight.targetProjectName, }
+						: { targetProjectNameGeneratedDuringApply: true, }),
+				},
+				targetPreflight: "not-applicable-generated-key",
+			}
+			: {
+				target: {
+					projectKey: request.to,
+					name: preflight.targetProjectName,
+					exists: false,
+				},
+				targetPreflight: "confirmed-absent",
+			}),
 		template: {
 			projectKey: request.appId,
 			version: preflight.templateVersion,
@@ -570,10 +619,11 @@ export async function preflightSuccessorInstance(
 		next: {
 			setVersion:
 				`dss app set-manifest-version --manifest-version <VERSION> --expect-hash ${preflight.templateManifestHash} --project-key ${request.appId}`,
-			createSuccessor:
-				`dss app create-successor-instance ${request.appId} --from ${request.from} --to ${request.to}${
-					request.name !== undefined ? ` --name ${JSON.stringify(request.name,)}` : ""
-				}${request.copyPermissions ? " --copy-permissions" : ""}`,
+			createSuccessor: `dss app create-successor-instance ${request.appId} --from ${request.from}${
+				request.to !== undefined ? ` --to ${request.to}` : ""
+			}${request.name !== undefined ? ` --name ${JSON.stringify(request.name,)}` : ""}${
+				request.copyPermissions ? " --copy-permissions" : ""
+			}`,
 		},
 	};
 }
@@ -594,7 +644,8 @@ export async function createSuccessorInstance(
 	request: SuccessorInstanceRequest,
 	usage: string,
 ): Promise<Record<string, unknown>> {
-	const { appId, from, to, } = request;
+	const { appId, from, } = request;
+	const generatedTarget = request.to === undefined;
 	const preflight = await preflightSuccessor(client, request, usage,);
 	const source = {
 		projectKey: from,
@@ -614,35 +665,52 @@ export async function createSuccessorInstance(
 		sourcePreserved: true,
 		uiPublicationVerified: false,
 		requiredExternalGates: [VISUAL_UI_GATE,],
-		targetPreflight: "confirmed-absent",
+		// Generated mode never probes a target, so it must not claim the
+		// probe-backed absence verdict: no target existed to verify.
+		targetPreflight: generatedTarget ? "not-applicable-generated-key" : "confirmed-absent",
 	};
 	if (request.dryRun) {
 		return {
 			dryRun: true,
 			action: "create-successor-instance",
 			...shared,
-			target: {
-				projectKey: to,
-				name: preflight.targetProjectName,
-				exists: false,
-			},
+			...(generatedTarget
+				? { targetProjectKeyGeneratedDuringApply: true, }
+				: {}),
+			target: generatedTarget
+				? {
+					targetProjectKeyGeneratedDuringApply: true,
+					...(preflight.targetProjectName !== undefined
+						? { name: preflight.targetProjectName, }
+						: { targetProjectNameGeneratedDuringApply: true, }),
+				}
+				: {
+					projectKey: request.to,
+					name: preflight.targetProjectName,
+					exists: false,
+				},
 			copyPermissions: request.copyPermissions,
 			preflight: "passed",
 		};
 	}
+	// Generated exactly once, here, immediately before the single POST: plan,
+	// preflight and dry-run never allocate. A definitive rejection does not
+	// retry and does not fall back to an alternate key.
+	const to = request.to ?? generatedInstanceKey();
+	const targetProjectName = preflight.targetProjectName ?? to;
 
 	let created: unknown;
 	try {
 		created = await client.applications.createInstance(appId, {
 			targetProjectKey: to,
-			targetProjectName: preflight.targetProjectName,
+			targetProjectName,
 		},);
 	} catch (error) {
 		const rejected = isDefinitiveRejection(error,);
 		return {
 			...shared,
 			projectKey: to,
-			target: { projectKey: to, name: preflight.targetProjectName, },
+			target: { projectKey: to, name: targetProjectName, },
 			success: false,
 			state: rejected ? "CREATE_FAILED" : "INDETERMINATE",
 			elapsedMs: 0,
@@ -672,7 +740,7 @@ export async function createSuccessorInstance(
 		return {
 			...shared,
 			projectKey: to,
-			target: { projectKey: to, name: preflight.targetProjectName, },
+			target: { projectKey: to, name: targetProjectName, },
 			success: false,
 			state: "VERIFICATION_FAILED",
 			elapsedMs: 0,
@@ -692,7 +760,7 @@ export async function createSuccessorInstance(
 	const base = {
 		...shared,
 		projectKey: to,
-		target: { projectKey: to, name: preflight.targetProjectName, },
+		target: { projectKey: to, name: targetProjectName, },
 		...(instance ? { instance, } : {}),
 	};
 	let waited: FutureWaitResult;

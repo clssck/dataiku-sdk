@@ -601,18 +601,25 @@ describe("ApplicationsResource", () => {
 					{ type: "SCENARIO_RUN", scenarioId: "SCENARIO_OK", },
 					{ type: "SCENARIO_RUN", scenarioId: "scenario-missing", },
 					{ type: "SCENARIO_RUN", scenarioId: ["not-singular",], },
-					{ type: "DOWNLOAD_FILE", managedFolderId: "folder-ok", },
-					{ type: "DOWNLOAD_FILE", folderId: "folder-missing", },
-					{ type: "DOWNLOAD_FILE", folderId: ["not-singular",], },
+					{ type: "DOWNLOAD_MANAGED_FOLDER_FILE", folderId: "folder-ok", itemPath: "result.json", },
+					{ type: "DOWNLOAD_MANAGED_FOLDER_FILE", folderId: "folder-missing", },
+					{ type: "DOWNLOAD_MANAGED_FOLDER_FILE", folderId: ["not-singular",], },
 					{
-						type: "RUNTIME_FORM",
+						type: "PROJECT_VARIABLES_EDIT",
+						behavior: "MODAL",
 						params: [
 							{ name: "localVar", type: "STRING", },
 							{ name: "standardVar", type: "STRING", },
 							{ name: "missingVar", type: "STRING", },
 						],
 					},
-					{ type: "CUSTOM_FORM", config: { scenarioId: "display-only", folderId: "opaque", }, },
+					{
+						// Tiles outside the validated reference types are opaque: nested
+						// `config` values are never read as references, and `params` only
+						// counts as project-variable references on PROJECT_VARIABLES_EDIT.
+						config: { scenarioId: "display-only", folderId: "opaque", variableName: "opaque", },
+						params: [{ name: "opaque-param", },],
+					},
 				],
 			},],
 			unknownGovernedField: { untouched: true, },
@@ -691,7 +698,7 @@ describe("ApplicationsResource", () => {
 				},
 				{
 					kind: "folder",
-					path: '$["homepageSections"][0]["tiles"][3]["managedFolderId"]',
+					path: '$["homepageSections"][0]["tiles"][3]["folderId"]',
 					value: "folder-ok",
 					exists: true,
 				},
@@ -729,6 +736,49 @@ describe("ApplicationsResource", () => {
 		],);
 	});
 
+	it("reports a DOWNLOAD_MANAGED_FOLDER_FILE referencing a deleted managed folder", async () => {
+		const manifest = {
+			homepageSections: [{
+				tiles: [
+					{ type: "DOWNLOAD_MANAGED_FOLDER_FILE", folderId: "deleted-folder", itemPath: "result.json", },
+				],
+			},],
+		};
+
+		await withServer((req, res,) => {
+			const request = `${req.method ?? ""} ${req.url ?? ""}`;
+			if (request === "GET /public/api/projects/TEST/managedfolders/") {
+				sendJson(res, [{ id: "other-folder", name: "Other folder", },],);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${request}`,);
+		}, async (url,) => {
+			const result = await new ApplicationsResource(createClient(url,),)
+				.validateAppManifest(manifest,);
+			expect(result.valid,).toBe(false,);
+			expect(result.checks,).toEqual([
+				{ kind: "scenario", status: "skipped", checked: 0, malformed: 0, missing: 0, },
+				{ kind: "folder", status: "failed", checked: 1, malformed: 0, missing: 1, },
+				{ kind: "variable", status: "skipped", checked: 0, malformed: 0, missing: 0, },
+			],);
+			expect(result.references,).toEqual([
+				{
+					kind: "folder",
+					path: '$["homepageSections"][0]["tiles"][0]["folderId"]',
+					value: "deleted-folder",
+					exists: false,
+				},
+			],);
+			expect(result.errors.map(({ code, path, },) => ({ code, path, })),).toEqual([
+				{
+					code: "MISSING_FOLDER",
+					path: '$["homepageSections"][0]["tiles"][0]["folderId"]',
+				},
+			],);
+		},);
+	});
+
 	it("rejects a non-object manifest without querying reference APIs", async () => {
 		const requests: string[] = [];
 		await withServer((req, res,) => {
@@ -757,7 +807,7 @@ describe("ApplicationsResource", () => {
 		expect(requests,).toEqual([],);
 	});
 
-	it("enforces reference value shapes without inspecting custom-form config", async () => {
+	it("enforces reference value shapes without inspecting opaque tile content", async () => {
 		const requests: string[] = [];
 		await withServer((req, res,) => {
 			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
@@ -768,11 +818,14 @@ describe("ApplicationsResource", () => {
 				homepageSections: [{
 					tiles: [
 						{ type: "SCENARIO_RUN", scenarioId: ["SCENARIO",], },
-						{ type: "DOWNLOAD_FILE", folderId: ["FOLDER",], },
-						{ type: "RUNTIME_FORM", params: [{ name: ["VARIABLE",], type: "STRING", },], },
+						{ type: "DOWNLOAD_MANAGED_FOLDER_FILE", folderId: ["FOLDER",], },
 						{
-							type: "CUSTOM_FORM",
+							type: "PROJECT_VARIABLES_EDIT",
+							params: [{ name: ["VARIABLE",], type: "STRING", },],
+						},
+						{
 							config: { scenarioId: "opaque", folderId: "opaque", variableName: "opaque", },
+							params: [{ name: "opaque-param", },],
 						},
 					],
 				},],

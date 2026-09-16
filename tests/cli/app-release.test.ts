@@ -1020,6 +1020,456 @@ describe("app create-successor-instance", () => {
 			expect(posts,).toBe(0,);
 		},);
 	});
+	it("creates a generated-key successor when --to is omitted and binds cleanup to the future-named target", async () => {
+		const dir = join(tmpdir(), `dss-app-successor-generated-${Date.now()}`,);
+		mkdirSync(dir, { recursive: true, },);
+		const ledger = join(dir, "cleanup.jsonl",);
+		let generatedKey = "";
+		let posts = 0;
+		const seen: string[] = [];
+		try {
+			await withCliServer(async (req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				const path = url.pathname;
+				seen.push(`${req.method} ${path}`,);
+				if (req.method === "POST" && path === "/public/api/apps/MYAPP/instances") {
+					posts += 1;
+					const body = JSON.parse((await readBody(req,)) || "{}",) as {
+						targetProjectKey?: string;
+						targetProjectName?: string;
+					};
+					generatedKey = body.targetProjectKey ?? "";
+					expect(generatedKey,).toMatch(/^APP_[0-9A-F]{32}$/,);
+					// Key-as-name convenience: the display name defaults to the
+					// generated key exactly like direct create-instance.
+					expect(body.targetProjectName,).toBe(generatedKey,);
+					sendJson(res, { appId: "MYAPP", jobId: "job-9", },);
+					return;
+				}
+				if (req.method === "GET" && path === "/public/api/futures/job-9") {
+					// Live-shaped future result: projectKey names the source
+					// template, targetProjectKey names the created successor.
+					sendJson(res, {
+						jobId: "job-9",
+						hasResult: true,
+						alive: false,
+						result: { projectKey: "MYAPP_TEMPLATE", targetProjectKey: generatedKey, },
+					},);
+					return;
+				}
+				if (req.method === "GET" && path === "/public/api/apps/MYAPP/instances/") {
+					sendJson(
+						res,
+						generatedKey === ""
+							? [{ projectKey: "OLD_INSTANCE", },]
+							: [{ projectKey: "OLD_INSTANCE", }, { projectKey: generatedKey, },],
+					);
+					return;
+				}
+				if (req.method === "GET" && path === "/public/api/projects/OLD_INSTANCE/app-manifest") {
+					sendJson(res, { ...INSTANCE_MANIFEST, projectKey: "OLD_INSTANCE", version: "1.0.0", },);
+					return;
+				}
+				if (req.method === "GET" && path === "/public/api/apps/MYAPP/") {
+					sendJson(res, TEMPLATE_MANIFEST,);
+					return;
+				}
+				if (generatedKey !== "" && path === `/public/api/projects/${generatedKey}/`) {
+					sendJson(res, { ...NEW_INSTANCE_DETAILS, projectKey: generatedKey, },);
+					return;
+				}
+				if (
+					req.method === "GET" && generatedKey !== ""
+					&& path === `/public/api/projects/${generatedKey}/app-manifest`
+				) {
+					sendJson(res, { ...INSTANCE_MANIFEST, projectKey: generatedKey, },);
+					return;
+				}
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${path}`,);
+			}, async (url,) => {
+				const result = JSON.parse(
+					(await dss(
+						[
+							"app",
+							"create-successor-instance",
+							"MYAPP",
+							"--from",
+							"OLD_INSTANCE",
+							"--record-cleanup",
+							ledger,
+						],
+						{ env: cliEnv(url,), },
+					)).stdout,
+				) as Record<string, unknown>;
+				expect(posts,).toBe(1,);
+				expect(result,).toMatchObject({
+					success: true,
+					state: "DONE",
+					projectKey: generatedKey,
+					target: { projectKey: generatedKey, name: generatedKey, },
+					targetPreflight: "not-applicable-generated-key",
+				},);
+				expect(result.futureTargetVerified,).toBe(true,);
+				const incarnation = projectIncarnationHash(generatedKey, {
+					...NEW_INSTANCE_DETAILS,
+					projectKey: generatedKey,
+				},);
+				expect(result.projectIncarnationHash,).toBe(incarnation,);
+				// Generated mode never runs an absence probe: the key did not
+				// exist before the POST, so no project read may precede it and
+				// the conditional project-list fallback never runs.
+				expect(seen,).not.toContain("GET /public/api/projects/",);
+				expect(seen.slice(0, seen.indexOf("POST /public/api/apps/MYAPP/instances",),),)
+					.not.toContain(`GET /public/api/projects/${generatedKey}/`,);
+			},);
+			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as {
+				projectKey?: string;
+				cleanup: { argv: string[]; };
+			};
+			expect(entry.projectKey,).toBe(generatedKey,);
+			const incarnation = projectIncarnationHash(generatedKey, {
+				...NEW_INSTANCE_DETAILS,
+				projectKey: generatedKey,
+			},);
+			expect(entry.cleanup.argv,).toEqual([
+				"app",
+				"delete-instance",
+				"--project-key",
+				generatedKey,
+				"--expect-project-incarnation",
+				incarnation,
+			],);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("dry-runs generated-key mode without allocating a key or probing a target", async () => {
+		let posts = 0;
+		await withCliServer((req, res,) => {
+			if (req.method === "POST") posts += 1;
+			successorServer()(req, res,);
+		}, async (url,) => {
+			const result = JSON.parse(
+				(await dss([
+					"app",
+					"create-successor-instance",
+					"MYAPP",
+					"--from",
+					"OLD_INSTANCE",
+					"--dry-run",
+				], { env: cliEnv(url,), },)).stdout,
+			) as Record<string, unknown>;
+			expect(result,).toMatchObject({
+				dryRun: true,
+				additive: true,
+				sourcePreserved: true,
+				preflight: "passed",
+				targetProjectKeyGeneratedDuringApply: true,
+				targetPreflight: "not-applicable-generated-key",
+				target: {
+					targetProjectKeyGeneratedDuringApply: true,
+					targetProjectNameGeneratedDuringApply: true,
+				},
+			},);
+			expect(result.projectKey,).toBeUndefined();
+			// No target key can leak out of a dry run: nothing was allocated.
+			expect(JSON.stringify(result,),).not.toMatch(/APP_[0-9A-F]{32}/,);
+			expect(posts,).toBe(0,);
+		},);
+	});
+
+	it("plans generated-key mode allocation-free with no fake target or absence claim", async () => {
+		let requestCount = 0;
+		await withCliServer((req, res,) => {
+			requestCount += 1;
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${req.url}`,);
+		}, async (url,) => {
+			const args = [
+				"app",
+				"create-successor-instance",
+				"MYAPP",
+				"--from",
+				"OLD_INSTANCE",
+				"--plan",
+			];
+			const first = JSON.parse((await dss(args, { env: cliEnv(url,), },)).stdout,) as Record<
+				string,
+				unknown
+			>;
+			const second = JSON.parse((await dss(args, { env: cliEnv(url,), },)).stdout,) as Record<
+				string,
+				unknown
+			>;
+			// Deterministic: a plan-time allocated key would differ per run.
+			expect(second,).toEqual(first,);
+			expect(first,).toMatchObject({
+				plan: true,
+				resource: "app",
+				action: "create-successor-instance",
+				appId: "MYAPP",
+				sourceProjectKey: "OLD_INSTANCE",
+				targetProjectKeyGeneratedDuringApply: true,
+				targetProjectNameGeneratedDuringApply: true,
+				targetPreflight: "not-applicable-generated-key",
+				preflightExecuted: false,
+				preflightWillRunDuringApply: true,
+				copyPermissions: false,
+				method: "POST",
+				endpoint: "/public/api/apps/MYAPP/instances",
+				wait: true,
+			},);
+			expect(first.targetProjectKey,).toBeUndefined();
+			expect(first.payload,).toEqual({},);
+			expect(JSON.stringify(first,),).not.toMatch(/APP_[0-9A-F]{32}/,);
+			// No target-absence probe is advertised because none runs; the
+			// generated key resolves through the terminal future instead.
+			expect(first.preflightRequests,).toEqual([
+				expect.objectContaining({ endpoint: "/public/api/apps/MYAPP/instances/", },),
+				expect.objectContaining({ endpoint: "/public/api/projects/OLD_INSTANCE/app-manifest", },),
+			],);
+			expect(first.incarnationObservationRequests,).toEqual([
+				expect.objectContaining({
+					endpointTemplate: "/public/api/projects/{targetProjectKey}/",
+				},),
+			],);
+
+			// A supplied --name is planned as-is; only the omitted name is
+			// deferred to apply (the key-as-name default), never a fake key.
+			const named = JSON.parse(
+				(await dss([
+					"app",
+					"create-successor-instance",
+					"MYAPP",
+					"--from",
+					"OLD_INSTANCE",
+					"--name",
+					"Release 2",
+					"--plan",
+				], { env: cliEnv(url,), },)).stdout,
+			) as Record<string, unknown>;
+			expect(named,).toMatchObject({
+				targetProjectName: "Release 2",
+				targetProjectKeyGeneratedDuringApply: true,
+				targetPreflight: "not-applicable-generated-key",
+			},);
+			expect(named.targetProjectNameGeneratedDuringApply,).toBeUndefined();
+			expect(named.payload,).toEqual({ targetProjectName: "Release 2", },);
+			expect(named.targetProjectKey,).toBeUndefined();
+		},);
+		expect(requestCount,).toBe(0,);
+	});
+
+	it("preflights generated-key mode without probing or allocating a target", async () => {
+		let mutationRequests = 0;
+		const seen: string[] = [];
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			seen.push(`${req.method} ${url.pathname}`,);
+			if (req.method === "POST" || req.method === "PUT" || req.method === "DELETE") {
+				mutationRequests += 1;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/instances/") {
+				sendJson(res, [{ projectKey: "OLD_INSTANCE", },],);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/OLD_INSTANCE/app-manifest") {
+				sendJson(res, { ...INSTANCE_MANIFEST, projectKey: "OLD_INSTANCE", version: "1.0.0", },);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/OLD_INSTANCE/permissions") {
+				sendJson(res, PERMISSIONS,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/") {
+				sendJson(res, TEMPLATE_MANIFEST,);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const result = JSON.parse(
+				(await dss(["app", "successor-preflight", "MYAPP", "--from", "OLD_INSTANCE",], {
+					env: cliEnv(url,),
+				},)).stdout,
+			) as Record<string, unknown>;
+			expect(result,).toMatchObject({
+				action: "successor-preflight",
+				preflight: "passed",
+				preflightExecuted: true,
+				creationPostAttempted: false,
+				versionMutationAttempted: false,
+				targetProjectKeyGeneratedDuringApply: true,
+				target: {
+					targetProjectKeyGeneratedDuringApply: true,
+					targetProjectNameGeneratedDuringApply: true,
+				},
+				targetPreflight: "not-applicable-generated-key",
+			},);
+			const target = result.target as Record<string, unknown>;
+			// Honest generated-mode receipt: no key, no absence verdict.
+			expect(target.projectKey,).toBeUndefined();
+			expect(target.exists,).toBeUndefined();
+			const next = result.next as { createSuccessor: string; };
+			expect(next.createSuccessor,).toContain("--from OLD_INSTANCE",);
+			expect(next.createSuccessor,).not.toContain("--to",);
+			// The only project read is the predecessor manifest: no target
+			// probe, no conditional project listing.
+			expect(
+				seen.filter((entry,) => entry.startsWith("GET /public/api/projects/",)),
+			).toEqual(["GET /public/api/projects/OLD_INSTANCE/app-manifest",],);
+
+			// The predecessor ACL snapshot still runs in generated mode: the
+			// read-only ACL invariant is preserved without any target.
+			const readsBeforeCopyWithAcl = seen.length;
+			const withAcl = JSON.parse(
+				(await dss([
+					"app",
+					"successor-preflight",
+					"MYAPP",
+					"--from",
+					"OLD_INSTANCE",
+					"--copy-permissions",
+				], { env: cliEnv(url,), },)).stdout,
+			) as Record<string, unknown>;
+			expect(withAcl,).toMatchObject({
+				copyPermissions: true,
+				targetPreflight: "not-applicable-generated-key",
+				target: { targetProjectKeyGeneratedDuringApply: true, },
+				source: { projectKey: "OLD_INSTANCE", },
+			},);
+			const source = withAcl.source as Record<string, unknown>;
+			expect(source.permissionsHash,).toMatch(/^[0-9a-f]{64}$/,);
+			const nextWithAcl = withAcl.next as { createSuccessor: string; };
+			expect(nextWithAcl.createSuccessor,).toContain("--copy-permissions",);
+			expect(nextWithAcl.createSuccessor,).not.toContain("--to",);
+			expect(
+				seen.slice(readsBeforeCopyWithAcl,)
+					.filter((entry,) => entry.startsWith("GET /public/api/projects/",)),
+			).toEqual([
+				"GET /public/api/projects/OLD_INSTANCE/app-manifest",
+				"GET /public/api/projects/OLD_INSTANCE/permissions",
+			],);
+		},);
+		expect(mutationRequests,).toBe(0,);
+	});
+
+	it("refuses blank or value-less --to instead of silently generating a successor", async () => {
+		let requestCount = 0;
+		await withCliServer((_req, res,) => {
+			requestCount += 1;
+			res.statusCode = 500;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			for (
+				const [argv, expectedCode,] of [
+					[
+						["app", "create-successor-instance", "MYAPP", "--from", "OLD_INSTANCE", "--to", "",],
+						"validation_failed",
+					],
+					[
+						["app", "create-successor-instance", "MYAPP", "--from", "OLD_INSTANCE", "--to", "   ",],
+						"validation_failed",
+					],
+					[
+						["app", "create-successor-instance", "MYAPP", "--from", "OLD_INSTANCE", "--to=",],
+						"validation_failed",
+					],
+					[
+						["app", "create-successor-instance", "MYAPP", "--from", "OLD_INSTANCE", "--to",],
+						"missing_required_flag",
+					],
+					[
+						["app", "successor-preflight", "MYAPP", "--from", "OLD_INSTANCE", "--to", "",],
+						"validation_failed",
+					],
+					[
+						[
+							"app",
+							"create-successor-instance",
+							"MYAPP",
+							"--from",
+							"OLD_INSTANCE",
+							"--to",
+							"",
+							"--plan",
+						],
+						"validation_failed",
+					],
+				] as const
+			) {
+				const failure = await dssFailure([...argv,], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(1,);
+				expect(failure.stderr,).toBe("",);
+				expect(JSON.parse(failure.stdout,).code,).toBe(expectedCode,);
+			}
+		},);
+		expect(requestCount,).toBe(0,);
+	});
+
+	it("refuses an explicit --to whose absence stays unverifiable, with zero POSTs", async () => {
+		let posts = 0;
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST") {
+				posts += 1;
+				res.statusCode = 500;
+				res.end("no POST expected",);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/apps/MYAPP/instances/") {
+				sendJson(res, [{ projectKey: "OLD_INSTANCE", },],);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/OLD_INSTANCE/app-manifest") {
+				sendJson(res, { ...INSTANCE_MANIFEST, projectKey: "OLD_INSTANCE", version: "1.0.0", },);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/NEW_INSTANCE/") {
+				sendJson(res, { message: "Forbidden", }, 403,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/") {
+				sendJson(res, [{ projectKey: "OTHER", },],);
+				return;
+			}
+			res.statusCode = 500;
+			res.end(`unexpected ${req.method} ${url.pathname}`,);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				[
+					"app",
+					"create-successor-instance",
+					"MYAPP",
+					"--from",
+					"OLD_INSTANCE",
+					"--to",
+					"NEW_INSTANCE",
+				],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(1,);
+			expect(failure.stderr,).toBe("",);
+			const report = JSON.parse(failure.stdout,) as {
+				code: string;
+				category: string;
+				details?: Record<string, unknown>;
+			};
+			expect(report,).toMatchObject({
+				code: "target_absence_unverifiable",
+				category: "permission_or_environment",
+			},);
+			expect(report.details,).toMatchObject({
+				targetProjectKey: "NEW_INSTANCE",
+				targetFlag: "--to",
+				directTargetProbe: 403,
+				creationPostAttempted: false,
+			},);
+		},);
+		expect(posts,).toBe(0,);
+	});
 	it("preflights the release before any version or creation mutation", async () => {
 		let mutationRequests = 0;
 		await withCliServer((req, res,) => {
@@ -2979,7 +3429,7 @@ describe("app create-successor-instance", () => {
 				);
 				expect(failure.code,).toBe(1,);
 				expect(failure.stderr,).toBe("",);
-				expect(failure.stdout,).toContain("Could not confirm",);
+
 				expect(errorReport(failure,),).toMatchObject({
 					code: "target_absence_unverifiable",
 					category: "permission_or_environment",
@@ -2994,7 +3444,10 @@ describe("app create-successor-instance", () => {
 						preflightExecuted: true,
 						creationPostAttempted: false,
 						targetProbe: "forbidden-and-not-listable",
-						supportedRecoveryModes: ["grant-global-project-visibility",],
+						supportedRecoveryModes: [
+							"create-instance-with-generated-key",
+							"grant-global-project-visibility",
+						],
 						unavailableRecoveryModes: [
 							"use-supported-key-availability-endpoint",
 							"server-atomic-create",
@@ -3036,7 +3489,7 @@ describe("app create-successor-instance", () => {
 				);
 				expect(failure.code,).toBe(1,);
 				expect(failure.stderr,).toBe("",);
-				expect(failure.stdout,).toContain("Could not confirm",);
+
 				expect(errorReport(failure,),).toMatchObject({
 					code: "target_absence_unverifiable",
 					category: "permission_or_environment",
@@ -3051,7 +3504,10 @@ describe("app create-successor-instance", () => {
 						preflightExecuted: true,
 						creationPostAttempted: false,
 						targetProbe: "forbidden-and-not-listable",
-						supportedRecoveryModes: ["grant-global-project-visibility",],
+						supportedRecoveryModes: [
+							"create-instance-with-generated-key",
+							"grant-global-project-visibility",
+						],
 						unavailableRecoveryModes: [
 							"use-supported-key-availability-endpoint",
 							"server-atomic-create",

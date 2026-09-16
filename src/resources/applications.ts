@@ -41,13 +41,13 @@ export type AppManifestReferenceKind = "scenario" | "folder" | "variable";
 
 /**
  * Source-verifiable app-manifest reference locations. Validation is scoped to
- * homepage tiles so identically named keys in arbitrary custom-form `config`
+ * homepage tiles so identically named keys in arbitrary custom tile `config`
  * objects are never treated as references.
  */
 export const APP_MANIFEST_REFERENCE_KEYS: Record<AppManifestReferenceKind, string[]> = {
 	scenario: ["SCENARIO_RUN.scenarioId",],
-	folder: ["DOWNLOAD_FILE.folderId", "DOWNLOAD_FILE.managedFolderId",],
-	variable: ["params[].name",],
+	folder: ["DOWNLOAD_MANAGED_FOLDER_FILE.folderId",],
+	variable: ["PROJECT_VARIABLES_EDIT.params[].name",],
 };
 
 export interface AppManifestReference {
@@ -669,11 +669,13 @@ export class ApplicationsResource extends BaseResource {
 
 	/**
 	 * Validate source-verifiable references in app homepage tiles:
-	 * SCENARIO_RUN scenario IDs, DOWNLOAD_FILE managed-folder IDs, and runtime
-	 * form parameter names (which DSS maps to project variables). Arbitrary
-	 * custom-form `config` objects remain opaque. The manifest is never mutated.
-	 * Missing/malformed references are returned deterministically; a reference
-	 * kind with no applicable tiles does not trigger its project API.
+	 * SCENARIO_RUN scenario IDs, DOWNLOAD_MANAGED_FOLDER_FILE managed-folder IDs,
+	 * and PROJECT_VARIABLES_EDIT parameter names (which DSS maps to project
+	 * variables). Tile types outside that set, including custom tiles and their
+	 * `config` objects, remain opaque and are never parsed for references. The
+	 * manifest is never mutated. Missing/malformed references are returned
+	 * deterministically; a reference kind with no applicable tiles does not
+	 * trigger its project API.
 	 */
 	async validateAppManifest(
 		manifest: unknown,
@@ -711,32 +713,31 @@ export class ApplicationsResource extends BaseResource {
 								referenceIssues,
 							);
 						}
-						if (tile["type"] === "DOWNLOAD_FILE") {
-							for (const key of ["folderId", "managedFolderId",]) {
-								if (!Object.prototype.hasOwnProperty.call(tile, key,)) continue;
+						if (tile["type"] === "DOWNLOAD_MANAGED_FOLDER_FILE") {
+							collectReferenceValue(
+								tile["folderId"],
+								propertyPath(tilePath, "folderId",),
+								"folderId",
+								"folder",
+								references,
+								referenceIssues,
+							);
+						}
+						if (tile["type"] === "PROJECT_VARIABLES_EDIT") {
+							const params = tile["params"];
+							if (!Array.isArray(params,)) continue;
+							for (let paramIndex = 0; paramIndex < params.length; paramIndex += 1) {
+								const param = params[paramIndex];
+								if (!isPlainRecord(param,)) continue;
 								collectReferenceValue(
-									tile[key],
-									propertyPath(tilePath, key,),
-									key,
-									"folder",
+									param["name"],
+									`${propertyPath(tilePath, "params",)}[${paramIndex}]["name"]`,
+									"name",
+									"variable",
 									references,
 									referenceIssues,
 								);
 							}
-						}
-						const params = tile["params"];
-						if (!Array.isArray(params,)) continue;
-						for (let paramIndex = 0; paramIndex < params.length; paramIndex += 1) {
-							const param = params[paramIndex];
-							if (!isPlainRecord(param,)) continue;
-							collectReferenceValue(
-								param["name"],
-								`${propertyPath(tilePath, "params",)}[${paramIndex}]["name"]`,
-								"name",
-								"variable",
-								references,
-								referenceIssues,
-							);
 						}
 					}
 				}
