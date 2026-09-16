@@ -66,7 +66,8 @@ describe("agent-facing token budgets", () => {
 			authentication: 461,
 			discovery: 574,
 			mutations: 602,
-			"app-releases": 642,
+			// Sharing safeguards and generated successors; retain the existing 5% growth margin.
+			"app-releases": 858,
 			"flow-maps": 159,
 			coding: 231,
 			troubleshooting: 876,

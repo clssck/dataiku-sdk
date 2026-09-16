@@ -78,11 +78,14 @@ projects. Managed dataset types, paths and recipe output schemas come from DSS r
 than tutorial-specific connection guesses.
 
 Profiles add to core: `ml` trains and deploys a small decision tree and checks clustering.
-`applications` template-gated cases (template surface, instance, successor and
-business-app surfaces) need `DATAIKU_LIVE_APP_TEMPLATE_ID`, and business-app instance
-cases may additionally use `DATAIKU_LIVE_BUSINESS_APP_ID`,
-`DATAIKU_LIVE_BAPP_INSTANCE_PROJECT`, `DATAIKU_LIVE_BAPP_USER` and
-`DATAIKU_LIVE_BAPP_ARCHIVE_PATH` — each missing prerequisite reports an exact blocker.
+`applications` Designer cases provision disposable owned templates when
+`DATAIKU_LIVE_APP_TEMPLATE_ID` is absent. That variable optionally selects an external
+read-only template; version writes always use an owned template. The owned workflow
+exercises form variables, a Python scenario, and a managed-folder download. Explicit-key
+instance and successor creation still blocks before POST when target absence is unprovable.
+Packaged Business Apps are separate: their cases use `DATAIKU_LIVE_BUSINESS_APP_ID`,
+`DATAIKU_LIVE_BAPP_INSTANCE_PROJECT`, `DATAIKU_LIVE_BAPP_USER`, or
+`DATAIKU_LIVE_BAPP_ARCHIVE_PATH`, and report missing prerequisites as blockers.
 Other application and infrastructure read/CRUD cases run without these. The SQL probe
 case needs `DATAIKU_SQL_CONNECTION` or `DATAIKU_SQL_DATASET_FULL_NAME` (other
 infrastructure read-only cases run without either).
@@ -332,11 +335,14 @@ dss recipe get-payload compute_orders --output code.py --project-key MYPROJ
 dss install-skill --dry-run
 dss app validate-manifest --project-key MYAPP_INSTANCE
 dss app compare-manifest my-app --project-key MYAPP_INSTANCE
-dss app create-instance my-app --data '{"targetProjectKey":"MYAPP_INSTANCE"}' --wait --record-cleanup cleanup.jsonl
+dss app create-instance my-app --data '{"targetProjectName":"My app instance"}' --wait --record-cleanup cleanup.jsonl
+# Substitute the returned projectKey for MYAPP_INSTANCE in later commands.
 dss app manifest-version --project-key MYAPP_TEMPLATE
 dss app successor-preflight my-app --from MYAPP_INSTANCE --to MYAPP_INSTANCE_V2 --copy-permissions
 dss app set-manifest-version --manifest-version 1.4.0 --expect-hash PREFLIGHT_TEMPLATE_MANIFEST_HASH --project-key MYAPP_TEMPLATE
 dss app create-successor-instance my-app --from MYAPP_INSTANCE --to MYAPP_INSTANCE_V2 --copy-permissions --record-cleanup cleanup.jsonl
+# Or omit --to: the target key is generated during apply (preflight/plan allocate nothing).
+dss app create-successor-instance my-app --from MYAPP_INSTANCE --copy-permissions --record-cleanup cleanup.jsonl
 dss app verify-instance my-app --project-key MYAPP_INSTANCE_V2 --expect-version 1.4.0
 dss app permissions-snapshot --project-key MYAPP_INSTANCE --output permissions.json
 dss app permissions-diff --project-key MYAPP_INSTANCE --file permissions.json
@@ -383,8 +389,10 @@ dss app compare-manifest APP_ID --project-key RELEASE_INSTANCE
 dss app manifest-version --project-key APP_TEMPLATE
 
 # Run every read-only successor gate before changing the template version. This validates the
-# template references, verifies the predecessor, proves target absence, and optionally snapshots
-# the predecessor ACL. Keep template.manifestHash from the result for the next command.
+# template references, verifies the predecessor, proves target absence for an explicit --to, and
+# optionally snapshots the predecessor ACL. Keep template.manifestHash from the result for the
+# next command. Omit --to to leave the target to apply: preflight then reports
+# targetProjectKeyGeneratedDuringApply with no absence probe and no allocation.
 dss app successor-preflight APP_ID \
   --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 --copy-permissions
 
@@ -398,20 +406,24 @@ dss app successor-preflight APP_ID \
 dss app set-manifest-version --manifest-version 1.4.0 \
   --expect-hash PREFLIGHT_TEMPLATE_MANIFEST_HASH --project-key APP_TEMPLATE
 
-# Create an instance only after its target key is confirmed absent, wait on the DSS future, and
-# record deterministic cleanup.
+# Create a fresh instance without global project visibility; the CLI generates the key.
+# Use the returned projectKey for verification and later commands; cleanup binds that instance.
 dss app create-instance APP_ID \
-  --data '{"targetProjectKey":"RELEASE_INSTANCE","targetProjectName":"Release instance"}' \
+  --data '{"targetProjectName":"Release instance"}' \
   --wait --record-cleanup cleanup.jsonl
 
 # Roll out a new template version to an existing instance as an additive successor: the old
 # instance is never modified or deleted, and the command always waits on the DSS future
 # (there is no --wait flag). The recorded cleanup entry targets only the new project key. If DSS
 # may have accepted creation but no future ID is returned, the outcome is indeterminate and no
-# unbound cleanup entry is written.
+# unbound cleanup entry is written. Omit --to to generate the target key during apply: preflight
+# and plans stay allocation-free, the key is generated once before the single POST, and cleanup
+# binds it through the creation future plus creationTag.
 dss app create-successor-instance APP_ID \
   --from RELEASE_INSTANCE --to RELEASE_INSTANCE_V2 \
   --name "Release instance v2" --copy-permissions --record-cleanup cleanup.jsonl
+dss app create-successor-instance APP_ID \
+  --from RELEASE_INSTANCE --name "Release instance v2" --copy-permissions --record-cleanup cleanup.jsonl
 
 # API readiness gate for the successor. apiReady:true with status API_VERIFIED_UI_PENDING is an
 # API-verified state only — never visual verification. The API key authenticates public REST only;
@@ -436,24 +448,33 @@ restore reject snapshots from another DSS server, project key, or observed incar
 client-side, non-atomic stale-identity checks: DSS exposes no conditional permission PUT, so the
 checks narrow and detect key-reuse races but cannot serialize the final check with the write.
 Snapshots contain access-control identities; commit them only when repository policy permits.
-`validate-manifest` checks `SCENARIO_RUN` scenario IDs, `DOWNLOAD_FILE`
-managed-folder IDs, and runtime-form parameter names against supported public project APIs.
+`validate-manifest` checks `SCENARIO_RUN` scenario IDs, `DOWNLOAD_MANAGED_FOLDER_FILE`
+folder IDs, and `PROJECT_VARIABLES_EDIT` parameter names against supported public project APIs.
+Unknown tile types and custom content remain opaque; reference validation is not UI-rendering proof.
 
-Some DSS deployments hide unknown project keys behind `403` instead of returning `404`.
-Instance creation requires confirmed target absence before POST: an inaccessible target not present
-in the visible project and app-instance lists is still unconfirmed and is rejected with
-`target_absence_unverifiable` / `permission_or_environment` rather than risking cleanup against a
-pre-existing project. Choosing another key does not solve deployments that mask every unknown key.
-DSS exposes no permission-independent public availability endpoint, and its published app-instance
-API does not guarantee duplicate-key rejection before any write or non-overwrite behavior, so
-there is no unsafe force or unconfirmed-target bypass. Use an identity with global project
-visibility. A definitive create rejection never produces a cleanup entry; an ambiguous POST
-without a future ID or verified
-incarnation also produces no cleanup entry.
+Fresh `app create-instance` requests can omit `targetProjectKey`: the CLI generates a cryptographic
+`APP_` + UUIDv4 key locally (122 random bits), without global visibility probes. It preserves
+`targetProjectName`; if omitted, the name defaults to the key. Normal app-instantiation permissions
+still apply. Use the returned `projectKey` for verification and later commands. Only omission
+selects generation; explicit blank, null, or non-string keys are rejected. Collision risk is
+negligible, not zero; DSS does not document atomic duplicate-key rejection. This follows the
+[official client's random-key pattern](https://github.com/dataiku/dataiku-api-client-python/blob/master/dataikuapi/dss/app.py).
 
-Static create plans describe, but do not execute, these reads:
-`preflightExecuted:false` and `preflightWillRunDuringApply:true`. Run `successor-preflight` when
-live read evidence is required before changing the template version.
+Caller-chosen keys, including successor `--to`, still require confirmed absence before POST.
+A masked `403` remains `target_absence_unverifiable` / `permission_or_environment`, even if absent from
+visible lists. DSS has no public availability endpoint or force bypass; exact keys need global
+visibility. Otherwise omit the key for a fresh instance, or omit successor `--to` to generate the
+successor target during apply. Definitive rejections produce no cleanup entry; ambiguous POSTs
+without a future ID or verified incarnation produce none either.
+
+Plans allocate and reserve nothing. Direct `create-instance` generated-key plans report
+`preflightExecuted:false` and `preflightWillRunDuringApply:false`; explicit-key plans report the
+latter as `true`. `create-successor-instance` plans always report
+`preflightWillRunDuringApply:true` — with `--to` the read-only gates re-run during apply, and
+without `--to` the target key is generated only then
+(`targetProjectKeyGeneratedDuringApply:true`, `preflightExecuted:false`). Use `--plan`
+for preview (`create-instance` does not support `--dry-run`). Run `successor-preflight` for named
+releases when live read evidence is required before changing the template version.
 
 Every new cleanup entry records the canonical DSS URL. App-instance cleanup records a
 `creationTag` hash observed after the DSS future identifies the target key; a future-addressable
