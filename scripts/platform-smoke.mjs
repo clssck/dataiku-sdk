@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, } from "node:url";
-
+import { verifyCandidate, } from "./release-candidate.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url,),), "..",);
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-sdk-platform-",),);
 
@@ -35,15 +35,21 @@ try {
 	fs.mkdirSync(installDir, { recursive: true, },);
 	fs.writeFileSync(path.join(installDir, "package.json",), '{"private":true}\n',);
 
-	const packOutput = run(process.execPath, [
-		"pm",
-		"pack",
-		`--destination=${packDir}`,
-		"--quiet",
-	],);
-	const packedPath = packOutput.trim().split(/\r?\n/,).at(-1,);
-	assert(typeof packedPath === "string" && packedPath.length > 0, "Bun pack omitted filename",);
-	const tarball = path.isAbsolute(packedPath,) ? packedPath : path.join(packDir, packedPath,);
+	const [option, candidateDirectory, ...extra] = process.argv.slice(2,);
+	assert(
+		option === undefined || (option === "--candidate" && candidateDirectory && extra.length === 0),
+		"Usage: platform-smoke.mjs [--candidate DIRECTORY]",
+	);
+	const candidate = candidateDirectory ? verifyCandidate(candidateDirectory,) : undefined;
+	let tarball;
+	if (candidateDirectory) {
+		tarball = path.resolve(candidateDirectory, "package.tgz",);
+	} else {
+		const packOutput = run(process.execPath, ["pm", "pack", `--destination=${packDir}`, "--quiet",],);
+		const packedPath = packOutput.trim().split(/\r?\n/,).at(-1,);
+		assert(typeof packedPath === "string" && packedPath.length > 0, "Bun pack omitted filename",);
+		tarball = path.isAbsolute(packedPath,) ? packedPath : path.join(packDir, packedPath,);
+	}
 	assert(fs.existsSync(tarball,), `packed artifact is missing: ${tarball}`,);
 
 	run(process.execPath, [
@@ -62,6 +68,16 @@ try {
 		run(process.execPath, ["--no-env-file", cli, "version",], { cwd: installDir, },),
 	);
 	assert(typeof version.version === "string", "Bun packaged CLI version output is invalid",);
+	if (candidate) {
+		assert(
+			version.version === candidate.version,
+			"Installed candidate version differs from its manifest",
+		);
+		assert(
+			version.buildRevision === candidate.commit,
+			"Installed candidate build revision differs from its manifest",
+		);
+	}
 	const bunxVersion = JSON.parse(
 		run(process.execPath, ["x", "--bun", "dss", "version",], { cwd: installDir, },),
 	);

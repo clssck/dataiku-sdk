@@ -2,6 +2,12 @@ name: CI
 
 on:
   workflow_call:
+    inputs:
+      candidate-artifact:
+        description: Versioned candidate to restore and smoke-test without repacking
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
 
 permissions:
@@ -25,11 +31,22 @@ jobs:
           - windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.0
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: inputs.candidate-artifact != ''
+        with:
+          name: ${{ inputs.candidate-artifact }}
+          path: ${{ runner.temp }}/candidate
+
+      - name: Restore release candidate source
+        if: inputs.candidate-artifact != ''
+        shell: bash
+        run: bun scripts/release-candidate.mjs restore "$RUNNER_TEMP/candidate"
 
       - name: Install dependencies with Bun
         run: bun install --frozen-lockfile
@@ -50,4 +67,12 @@ jobs:
         run: bun test
 
       - name: Smoke packaged CLI and skill
-        run: bun run test:platform
+        shell: bash
+        env:
+          CANDIDATE_ARTIFACT: ${{ inputs.candidate-artifact }}
+        run: |
+          if [[ -n "$CANDIDATE_ARTIFACT" ]]; then
+            bun run test:platform --candidate "$RUNNER_TEMP/candidate"
+          else
+            bun run test:platform
+          fi
