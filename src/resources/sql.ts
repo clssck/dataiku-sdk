@@ -126,7 +126,11 @@ function withSqlErrorContext(error: unknown,): never {
 				body,
 				error.retry,
 				error.requestId,
-				{ target: error.trustedTarget, elapsedMs: error.trustedElapsedMs, },
+				{
+					target: error.trustedTarget,
+					elapsedMs: error.trustedElapsedMs,
+					bodyTruncated: error.bodyTruncated,
+				},
 			);
 		}
 	}

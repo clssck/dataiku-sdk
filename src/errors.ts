@@ -61,6 +61,8 @@ export interface DataikuRetryMetadata {
 export interface DataikuErrorTrustedMetadata {
 	target?: string;
 	elapsedMs?: number;
+	/** Set by the transport when the retained response body is only a bounded prefix. */
+	bodyTruncated?: boolean;
 }
 
 const CANONICAL_STATUS_TEXT: Record<number, string> = {
@@ -445,6 +447,7 @@ export class DataikuError extends Error {
 	public requestId?: string;
 	public readonly trustedTarget?: string;
 	public readonly trustedElapsedMs?: number;
+	public readonly bodyTruncated?: boolean;
 
 	constructor(
 		public status: number,
@@ -464,6 +467,7 @@ export class DataikuError extends Error {
 		this.requestId = requestId;
 		this.trustedTarget = trustedMetadata?.target;
 		this.trustedElapsedMs = trustedMetadata?.elapsedMs;
+		this.bodyTruncated = trustedMetadata?.bodyTruncated === true ? true : undefined;
 	}
 	public get safeMessage(): string {
 		const retrySummary = DataikuError.formatRetryMetadata(this.retry,);

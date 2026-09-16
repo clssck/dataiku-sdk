@@ -51,6 +51,55 @@ async function withDataikuServer(
 }
 
 describe("DataikuClient bounded response bodies", () => {
+	it("bounds mutation errors at UTF-8 boundaries without retrying or losing request identity", async () => {
+		let attempts = 0;
+		await withDataikuServer((_req, res,) => {
+			attempts++;
+			res.writeHead(503, { "x-request-id": "bounded-error-request", },);
+			res.end("😀".repeat(2_000,),);
+		}, async (client,) => {
+			const failure = await client.post("/oversized-mutation-error", {},).catch((error: unknown,) =>
+				error
+			);
+			if (!(failure instanceof DataikuError)) throw new Error("Expected a DataikuError",);
+			expect(failure.status,).toBe(503,);
+			expect(failure.requestId,).toBe("bounded-error-request",);
+			expect(failure.body,).toBe("😀".repeat(128,),);
+			expect(Buffer.byteLength(failure.body,),).toBeLessThanOrEqual(513,);
+			expect(failure.bodyTruncated,).toBe(true,);
+			expect(failure.retry?.enabled,).toBe(false,);
+			expect(attempts,).toBe(1,);
+		}, { maxResponseBodyBytes: 513, },);
+	});
+
+	it("still retries an idempotent request after a bounded transient error body", async () => {
+		let attempts = 0;
+		await withDataikuServer((_req, res,) => {
+			attempts++;
+			res.statusCode = attempts === 1 ? 503 : 200;
+			res.end(attempts === 1 ? "busy ".repeat(2_000,) : JSON.stringify({ recovered: true, },),);
+		}, async (client,) => {
+			expect(await client.get("/retry-large-error",),).toEqual({ recovered: true, },);
+			expect(attempts,).toBe(2,);
+		}, { maxResponseBodyBytes: 512, },);
+	});
+
+	it("retains transport retries when an error response stalls after headers", async () => {
+		let attempts = 0;
+		await withDataikuServer((_req, res,) => {
+			attempts++;
+			if (attempts === 1) {
+				res.writeHead(500,);
+				res.write("partial error",);
+			} else {
+				res.end(JSON.stringify({ recovered: true, },),);
+			}
+		}, async (client,) => {
+			expect(await client.get("/retry-stalled-error",),).toEqual({ recovered: true, },);
+			expect(attempts,).toBe(2,);
+		}, { requestTimeoutMs: 80, },);
+	});
+
 	it("getText rejects a body exceeding maxResponseBodyBytes", async () => {
 		await withDataikuServer(async (_req, res,) => {
 			res.statusCode = 200;

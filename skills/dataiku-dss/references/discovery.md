@@ -13,17 +13,17 @@
 
 ```text
 dss commands run
-dss commands run --fields dataset
+dss agent contract --fields commands.actions.dataset
 dss commands run --fields dataset.create
-dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples
+dss commands run --fields dataset.preview.usage,dataset.preview.description,dataset.preview.flags,dataset.preview.examples
 dss commands run --output commands.json
 dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility
 dss agent contract --fields commands.actions
 ```
 
-`commands run` defaults to a resource→action-name summary (~1k tokens), never full entries. Bootstrap with the six-field `agent contract` projection above (~250 tokens): protocol/schema compatibility, streams, discovery commands, planning, compatibility guarantees. Fetch `schemas` or `commands` only as needed.
+`commands run` defaults to a resource→action-name summary (~1.6k tokens), never full entries. For a known resource, project `commands.actions.RESOURCE` from `agent contract` (~64 tokens for dataset). Bootstrap once with the six-field projection above (~250 tokens); fetch `schemas` or `commands` only as needed.
 
-Look up syntax before invoking. `--fields RESOURCE` selects all its entries; `RESOURCE.ACTION` one complete entry; append `.FIELD` for nested metadata. Prefer `usage,description,flags,examples` for initial invocation discovery. Full entries canonically describe flags, positionals, side effects, auth, output, idempotency, dry-run, structured examples, payload schemas, unsafe outputs, cleanup, and exits.
+Look up syntax before invoking. `--fields RESOURCE` selects every full entry (potentially large); `RESOURCE.ACTION` one complete entry; append `.FIELD` for nested metadata. Reads: prefer `usage,description,flags,examples`. Writes: fetch the full entry directly once, not compact-then-full. It includes flags, positionals, side effects, auth, output, idempotency, dry-run, examples, payload schemas, unsafe outputs, cleanup, and exits.
 
 Comma-separate selectors to batch lookups. Keys echo selectors: `--fields dataset.create` → `{"dataset.create":{...}}`. Empty `--fields` fails usage validation, never dumps everything. Unknown resources/actions exit 1 with compact JSON errors listing valid options.
 

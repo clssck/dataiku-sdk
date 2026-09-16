@@ -61,14 +61,19 @@ function projectionRecords(result: unknown,): Array<Record<string, unknown>> {
 	) as Array<Record<string, unknown>>;
 }
 
-function warnUnknownProjectionFields(result: unknown, fields: string[],): void {
+function warnUnknownProjectionFields(
+	result: unknown,
+	fields: string[],
+	availableFieldNames?: () => string[],
+): void {
 	const records = projectionRecords(result,);
 	if (records.length === 0) return;
 	const unknownFields = fields.filter((field,) =>
 		!records.some((record,) => resolveFieldPath(record, field,).found)
 	);
 	if (unknownFields.length === 0) return;
-	const availableFields = [...new Set(records.flatMap((record,) => Object.keys(record,)),),].sort();
+	const availableFields = availableFieldNames?.()
+		?? [...new Set(records.flatMap((record,) => Object.keys(record,)),),].sort();
 	enqueueCliWarning({
 		code: "field_projection_missing",
 		fields: unknownFields,
@@ -82,8 +87,12 @@ function warnUnknownProjectionFields(result: unknown, fields: string[],): void {
  * element-wise; scalars and string results pass through untouched. Requested keys
  * that are absent become null so every row keeps a stable, predictable shape.
  */
-export function projectResultFields(result: unknown, fields: string[],): unknown {
-	warnUnknownProjectionFields(result, fields,);
+export function projectResultFields(
+	result: unknown,
+	fields: string[],
+	availableFieldNames?: () => string[],
+): unknown {
+	warnUnknownProjectionFields(result, fields, availableFieldNames,);
 	if (Array.isArray(result,)) return result.map((item,) => pickResultFields(item, fields,));
 	return pickResultFields(result, fields,);
 }
@@ -130,7 +139,7 @@ export function addTransientTargetContext(
 			transientBodyWithTargetContext(error.body, target, elapsedMs,),
 			error.retry,
 			error.requestId,
-			{ target, elapsedMs, },
+			{ target, elapsedMs, bodyTruncated: error.bodyTruncated, },
 		);
 	}
 	throw error;

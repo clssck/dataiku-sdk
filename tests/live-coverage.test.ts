@@ -1,11 +1,11 @@
 import { describe, expect, it, } from "bun:test";
-import { buildCommandRegistry, commandActionSummary, } from "../src/cli/contract.js";
+import { commandActionSummary, } from "../src/cli/contract.js";
 import type { CaseResult, } from "./live-context.js";
 import { checkLiveCoverageCatalogue, liveCoverage, } from "./live-coverage.js";
 
 describe("live action coverage", () => {
 	it("requires an explicit classification for registry additions and removals", () => {
-		const summary = commandActionSummary(buildCommandRegistry(),);
+		const summary = commandActionSummary();
 		checkLiveCoverageCatalogue(summary,);
 		expect(() =>
 			checkLiveCoverageCatalogue({ ...summary, dataset: [...summary.dataset!, "new-action",], },)

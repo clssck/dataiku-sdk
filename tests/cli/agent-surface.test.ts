@@ -93,6 +93,17 @@ describe("CLI agent-only command surface", () => {
 		expect(contract,).toHaveProperty("schemas.agentContract",);
 		expect(contract,).toHaveProperty("schemas.traceEvent",);
 	});
+	it("keeps global recovery fields for missing scoped discovery metadata", async () => {
+		const summary = await dss(["commands", "run",],);
+		const scoped = await dss(["commands", "run", "--fields", "dataset.create.noSuchField",],);
+		expect(JSON.parse(scoped.stdout,),).toEqual({ "dataset.create.noSuchField": null, },);
+		const event = JSON.parse(scoped.stderr,) as { warnings: Array<Record<string, unknown>>; };
+		expect(event.warnings,).toContainEqual(expect.objectContaining({
+			code: "field_projection_missing",
+			fields: ["dataset.create.noSuchField",],
+			availableFields: Object.keys(JSON.parse(summary.stdout,) as Record<string, unknown>,).sort(),
+		},),);
+	});
 	it("warns when --fields names are absent instead of silently returning null", async () => {
 		const { stdout, stderr, } = await dss([
 			"version",

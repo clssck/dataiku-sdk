@@ -21,13 +21,15 @@ Bootstrap once:
 ```text
 dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility
 ```
-Find actions: `dss commands run`. Before invoking, discover exact syntax:
+Known resource: `dss agent contract --fields commands.actions.dataset`; otherwise `dss commands run`.
+For reads, discover compact syntax:
 ```text
-dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples
+dss commands run --fields dataset.preview.usage,dataset.preview.description,dataset.preview.flags,dataset.preview.examples
 ```
-Use `--fields RESOURCE.ACTION` for payload schemas, side effects, auth, idempotency,
-dry-run, cleanup, or output details. Combine paths in one request. Never load the full
-registry into context; export only if needed: `dss commands run --output commands.json`.
+For writes, fetch `--fields RESOURCE.ACTION` once, directly: the full entry includes
+syntax, payload schemas, side effects, auth, idempotency, dry-run, cleanup, and output.
+Combine paths in one request. Never load the full registry into context; export only
+if needed: `dss commands run --output commands.json`.
 
 ## Safety and results
 

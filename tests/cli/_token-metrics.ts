@@ -54,15 +54,52 @@ const GOLDEN_O200K_BASE = {
 	endoftextId: 199_999,
 } as const;
 
+const nativeModulePath = process.env.DSS_TOKENIZER_MODULE;
+const nativeTokenizer = nativeModulePath
+	? await import(nativeModulePath) as { countTokens?: (text: string, encoding: string,) => number; }
+	: undefined;
+if (nativeTokenizer && typeof nativeTokenizer.countTokens !== "function") {
+	throw new Error("DSS_TOKENIZER_MODULE must export countTokens(text, encoding)",);
+}
+const nativeCounter = nativeTokenizer?.countTokens;
+const specialTokens = Object.keys(o200kBase.special_tokens,);
+
+function countNativeTokens(text: string,): number {
+	const count = nativeCounter!(text, "O200kBase",);
+	if (!Number.isSafeInteger(count,) || count < 0) {
+		throw new Error("Native token counter returned an invalid count",);
+	}
+	return count;
+}
+
+if (nativeCounter) {
+	// Keep the pinned JS model authoritative: an explicitly configured broken
+	// or incompatible native module must fail, never silently relax budgets.
+	for (
+		const text of ["", "hello world", GOLDEN_O200K_BASE.probeText, 'é 中文 😀\n\t{"value":1.25}',]
+	) {
+		if (countNativeTokens(text,) !== encoder.encode(text,).length) {
+			throw new Error("Native token counter disagrees with pinned o200k_base",);
+		}
+	}
+}
+
 /**
  * Measures agent-facing text with a pinned, offline tokenizer. The result is an
  * exact o200k_base count, not a model-independent claim: other providers may
  * tokenize the same text differently.
  */
-export function measureAgentText(text: string,): AgentTextMetrics {
+export function measureAgentText(
+	text: string,
+	backend: "auto" | "reference" = "auto",
+): AgentTextMetrics {
+	// The native ordinary-text encoder does not reject reserved special-token
+	// spellings. Delegate those inputs to JS to preserve its validation contract.
+	const native = backend === "auto" && nativeCounter
+		&& !specialTokens.some(token => text.includes(token,));
 	return {
 		encoding: AGENT_TOKEN_ENCODING,
-		tokens: encoder.encode(text,).length,
+		tokens: native ? countNativeTokens(text,) : encoder.encode(text,).length,
 		utf8Bytes: Buffer.byteLength(text, "utf-8",),
 	};
 }

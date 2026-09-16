@@ -1,4 +1,4 @@
-import { buildCommandRegistry, commandActionSummary, } from "../src/cli/contract.js";
+import { commandActionSummary, } from "../src/cli/contract.js";
 import type { CaseResult, } from "./live-context.js";
 
 /** Explicit reviewed inventory. New actions must be classified, not silently absorbed by a resource wildcard. */
@@ -877,7 +877,7 @@ export interface CoverageRow {
 	executed: boolean;
 }
 export function checkLiveCoverageCatalogue(
-	summary: Record<string, string[]> = commandActionSummary(buildCommandRegistry(),),
+	summary: Record<string, string[]> = commandActionSummary(),
 ): void {
 	const actual = new Set(
 		Object.entries(summary,).flatMap(([resource, actions,],) =>

@@ -1042,7 +1042,11 @@ async function runMetaCommand(
 		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
 		validateSupportedCommandFlags("commands", "run", flags,);
 		const selectors = commandRegistrySelectors(flags,);
-		const registry = contract.buildCommandRegistry();
+		const outputPath = flags["output"];
+		if (selectors.length === 0 && typeof outputPath !== "string") {
+			return { action, result: contract.commandActionSummary(), exitCode: 0, };
+		}
+		const registry: CommandRegistry = selectors.length === 0 ? contract.buildCommandRegistry() : {};
 		for (const selector of selectors) {
 			const selectorParts = selector.split(".",);
 			if (selectorParts.some((part,) => part.length === 0)) {
@@ -1054,8 +1058,9 @@ async function runMetaCommand(
 				);
 			}
 			const [selectedResource, selectedAction,] = selectorParts;
-			const resourceActions = registry[selectedResource];
+			const resourceActions = cachedCommandRegistry(selectedResource,);
 			if (!resourceActions) throw unknownResourceError(selectedResource,);
+			registry[selectedResource] = resourceActions;
 			if (selectedAction && !resourceActions[selectedAction]) {
 				throw unknownActionError(
 					selectedResource,
@@ -1064,10 +1069,13 @@ async function runMetaCommand(
 				);
 			}
 		}
-		const outputPath = flags["output"];
 		const selectedRegistry = selectors.length === 0
 			? registry
-			: projectResultFields(registry, selectors,);
+			: projectResultFields(
+				registry,
+				selectors,
+				() => Object.keys(contract.commandActionSummary(),).sort(),
+			);
 		if (typeof outputPath === "string") {
 			const exported = selectedRegistry;
 			await fs.writeFile(outputPath, `${JSON.stringify(exported,)}\n`, "utf-8",);
@@ -1075,7 +1083,7 @@ async function runMetaCommand(
 		}
 		return {
 			action,
-			result: selectors.length === 0 ? contract.commandActionSummary(registry,) : selectedRegistry,
+			result: selectedRegistry,
 			exitCode: 0,
 		};
 	}
@@ -1802,6 +1810,7 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			requestId: err.requestId ?? requestIdFromBody(err.body,),
 			details: {
 				dssCategory: err.category,
+				...(err.bodyTruncated ? { bodyTruncated: true, } : {}),
 				...dssDiagnosticDetails(err,),
 				statusText: canonicalStatusText(err.status,),
 				idempotency: "none",
@@ -1834,6 +1843,7 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			requestId: err.requestId ?? requestIdFromBody(err.body,),
 			details: {
 				dssCategory: err.category,
+				...(err.bodyTruncated ? { bodyTruncated: true, } : {}),
 				statusText: canonicalStatusText(err.status,),
 				body: safeBody,
 				...(err.retry ? { retry: err.retry, } : {}),

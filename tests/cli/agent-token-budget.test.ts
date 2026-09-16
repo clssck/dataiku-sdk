@@ -19,7 +19,7 @@ interface TokenBudget {
 }
 
 const TOKEN_BUDGETS = {
-	skill: { baseline: 750, maxTokens: 825, },
+	skill: { baseline: 774, maxTokens: 825, },
 	// Intentional contract expansion: the 113-action resource surface (plugin,
 	// saved-model, user, data-collection, connection, project-folder, scenario,
 	// dataset, recipe, project, llm, knowledge-bank, group, macro additions)
@@ -62,12 +62,12 @@ function expectWithinBudget(name: string, text: string, budget: TokenBudget,): n
 
 describe("agent-facing token budgets", () => {
 	it("bounds every on-demand skill reference", () => {
+		// Measured after discovery routing and App sharing guidance updates; retain 5% headroom.
 		const baselines = {
 			authentication: 461,
-			discovery: 574,
+			discovery: 596,
 			mutations: 602,
-			// Sharing safeguards and generated successors; retain the existing 5% growth margin.
-			"app-releases": 858,
+			"app-releases": 872,
 			"flow-maps": 159,
 			coding: 231,
 			troubleshooting: 876,
@@ -123,7 +123,9 @@ describe("agent-facing token budgets", () => {
 			];
 			for (const { args, baseline, } of cases) {
 				const { stdout, } = await dss(args,);
-				expect(native.countTokens(stdout, "O200kBase",),).toBe(measureAgentText(stdout,).tokens,);
+				expect(native.countTokens(stdout, "O200kBase",),).toBe(
+					measureAgentText(stdout, "reference",).tokens,
+				);
 				for (const [index, encoding,] of encodings.entries()) {
 					const tokens = native.countTokens(stdout, encoding,);
 					const maximum = Math.ceil(baseline[index]! * 1.1,);
@@ -144,6 +146,45 @@ describe("agent-facing token budgets", () => {
 	it("pins the loaded tokenizer to the exact o200k_base model", () => {
 		const fingerprint = assertAgentEncodingPinned();
 		expect(fingerprint.encoding,).toBe("o200k_base",);
+	});
+
+	it("preserves reserved-token validation with either counting backend", () => {
+		for (const token of ["<|endoftext|>", "<|endofprompt|>",]) {
+			expect(() => measureAgentText(token,)).toThrow();
+			expect(() => measureAgentText(token, "reference",)).toThrow();
+		}
+	});
+
+	it("rejects an incompatible configured counter instead of silently falling back", async () => {
+		const directory = join(tmpdir(), `dss-token-counter-${crypto.randomUUID()}`,);
+		mkdirSync(directory, { recursive: true, },);
+		const modulePath = join(directory, "counter.mjs",);
+		writeFileSync(modulePath, "export function countTokens() { return 0; }",);
+		try {
+			const exits: number[] = [];
+			for (const configured of ["", modulePath,]) {
+				const child = Bun.spawn([
+					process.execPath,
+					"--no-env-file",
+					"-e",
+					"const m = await import(process.argv[1]); if (m.measureAgentText('hello world').tokens !== 2) process.exitCode = 2;",
+					join(SDK_ROOT, "tests", "cli", "_token-metrics.ts",),
+				], {
+					env: { ...process.env, DSS_TOKENIZER_MODULE: configured, },
+					stdout: "pipe",
+					stderr: "pipe",
+				},);
+				const [exit,] = await Promise.all([
+					child.exited,
+					new Response(child.stdout,).text(),
+					new Response(child.stderr,).text(),
+				],);
+				exits.push(exit,);
+			}
+			expect(exits,).toEqual([0, 1,],);
+		} finally {
+			rmSync(directory, { recursive: true, force: true, },);
+		}
 	});
 
 	it("bounds bootstrap and scoped discovery output with a pinned tokenizer", async () => {

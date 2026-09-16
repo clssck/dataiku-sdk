@@ -1772,100 +1772,109 @@ function buildRegistryEntry(
 	};
 }
 
-export function buildCommandRegistry(
+function commandDefinitions(
 	resourceFilter?: string,
-): Record<string, Record<string, CommandRegistryEntry>> {
-	const registry: Record<string, Record<string, CommandRegistryEntry>> = {};
+): Record<string, Record<string, CommandMeta>> {
+	const registry: Record<string, Record<string, CommandMeta>> = {};
 	for (const resource of Object.keys(commands,)) {
 		if (resourceFilter !== undefined && resource !== resourceFilter) continue;
-		const actions = commands[resource]!;
-		registry[resource] = {};
-		for (const [action, meta,] of Object.entries(actions,)) {
-			registry[resource][action] = buildRegistryEntry(resource, action, meta,);
-		}
+		registry[resource] = commands[resource]!;
 	}
 	if (resourceFilter === undefined || resourceFilter === "commands") {
 		registry.commands = {
-			run: buildRegistryEntry("commands", "run", {
+			run: {
 				handler: async () => undefined,
 				usage: COMMANDS_USAGE,
 				description: COMMANDS_DESCRIPTION,
 				examples: COMMANDS_EXAMPLES,
-			},),
+			},
 		};
 	}
 	if (resourceFilter === undefined || resourceFilter === "agent") {
 		registry.agent = {
-			contract: buildRegistryEntry("agent", "contract", {
+			contract: {
 				handler: async () => undefined,
 				usage: AGENT_CONTRACT_USAGE,
 				description: AGENT_CONTRACT_DESCRIPTION,
 				examples: AGENT_CONTRACT_EXAMPLES,
-			},),
+			},
 		};
 	}
 	if (resourceFilter === undefined || resourceFilter === "version") {
 		registry.version = {
-			run: buildRegistryEntry("version", "run", {
+			run: {
 				handler: async () => undefined,
 				usage: VERSION_USAGE,
 				description: VERSION_DESCRIPTION,
 				examples: VERSION_EXAMPLES,
-			},),
+			},
 		};
 	}
 	if (resourceFilter === undefined || resourceFilter === "install-skill") {
 		registry["install-skill"] = {
-			run: buildRegistryEntry("install-skill", "run", {
+			run: {
 				handler: async () => undefined,
 				usage: INSTALL_SKILL_USAGE,
 				description: INSTALL_SKILL_DESCRIPTION,
 				examples: INSTALL_SKILL_EXAMPLES,
-			},),
+			},
 		};
 	}
 	if (resourceFilter === undefined || resourceFilter === "cleanup") {
 		registry.cleanup = {
-			run: buildRegistryEntry("cleanup", "run", {
+			run: {
 				handler: async () => undefined,
 				usage: CLEANUP_USAGE,
 				description: CLEANUP_DESCRIPTION,
 				examples: CLEANUP_EXAMPLES,
-			},),
+			},
 		};
 	}
 	if (resourceFilter === undefined || resourceFilter === "fixtures") {
 		registry.fixtures = {
-			run: buildRegistryEntry("fixtures", "run", {
+			run: {
 				handler: async () => undefined,
 				usage: FIXTURES_USAGE,
 				description: FIXTURES_DESCRIPTION,
 				examples: FIXTURES_EXAMPLES,
-			},),
+			},
 		};
 	}
 	if (resourceFilter === undefined || resourceFilter === "batch") {
 		registry.batch = {
-			run: buildRegistryEntry("batch", "run", {
+			run: {
 				handler: async () => undefined,
 				usage: BATCH_USAGE,
 				description: BATCH_DESCRIPTION,
 				examples: BATCH_EXAMPLES,
 				examplePayload: BATCH_EXAMPLE_PAYLOAD,
 				payloadSchema: { stdin: true, dataFlag: true, dataFileFlag: true, jsonShape: "array", },
-			},),
+			},
 		};
 	}
 	if (resourceFilter === undefined || resourceFilter === "auth") {
 		registry.auth = {};
 		for (const [action, meta,] of Object.entries(AUTH_ACTIONS,)) {
-			registry.auth[action] = buildRegistryEntry("auth", action, {
+			registry.auth[action] = {
 				handler: async () => undefined,
 				usage: meta.usage,
 				description: meta.description,
 				examples: meta.examples,
 				requiredFlags: meta.requiredFlags,
-			},);
+			};
+		}
+	}
+	return registry;
+}
+
+export function buildCommandRegistry(
+	resourceFilter?: string,
+): Record<string, Record<string, CommandRegistryEntry>> {
+	const registry: Record<string, Record<string, CommandRegistryEntry>> = {};
+	for (const [resource, actions,] of Object.entries(commandDefinitions(resourceFilter,),)) {
+		registry[resource] = {};
+		for (const [action, meta,] of Object.entries(actions,)) {
+			registry[resource][action] = buildRegistryEntry(resource, action, meta,);
 		}
 	}
 	return registry;
@@ -2031,42 +2040,45 @@ export function agentContractJsonSchema(): Record<string, unknown> {
 	};
 }
 
-export function commandActionSummary(
-	registry: Record<string, Record<string, CommandRegistryEntry>>,
-): Record<string, string[]> {
+export function commandActionSummary(): Record<string, string[]> {
 	const summary: Record<string, string[]> = {};
-	for (const [resource, actions,] of Object.entries(registry,)) {
+	for (const [resource, actions,] of Object.entries(commandDefinitions(),)) {
 		summary[resource] = Object.keys(actions,).sort();
 	}
 	return summary;
 }
 
 export function buildAgentContract(): Record<string, unknown> {
-	const registry = buildCommandRegistry();
+	let commandSection: Record<string, unknown> | undefined;
+	let schemaSection: Record<string, unknown> | undefined;
 	return {
 		protocol: "dataiku-sdk-agent",
 		agentContractVersion: AGENT_CONTRACT_VERSION,
 		cli: cliVersionResult(),
-		commands: {
-			discoveryCommand: "dss commands run",
-			fullRegistryExportCommand: "dss commands run --output PATH",
-			scopedDiscoveryCommand: "dss commands run --fields RESOURCE[.ACTION[.FIELD...]]",
-			actionIndexCommand: "dss agent contract --fields commands.actions",
-			scopedDiscoveryExamples: [
-				"dss commands run --fields dataset",
-				"dss commands run --fields dataset.create",
-			],
-			scopedDiscoveryHint:
-				"Default: resource/action summary. --fields RESOURCE: all resource entries; RESOURCE.ACTION: one entry keyed by that path; append .FIELD for nested metadata. Comma-separate paths. --output PATH exports the full registry.",
-			actions: commandActionSummary(registry,),
+		get commands() {
+			return commandSection ??= {
+				discoveryCommand: "dss commands run",
+				fullRegistryExportCommand: "dss commands run --output PATH",
+				scopedDiscoveryCommand: "dss commands run --fields RESOURCE[.ACTION[.FIELD...]]",
+				actionIndexCommand: "dss agent contract --fields commands.actions",
+				scopedDiscoveryExamples: [
+					"dss commands run --fields dataset",
+					"dss commands run --fields dataset.create",
+				],
+				scopedDiscoveryHint:
+					"Default: resource/action summary. --fields RESOURCE: all resource entries; RESOURCE.ACTION: one entry keyed by that path; append .FIELD for nested metadata. Comma-separate paths. --output PATH exports the full registry.",
+				actions: commandActionSummary(),
+			};
 		},
-		schemas: {
-			agentContract: agentContractJsonSchema(),
-			commandRegistry: commandRegistryJsonSchema(),
-			commandRegistryEntry: commandRegistryEntryJsonSchema(),
-			errorEnvelope: errorEnvelopeJsonSchema(),
-			warningEvent: warningEventJsonSchema(),
-			traceEvent: traceEventJsonSchema(),
+		get schemas() {
+			return schemaSection ??= {
+				agentContract: agentContractJsonSchema(),
+				commandRegistry: commandRegistryJsonSchema(),
+				commandRegistryEntry: commandRegistryEntryJsonSchema(),
+				errorEnvelope: errorEnvelopeJsonSchema(),
+				warningEvent: warningEventJsonSchema(),
+				traceEvent: traceEventJsonSchema(),
+			};
 		},
 		stdio: {
 			stdout: {

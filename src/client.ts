@@ -155,9 +155,9 @@ export interface DataikuClientConfig {
 	/** Max retry attempts for idempotent requests (default 4, capped at 10) */
 	retryMaxAttempts?: number;
 	/**
-	 * Maximum bytes buffered from a single response body by the text/JSON
-	 * consumer methods (default 50 MiB). Responses larger than this are
-	 * rejected with a DataikuError after the stream is cancelled.
+	 * Maximum bytes retained from a single response body by text/JSON consumers
+	 * (default 50 MiB). Oversized successful responses are rejected. Error
+	 * responses retain a bounded prefix with DataikuError.bodyTruncated=true.
 	 */
 	maxResponseBodyBytes?: number;
 	/** Emit HTTP request/response trace events. Defaults to JSONL on stderr when verbose is true. */
@@ -1040,7 +1040,7 @@ export class DataikuClient {
 	/* ---- private: bounded response body reading ---- */
 
 	/**
-	 * Read at most `maxBytes` of a 2xx response body as UTF-8 text.
+	 * Read at most `maxBytes` of a response body as UTF-8 text.
 	 *
 	 * The body is consumed with the request deadline still active (measured
 	 * from the first read): a stalled body throws a DataikuError instead of
@@ -1287,7 +1287,11 @@ export class DataikuClient {
 					elapsedMs: Date.now() - startedAt,
 				},);
 				if (!res.ok) {
-					const text = await res.text();
+					const { text, truncated, } = await this.readBoundedBodyText(
+						res,
+						this.maxResponseBodyBytes,
+						startedAt + attemptTimeoutMs,
+					);
 					const canRetry = retryEnabled && attempt < maxAttempts && isTransientError(res.status, text,);
 					if (canRetry) {
 						const delayMs = computeBackoffDelayMs(attempt,);
@@ -1311,11 +1315,21 @@ export class DataikuClient {
 						text,
 						buildRetryMetadata(method, retryEnabled, maxAttempts, attempt, delaysMs, false,),
 						this.requestIdFromHeaders(res.headers,),
+						truncated ? { bodyTruncated: true, } : undefined,
 					);
 				}
 				return res;
 			} catch (error) {
-				if (error instanceof DataikuError) throw error;
+				if (error instanceof DataikuError) {
+					// A bounded error-body read is still part of this transport attempt.
+					// Preserve the same retry/deadline policy as a fetch body abort.
+					if (
+						error.status !== 0 || error.statusText !== "Request Timeout" || error.retry !== undefined
+					) {
+						throw error;
+					}
+					timedOut = true;
+				}
 				const canRetry = retryEnabled && attempt < maxAttempts;
 				if (canRetry) {
 					const delayMs = computeBackoffDelayMs(attempt,);
