@@ -1,4 +1,3 @@
-import { buildDatasetCloneSettings, } from "../../resources/datasets.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { compareStrings, stableHash, } from "../../utils/stable-hash.js";
 import { jsonInput, num, schemaColumnsInput, unknownJsonInput, } from "../coerce.js";
@@ -645,6 +644,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 				allowSamePath: f["allow-same-path"] === true,
 			};
 			const current = await c.datasets.get(a[0], pk,);
+			const { buildDatasetCloneSettings, } = await import("../../resources/datasets.js");
 			const next = buildDatasetCloneSettings(current, a[1], pk ?? c.resolveProjectKey(pk,), opts,);
 			const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
 			if (executionMode(f,).dryRun) {

@@ -1,4 +1,4 @@
-import { macroResultMaxBytes, type MacroRunOptions, } from "../../resources/macros.js";
+import type { MacroRunOptions, } from "../../resources/macros.js";
 import { jsonInput, num, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, } from "../output.js";
@@ -258,7 +258,8 @@ export const macroCommands: Record<string, CommandMeta> = {
 			}
 			return c.macros.result(a[0], a[1], {
 				projectKey: pk,
-				maxBytes: macroResultMaxBytes(maxBytes,),
+				maxBytes: (require("../../resources/macros.js",) as typeof import("../../resources/macros.js"))
+					.macroResultMaxBytes(maxBytes,),
 			},);
 		},
 		usage:

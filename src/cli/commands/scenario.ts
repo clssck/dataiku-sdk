@@ -1,4 +1,3 @@
-import { scenarioUpdatePreview, } from "../../resources/scenarios.js";
 import { jsonInput, num, parseBooleanOption, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
@@ -168,6 +167,7 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
 				const current = await c.scenarios.get(a[0], { projectKey: pk, },);
+				const { scenarioUpdatePreview, } = await import("../../resources/scenarios.js");
 				const preview = scenarioUpdatePreview(current, data,);
 				return {
 					dryRun: true,

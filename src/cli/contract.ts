@@ -4,7 +4,6 @@ import { validateCredentials, } from "../auth.js";
 import { getCredentialsPath, saveCredentials, } from "../config.js";
 import { DataikuError, } from "../errors.js";
 import { APP_MANIFEST_CONCURRENCY_CONTROL, } from "../resources/applications.js";
-import { encodeGitReferencePath, validateGitReferencePath, } from "../resources/project-git.js";
 import {
 	encodeLibraryPath,
 	PROJECT_LIBRARY_CONCURRENCY_CONTROL,
@@ -12,34 +11,7 @@ import {
 	validateLibraryName,
 	validateLibraryPath,
 } from "../resources/project-library.js";
-import {
-	CodeEnvDetailsSchema,
-	CodeEnvLogSummaryArraySchema,
-	CodeEnvSummaryArraySchema,
-	CodeEnvUsageArraySchema,
-	CodeEnvVersionForProjectSchema,
-	DatasetDetailsSchema,
-	DatasetSchemaSchema,
-	DatasetSummaryArraySchema,
-	FlowZoneArraySchema,
-	FlowZoneSchema,
-	JobSummaryArraySchema,
-	JobWaitResultSchema,
-	JupyterNotebookContentSchema,
-	JupyterNotebookSummaryArraySchema,
-	NotebookSessionArraySchema,
-	ProjectDetailsSchema,
-	ProjectMetadataSchema,
-	ProjectSummaryArraySchema,
-	RecipeSummaryArraySchema,
-	ScenarioDetailsSchema,
-	ScenarioStatusSchema,
-	ScenarioSummaryArraySchema,
-	SqlNotebookContentSchema,
-	SqlNotebookHistorySchema,
-	SqlNotebookSummaryArraySchema,
-	SqlQueryResponseSchema,
-} from "../schemas.js";
+import { encodeGitReferencePath, validateGitReferencePath, } from "../utils/git-reference.js";
 import {
 	jobBuildTargetTypeFromFlags,
 	json,
@@ -690,180 +662,212 @@ const NOTEBOOK_SAVE_SQL_OUTPUT_SCHEMA: Record<string, unknown> = {
 	},
 };
 
-const COMMAND_OUTPUT_SCHEMAS: Record<string, Record<string, unknown>> = {
-	"code-env.list": CodeEnvSummaryArraySchema,
-	"code-env.get": CodeEnvDetailsSchema,
-	"code-env.list-logs": CodeEnvLogSummaryArraySchema,
-	"code-env.get-log": {
-		oneOf: [
-			{
-				type: "object",
-				required: ["log", "bytes", "truncated", "tailed", "envLang", "envName", "logName",],
-				properties: {
-					log: { type: "string", },
-					bytes: { type: "integer", minimum: 0, },
-					truncated: { type: "boolean", },
-					tailed: { type: "boolean", },
-					envLang: { enum: ["PYTHON", "R",], },
-					envName: { type: "string", },
-					logName: { type: "string", },
+let commandOutputSchemas: Record<string, Record<string, unknown>> | undefined;
+function getCommandOutputSchemas(): Record<string, Record<string, unknown>> {
+	if (commandOutputSchemas) return commandOutputSchemas;
+	const {
+		CodeEnvDetailsSchema,
+		CodeEnvLogSummaryArraySchema,
+		CodeEnvSummaryArraySchema,
+		CodeEnvUsageArraySchema,
+		CodeEnvVersionForProjectSchema,
+		DatasetDetailsSchema,
+		DatasetSchemaSchema,
+		DatasetSummaryArraySchema,
+		FlowZoneArraySchema,
+		FlowZoneSchema,
+		JobSummaryArraySchema,
+		JobWaitResultSchema,
+		JupyterNotebookContentSchema,
+		JupyterNotebookSummaryArraySchema,
+		NotebookSessionArraySchema,
+		ProjectDetailsSchema,
+		ProjectMetadataSchema,
+		ProjectSummaryArraySchema,
+		RecipeSummaryArraySchema,
+		ScenarioDetailsSchema,
+		ScenarioStatusSchema,
+		ScenarioSummaryArraySchema,
+		SqlNotebookContentSchema,
+		SqlNotebookHistorySchema,
+		SqlNotebookSummaryArraySchema,
+		SqlQueryResponseSchema,
+	} = require("../schemas.js",) as typeof import("../schemas.js");
+	return commandOutputSchemas = {
+		"code-env.list": CodeEnvSummaryArraySchema,
+		"code-env.get": CodeEnvDetailsSchema,
+		"code-env.list-logs": CodeEnvLogSummaryArraySchema,
+		"code-env.get-log": {
+			oneOf: [
+				{
+					type: "object",
+					required: ["log", "bytes", "truncated", "tailed", "envLang", "envName", "logName",],
+					properties: {
+						log: { type: "string", },
+						bytes: { type: "integer", minimum: 0, },
+						truncated: { type: "boolean", },
+						tailed: { type: "boolean", },
+						envLang: { enum: ["PYTHON", "R",], },
+						envName: { type: "string", },
+						logName: { type: "string", },
+					},
 				},
-			},
-			{
-				type: "object",
-				required: ["path", "bytes", "truncated", "tailed", "envLang", "envName", "logName",],
-				properties: {
-					path: { type: "string", },
-					bytes: { type: "integer", minimum: 0, },
-					truncated: { type: "boolean", },
-					tailed: { type: "boolean", },
-					envLang: { enum: ["PYTHON", "R",], },
-					envName: { type: "string", },
-					logName: { type: "string", },
+				{
+					type: "object",
+					required: ["path", "bytes", "truncated", "tailed", "envLang", "envName", "logName",],
+					properties: {
+						path: { type: "string", },
+						bytes: { type: "integer", minimum: 0, },
+						truncated: { type: "boolean", },
+						tailed: { type: "boolean", },
+						envLang: { enum: ["PYTHON", "R",], },
+						envName: { type: "string", },
+						logName: { type: "string", },
+					},
 				},
-			},
-		],
-	},
-	"code-env.version": CodeEnvVersionForProjectSchema,
-	"code-env.usages": CodeEnvUsageArraySchema,
-	"code.run": {
-		type: "object",
-		additionalProperties: false,
-		required: [
-			"outcome",
-			"success",
-			"runId",
-			"elapsedMs",
-			"pollCount",
-			"output",
-			"logTruncated",
-			"maxLogBytes",
-			"cleanup",
-		],
-		properties: {
-			outcome: { type: "string", },
-			success: { type: "boolean", },
-			runId: { type: "string", },
-			elapsedMs: { type: "number", minimum: 0, },
-			pollCount: { type: "integer", minimum: 0, },
-			output: { type: "string", },
-			log: { type: "string", },
-			logTruncated: { type: "boolean", },
-			maxLogBytes: { type: "integer", minimum: 0, },
-			timedOut: { const: true, },
-			timeoutMs: { type: "integer", minimum: 0, },
-			cleanup: {
-				type: "object",
-				additionalProperties: false,
-				required: ["status",],
-				properties: {
-					status: { enum: ["deleted", "kept", "failed",], },
-					error: { type: "string", },
+			],
+		},
+		"code-env.version": CodeEnvVersionForProjectSchema,
+		"code-env.usages": CodeEnvUsageArraySchema,
+		"code.run": {
+			type: "object",
+			additionalProperties: false,
+			required: [
+				"outcome",
+				"success",
+				"runId",
+				"elapsedMs",
+				"pollCount",
+				"output",
+				"logTruncated",
+				"maxLogBytes",
+				"cleanup",
+			],
+			properties: {
+				outcome: { type: "string", },
+				success: { type: "boolean", },
+				runId: { type: "string", },
+				elapsedMs: { type: "number", minimum: 0, },
+				pollCount: { type: "integer", minimum: 0, },
+				output: { type: "string", },
+				log: { type: "string", },
+				logTruncated: { type: "boolean", },
+				maxLogBytes: { type: "integer", minimum: 0, },
+				timedOut: { const: true, },
+				timeoutMs: { type: "integer", minimum: 0, },
+				cleanup: {
+					type: "object",
+					additionalProperties: false,
+					required: ["status",],
+					properties: {
+						status: { enum: ["deleted", "kept", "failed",], },
+						error: { type: "string", },
+					},
 				},
 			},
 		},
-	},
-	"notebook.list-jupyter": JupyterNotebookSummaryArraySchema,
-	"notebook.get-jupyter": JupyterNotebookContentSchema,
-	"notebook.sessions-jupyter": NotebookSessionArraySchema,
-	"notebook.list-sql": SqlNotebookSummaryArraySchema,
-	"notebook.get-sql": SqlNotebookContentSchema,
-	"notebook.history-sql": SqlNotebookHistorySchema,
-	"notebook.save-jupyter": NOTEBOOK_SAVE_OUTPUT_SCHEMA,
-	"notebook.save-sql": NOTEBOOK_SAVE_SQL_OUTPUT_SCHEMA,
-	"project-library.list": { type: "array", items: PROJECT_LIBRARY_ITEM_OUTPUT_SCHEMA, },
-	"project-library.get-bytes": {
-		type: "object",
-		additionalProperties: false,
-		required: ["path", "bytes", "sha256",],
-		properties: {
-			path: { type: "string", },
-			bytes: { type: "integer", minimum: 0, },
-			sha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
-		},
-	},
-	"project-library.put": {
-		type: "object",
-		additionalProperties: false,
-		required: ["updated", "bytes", "sha256",],
-		properties: {
-			updated: { type: "string", },
-			bytes: { type: "integer", minimum: 0, },
-			sha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
-			beforeSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
-		},
-	},
-	"project-library.diff": {
-		type: "object",
-		additionalProperties: false,
-		required: [
-			"path",
-			"unchanged",
-			"added",
-			"removed",
-			"diff",
-			"diffTruncated",
-			"localSha256",
-			"localBytes",
-			"maxLines",
-		],
-		properties: {
-			path: { type: "string", },
-			unchanged: { type: "boolean", },
-			added: { type: "integer", minimum: 0, },
-			removed: { type: "integer", minimum: 0, },
-			diff: { type: "string", },
-			diffTruncated: { type: "boolean", },
-			binary: { type: "boolean", },
-			remoteAbsent: { type: "boolean", },
-			remoteSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
-			remoteBytes: { type: "integer", minimum: 0, },
-			localSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
-			localBytes: { type: "integer", minimum: 0, },
-			maxLines: { type: "integer", minimum: 0, },
-		},
-	},
-	"project.list": ProjectSummaryArraySchema,
-	"project.get": ProjectDetailsSchema,
-	"project.metadata": ProjectMetadataSchema,
-	"dataset.list": DatasetSummaryArraySchema,
-	"dataset.get": DatasetDetailsSchema,
-	"dataset.schema": DatasetSchemaSchema,
-	"recipe.list": RecipeSummaryArraySchema,
-	"job.list": JobSummaryArraySchema,
-	"job.wait": JobWaitResultSchema,
-	"job.monitor": JobWaitResultSchema,
-	"scenario.list": ScenarioSummaryArraySchema,
-	"scenario.get": ScenarioDetailsSchema,
-	"scenario.status": ScenarioStatusSchema,
-	"flow-zone.list": FlowZoneArraySchema,
-	"flow-zone.get": FlowZoneSchema,
-	"sql.query": {
-		anyOf: [
-			SqlQueryResponseSchema,
-			{
-				type: "object",
-				required: ["queryId", "rowCount", "preview",],
-				additionalProperties: true,
-				properties: {
-					queryId: { type: "string", },
-					rowCount: { type: "number", },
-					preview: { type: "array", items: true, },
-					truncated: { type: "boolean", },
-					outputPath: { type: "string", },
-					written: { type: "string", },
-				},
+		"notebook.list-jupyter": JupyterNotebookSummaryArraySchema,
+		"notebook.get-jupyter": JupyterNotebookContentSchema,
+		"notebook.sessions-jupyter": NotebookSessionArraySchema,
+		"notebook.list-sql": SqlNotebookSummaryArraySchema,
+		"notebook.get-sql": SqlNotebookContentSchema,
+		"notebook.history-sql": SqlNotebookHistorySchema,
+		"notebook.save-jupyter": NOTEBOOK_SAVE_OUTPUT_SCHEMA,
+		"notebook.save-sql": NOTEBOOK_SAVE_SQL_OUTPUT_SCHEMA,
+		"project-library.list": { type: "array", items: PROJECT_LIBRARY_ITEM_OUTPUT_SCHEMA, },
+		"project-library.get-bytes": {
+			type: "object",
+			additionalProperties: false,
+			required: ["path", "bytes", "sha256",],
+			properties: {
+				path: { type: "string", },
+				bytes: { type: "integer", minimum: 0, },
+				sha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
 			},
-		],
-	},
-};
+		},
+		"project-library.put": {
+			type: "object",
+			additionalProperties: false,
+			required: ["updated", "bytes", "sha256",],
+			properties: {
+				updated: { type: "string", },
+				bytes: { type: "integer", minimum: 0, },
+				sha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
+				beforeSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
+			},
+		},
+		"project-library.diff": {
+			type: "object",
+			additionalProperties: false,
+			required: [
+				"path",
+				"unchanged",
+				"added",
+				"removed",
+				"diff",
+				"diffTruncated",
+				"localSha256",
+				"localBytes",
+				"maxLines",
+			],
+			properties: {
+				path: { type: "string", },
+				unchanged: { type: "boolean", },
+				added: { type: "integer", minimum: 0, },
+				removed: { type: "integer", minimum: 0, },
+				diff: { type: "string", },
+				diffTruncated: { type: "boolean", },
+				binary: { type: "boolean", },
+				remoteAbsent: { type: "boolean", },
+				remoteSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
+				remoteBytes: { type: "integer", minimum: 0, },
+				localSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
+				localBytes: { type: "integer", minimum: 0, },
+				maxLines: { type: "integer", minimum: 0, },
+			},
+		},
+		"project.list": ProjectSummaryArraySchema,
+		"project.get": ProjectDetailsSchema,
+		"project.metadata": ProjectMetadataSchema,
+		"dataset.list": DatasetSummaryArraySchema,
+		"dataset.get": DatasetDetailsSchema,
+		"dataset.schema": DatasetSchemaSchema,
+		"recipe.list": RecipeSummaryArraySchema,
+		"job.list": JobSummaryArraySchema,
+		"job.wait": JobWaitResultSchema,
+		"job.monitor": JobWaitResultSchema,
+		"scenario.list": ScenarioSummaryArraySchema,
+		"scenario.get": ScenarioDetailsSchema,
+		"scenario.status": ScenarioStatusSchema,
+		"flow-zone.list": FlowZoneArraySchema,
+		"flow-zone.get": FlowZoneSchema,
+		"sql.query": {
+			anyOf: [
+				SqlQueryResponseSchema,
+				{
+					type: "object",
+					required: ["queryId", "rowCount", "preview",],
+					additionalProperties: true,
+					properties: {
+						queryId: { type: "string", },
+						rowCount: { type: "number", },
+						preview: { type: "array", items: true, },
+						truncated: { type: "boolean", },
+						outputPath: { type: "string", },
+						written: { type: "string", },
+					},
+				},
+			],
+		},
+	};
+}
 
 function outputJsonSchema(
 	resource: string,
 	action: string,
 	shape: CommandOutputShape,
 ): Record<string, unknown> {
-	const precise = COMMAND_OUTPUT_SCHEMAS[registryKey(resource, action,)];
+	const precise = getCommandOutputSchemas()[registryKey(resource, action,)];
 	if (precise) return precise;
 	if (shape === "array") return { type: "array", items: true, };
 	if (shape === "string") return { type: "string", };
@@ -1727,6 +1731,7 @@ function buildRegistryEntry(
 	const uniqueRequiredFlags = uniqueStrings(requiredFlags,);
 	const uniqueOptionalFlags = uniqueStrings(optionalFlags,);
 	const unsafe = unsafeOutputs(resource, action, producesLocalFile,);
+	let schemas: CommandAgentSchemas | undefined;
 	return {
 		resource,
 		action,
@@ -1753,16 +1758,18 @@ function buildRegistryEntry(
 		...(requiredOneOf.length > 0 ? { requiredOneOf, } : {}),
 		...(inputGroups.length > 0 ? { requiredInputGroups: inputGroups, } : {}),
 		...(payloadSchema ? { payloadSchema, } : {}),
-		schemas: buildCommandSchemas(
-			resource,
-			action,
-			flagMetadata,
-			uniqueRequiredFlags,
-			requiredOneOf,
-			payloadSchema,
-			outputShape,
-			meta.usage,
-		),
+		get schemas() {
+			return schemas ??= buildCommandSchemas(
+				resource,
+				action,
+				flagMetadata,
+				uniqueRequiredFlags,
+				requiredOneOf,
+				payloadSchema,
+				outputShape,
+				meta.usage,
+			);
+		},
 		...(unsafe ? { unsafeOutputs: unsafe, } : {}),
 		...(examplePayload !== undefined ? { examplePayload, } : {}),
 		...(cleanupCommand ? { cleanupCommand, } : {}),
@@ -1872,9 +1879,14 @@ export function buildCommandRegistry(
 ): Record<string, Record<string, CommandRegistryEntry>> {
 	const registry: Record<string, Record<string, CommandRegistryEntry>> = {};
 	for (const [resource, actions,] of Object.entries(commandDefinitions(resourceFilter,),)) {
-		registry[resource] = {};
+		const entries: Record<string, CommandRegistryEntry> = {};
+		registry[resource] = entries;
 		for (const [action, meta,] of Object.entries(actions,)) {
-			registry[resource][action] = buildRegistryEntry(resource, action, meta,);
+			let entry: CommandRegistryEntry | undefined;
+			Object.defineProperty(entries, action, {
+				enumerable: true,
+				get: () => entry ??= buildRegistryEntry(resource, action, meta,),
+			},);
 		}
 	}
 	return registry;

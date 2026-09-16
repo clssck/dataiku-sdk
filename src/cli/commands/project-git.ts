@@ -1,5 +1,5 @@
-import { validateGitReferencePath, } from "../../resources/project-git.js";
 import type { ProjectGitActionResult, } from "../../schemas.js";
+import { validateGitReferencePath, } from "../../utils/git-reference.js";
 import { sanitizeErrorSecrets, sanitizeSecrets, } from "../../utils/secret-sanitize.js";
 import { num, parseBooleanOption, requiredStringFlag, } from "../coerce.js";
 import { CommandResultFailure, } from "../output.js";

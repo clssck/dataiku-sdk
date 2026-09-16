@@ -1,6 +1,5 @@
 import { ClientValidationError, DataikuError, } from "../errors.js";
 import { BaseResource, requireNonEmpty, } from "./base.js";
-import { validateGitReferencePath, } from "./project-git.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -774,6 +773,3 @@ export function validatedPluginGitUrl(repository: string, field = "Git repositor
 export function isPluginIdCandidate(value: unknown,): boolean {
 	return typeof value === "string" && PLUGIN_ID_PATTERN.test(value,);
 }
-
-// Re-exported for CLI consumers so a single import site covers path rules.
-export { validateGitReferencePath, };

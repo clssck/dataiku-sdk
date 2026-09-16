@@ -1,7 +1,6 @@
 import { mkdir, writeFile, } from "node:fs/promises";
 import { dirname, resolve, } from "node:path";
 import type { DataikuClient, } from "../../client.js";
-import { parseJobLogProgress, } from "../../resources/jobs.js";
 import type { BuildMode, JobSummary, } from "../../schemas.js";
 import {
 	jobBuildTargetTypeFromFlags,
@@ -194,7 +193,10 @@ async function jobInspectionSummary(
 		logError = error instanceof Error ? error.message : String(error,);
 	}
 	const durationMs = jobDurationMs(details,);
-	const progress = log ? parseJobLogProgress(log, durationMs,) : undefined;
+	const progress = log
+		? (require("../../resources/jobs.js",) as typeof import("../../resources/jobs.js"))
+			.parseJobLogProgress(log, durationMs,)
+		: undefined;
 	const logLines = log
 		? log.split(/\r?\n/,).map((line,) => line.trim()).filter((line,) => line.length > 0)
 		: [];

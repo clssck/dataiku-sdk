@@ -1,5 +1,4 @@
 import { readFileSync, } from "node:fs";
-import { ScenarioScriptRunWithCleanupFailureError, } from "../../resources/scenarios.js";
 import type {
 	ScenarioScriptRunCleanupFailure,
 	ScenarioScriptRunResult,
@@ -128,6 +127,9 @@ function reportCleanupFailure(cleanupFailure: ScenarioScriptRunCleanupFailure,):
 }
 
 function unwrapCodeRunError(error: unknown,): unknown {
+	const { ScenarioScriptRunWithCleanupFailureError, } = require(
+		"../../resources/scenarios.js",
+	) as typeof import("../../resources/scenarios.js");
 	if (error instanceof ScenarioScriptRunWithCleanupFailureError) {
 		reportCleanupFailure(error.cleanupFailure,);
 		return error.cause;
