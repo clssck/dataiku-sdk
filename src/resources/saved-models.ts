@@ -1,3 +1,4 @@
+import { basename, } from "node:path";
 import type { UploadFormPart, } from "../client.js";
 import { ClientValidationError, } from "../errors.js";
 import { BaseResource, requireNonEmpty, } from "./base.js";
@@ -270,7 +271,7 @@ export class SavedModelsResource extends BaseResource {
 		}
 		const query = this.mlflowImportQuery(options,);
 		const parts: UploadFormPart[] = [
-			{ name: "file", blob: Bun.file(archive,), fileName: archive.split("/",).pop() ?? "model.zip", },
+			{ name: "file", blob: Bun.file(archive,), fileName: basename(archive,), },
 		];
 		return this.client.uploadForm<Record<string, unknown>>(
 			`${this.savedModelPath(id, projectKey,)}/versions/${version}`,

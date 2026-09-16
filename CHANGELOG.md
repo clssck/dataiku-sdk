@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use platform-aware basenames for local MLflow archive uploads, keeping Windows parent directories out of multipart filenames.
+
 - Build scoped discovery metadata only for requested resources, generate action indexes without payload schemas, and lazily materialize bootstrap sections; preserve registry bytes and global missing-field recovery hints.
 - Bound SDK HTTP error bodies using the configured response limit, preserve UTF-8 boundaries and retry/deadline rules, and expose trusted truncation state through error wrappers and CLI diagnostics.
 - Route skill discovery directly to full entries for writes and resource-only action indexes; accelerate optional native token measurements while retaining pinned JS parity and validation checks.
