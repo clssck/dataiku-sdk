@@ -5,7 +5,7 @@ Thanks for your interest in improving the Dataiku DSS SDK & CLI. This guide cove
 ## Prerequisites
 
 - [Bun](https://bun.sh) >= 1.4.0 — primary package manager, source runtime, and test runner
-- [Node.js](https://nodejs.org) >= 22.15.0 with npm — published CLI runtime and npm release tooling
+- [Node.js](https://nodejs.org) 24 with npm — release tooling only; the SDK and CLI run under Bun
 - Git
 
 ## Setup
@@ -41,7 +41,7 @@ Before opening a pull request, all of these must be green:
 2. `bun run format:check` — dprint formatting is applied
 3. `bun run lint` — oxlint reports no errors
 4. `bun test` — the unit suite passes
-5. `bun run test:platform` — the packed artifact runs under Bun and Node, preserves JSON errors, and installs the skill
+5. `bun run test:platform` — the packed artifact runs under Bun, preserves JSON errors, and installs the skill
 
 ## Tests
 
@@ -52,6 +52,22 @@ Before opening a pull request, all of these must be green:
   - Convenience scripts: `bun run test:integration`, `test:integration:mutating`, `test:integration:rigorous`
 - Never point mutating tests at a project you care about — use a throwaway instance/project.
 - New behavior should ship with a test. Prefer tests that defend real contracts (exit codes, error taxonomy, output shape) over implementation details.
+
+## Releases
+
+Dispatch `release.yml` from current `main` with a patch, minor, or major bump. Releases are serialized without cancelling an active release; stale dispatches fail rather than releasing a different revision.
+
+Preparation creates one version commit/tag, builds once, and packs without rerunning lifecycle scripts. The immutable `release-candidate-RUN_ID` artifact contains `package.tgz`, its version/source/SHA-512 manifest, and a source bundle, retained for 30 days. Linux, macOS, and Windows restore that candidate source and run the full gates; packaged smoke installs **that same tarball**, checking its version and build revision. Publication uses the tested file with `--ignore-scripts`, not a second build or pack.
+
+After publication, the workflow waits up to ten minutes for exact-version npm metadata and the canonical tarball, verifying both against the candidate integrity. Only then does it atomically push the version commit/tag and create the GitHub release. Credentials are not persisted in the release checkout.
+
+For recovery, **rerun failed jobs**, not all jobs: keep the original artifact. A previously started publish step is never automatically repeated; reruns verify npm and resume instead. If publication is absent or ambiguous, or `main` advances before the final push, inspect npm and the retained candidate before taking manual recovery action. Never blindly republish, force-push, or regenerate a candidate under an already published version.
+
+To smoke-test a downloaded candidate without repacking:
+
+```text
+bun run test:platform --candidate /path/to/candidate
+```
 
 ## Commit messages
 

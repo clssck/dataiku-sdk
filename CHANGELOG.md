@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Honor `Retry-After` seconds and HTTP dates within existing retry eligibility, the 30-second automatic wait cap, and total request deadlines.
+- Materialize discovery entries per action and schemas on access; defer runtime-only SDK imports while preserving full registry output.
+- Extract the first visible HTML error line without allocating an array for every line, retaining carriage returns, decoding, and sanitization.
+- Serialize releases around one versioned, integrity-checked tarball tested on every platform; verify npm metadata and canonical download availability before pushing the candidate commit/tag atomically. Preserve candidates for safe failed-job recovery without automatic republishing.
+
 - Use platform-aware basenames for local MLflow archive uploads, keeping Windows parent directories out of multipart filenames.
 
 - Build scoped discovery metadata only for requested resources, generate action indexes without payload schemas, and lazily materialize bootstrap sections; preserve registry bytes and global missing-field recovery hints.
