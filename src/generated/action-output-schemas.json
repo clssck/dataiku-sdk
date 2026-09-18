@@ -1,0 +1,1735 @@
+{
+	"format": 1,
+	"schemas": {
+		"code-env.get": {
+			"type": "object",
+			"required": [
+				"envName",
+				"envLang",
+				"requestedPackages",
+				"installedPackages"
+			],
+			"properties": {
+				"envName": {
+					"type": "string"
+				},
+				"envLang": {
+					"type": "string"
+				},
+				"pythonInterpreter": {
+					"type": "string"
+				},
+				"deploymentMode": {
+					"type": "string"
+				},
+				"requestedPackages": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"installedPackages": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"definitionHash": {
+					"type": "string"
+				}
+			}
+		},
+		"code-env.get-log": {
+			"oneOf": [
+				{
+					"type": "object",
+					"required": [
+						"log",
+						"bytes",
+						"truncated",
+						"tailed",
+						"envLang",
+						"envName",
+						"logName"
+					],
+					"properties": {
+						"log": {
+							"type": "string"
+						},
+						"bytes": {
+							"type": "integer",
+							"minimum": 0
+						},
+						"truncated": {
+							"type": "boolean"
+						},
+						"tailed": {
+							"type": "boolean"
+						},
+						"envLang": {
+							"enum": [
+								"PYTHON",
+								"R"
+							]
+						},
+						"envName": {
+							"type": "string"
+						},
+						"logName": {
+							"type": "string"
+						}
+					}
+				},
+				{
+					"type": "object",
+					"required": [
+						"path",
+						"bytes",
+						"truncated",
+						"tailed",
+						"envLang",
+						"envName",
+						"logName"
+					],
+					"properties": {
+						"path": {
+							"type": "string"
+						},
+						"bytes": {
+							"type": "integer",
+							"minimum": 0
+						},
+						"truncated": {
+							"type": "boolean"
+						},
+						"tailed": {
+							"type": "boolean"
+						},
+						"envLang": {
+							"enum": [
+								"PYTHON",
+								"R"
+							]
+						},
+						"envName": {
+							"type": "string"
+						},
+						"logName": {
+							"type": "string"
+						}
+					}
+				}
+			]
+		},
+		"code-env.list": {
+			"type": "array",
+			"items": {
+				"additionalProperties": true,
+				"type": "object",
+				"required": [
+					"envName",
+					"envLang"
+				],
+				"properties": {
+					"envName": {
+						"type": "string"
+					},
+					"envLang": {
+						"type": "string"
+					},
+					"deploymentMode": {
+						"type": "string"
+					}
+				}
+			}
+		},
+		"code-env.list-logs": {
+			"type": "array",
+			"items": {
+				"additionalProperties": true,
+				"type": "object",
+				"required": [
+					"name"
+				],
+				"properties": {
+					"name": {
+						"type": "string"
+					}
+				}
+			}
+		},
+		"code-env.usages": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"patternProperties": {
+					"^(.*)$": {}
+				}
+			}
+		},
+		"code-env.version": {
+			"additionalProperties": true,
+			"type": "object",
+			"properties": {
+				"version": {
+					"type": "string"
+				},
+				"bundleId": {
+					"type": "string"
+				}
+			}
+		},
+		"code.run": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"outcome",
+				"success",
+				"runId",
+				"elapsedMs",
+				"pollCount",
+				"output",
+				"logTruncated",
+				"maxLogBytes",
+				"cleanup"
+			],
+			"properties": {
+				"outcome": {
+					"type": "string"
+				},
+				"success": {
+					"type": "boolean"
+				},
+				"runId": {
+					"type": "string"
+				},
+				"elapsedMs": {
+					"type": "number",
+					"minimum": 0
+				},
+				"pollCount": {
+					"type": "integer",
+					"minimum": 0
+				},
+				"output": {
+					"type": "string"
+				},
+				"log": {
+					"type": "string"
+				},
+				"logTruncated": {
+					"type": "boolean"
+				},
+				"maxLogBytes": {
+					"type": "integer",
+					"minimum": 0
+				},
+				"timedOut": {
+					"const": true
+				},
+				"timeoutMs": {
+					"type": "integer",
+					"minimum": 0
+				},
+				"cleanup": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": [
+						"status"
+					],
+					"properties": {
+						"status": {
+							"enum": [
+								"deleted",
+								"kept",
+								"failed"
+							]
+						},
+						"error": {
+							"type": "string"
+						}
+					}
+				}
+			}
+		},
+		"dataset.get": {
+			"additionalProperties": true,
+			"type": "object",
+			"required": [
+				"name"
+			],
+			"properties": {
+				"name": {
+					"type": "string"
+				},
+				"type": {
+					"type": "string"
+				},
+				"projectKey": {
+					"type": "string"
+				},
+				"managed": {
+					"type": "boolean"
+				},
+				"params": {
+					"additionalProperties": true,
+					"type": "object",
+					"properties": {
+						"connection": {
+							"type": "string"
+						},
+						"uploadConnection": {
+							"type": "string"
+						},
+						"path": {
+							"type": "string"
+						},
+						"table": {
+							"type": "string"
+						},
+						"schema": {
+							"type": "string"
+						},
+						"catalog": {
+							"type": "string"
+						},
+						"folderSmartId": {
+							"type": "string"
+						}
+					}
+				},
+				"formatType": {
+					"type": "string"
+				},
+				"formatParams": {
+					"additionalProperties": true,
+					"type": "object",
+					"properties": {
+						"separator": {
+							"type": "string"
+						},
+						"charset": {
+							"type": "string"
+						},
+						"compress": {
+							"type": "string"
+						}
+					}
+				},
+				"schema": {
+					"additionalProperties": true,
+					"type": "object",
+					"required": [
+						"columns"
+					],
+					"properties": {
+						"columns": {
+							"type": "array",
+							"items": {
+								"additionalProperties": true,
+								"type": "object",
+								"required": [
+									"name",
+									"type"
+								],
+								"properties": {
+									"name": {
+										"type": "string"
+									},
+									"type": {
+										"type": "string"
+									},
+									"comment": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"tags": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"shortDesc": {
+					"type": "string"
+				}
+			}
+		},
+		"dataset.list": {
+			"type": "array",
+			"items": {
+				"additionalProperties": true,
+				"type": "object",
+				"required": [
+					"name"
+				],
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"type": {
+						"type": "string"
+					},
+					"shortDesc": {
+						"type": "string"
+					},
+					"managed": {
+						"type": "boolean"
+					},
+					"params": {
+						"additionalProperties": true,
+						"type": "object",
+						"properties": {
+							"connection": {
+								"type": "string"
+							},
+							"uploadConnection": {
+								"type": "string"
+							},
+							"schema": {
+								"type": "string"
+							},
+							"catalog": {
+								"type": "string"
+							}
+						}
+					}
+				}
+			}
+		},
+		"dataset.schema": {
+			"additionalProperties": true,
+			"type": "object",
+			"required": [
+				"columns"
+			],
+			"properties": {
+				"columns": {
+					"type": "array",
+					"items": {
+						"additionalProperties": true,
+						"type": "object",
+						"required": [
+							"name",
+							"type"
+						],
+						"properties": {
+							"name": {
+								"type": "string"
+							},
+							"type": {
+								"type": "string"
+							},
+							"comment": {
+								"type": "string"
+							}
+						}
+					}
+				}
+			}
+		},
+		"flow-zone.get": {
+			"additionalProperties": true,
+			"type": "object",
+			"required": [
+				"id",
+				"name"
+			],
+			"properties": {
+				"id": {
+					"type": "string"
+				},
+				"name": {
+					"type": "string"
+				},
+				"color": {
+					"type": "string"
+				},
+				"projectKey": {
+					"type": "string"
+				},
+				"items": {
+					"type": "array",
+					"items": {
+						"additionalProperties": true,
+						"type": "object",
+						"required": [
+							"objectId",
+							"objectType"
+						],
+						"properties": {
+							"objectId": {
+								"type": "string"
+							},
+							"objectType": {
+								"anyOf": [
+									{
+										"const": "DATASET",
+										"type": "string"
+									},
+									{
+										"const": "MANAGED_FOLDER",
+										"type": "string"
+									},
+									{
+										"const": "SAVED_MODEL",
+										"type": "string"
+									},
+									{
+										"const": "RECIPE",
+										"type": "string"
+									},
+									{
+										"const": "MODEL_EVALUATION_STORE",
+										"type": "string"
+									},
+									{
+										"const": "STREAMING_ENDPOINT",
+										"type": "string"
+									},
+									{
+										"const": "LABELING_TASK",
+										"type": "string"
+									},
+									{
+										"const": "RETRIEVABLE_KNOWLEDGE",
+										"type": "string"
+									}
+								]
+							},
+							"projectKey": {
+								"type": "string"
+							}
+						}
+					}
+				},
+				"shared": {
+					"type": "array",
+					"items": {
+						"additionalProperties": true,
+						"type": "object",
+						"required": [
+							"objectId",
+							"objectType"
+						],
+						"properties": {
+							"objectId": {
+								"type": "string"
+							},
+							"objectType": {
+								"anyOf": [
+									{
+										"const": "DATASET",
+										"type": "string"
+									},
+									{
+										"const": "MANAGED_FOLDER",
+										"type": "string"
+									},
+									{
+										"const": "SAVED_MODEL",
+										"type": "string"
+									},
+									{
+										"const": "RECIPE",
+										"type": "string"
+									},
+									{
+										"const": "MODEL_EVALUATION_STORE",
+										"type": "string"
+									},
+									{
+										"const": "STREAMING_ENDPOINT",
+										"type": "string"
+									},
+									{
+										"const": "LABELING_TASK",
+										"type": "string"
+									},
+									{
+										"const": "RETRIEVABLE_KNOWLEDGE",
+										"type": "string"
+									}
+								]
+							},
+							"projectKey": {
+								"type": "string"
+							}
+						}
+					}
+				},
+				"position": {
+					"additionalProperties": false,
+					"type": "object",
+					"required": [
+						"x",
+						"y"
+					],
+					"properties": {
+						"x": {
+							"type": "number"
+						},
+						"y": {
+							"type": "number"
+						}
+					}
+				}
+			}
+		},
+		"flow-zone.list": {
+			"type": "array",
+			"items": {
+				"additionalProperties": true,
+				"type": "object",
+				"required": [
+					"id",
+					"name"
+				],
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"color": {
+						"type": "string"
+					},
+					"projectKey": {
+						"type": "string"
+					},
+					"items": {
+						"type": "array",
+						"items": {
+							"additionalProperties": true,
+							"type": "object",
+							"required": [
+								"objectId",
+								"objectType"
+							],
+							"properties": {
+								"objectId": {
+									"type": "string"
+								},
+								"objectType": {
+									"anyOf": [
+										{
+											"const": "DATASET",
+											"type": "string"
+										},
+										{
+											"const": "MANAGED_FOLDER",
+											"type": "string"
+										},
+										{
+											"const": "SAVED_MODEL",
+											"type": "string"
+										},
+										{
+											"const": "RECIPE",
+											"type": "string"
+										},
+										{
+											"const": "MODEL_EVALUATION_STORE",
+											"type": "string"
+										},
+										{
+											"const": "STREAMING_ENDPOINT",
+											"type": "string"
+										},
+										{
+											"const": "LABELING_TASK",
+											"type": "string"
+										},
+										{
+											"const": "RETRIEVABLE_KNOWLEDGE",
+											"type": "string"
+										}
+									]
+								},
+								"projectKey": {
+									"type": "string"
+								}
+							}
+						}
+					},
+					"shared": {
+						"type": "array",
+						"items": {
+							"additionalProperties": true,
+							"type": "object",
+							"required": [
+								"objectId",
+								"objectType"
+							],
+							"properties": {
+								"objectId": {
+									"type": "string"
+								},
+								"objectType": {
+									"anyOf": [
+										{
+											"const": "DATASET",
+											"type": "string"
+										},
+										{
+											"const": "MANAGED_FOLDER",
+											"type": "string"
+										},
+										{
+											"const": "SAVED_MODEL",
+											"type": "string"
+										},
+										{
+											"const": "RECIPE",
+											"type": "string"
+										},
+										{
+											"const": "MODEL_EVALUATION_STORE",
+											"type": "string"
+										},
+										{
+											"const": "STREAMING_ENDPOINT",
+											"type": "string"
+										},
+										{
+											"const": "LABELING_TASK",
+											"type": "string"
+										},
+										{
+											"const": "RETRIEVABLE_KNOWLEDGE",
+											"type": "string"
+										}
+									]
+								},
+								"projectKey": {
+									"type": "string"
+								}
+							}
+						}
+					},
+					"position": {
+						"additionalProperties": false,
+						"type": "object",
+						"required": [
+							"x",
+							"y"
+						],
+						"properties": {
+							"x": {
+								"type": "number"
+							},
+							"y": {
+								"type": "number"
+							}
+						}
+					}
+				}
+			}
+		},
+		"job.list": {
+			"type": "array",
+			"items": {
+				"additionalProperties": true,
+				"type": "object",
+				"properties": {
+					"def": {
+						"additionalProperties": true,
+						"type": "object",
+						"properties": {
+							"id": {
+								"type": "string"
+							},
+							"type": {
+								"type": "string"
+							}
+						}
+					},
+					"baseStatus": {
+						"additionalProperties": true,
+						"type": "object",
+						"properties": {
+							"def": {
+								"additionalProperties": true,
+								"type": "object",
+								"properties": {
+									"id": {
+										"type": "string"
+									},
+									"type": {
+										"type": "string"
+									}
+								}
+							},
+							"state": {
+								"type": "string"
+							}
+						}
+					}
+				}
+			}
+		},
+		"job.monitor": {
+			"type": "object",
+			"required": [
+				"jobId",
+				"state",
+				"type",
+				"elapsedMs",
+				"pollCount",
+				"success",
+				"progress"
+			],
+			"properties": {
+				"jobId": {
+					"type": "string"
+				},
+				"state": {
+					"type": "string"
+				},
+				"type": {
+					"type": "string"
+				},
+				"elapsedMs": {
+					"type": "number"
+				},
+				"pollCount": {
+					"type": "number"
+				},
+				"success": {
+					"type": "boolean"
+				},
+				"timedOut": {
+					"type": "boolean"
+				},
+				"progress": {
+					"type": "object",
+					"required": [
+						"done",
+						"failed",
+						"running",
+						"total"
+					],
+					"properties": {
+						"done": {
+							"type": "number"
+						},
+						"failed": {
+							"type": "number"
+						},
+						"running": {
+							"type": "number"
+						},
+						"total": {
+							"anyOf": [
+								{
+									"type": "number"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					}
+				},
+				"log": {
+					"type": "string"
+				}
+			}
+		},
+		"job.wait": {
+			"type": "object",
+			"required": [
+				"jobId",
+				"state",
+				"type",
+				"elapsedMs",
+				"pollCount",
+				"success",
+				"progress"
+			],
+			"properties": {
+				"jobId": {
+					"type": "string"
+				},
+				"state": {
+					"type": "string"
+				},
+				"type": {
+					"type": "string"
+				},
+				"elapsedMs": {
+					"type": "number"
+				},
+				"pollCount": {
+					"type": "number"
+				},
+				"success": {
+					"type": "boolean"
+				},
+				"timedOut": {
+					"type": "boolean"
+				},
+				"progress": {
+					"type": "object",
+					"required": [
+						"done",
+						"failed",
+						"running",
+						"total"
+					],
+					"properties": {
+						"done": {
+							"type": "number"
+						},
+						"failed": {
+							"type": "number"
+						},
+						"running": {
+							"type": "number"
+						},
+						"total": {
+							"anyOf": [
+								{
+									"type": "number"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					}
+				},
+				"log": {
+					"type": "string"
+				}
+			}
+		},
+		"notebook.get-jupyter": {
+			"additionalProperties": true,
+			"type": "object",
+			"required": [
+				"metadata",
+				"nbformat",
+				"nbformat_minor",
+				"cells"
+			],
+			"properties": {
+				"metadata": {
+					"type": "object",
+					"patternProperties": {
+						"^(.*)$": {}
+					}
+				},
+				"nbformat": {
+					"type": "number"
+				},
+				"nbformat_minor": {
+					"type": "number"
+				},
+				"cells": {
+					"type": "array",
+					"items": {
+						"additionalProperties": true,
+						"type": "object",
+						"required": [
+							"cell_type",
+							"source"
+						],
+						"properties": {
+							"cell_type": {
+								"type": "string"
+							},
+							"source": {
+								"anyOf": [
+									{
+										"type": "string"
+									},
+									{
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									}
+								]
+							},
+							"metadata": {
+								"type": "object",
+								"patternProperties": {
+									"^(.*)$": {}
+								}
+							},
+							"outputs": {
+								"type": "array",
+								"items": {}
+							},
+							"execution_count": {
+								"anyOf": [
+									{
+										"type": "null"
+									},
+									{
+										"type": "number"
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		"notebook.get-sql": {
+			"additionalProperties": true,
+			"type": "object",
+			"required": [
+				"connection",
+				"cells"
+			],
+			"properties": {
+				"connection": {
+					"type": "string"
+				},
+				"cells": {
+					"type": "array",
+					"items": {
+						"additionalProperties": true,
+						"type": "object",
+						"required": [
+							"id",
+							"type",
+							"code"
+						],
+						"properties": {
+							"id": {
+								"type": "string"
+							},
+							"type": {
+								"type": "string"
+							},
+							"name": {
+								"type": "string"
+							},
+							"code": {
+								"type": "string"
+							}
+						}
+					}
+				}
+			}
+		},
+		"notebook.history-sql": {
+			"type": "object",
+			"patternProperties": {
+				"^(.*)$": {
+					"type": "array",
+					"items": {}
+				}
+			}
+		},
+		"notebook.list-jupyter": {
+			"type": "array",
+			"items": {
+				"additionalProperties": true,
+				"type": "object",
+				"required": [
+					"name",
+					"projectKey",
+					"language"
+				],
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"projectKey": {
+						"type": "string"
+					},
+					"language": {
+						"type": "string"
+					},
+					"kernelSpec": {
+						"additionalProperties": true,
+						"type": "object",
+						"required": [
+							"name"
+						],
+						"properties": {
+							"name": {
+								"type": "string"
+							},
+							"display_name": {
+								"type": "string"
+							},
+							"language": {
+								"type": "string"
+							}
+						}
+					}
+				}
+			}
+		},
+		"notebook.list-sql": {
+			"type": "array",
+			"items": {
+				"additionalProperties": true,
+				"type": "object",
+				"required": [
+					"id",
+					"language",
+					"connection"
+				],
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"projectKey": {
+						"type": "string"
+					},
+					"language": {
+						"type": "string"
+					},
+					"connection": {
+						"type": "string"
+					}
+				}
+			}
+		},
+		"notebook.save-jupyter": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"saved",
+				"resource",
+				"created",
+				"hash"
+			],
+			"properties": {
+				"saved": {
+					"type": "string"
+				},
+				"resource": {
+					"enum": [
+						"jupyter-notebook",
+						"sql-notebook"
+					]
+				},
+				"created": {
+					"type": "boolean"
+				},
+				"hash": {
+					"type": "string",
+					"pattern": "^[a-f0-9]{64}$"
+				}
+			}
+		},
+		"notebook.save-sql": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"saved",
+				"requested",
+				"resource",
+				"created",
+				"hash"
+			],
+			"properties": {
+				"saved": {
+					"type": "string"
+				},
+				"resource": {
+					"enum": [
+						"jupyter-notebook",
+						"sql-notebook"
+					]
+				},
+				"created": {
+					"type": "boolean"
+				},
+				"hash": {
+					"type": "string",
+					"pattern": "^[a-f0-9]{64}$"
+				},
+				"requested": {
+					"type": "string"
+				}
+			}
+		},
+		"notebook.sessions-jupyter": {
+			"type": "array",
+			"items": {
+				"additionalProperties": true,
+				"type": "object",
+				"required": [
+					"sessionId"
+				],
+				"properties": {
+					"sessionId": {
+						"type": "string"
+					},
+					"kernelId": {
+						"type": "string"
+					},
+					"projectKey": {
+						"type": "string"
+					},
+					"notebookName": {
+						"type": "string"
+					},
+					"sessionCreator": {
+						"type": "string"
+					},
+					"kernelExecutionState": {
+						"type": "string"
+					}
+				}
+			}
+		},
+		"project-library.diff": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"path",
+				"unchanged",
+				"added",
+				"removed",
+				"diff",
+				"diffTruncated",
+				"localSha256",
+				"localBytes",
+				"maxLines"
+			],
+			"properties": {
+				"path": {
+					"type": "string"
+				},
+				"unchanged": {
+					"type": "boolean"
+				},
+				"added": {
+					"type": "integer",
+					"minimum": 0
+				},
+				"removed": {
+					"type": "integer",
+					"minimum": 0
+				},
+				"diff": {
+					"type": "string"
+				},
+				"diffTruncated": {
+					"type": "boolean"
+				},
+				"binary": {
+					"type": "boolean"
+				},
+				"remoteAbsent": {
+					"type": "boolean"
+				},
+				"remoteSha256": {
+					"type": "string",
+					"pattern": "^[a-f0-9]{64}$"
+				},
+				"remoteBytes": {
+					"type": "integer",
+					"minimum": 0
+				},
+				"localSha256": {
+					"type": "string",
+					"pattern": "^[a-f0-9]{64}$"
+				},
+				"localBytes": {
+					"type": "integer",
+					"minimum": 0
+				},
+				"maxLines": {
+					"type": "integer",
+					"minimum": 0
+				}
+			}
+		},
+		"project-library.get-bytes": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"path",
+				"bytes",
+				"sha256"
+			],
+			"properties": {
+				"path": {
+					"type": "string"
+				},
+				"bytes": {
+					"type": "integer",
+					"minimum": 0
+				},
+				"sha256": {
+					"type": "string",
+					"pattern": "^[a-f0-9]{64}$"
+				}
+			}
+		},
+		"project-library.list": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"name"
+				],
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"path": {
+						"type": "string"
+					},
+					"size": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"mimeType": {
+						"type": "string"
+					},
+					"hasData": {
+						"type": "boolean"
+					},
+					"lastModified": {
+						"type": "number"
+					},
+					"children": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"additionalProperties": true
+						}
+					}
+				}
+			}
+		},
+		"project-library.put": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"updated",
+				"bytes",
+				"sha256"
+			],
+			"properties": {
+				"updated": {
+					"type": "string"
+				},
+				"bytes": {
+					"type": "integer",
+					"minimum": 0
+				},
+				"sha256": {
+					"type": "string",
+					"pattern": "^[a-f0-9]{64}$"
+				},
+				"beforeSha256": {
+					"type": "string",
+					"pattern": "^[a-f0-9]{64}$"
+				}
+			}
+		},
+		"project.get": {
+			"additionalProperties": true,
+			"type": "object",
+			"required": [
+				"projectKey",
+				"name"
+			],
+			"properties": {
+				"projectKey": {
+					"type": "string"
+				},
+				"name": {
+					"type": "string"
+				},
+				"shortDesc": {
+					"type": "string"
+				},
+				"projectStatus": {
+					"type": "string"
+				},
+				"projectAppType": {
+					"type": "string"
+				},
+				"creationTag": {
+					"additionalProperties": true,
+					"type": "object",
+					"properties": {
+						"versionNumber": {
+							"type": "number"
+						},
+						"lastModifiedOn": {
+							"anyOf": [
+								{
+									"type": "number"
+								},
+								{
+									"type": "string"
+								}
+							]
+						}
+					}
+				},
+				"ownerLogin": {
+					"type": "string"
+				},
+				"tags": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"versionTag": {
+					"additionalProperties": true,
+					"type": "object",
+					"required": [
+						"versionNumber",
+						"lastModifiedOn"
+					],
+					"properties": {
+						"versionNumber": {
+							"type": "number"
+						},
+						"lastModifiedOn": {
+							"type": "number"
+						}
+					}
+				}
+			}
+		},
+		"project.list": {
+			"type": "array",
+			"items": {
+				"additionalProperties": true,
+				"type": "object",
+				"required": [
+					"projectKey",
+					"name"
+				],
+				"properties": {
+					"projectKey": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"shortDesc": {
+						"type": "string"
+					}
+				}
+			}
+		},
+		"project.metadata": {
+			"additionalProperties": true,
+			"type": "object",
+			"properties": {
+				"label": {
+					"type": "string"
+				},
+				"shortDesc": {
+					"type": "string"
+				},
+				"description": {
+					"type": "string"
+				},
+				"tags": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"customFields": {
+					"type": "object",
+					"patternProperties": {
+						"^(.*)$": {}
+					}
+				},
+				"checklists": {
+					"additionalProperties": true,
+					"type": "object",
+					"properties": {
+						"checklists": {
+							"type": "array",
+							"items": {
+								"additionalProperties": true,
+								"type": "object",
+								"required": [
+									"title"
+								],
+								"properties": {
+									"title": {
+										"type": "string"
+									},
+									"items": {
+										"type": "array",
+										"items": {
+											"additionalProperties": true,
+											"type": "object",
+											"required": [
+												"done"
+											],
+											"properties": {
+												"done": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"recipe.list": {
+			"type": "array",
+			"items": {
+				"additionalProperties": true,
+				"type": "object",
+				"required": [
+					"name"
+				],
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"type": {
+						"type": "string"
+					}
+				}
+			}
+		},
+		"scenario.get": {
+			"additionalProperties": true,
+			"type": "object",
+			"required": [
+				"id"
+			],
+			"properties": {
+				"id": {
+					"type": "string"
+				},
+				"name": {
+					"type": "string"
+				},
+				"active": {
+					"type": "boolean"
+				},
+				"type": {
+					"type": "string"
+				},
+				"projectKey": {
+					"type": "string"
+				},
+				"params": {
+					"additionalProperties": true,
+					"type": "object",
+					"properties": {
+						"steps": {
+							"type": "array",
+							"items": {}
+						},
+						"triggers": {
+							"type": "array",
+							"items": {}
+						},
+						"reporters": {
+							"type": "array",
+							"items": {}
+						},
+						"customScript": {
+							"additionalProperties": true,
+							"type": "object",
+							"properties": {
+								"script": {
+									"type": "string"
+								}
+							}
+						}
+					}
+				},
+				"versionTag": {
+					"additionalProperties": true,
+					"type": "object",
+					"required": [
+						"versionNumber"
+					],
+					"properties": {
+						"versionNumber": {
+							"type": "number"
+						}
+					}
+				}
+			}
+		},
+		"scenario.list": {
+			"type": "array",
+			"items": {
+				"additionalProperties": true,
+				"type": "object",
+				"required": [
+					"id"
+				],
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"active": {
+						"type": "boolean"
+					}
+				}
+			}
+		},
+		"scenario.status": {
+			"additionalProperties": true,
+			"type": "object",
+			"properties": {
+				"id": {
+					"type": "string"
+				},
+				"name": {
+					"type": "string"
+				},
+				"active": {
+					"type": "boolean"
+				},
+				"running": {
+					"type": "boolean"
+				},
+				"nextRun": {
+					"type": "number"
+				},
+				"lastRun": {
+					"additionalProperties": true,
+					"type": "object",
+					"properties": {
+						"runId": {
+							"type": "string"
+						},
+						"outcome": {
+							"type": "string"
+						},
+						"start": {
+							"type": "number"
+						},
+						"end": {
+							"type": "number"
+						},
+						"trigger": {
+							"additionalProperties": true,
+							"type": "object",
+							"properties": {
+								"type": {
+									"type": "string"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"sql.query": {
+			"anyOf": [
+				{
+					"type": "object",
+					"required": [
+						"queryId",
+						"schema",
+						"rows"
+					],
+					"properties": {
+						"queryId": {
+							"type": "string"
+						},
+						"schema": {
+							"type": "array",
+							"items": {
+								"additionalProperties": true,
+								"type": "object",
+								"required": [
+									"name",
+									"type"
+								],
+								"properties": {
+									"name": {
+										"type": "string"
+									},
+									"type": {
+										"type": "string"
+									}
+								}
+							}
+						},
+						"columns": {
+							"type": "array",
+							"items": {
+								"additionalProperties": true,
+								"type": "object",
+								"required": [
+									"name",
+									"type"
+								],
+								"properties": {
+									"name": {
+										"type": "string"
+									},
+									"type": {
+										"type": "string"
+									}
+								}
+							}
+						},
+						"rows": {
+							"type": "array",
+							"items": {
+								"type": "array",
+								"items": {}
+							}
+						}
+					}
+				},
+				{
+					"type": "object",
+					"required": [
+						"queryId",
+						"rowCount",
+						"preview"
+					],
+					"additionalProperties": true,
+					"properties": {
+						"queryId": {
+							"type": "string"
+						},
+						"rowCount": {
+							"type": "number"
+						},
+						"preview": {
+							"type": "array",
+							"items": true
+						},
+						"truncated": {
+							"type": "boolean"
+						},
+						"outputPath": {
+							"type": "string"
+						},
+						"written": {
+							"type": "string"
+						}
+					}
+				}
+			]
+		}
+	}
+}

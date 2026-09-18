@@ -20,6 +20,7 @@ bun install --frozen-lockfile
 
 - `src/` — the SDK client and resources (`src/resources/*`) plus the CLI (`src/cli/*`, entry `bin/dss.js`)
 - `packages/types/` — TypeBox schemas and their derived TypeScript types (`@dataiku/types`), re-exported through `src/schemas.ts`
+- `src/generated/` — generator-owned discovery metadata (`action-output-schemas.json`, produced by `bun scripts/generate-action-output-schemas.mjs`; `bun run check` fails when it is stale)
 - `tests/` — unit and (gated) integration tests, run with `bun test`
 
 ## Everyday commands

@@ -560,6 +560,14 @@ async function collectTsvRowCount(
 	}
 }
 
+/**
+ * Encoded CSV bytes accumulated before one stream push. Rows are joined into
+ * batch-sized chunks so large downloads do not pay per-row stream overhead; a
+ * single escaped row may exceed the budget (rows are never split), and the
+ * batch is always flushed at EOF so trailing rows are never dropped.
+ */
+const CSV_BATCH_BYTES = 64 * 1024;
+
 function tsvToCsvTransform(
 	maxDataRows: number,
 	stats: { rows: number; truncated: boolean; },
@@ -571,6 +579,25 @@ function tsvToCsvTransform(
 	const maxRows = Math.max(1, maxDataRows,);
 	let headerSeen = false;
 	let done = false;
+
+	// Bounded CSV output batching: emitted rows accumulate here and are joined
+	// into a single push once the batch reaches CSV_BATCH_BYTES, so memory stays
+	// bounded by the batch budget plus one escaped row (the join briefly holds a
+	// second copy of the batch) while per-row push/callback overhead disappears.
+	let batchLines: string[] = [];
+	let batchBytes = 0;
+	const flushBatch = (target: Transform,): void => {
+		if (batchLines.length === 0) return;
+		const csv = batchLines.join("",);
+		batchLines = [];
+		batchBytes = 0;
+		target.push(csv,);
+	};
+	const queueLine = (target: Transform, line: string,): void => {
+		batchLines.push(line,);
+		batchBytes += Buffer.byteLength(line,);
+		if (batchBytes >= CSV_BATCH_BYTES) flushBatch(target,);
+	};
 
 	let columnCount = 0;
 	const handleRow = (row: string[], push: (line: string,) => void,): void => {
@@ -603,7 +630,7 @@ function tsvToCsvTransform(
 				consumeTsvChunk(
 					decoder.write(chunk,),
 					state,
-					(row,) => handleRow(row, (line,) => this.push(line,),),
+					(row,) => handleRow(row, (line,) => queueLine(this, line,),),
 				);
 			} catch (error) {
 				// Byte-limit overflow: destroy the transform so the pipeline
@@ -611,7 +638,11 @@ function tsvToCsvTransform(
 				callback(error instanceof Error ? error : new Error(String(error,),),);
 				return;
 			}
-			if (done) this.push(null,);
+			if (done) {
+				// Truncation reached: emit the batch queued so far before EOF.
+				flushBatch(this,);
+				this.push(null,);
+			}
 			callback();
 		},
 		flush(callback,) {
@@ -625,14 +656,17 @@ function tsvToCsvTransform(
 					consumeTsvChunk(
 						tail,
 						state,
-						(row,) => handleRow(row, (line,) => this.push(line,),),
+						(row,) => handleRow(row, (line,) => queueLine(this, line,),),
 					);
 				}
-				flushTsvStream(state, (row,) => handleRow(row, (line,) => this.push(line,),),);
+				flushTsvStream(state, (row,) => handleRow(row, (line,) => queueLine(this, line,),),);
 			} catch (error) {
 				callback(error instanceof Error ? error : new Error(String(error,),),);
 				return;
 			}
+			// Emit the trailing partial batch; without this the last rows of a
+			// download (below the batch budget) would be silently dropped.
+			flushBatch(this,);
 			callback();
 		},
 	},);

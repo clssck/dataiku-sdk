@@ -960,7 +960,10 @@ describe("agent contract accuracy: coding plans", () => {
 		const codeRun = buildCommandRegistry().code!.run!;
 		expect(codeRun.payloadSchema,).toEqual({ stdin: true, contentType: "text/plain", },);
 		expect(codeRun.schemas.input,).toEqual({ type: "string", contentMediaType: "text/plain", },);
-		expect(codeRun.schemas.output,).toMatchObject({
+		// Copy before matching: Bun's toMatchObject assigns asymmetric matchers
+		// into the received object, which would corrupt the shared output schema
+		// for every later test in the process.
+		expect({ ...codeRun.schemas.output, },).toMatchObject({
 			type: "object",
 			additionalProperties: false,
 			required: expect.arrayContaining(["outcome", "success", "cleanup",],),

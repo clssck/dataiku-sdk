@@ -4,6 +4,7 @@ import { type AddressInfo, } from "node:net";
 import { DataikuClient, } from "../src/client.js";
 import { DataikuError, } from "../src/errors.js";
 import { FuturesResource, } from "../src/resources/futures.js";
+import { JobsResource, } from "../src/resources/jobs.js";
 import { MlTasksResource, } from "../src/resources/ml-tasks.js";
 import { ProjectGitResource, } from "../src/resources/project-git.js";
 import { computeNextPollDelayMs, MAX_POLL_INTERVAL_MS, } from "../src/utils/polling.js";
@@ -484,6 +485,220 @@ describe("wait request limits", () => {
 			},);
 		} finally {
 			server.stop(true,);
+		}
+	});
+});
+
+/**
+ * Answer a request after a delay unless the client already hung up.
+ *
+ * Real timers are intentional: the delay must race the client's own fetch
+ * aborts and deadline timers on the platform clock, which is exactly what the
+ * loopback tests exercise; fake timers cannot drive an HTTP socket stall.
+ */
+function delayedJson(res: ServerResponse, delayMs: number, body: unknown,): void {
+	const timer = setTimeout(() => {
+		if (!res.destroyed) sendJson(res, body,);
+	}, delayMs,);
+	res.on("close", () => clearTimeout(timer,),);
+}
+
+/**
+ * Answer the first `fastPolls` requests immediately, then stall every later
+ * request well past the caller's budget — the stall a spent budget must never
+ * reach. Real timers are intentional (see {@link delayedJson}).
+ */
+function stallAfter(
+	fastPolls: number,
+	stallMs: number,
+	body: unknown,
+): (res: ServerResponse,) => void {
+	let polls = 0;
+	return (res,) => {
+		polls += 1;
+		if (polls <= fastPolls) {
+			sendJson(res, body,);
+			return;
+		}
+		delayedJson(res, stallMs, body,);
+	};
+}
+
+describe("post-budget polling", () => {
+	// A 5 s stall dwarfs the 250 ms budget, so "returns before the stall"
+	// tolerates wide scheduling jitter while still failing the old behavior.
+	const BUDGET_MS = 250;
+	const INTERVAL_MS = 100;
+	const STALL_MS = 5_000;
+
+	it("futures.wait reports the timeout from the last observation on a spent budget", async () => {
+		let polls = 0;
+		const loopback = await startLoopback((_req, res, path,) => {
+			if (!path.startsWith("/public/api/futures/f-clock",)) {
+				sendJson(res, {},);
+				return;
+			}
+			polls += 1;
+			if (polls === 1) {
+				sendJson(res, { alive: true, hasResult: false, },);
+				return;
+			}
+			// A post-budget observation would succeed here — the guard must
+			// ensure it is never requested.
+			delayedJson(res, STALL_MS, { alive: true, hasResult: true, result: { done: true, }, },);
+		},);
+		const realNow = Date.now;
+		let offsetMs = 0;
+		Date.now = () => realNow() + offsetMs;
+		// Real timer on purpose: the wait loop sleeps on a platform-clock timer
+		// after its first observation, so a fake timer here would not fire in
+		// lockstep with the socket and the loop's own sleep.
+		const advance = setTimeout(() => {
+			offsetMs = 60_000;
+		}, 20,);
+		try {
+			// Controlled clock: move past the budget while the loop sleeps after
+			// its first observation, so the pre-request guard is what ends the
+			// wait. No second request may leave the client.
+			const result = await new FuturesResource(client(loopback.url,),).wait("f-clock", {
+				timeoutMs: 100,
+				pollIntervalMs: 100,
+			},);
+			expect(result.timedOut,).toBe(true,);
+			expect(result.pollCount,).toBe(1,);
+			expect(loopback.requests.length,).toBe(1,);
+		} finally {
+			clearTimeout(advance,);
+			Date.now = realNow;
+			await loopback.close();
+		}
+	});
+
+	it("futures.wait stops at the deadline instead of stalling past it", async () => {
+		const respond = stallAfter(3, STALL_MS, { alive: true, hasResult: false, },);
+		const loopback = await startLoopback((_req, res,) => respond(res,));
+		try {
+			const started = Date.now();
+			const result = await new FuturesResource(client(loopback.url,),).wait("f-post", {
+				timeoutMs: BUDGET_MS,
+				pollIntervalMs: INTERVAL_MS,
+			},);
+			expect(result.timedOut,).toBe(true,);
+			expect(result.success,).toBe(false,);
+			expect(result.state,).toBe("RUNNING",);
+			expect(Date.now() - started,).toBeLessThan(2_000,);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("jobs.wait stops at the deadline instead of stalling past it", async () => {
+		const respond = stallAfter(
+			3,
+			STALL_MS,
+			{ baseStatus: { state: "RUNNING", }, globalState: {}, },
+		);
+		const loopback = await startLoopback((_req, res,) => respond(res,));
+		try {
+			const started = Date.now();
+			const result = await new JobsResource(client(loopback.url,),).wait("j-post", {
+				timeoutMs: BUDGET_MS,
+				pollIntervalMs: INTERVAL_MS,
+				projectKey: "DEFAULT",
+			},);
+			expect(result.timedOut,).toBe(true,);
+			expect(result.success,).toBe(false,);
+			expect(result.state,).toBe("RUNNING",);
+			expect(Date.now() - started,).toBeLessThan(2_000,);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("ml-tasks.train stops polling at the deadline instead of stalling past it", async () => {
+		const respond = stallAfter(3, STALL_MS, { training: true, fullModelIds: [], },);
+		const loopback = await startLoopback((_req, res, path,) => {
+			if (path === TRAIN) {
+				sendJson(res, { sessionId: "s-post", },);
+				return;
+			}
+			if (path === STATUS) {
+				respond(res,);
+				return;
+			}
+			sendJson(res, {},);
+		},);
+		try {
+			const started = Date.now();
+			const result = await new MlTasksResource(client(loopback.url,),).train({
+				analysisId: "A1",
+				mlTaskId: "T1",
+				wait: true,
+				timeoutMs: BUDGET_MS,
+				pollIntervalMs: INTERVAL_MS,
+			},);
+			expect(result.timedOut,).toBe(true,);
+			expect(result.success,).toBe(false,);
+			expect(result.sessionId,).toBe("s-post",);
+			expect(Date.now() - started,).toBeLessThan(2_000,);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("project-git.waitForFuture stops at the deadline instead of stalling past it", async () => {
+		const respond = stallAfter(3, STALL_MS, { alive: true, hasResult: false, },);
+		const loopback = await startLoopback((_req, res,) => respond(res,));
+		try {
+			const started = Date.now();
+			await expect(
+				new ProjectGitResource(client(loopback.url,),).waitForFuture("g-post", {
+					timeoutMs: BUDGET_MS,
+					pollIntervalMs: INTERVAL_MS,
+				},),
+			).rejects.toThrow(/Timed out after/,);
+			expect(Date.now() - started,).toBeLessThan(2_000,);
+		} finally {
+			await loopback.close();
+		}
+	});
+});
+
+describe("DataikuClient.get noRetry", () => {
+	it("issues exactly one transport attempt", async () => {
+		const loopback = await startLoopback((_req, res,) => {
+			res.statusCode = 503;
+			res.setHeader("Content-Type", "application/json",);
+			res.end(JSON.stringify({ error: "transient", },),);
+		},);
+		try {
+			const failure = await client(loopback.url,).get("/retry-once", { noRetry: true, },).catch(
+				(error: unknown,) => error,
+			);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as DataikuError).retry?.maxAttempts,).toBe(1,);
+			expect(loopback.requests.length,).toBe(1,);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("still enforces the total timeout when combined with noRetry", async () => {
+		const loopback = await startLoopback((_req, res,) => {
+			delayedJson(res, 5_000, { ok: true, },);
+		},);
+		try {
+			const started = Date.now();
+			const failure = await client(loopback.url,).get("/slow", {
+				timeoutMs: 100,
+				noRetry: true,
+			},).catch((error: unknown,) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as DataikuError).retry?.timedOut,).toBe(true,);
+			expect(loopback.requests.length,).toBe(1,);
+			expect(Date.now() - started,).toBeLessThan(2_000,);
+		} finally {
+			await loopback.close();
 		}
 	});
 });

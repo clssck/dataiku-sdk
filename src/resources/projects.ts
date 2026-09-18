@@ -1,4 +1,6 @@
+import type { DataikuGetOptions, } from "../client.js";
 import { ClientValidationError, DataikuError, } from "../errors.js";
+import { isRequestDeadlineError, } from "../utils/polling.js";
 import { writeResponseToFile, } from "../utils/response-file.js";
 
 import {
@@ -35,39 +37,34 @@ interface OptionalMetadataResult<T,> {
 	warning?: string;
 }
 
-function fetchWithTimeout<T,>(
+/**
+ * Runs an optional metadata fetch under a total budget. The fetcher receives
+ * the client GET options and must pass `timeoutMs` through to its request, so
+ * the client owns the deadline: the in-flight request is aborted when the
+ * budget expires and no further retry is started afterwards. Expiry of the
+ * total budget resolves to a warning so the map still returns; an earlier
+ * per-request failure is reported as "unavailable" (classified with the same
+ * deadline check the wait loops use).
+ */
+async function fetchWithTimeout<T,>(
 	label: string,
 	timeoutMs: number,
-	fetcher: () => Promise<T>,
+	fetcher: (options: DataikuGetOptions,) => Promise<T>,
 ): Promise<OptionalMetadataResult<T>> {
-	return new Promise((resolve,) => {
-		let settled = false;
-		const timer = setTimeout(() => {
-			if (settled) return;
-			settled = true;
-			resolve({
+	const deadlineAt = Date.now() + timeoutMs;
+	try {
+		return { value: await fetcher({ timeoutMs, },), };
+	} catch (error: unknown) {
+		if (isRequestDeadlineError(error, deadlineAt,)) {
+			return {
 				warning: `${label} metadata timed out after ${timeoutMs}ms; continuing without it.`,
-			},);
-		}, timeoutMs,);
-
-		fetcher().then(
-			(value,) => {
-				if (settled) return;
-				settled = true;
-				clearTimeout(timer,);
-				resolve({ value, },);
-			},
-			(error: unknown,) => {
-				if (settled) return;
-				settled = true;
-				clearTimeout(timer,);
-				const detail = error instanceof Error ? error.message : String(error,);
-				resolve({
-					warning: `${label} metadata unavailable: ${detail}`,
-				},);
-			},
-		);
-	},);
+			};
+		}
+		const detail = error instanceof Error ? error.message : String(error,);
+		return {
+			warning: `${label} metadata unavailable: ${detail}`,
+		};
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -622,8 +619,10 @@ export class ProjectsResource extends BaseResource {
 	 * Build a normalized, optionally truncated flow map for a project.
 	 *
 	 * Fetches the flow graph and supplementary metadata (datasets, recipes,
-	 * managed folders) in parallel. Folder name resolution uses a timeout
-	 * to avoid blocking when the folders endpoint is slow.
+	 * managed folders) in parallel. Each metadata fetch runs under a total
+	 * `timeoutMs` budget: when the budget expires the in-flight request is
+	 * aborted and the map is returned without that metadata, reported as a
+	 * warning.
 	 */
 	async map(opts?: FlowMapOptions & { projectKey?: string; },): Promise<FlowMapResult> {
 		const enc = this.enc(opts?.projectKey,);
@@ -635,22 +634,35 @@ export class ProjectsResource extends BaseResource {
 			fetchWithTimeout(
 				"Managed folders",
 				timeoutMs,
-				() =>
+				(getOptions,) =>
 					this.client.get<Array<{ id?: string; name?: string; }>>(
 						`/public/api/projects/${enc}/managedfolders/`,
+						getOptions,
 					),
 			),
 			fetchWithTimeout(
 				"Datasets",
 				timeoutMs,
-				() => this.client.get<Array<{ name?: string; }>>(`/public/api/projects/${enc}/datasets/`,),
+				(getOptions,) =>
+					this.client.get<Array<{ name?: string; }>>(
+						`/public/api/projects/${enc}/datasets/`,
+						getOptions,
+					),
 			),
 			fetchWithTimeout(
 				"Recipes",
 				timeoutMs,
-				() => this.client.get<Array<{ name?: string; }>>(`/public/api/projects/${enc}/recipes/`,),
+				(getOptions,) =>
+					this.client.get<Array<{ name?: string; }>>(
+						`/public/api/projects/${enc}/recipes/`,
+						getOptions,
+					),
 			),
-			fetchWithTimeout("Flow zones", timeoutMs, () => this.client.flowZones.list(pk,),),
+			fetchWithTimeout(
+				"Flow zones",
+				timeoutMs,
+				(getOptions,) => this.client.flowZones.list(pk, getOptions,),
+			),
 		],);
 
 		// Build folder name lookup

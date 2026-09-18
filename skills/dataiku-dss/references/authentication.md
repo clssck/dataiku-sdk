@@ -1,13 +1,13 @@
 # Authentication and runtime
 
-No installed `dss`? In the checkout, use `bun --no-env-file src/cli.ts ...` or `bun --no-env-file ./bin/dss.js ...`; elsewhere, pass Bun the absolute `bin/dss.js` path.
+Source checkout: `bun --no-env-file src/cli.ts ...`. Installed package: `bun --no-env-file "$ROOT/bin/dss.js" ...`. Resolve the root once; use absolute paths outside it.
 
 - `--no-env-file` disables only Bun preloading, not CLI `.env` handling.
 - Credentials: flags → `DATAIKU_*` variables → saved credentials. `DATAIKU_DISABLE_ENV=1` ignores both `.env` and `DATAIKU_*`.
-- CLI `.env` lookup: invocation directory, then CLI root; invocation values win. Put test `.env` files where you invoke `dss`.
+- `.env` lookup: invocation directory, then checkout root (source) or package `dist/` (built). Nonempty environment wins, then invocation values. Prefer invocation-local `.env`.
 - For disposable tests, set `DSS_CONFIG_DIR` to a temporary directory to isolate saved credentials.
 
-Prefer environment variables for ephemeral runs; match the shell:
+Prefer injected environment variables; never type real keys into shell history. Placeholder examples:
 
 POSIX:
 ```sh
@@ -30,10 +30,10 @@ set "DATAIKU_API_KEY=your-api-key"
 set "DATAIKU_PROJECT_KEY=MYPROJ"
 ```
 
-Persist credentials:
+Persist the configured environment credentials:
 ```bash
-dss auth login --url https://dss.example.com --api-key YOUR_KEY --project-key MYPROJ
+dss auth login
 ```
-`auth login` lists accessible projects before saving: the key needs project-list permission. Returns `{"saved":true,"path":"..."}`. Storage precedence: `DSS_CONFIG_DIR`, `XDG_CONFIG_HOME/dataiku/credentials.json`, `APPDATA/dataiku/credentials.json` on Windows, then `~/.config/dataiku/credentials.json`.
+`auth login` lists projects before saving: the key needs project-list permission. Returns `{"saved":true,"path":"..."}`. Storage: `credentials.json` in `DSS_CONFIG_DIR`, else `XDG_CONFIG_HOME/dataiku`, Windows `APPDATA/dataiku`, or `~/.config/dataiku`.
 
 TLS: `--insecure` disables verification; `--ca-cert PATH` adds a PEM CA bundle. Environment equivalents: `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`.

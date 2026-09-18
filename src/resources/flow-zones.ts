@@ -1,3 +1,4 @@
+import type { DataikuGetOptions, } from "../client.js";
 import type {
 	FlowZone,
 	FlowZoneCreateOptions,
@@ -24,10 +25,14 @@ function normalizeZoneItem(item: FlowZoneItemInput,): FlowZoneItem {
 }
 
 export class FlowZonesResource extends BaseResource {
-	/** List all flow zones in a project. */
-	async list(projectKey?: string,): Promise<FlowZone[]> {
+	/**
+	 * List all flow zones in a project. Pass `timeoutMs` to bound the whole
+	 * request (attempts, backoff, and body read) by a total budget.
+	 */
+	async list(projectKey?: string, options?: DataikuGetOptions,): Promise<FlowZone[]> {
 		const raw = await this.client.get<unknown>(
 			`/public/api/projects/${this.enc(projectKey,)}/flow/zones`,
+			options,
 		);
 		return this.client.safeParse(FlowZoneArraySchema, raw, "flowZones.list",);
 	}

@@ -301,6 +301,149 @@ describe("DatasetsResource.download", () => {
 	});
 });
 
+describe("DatasetsResource.download CSV batching", () => {
+	// ~162 bytes per row: 2k rows span several full 64 KiB output batches and
+	// still leave a partial batch at EOF. The truncation limit below stops after
+	// a flushed batch with rows still pending in the batch being filled.
+	const rows = 2_000;
+	const truncatedRows = 1_500;
+
+	function buildBatchedTsv(rowCount: number,): { tsv: string; expectedCsv: string; } {
+		const tsv: string[] = ["id\tname\tamount\tnote\n",];
+		const csv: string[] = ["id,name,amount,note\n",];
+		for (let i = 0; i < rowCount; i++) {
+			const name = `user-${String(i,).padStart(7, "0",)}`;
+			const note = `row-payload-${"x".repeat(120,)}-${String(i,).padStart(7, "0",)}`;
+			tsv.push(`${String(i,)}\t${name}\t${String(i * 7,)}\t${note}\n`,);
+			csv.push(`${String(i,)},${name},${String(i * 7,)},${note}\n`,);
+		}
+		return { tsv: tsv.join("",), expectedCsv: csv.join("",), };
+	}
+
+	it("writes batched plain exports byte-identically across batch boundaries", async () => {
+		const { tsv, expectedCsv, } = buildBatchedTsv(rows,);
+		// Guard: at least four full 64 KiB batches plus a partial tail, so the
+		// boundary/truncation behavior below is genuinely exercised.
+		expect(tsv.length,).toBeGreaterThan(4 * 64 * 1024,);
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+		try {
+			await withTestServer((_req, res,) => {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+				res.end(tsv,);
+			}, async (url,) => {
+				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+				const result = await client.datasets.download("sample", {
+					outputPath: path.join(tempDir, "out.csv",),
+					limit: rows,
+				},);
+				expect(result.rows,).toBe(rows,);
+				expect(result.truncated,).toBe(false,);
+				expect(fs.readFileSync(result.path, "utf8",),).toBe(expectedCsv,);
+			},);
+		} finally {
+			fs.rmSync(tempDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("decompresses gzip exports to the same batched bytes", async () => {
+		const { tsv, expectedCsv, } = buildBatchedTsv(rows,);
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+		try {
+			await withTestServer((_req, res,) => {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+				res.end(tsv,);
+			}, async (url,) => {
+				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+				const result = await client.datasets.download("sample", {
+					outputPath: path.join(tempDir, "out.csv.gz",),
+					limit: rows,
+				},);
+				const unpacked = gunzipSync(fs.readFileSync(result.path,),).toString("utf8",);
+				expect(result.rows,).toBe(rows,);
+				expect(unpacked,).toBe(expectedCsv,);
+			},);
+		} finally {
+			fs.rmSync(tempDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("flushes rows queued before truncation and never writes beyond the limit", async () => {
+		const { tsv, } = buildBatchedTsv(rows,);
+		const expectedCsv = buildBatchedTsv(truncatedRows,).expectedCsv;
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+		try {
+			await withTestServer((_req, res,) => {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+				res.end(tsv,);
+			}, async (url,) => {
+				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+				const result = await client.datasets.download("sample", {
+					outputPath: path.join(tempDir, "out.csv",),
+					limit: truncatedRows,
+				},);
+				expect(result.rows,).toBe(truncatedRows,);
+				expect(result.truncated,).toBe(true,);
+				expect(fs.readFileSync(result.path, "utf8",),).toBe(expectedCsv,);
+			},);
+		} finally {
+			fs.rmSync(tempDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("flushes an unterminated final row queued below the batch budget", async () => {
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+		try {
+			await withTestServer((_req, res,) => {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+				// No trailing newline: the last row exists only in the decoder
+				// tail and in the pending partial batch at EOF.
+				res.end("name\tcity\nAlice\tParis",);
+			}, async (url,) => {
+				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+				const result = await client.datasets.download("sample", {
+					outputPath: path.join(tempDir, "out.csv",),
+				},);
+				expect(result.rows,).toBe(1,);
+				expect(result.truncated,).toBe(false,);
+				expect(fs.readFileSync(result.path, "utf8",),).toBe("name,city\nAlice,Paris\n",);
+			},);
+		} finally {
+			fs.rmSync(tempDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("exports header-only and empty responses without extra rows", async () => {
+		const cases = [
+			{ body: "name\tcity\n", expected: "name,city\n", },
+			{ body: "", expected: "", },
+		];
+		for (const testCase of cases) {
+			const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+			try {
+				await withTestServer((_req, res,) => {
+					res.statusCode = 200;
+					res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+					res.end(testCase.body,);
+				}, async (url,) => {
+					const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+					const result = await client.datasets.download("sample", {
+						outputPath: path.join(tempDir, "out.csv",),
+					},);
+					expect(result.rows,).toBe(0,);
+					expect(result.truncated,).toBe(false,);
+					expect(fs.readFileSync(result.path, "utf8",),).toBe(testCase.expected,);
+				},);
+			} finally {
+				fs.rmSync(tempDir, { recursive: true, force: true, },);
+			}
+		}
+	});
+});
+
 describe("DatasetsResource TSV stream bounds", () => {
 	const oversizedField = "x".repeat(16 * 1024 * 1024 + 9,);
 

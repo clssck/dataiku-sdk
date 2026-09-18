@@ -2,7 +2,7 @@
 
 ## Before writes
 
-- For `sideEffect:"write"`, first run exact argv with `--plan`: local derived operation, no credentials or DSS calls. Check `destructive`, `idempotency`, `async`, `unsafeOutputs`, `exitCodes` before execution.
+- For `sideEffect:"write"`, first run exact argv with `--plan`: local derived operation, no DSS calls. Check `destructive`, `idempotency`, `async`, `unsafeOutputs`, `exitCodes` before execution.
 - `--plan` explains; `--dry-run` simulates, only when that action advertises `dryRun:true`. Never add unsupported flags.
 - For creates/uploads advertising it, pass `--record-cleanup cleanup.jsonl`. `dss cleanup --file cleanup.jsonl` previews reverse-order steps without mutation; inspect before adding `--apply`.
 - JSON: follow `inputContract`, `requiredFlags`, `requiredOneOf`. Prefer advertised `--data-file PATH` / `--stdin` over inline `--data`: preserve JSON across shells; keep large/sensitive payloads out of argv.

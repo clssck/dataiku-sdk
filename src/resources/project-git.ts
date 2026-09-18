@@ -123,6 +123,12 @@ export interface ProjectGitFutureStateOptions {
 	 * loops that must not hang on a stalled endpoint.
 	 */
 	timeoutMs?: number;
+	/**
+	 * Issue exactly one transport attempt (no retries). Independent of
+	 * `timeoutMs`: when both are supplied the total budget still applies. Used
+	 * by the wait loop for the one observation whose wait budget is spent.
+	 */
+	noRetry?: boolean;
 }
 
 export interface ProjectGitFutureWaitOptions {
@@ -679,7 +685,7 @@ export class ProjectGitResource extends BaseResource {
 			`/futures/${encodeURIComponent(jobId,)}${this.query({ peek: options.peek === true, },)}`,
 			undefined,
 			[],
-			{ timeoutMs: options.timeoutMs, },
+			{ timeoutMs: options.timeoutMs, noRetry: options.noRetry, },
 		);
 		return this.client.safeParse(
 			ProjectGitFutureStateSchema,
@@ -711,15 +717,26 @@ export class ProjectGitResource extends BaseResource {
 		// interval; an explicit pollIntervalMs is an exact contract.
 		const adaptiveEnabled = options.pollIntervalMs === undefined;
 		let pollCount = 0;
+		let lastState: ProjectGitFutureState | undefined;
 		const startedAt = Date.now();
 
 		while (true) {
+			const elapsedBeforeMs = Date.now() - startedAt;
+			// The first observation always happens, even when the budget is
+			// already spent. A later poll is never started after the deadline:
+			// the loop reports the documented timeout from the last observed
+			// state instead of issuing a request the budget cannot cover.
+			if (lastState !== undefined && elapsedBeforeMs >= timeoutMs) {
+				throw new Error(
+					`Timed out after ${String(elapsedBeforeMs,)}ms waiting for Dataiku future ${jobId}`,
+				);
+			}
 			// Unlike peek state, the ordinary state includes the completed result.
-			// One state observation always happens, even when the budget is
-			// already spent (the poll precedes the deadline check); only the
-			// requests issued while budget remains are bounded by the remaining
-			// time, so a stalled endpoint can never defeat the caller's deadline.
-			const remainingMs = timeoutMs - (Date.now() - startedAt);
+			// Requests issued while budget remains are bounded by the remaining
+			// time; a spent budget still issues exactly one transport attempt
+			// (no retries, client requestTimeoutMs cap) so the first observation
+			// reaches the server instead of failing before any attempt.
+			const remainingMs = timeoutMs - elapsedBeforeMs;
 			pollCount += 1;
 			let state: ProjectGitFutureState;
 			try {
@@ -730,7 +747,7 @@ export class ProjectGitResource extends BaseResource {
 							peek: false,
 							timeoutMs: remainingMs,
 						}
-						: { peek: false, },
+						: { peek: false, noRetry: true, },
 				);
 			} catch (error) {
 				// The poll budget ran out mid-request: report the documented
@@ -743,6 +760,7 @@ export class ProjectGitResource extends BaseResource {
 				);
 			}
 
+			lastState = state;
 			const failure = describeFutureFailure(state.error,);
 			if (failure !== undefined) {
 				throw new Error(`Dataiku future ${jobId} failed: ${failure}`,);
@@ -759,11 +777,9 @@ export class ProjectGitResource extends BaseResource {
 			}
 
 			const elapsedMs = Date.now() - startedAt;
-			if (elapsedMs >= timeoutMs) {
-				throw new Error(
-					`Timed out after ${String(elapsedMs,)}ms waiting for Dataiku future ${jobId}`,
-				);
-			}
+			// Deadline reached: the guard at the top of the loop reports the
+			// timeout from this observation without issuing another request.
+			if (elapsedMs >= timeoutMs) continue;
 			const nextDelayMs = computeNextPollDelayMs({
 				pollCount,
 				baseIntervalMs: pollIntervalMs,
@@ -804,7 +820,7 @@ export class ProjectGitResource extends BaseResource {
 		path: string,
 		body?: unknown,
 		secrets: string[] = [],
-		opts: { timeoutMs?: number; } = {},
+		opts: { timeoutMs?: number; noRetry?: boolean; } = {},
 	): Promise<unknown> {
 		try {
 			const res = await this.client.requestGit(
@@ -812,6 +828,7 @@ export class ProjectGitResource extends BaseResource {
 				`${GIT_API_BASE}${path}`,
 				body,
 				opts.timeoutMs === undefined ? undefined : Date.now() + opts.timeoutMs,
+				opts.noRetry === true,
 			);
 			const text = await res.text();
 			if (text.trim() === "") return undefined;

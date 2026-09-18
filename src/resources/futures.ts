@@ -33,9 +33,13 @@ function waitState(state: FutureState,): string {
 export class FuturesResource extends BaseResource {
 	async get(
 		futureId: string,
-		opts: { timeoutMs?: number; } = {},
+		opts: { timeoutMs?: number; noRetry?: boolean; } = {},
 	): Promise<FutureState> {
-		return this.state(futureId, { peek: false, timeoutMs: opts.timeoutMs, },);
+		return this.state(futureId, {
+			peek: false,
+			timeoutMs: opts.timeoutMs,
+			noRetry: opts.noRetry,
+		},);
 	}
 
 	async peek(futureId: string,): Promise<FutureState> {
@@ -44,13 +48,13 @@ export class FuturesResource extends BaseResource {
 
 	async state(
 		futureId: string,
-		opts: { peek?: boolean; timeoutMs?: number; } = {},
+		opts: { peek?: boolean; timeoutMs?: number; noRetry?: boolean; } = {},
 	): Promise<FutureState> {
 		const params = new URLSearchParams();
 		params.set("peek", String(opts.peek === true,),);
 		const raw = await this.client.get<unknown>(
 			`/public/api/futures/${encodeURIComponent(futureId,)}?${params.toString()}`,
-			{ timeoutMs: opts.timeoutMs, },
+			{ timeoutMs: opts.timeoutMs, noRetry: opts.noRetry, },
 		);
 		return this.client.safeParse(FutureStateSchema, raw, "futures.state",);
 	}
@@ -74,19 +78,44 @@ export class FuturesResource extends BaseResource {
 		const timeoutMs = Math.max(0, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,);
 		const startedAt = Date.now();
 		let pollCount = 0;
+		let lastState: FutureState | undefined;
 
 		while (true) {
+			const elapsedBeforeMs = Date.now() - startedAt;
+			// The first observation always happens, even when the budget is
+			// already spent. A later poll is never started after the deadline:
+			// the loop reports the structured timeout from the last observed
+			// state instead of issuing a request the budget cannot cover.
+			if (lastState !== undefined && elapsedBeforeMs >= timeoutMs) {
+				return this.client.safeParse(
+					FutureWaitResultSchema,
+					{
+						futureId,
+						jobId: lastState.jobId,
+						state: waitState(lastState,),
+						elapsedMs: elapsedBeforeMs,
+						pollCount,
+						success: false,
+						timedOut: true,
+						hasResult: lastState.hasResult === true,
+						alive: lastState.alive,
+						aborted: lastState.aborted,
+						unknown: lastState.unknown,
+					},
+					"futures.wait",
+				);
+			}
 			pollCount += 1;
-			// One state observation always happens, even when the budget is
-			// already spent (the poll precedes the deadline check); only the
-			// requests issued while budget remains are bounded by the remaining
-			// time, so a stalled status endpoint can never defeat the deadline.
-			const remainingMs = timeoutMs - (Date.now() - startedAt);
+			// Requests issued while budget remains are bounded by the remaining
+			// time; a spent budget still issues exactly one transport attempt
+			// (no retries, client requestTimeoutMs cap) so the first observation
+			// reaches the server instead of failing before any attempt.
+			const remainingMs = timeoutMs - elapsedBeforeMs;
 			let state: FutureState;
 			try {
 				state = await this.get(
 					futureId,
-					remainingMs > 0 ? { timeoutMs: remainingMs, } : undefined,
+					remainingMs > 0 ? { timeoutMs: remainingMs, } : { noRetry: true, },
 				);
 			} catch (error) {
 				// The poll budget ran out mid-request: report the structured
@@ -105,6 +134,7 @@ export class FuturesResource extends BaseResource {
 					"futures.wait",
 				);
 			}
+			lastState = state;
 			const elapsedMs = Date.now() - startedAt;
 			const status = waitState(state,);
 
@@ -125,22 +155,9 @@ export class FuturesResource extends BaseResource {
 				return this.client.safeParse(FutureWaitResultSchema, result, "futures.wait",);
 			}
 
-			if (elapsedMs >= timeoutMs) {
-				const result = {
-					futureId,
-					jobId: state.jobId,
-					state: status,
-					elapsedMs,
-					pollCount,
-					success: false,
-					timedOut: true,
-					hasResult: state.hasResult === true,
-					alive: state.alive,
-					aborted: state.aborted,
-					unknown: state.unknown,
-				};
-				return this.client.safeParse(FutureWaitResultSchema, result, "futures.wait",);
-			}
+			// Deadline reached: the guard at the top of the loop reports the
+			// timeout from this observation without issuing another request.
+			if (elapsedMs >= timeoutMs) continue;
 
 			// Only the remaining budget is slept: a longer sleep would report an
 			// elapsed time the caller never authorized.

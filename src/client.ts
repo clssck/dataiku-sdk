@@ -109,6 +109,15 @@ export interface DataikuGetOptions {
 	 * budget may shorten those limits but never extends them.
 	 */
 	timeoutMs?: number;
+	/**
+	 * Issue exactly one transport attempt (no retries). Independent of
+	 * `timeoutMs`: when both are supplied the total budget above still applies
+	 * and aborts the attempt; when no budget is supplied the attempt is capped
+	 * by the client-level `requestTimeoutMs`. Wait loops use this for the one
+	 * observation whose wait budget is already spent, so it still reaches the
+	 * server once instead of failing before any transport attempt.
+	 */
+	noRetry?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -635,7 +644,7 @@ export class DataikuClient {
 		const res = await this.fetchWithRetry(
 			`${this.baseUrl}${path}`,
 			{ method: "GET", headers: this.getHeaders(), },
-			undefined,
+			options?.noRetry === true ? 1 : undefined,
 			deadlineAt,
 		);
 		return this.parseJsonResponse<T>(res, deadlineAt,);
@@ -769,6 +778,7 @@ export class DataikuClient {
 		path: string,
 		body?: unknown,
 		deadlineAt?: number,
+		noRetry = false,
 	): Promise<Response> {
 		return this.fetchWithRetry(
 			`${this.baseUrl}${path}`,
@@ -781,7 +791,7 @@ export class DataikuClient {
 				},
 				body: body === undefined ? undefined : JSON.stringify(body,),
 			},
-			undefined,
+			noRetry ? 1 : undefined,
 			deadlineAt,
 		);
 	}

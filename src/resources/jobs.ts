@@ -257,6 +257,20 @@ function summarizeJobLog(
 		...(progress ? { progress, } : {}),
 	};
 }
+/** Shape of the job status payload returned by the jobs status endpoint. */
+interface JobStatusPayload {
+	baseStatus?: {
+		def?: { id?: string; type?: string; };
+		state?: string;
+	};
+	globalState?: {
+		done?: number;
+		failed?: number;
+		running?: number;
+		total?: number;
+	};
+}
+
 export class JobsResource extends BaseResource {
 	/** List jobs in a project. */
 	async list(projectKey?: string,): Promise<JobSummary[]> {
@@ -433,34 +447,48 @@ export class JobsResource extends BaseResource {
 		const timeout = Math.max(baseIntervalMs, opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS,);
 		const startedAt = Date.now();
 		let pollCount = 0;
+		let lastJ: JobStatusPayload | undefined;
 
 		while (true) {
+			const elapsedBeforeMs = Date.now() - startedAt;
+			// The first observation always happens, even when the budget is
+			// already spent. A later poll is never started after the deadline:
+			// the loop reports the structured timeout from the last observed
+			// state instead of issuing a request the budget cannot cover.
+			if (lastJ !== undefined && elapsedBeforeMs >= timeout) {
+				const bs = lastJ.baseStatus ?? {};
+				const def = bs.def ?? {};
+				const gs = lastJ.globalState ?? {};
+				return {
+					success: false,
+					jobId,
+					state: bs.state ?? "unknown",
+					type: def.type ?? "unknown",
+					elapsedMs: elapsedBeforeMs,
+					pollCount,
+					timedOut: true,
+					progress: {
+						done: gs.done ?? 0,
+						failed: gs.failed ?? 0,
+						running: gs.running ?? 0,
+						total: gs.total ?? null,
+					},
+				};
+			}
 			pollCount += 1;
 
-			// One status observation always happens, even when the budget is
-			// already spent (the poll precedes the deadline check); only the
-			// requests issued while budget remains are bounded by the remaining
-			// time, so a stalled status endpoint can never defeat the deadline.
-			const elapsedBefore = Date.now() - startedAt;
-			const remainingMs = timeout - elapsedBefore;
-			let j: {
-				baseStatus?: {
-					def?: { id?: string; type?: string; };
-					state?: string;
-				};
-				globalState?: {
-					done?: number;
-					failed?: number;
-					running?: number;
-					total?: number;
-				};
-			};
+			// Requests issued while budget remains are bounded by the remaining
+			// time; a spent budget still issues exactly one transport attempt
+			// (no retries, client requestTimeoutMs cap) so the first observation
+			// reaches the server instead of failing before any attempt.
+			const remainingMs = timeout - elapsedBeforeMs;
+			let j: JobStatusPayload;
 			try {
 				j = await this.client.get(
 					`/public/api/projects/${projectEnc}/jobs/${jobEnc}/`,
 					remainingMs > 0
 						? { timeoutMs: remainingMs, }
-						: undefined,
+						: { noRetry: true, },
 				);
 			} catch (error) {
 				// The poll budget ran out mid-request: report the documented
@@ -484,6 +512,7 @@ export class JobsResource extends BaseResource {
 				};
 			}
 
+			lastJ = j;
 			const bs = j.baseStatus ?? {};
 			const def = bs.def ?? {};
 			const gs = j.globalState ?? {};
@@ -553,24 +582,9 @@ export class JobsResource extends BaseResource {
 				};
 			}
 
-			// Timeout — return failure result, don't throw
-			if (elapsedMs >= timeout) {
-				return {
-					success: false,
-					jobId,
-					state,
-					type: def.type ?? "unknown",
-					elapsedMs,
-					pollCount,
-					timedOut: true,
-					progress: {
-						done: gs.done ?? 0,
-						failed: gs.failed ?? 0,
-						running: gs.running ?? 0,
-						total: gs.total ?? null,
-					},
-				};
-			}
+			// Timeout — the guard at the top of the loop returns the failure
+			// result from this observation without issuing another request.
+			if (elapsedMs >= timeout) continue;
 
 			const nextDelayMs = computeNextPollDelayMs({
 				pollCount,

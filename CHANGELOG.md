@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Flush dataset CSV exports in bounded batches (64 KiB) at row boundaries, before truncation limits, and at EOF: byte-identical output while a 200k-row (8.96 MB) export drops from 16.6 s to 0.5 s.
+- Honor `DataikuGetOptions.noRetry` in the client `get` path and Git transport, and give every futures, jobs, ML-training, and Project Git wait loop a spent-budget single observation: the first request always happens (capped by the per-request timeout), no later request starts after the budget expires, and the structured timeout reports the last observed state without clamping the first request.
+- Serve CLI discovery output schemas from the committed `src/generated/action-output-schemas.json`: `build` regenerates it ahead of `tsc`, while `check` and `prepack`/`prepublishOnly` verify freshness (after and before compilation respectively); full-registry and scoped contract bytes are unchanged, source checkouts work without `dist`, and scoped discovery latency drops by about half.
+- Enforce the project map metadata budget through the client's total request timeout (1500 ms), distinguishing deadline expiry from earlier per-request failures; `FlowZones.list` accepts `DataikuGetOptions`.
+- Document direct Bun invocation for repeated skill commands with `--no-env-file`; clarify source/built `.env` lookup and environment-only login, reducing skill and authentication guidance without removing safety requirements.
+- Correct skill release examples to snapshot permissions before mutations and reserve cleanup for rollback; remove the blanket credential-free planning claim and document schema file input and unfiltered log export.
 - Honor `Retry-After` seconds and HTTP dates within existing retry eligibility, the 30-second automatic wait cap, and total request deadlines.
 - Materialize discovery entries per action and schemas on access; defer runtime-only SDK imports while preserving full registry output.
 - Extract the first visible HTML error line without allocating an array for every line, retaining carriage returns, decoding, and sanitization.

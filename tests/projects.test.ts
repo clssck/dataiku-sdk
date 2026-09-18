@@ -1187,3 +1187,198 @@ describe("Project tags and metadata replacement", () => {
 		expect(requests,).toEqual([],);
 	});
 });
+
+describe("Project map metadata budget", () => {
+	const graphPayload = {
+		nodes: {
+			raw: { type: "COMPUTABLE_DATASET", name: "raw", successors: ["prepare",], },
+			prepare: { type: "RECIPE", name: "prepare", },
+		},
+	};
+
+	const FAST_METADATA: Record<string, unknown> = {
+		"/public/api/projects/TEST/managedfolders/": [{ id: "folder-1", name: "Folder One", },],
+		"/public/api/projects/TEST/datasets/": [{ name: "meta_dataset", },],
+		"/public/api/projects/TEST/recipes/": [{ name: "meta_recipe", },],
+		"/public/api/projects/TEST/flow/zones": [{
+			id: "zone-raw",
+			name: "Raw",
+			color: "#64748b",
+			items: [{ objectType: "DATASET", objectId: "raw", },],
+		},],
+	};
+
+	function sendFastPath(res: ServerResponse, pathname: string,): boolean {
+		if (pathname === "/public/api/projects/TEST/flow/graph/") {
+			sendJson(res, graphPayload,);
+			return true;
+		}
+		const metadata = FAST_METADATA[pathname];
+		if (metadata !== undefined) {
+			sendJson(res, metadata,);
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Keep a response pending until the client aborts, then report whether the
+	 * abort was observed. `answerAfterMs` is a bounded fallback for the
+	 * simulated slow server so a missing abort fails an assertion instead of
+	 * hanging the suite. The client deadline is real wall-clock time, so fake
+	 * timers cannot drive it.
+	 */
+	async function holdResponse(res: ServerResponse, answerAfterMs: number,): Promise<boolean> {
+		const settled = Promise.withResolvers<boolean>();
+		const fallback = setTimeout(() => {
+			if (!res.destroyed && !res.writableEnded) sendJson(res, [],);
+			settled.resolve(false,);
+		}, answerAfterMs,);
+		res.on("close", () => {
+			clearTimeout(fallback,);
+			settled.resolve(!res.writableEnded,);
+		},);
+		return settled.promise;
+	}
+
+	it("returns fast metadata without warnings", async () => {
+		await withServer((req, res,) => {
+			const pathname = new URL(req.url ?? "/", "http://localhost",).pathname;
+			if (!sendFastPath(res, pathname,)) {
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}
+		}, async (url,) => {
+			const result = await createClient(url,).projects.map();
+			const byId = new Map(result.map.nodes.map((node,) => [node.id, node,] as const),);
+
+			expect(byId.get("raw",),).toMatchObject({ zoneId: "zone-raw", zoneName: "Raw", },);
+			expect(byId.get("meta_dataset",),).toMatchObject({ kind: "dataset", },);
+			expect(byId.get("meta_recipe",),).toMatchObject({ kind: "recipe", },);
+			expect(byId.get("folder-1",),).toMatchObject({ kind: "folder", name: "Folder One", },);
+			expect(result.map.warnings,).toEqual([],);
+		},);
+	});
+
+	it("times out metadata at the total deadline, cancels the request, and never retries", async () => {
+		const slowPath = "/public/api/projects/TEST/managedfolders/";
+		const requests: Array<{ path: string; at: number; }> = [];
+		const slowClosed = Promise.withResolvers<boolean>();
+
+		await withServer(async (req, res,) => {
+			const pathname = new URL(req.url ?? "/", "http://localhost",).pathname;
+			requests.push({ path: pathname, at: Date.now(), },);
+			if (pathname === slowPath) {
+				void holdResponse(res, 4_000,).then((aborted,) => slowClosed.resolve(aborted,));
+				return;
+			}
+			if (!sendFastPath(res, pathname,)) {
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}
+		}, async (url,) => {
+			const startedAt = Date.now();
+			const result = await createClient(url,).projects.map();
+			const elapsed = Date.now() - startedAt;
+			expect(await slowClosed.promise,).toBe(true,);
+
+			expect(requests.filter((request,) => request.path === slowPath),).toHaveLength(1,);
+			// No retry may start once the shared metadata budget is spent.
+			expect(requests.filter((request,) => request.at > startedAt + 1_600),).toEqual([],);
+			expect(elapsed,).toBeLessThan(3_000,);
+
+			const timedOut = result.map.warnings.filter((warning,) =>
+				/metadata timed out after/.test(warning,)
+			);
+			expect(timedOut,).toHaveLength(1,);
+			expect(timedOut[0],).toContain("Managed folders",);
+			expect(result.map.warnings.some((warning,) => /metadata unavailable:/.test(warning,)),).toBe(
+				false,
+			);
+			// Fast metadata fetched within the budget still lands in the map.
+			const byId = new Map(result.map.nodes.map((node,) => [node.id, node,] as const),);
+			expect(byId.get("meta_dataset",),).toMatchObject({ kind: "dataset", },);
+		},);
+	});
+
+	it("bounds the flow zones listing through the same metadata deadline", async () => {
+		const slowPath = "/public/api/projects/TEST/flow/zones";
+		const requests: Array<{ path: string; at: number; }> = [];
+		const slowClosed = Promise.withResolvers<boolean>();
+
+		await withServer(async (req, res,) => {
+			const pathname = new URL(req.url ?? "/", "http://localhost",).pathname;
+			requests.push({ path: pathname, at: Date.now(), },);
+			if (pathname === slowPath) {
+				void holdResponse(res, 4_000,).then((aborted,) => slowClosed.resolve(aborted,));
+				return;
+			}
+			if (!sendFastPath(res, pathname,)) {
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}
+		}, async (url,) => {
+			const startedAt = Date.now();
+			const result = await createClient(url,).projects.map();
+			const elapsed = Date.now() - startedAt;
+			expect(await slowClosed.promise,).toBe(true,);
+
+			expect(requests.filter((request,) => request.path === slowPath),).toHaveLength(1,);
+			expect(requests.filter((request,) => request.at > startedAt + 1_600),).toEqual([],);
+			expect(elapsed,).toBeLessThan(3_000,);
+
+			const timedOut = result.map.warnings.filter((warning,) =>
+				/metadata timed out after/.test(warning,)
+			);
+			expect(timedOut,).toHaveLength(1,);
+			expect(timedOut[0],).toContain("Flow zones",);
+
+			const byId = new Map(result.map.nodes.map((node,) => [node.id, node,] as const),);
+			expect(byId.get("meta_dataset",),).toMatchObject({ kind: "dataset", },);
+		},);
+	});
+
+	it("reports earlier per-request failures as unavailable, not deadline expiry", async () => {
+		const requests: Array<{ path: string; at: number; }> = [];
+
+		await withServer(async (req, res,) => {
+			const pathname = new URL(req.url ?? "/", "http://localhost",).pathname;
+			requests.push({ path: pathname, at: Date.now(), },);
+			if (pathname === "/public/api/projects/TEST/flow/graph/") {
+				sendJson(res, graphPayload,);
+				return;
+			}
+			if (pathname in FAST_METADATA) {
+				await holdResponse(res, 600,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			// The client-level per-request cap aborts each metadata call well
+			// before the total 1.5s budget would expire.
+			const client = new DataikuClient({
+				url,
+				apiKey: "test-key",
+				projectKey: "TEST",
+				requestTimeoutMs: 200,
+				retryMaxAttempts: 1,
+			},);
+			const startedAt = Date.now();
+			const result = await client.projects.map();
+			const elapsed = Date.now() - startedAt;
+
+			expect(elapsed,).toBeLessThan(1_400,);
+			const unavailable = result.map.warnings.filter((warning,) =>
+				/metadata unavailable:/.test(warning,)
+			);
+			expect(unavailable,).toHaveLength(4,);
+			expect(result.map.warnings.some((warning,) => /metadata timed out after/.test(warning,)),).toBe(
+				false,
+			);
+			for (const path of Object.keys(FAST_METADATA,)) {
+				expect(requests.filter((request,) => request.path === path),).toHaveLength(1,);
+			}
+		},);
+	});
+});

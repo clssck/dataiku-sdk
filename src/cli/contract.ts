@@ -3,6 +3,9 @@ import * as path from "node:path";
 import { validateCredentials, } from "../auth.js";
 import { getCredentialsPath, saveCredentials, } from "../config.js";
 import { DataikuError, } from "../errors.js";
+import actionOutputSchemasMetadata from "../generated/action-output-schemas.json" with {
+	type: "json",
+};
 import { APP_MANIFEST_CONCURRENCY_CONTROL, } from "../resources/applications.js";
 import {
 	encodeLibraryPath,
@@ -622,252 +625,23 @@ function structuredExamples(
 	},);
 }
 
-const PROJECT_LIBRARY_ITEM_OUTPUT_SCHEMA: Record<string, unknown> = {
-	type: "object",
-	additionalProperties: false,
-	required: ["name",],
-	properties: {
-		name: { type: "string", },
-		path: { type: "string", },
-		size: { type: "integer", minimum: 0, },
-		mimeType: { type: "string", },
-		hasData: { type: "boolean", },
-		lastModified: { type: "number", },
-		children: { type: "array", items: { type: "object", additionalProperties: true, }, },
-	},
-};
-
-const NOTEBOOK_SAVE_OUTPUT_SCHEMA: Record<string, unknown> = {
-	type: "object",
-	additionalProperties: false,
-	required: ["saved", "resource", "created", "hash",],
-	properties: {
-		saved: { type: "string", },
-		resource: { enum: ["jupyter-notebook", "sql-notebook",], },
-		created: { type: "boolean", },
-		hash: { type: "string", pattern: "^[a-f0-9]{64}$", },
-	},
-};
-
 /**
- * `notebook.save-sql` adds `requested`: on create DSS allocates the persisted
- * id (`saved`), while the requested handle only becomes the display name.
+ * Discovery output schemas: the generated declarative metadata committed at
+ * `src/generated/action-output-schemas.json`. Plain data only, so discovery
+ * (`dss commands run`, `dss agent contract`) never loads the TypeBox graph.
+ * The content matches `typeBoxCommandOutputSchemas()` exactly; parity and
+ * freshness are enforced by tests/cli/discovery-output-schemas.test.ts and
+ * `bun run check`.
  */
-const NOTEBOOK_SAVE_SQL_OUTPUT_SCHEMA: Record<string, unknown> = {
-	...NOTEBOOK_SAVE_OUTPUT_SCHEMA,
-	required: ["saved", "requested", "resource", "created", "hash",],
-	properties: {
-		...(NOTEBOOK_SAVE_OUTPUT_SCHEMA["properties"] as Record<string, unknown>),
-		requested: { type: "string", },
-	},
-};
-
-let commandOutputSchemas: Record<string, Record<string, unknown>> | undefined;
-function getCommandOutputSchemas(): Record<string, Record<string, unknown>> {
-	if (commandOutputSchemas) return commandOutputSchemas;
-	const {
-		CodeEnvDetailsSchema,
-		CodeEnvLogSummaryArraySchema,
-		CodeEnvSummaryArraySchema,
-		CodeEnvUsageArraySchema,
-		CodeEnvVersionForProjectSchema,
-		DatasetDetailsSchema,
-		DatasetSchemaSchema,
-		DatasetSummaryArraySchema,
-		FlowZoneArraySchema,
-		FlowZoneSchema,
-		JobSummaryArraySchema,
-		JobWaitResultSchema,
-		JupyterNotebookContentSchema,
-		JupyterNotebookSummaryArraySchema,
-		NotebookSessionArraySchema,
-		ProjectDetailsSchema,
-		ProjectMetadataSchema,
-		ProjectSummaryArraySchema,
-		RecipeSummaryArraySchema,
-		ScenarioDetailsSchema,
-		ScenarioStatusSchema,
-		ScenarioSummaryArraySchema,
-		SqlNotebookContentSchema,
-		SqlNotebookHistorySchema,
-		SqlNotebookSummaryArraySchema,
-		SqlQueryResponseSchema,
-	} = require("../schemas.js",) as typeof import("../schemas.js");
-	return commandOutputSchemas = {
-		"code-env.list": CodeEnvSummaryArraySchema,
-		"code-env.get": CodeEnvDetailsSchema,
-		"code-env.list-logs": CodeEnvLogSummaryArraySchema,
-		"code-env.get-log": {
-			oneOf: [
-				{
-					type: "object",
-					required: ["log", "bytes", "truncated", "tailed", "envLang", "envName", "logName",],
-					properties: {
-						log: { type: "string", },
-						bytes: { type: "integer", minimum: 0, },
-						truncated: { type: "boolean", },
-						tailed: { type: "boolean", },
-						envLang: { enum: ["PYTHON", "R",], },
-						envName: { type: "string", },
-						logName: { type: "string", },
-					},
-				},
-				{
-					type: "object",
-					required: ["path", "bytes", "truncated", "tailed", "envLang", "envName", "logName",],
-					properties: {
-						path: { type: "string", },
-						bytes: { type: "integer", minimum: 0, },
-						truncated: { type: "boolean", },
-						tailed: { type: "boolean", },
-						envLang: { enum: ["PYTHON", "R",], },
-						envName: { type: "string", },
-						logName: { type: "string", },
-					},
-				},
-			],
-		},
-		"code-env.version": CodeEnvVersionForProjectSchema,
-		"code-env.usages": CodeEnvUsageArraySchema,
-		"code.run": {
-			type: "object",
-			additionalProperties: false,
-			required: [
-				"outcome",
-				"success",
-				"runId",
-				"elapsedMs",
-				"pollCount",
-				"output",
-				"logTruncated",
-				"maxLogBytes",
-				"cleanup",
-			],
-			properties: {
-				outcome: { type: "string", },
-				success: { type: "boolean", },
-				runId: { type: "string", },
-				elapsedMs: { type: "number", minimum: 0, },
-				pollCount: { type: "integer", minimum: 0, },
-				output: { type: "string", },
-				log: { type: "string", },
-				logTruncated: { type: "boolean", },
-				maxLogBytes: { type: "integer", minimum: 0, },
-				timedOut: { const: true, },
-				timeoutMs: { type: "integer", minimum: 0, },
-				cleanup: {
-					type: "object",
-					additionalProperties: false,
-					required: ["status",],
-					properties: {
-						status: { enum: ["deleted", "kept", "failed",], },
-						error: { type: "string", },
-					},
-				},
-			},
-		},
-		"notebook.list-jupyter": JupyterNotebookSummaryArraySchema,
-		"notebook.get-jupyter": JupyterNotebookContentSchema,
-		"notebook.sessions-jupyter": NotebookSessionArraySchema,
-		"notebook.list-sql": SqlNotebookSummaryArraySchema,
-		"notebook.get-sql": SqlNotebookContentSchema,
-		"notebook.history-sql": SqlNotebookHistorySchema,
-		"notebook.save-jupyter": NOTEBOOK_SAVE_OUTPUT_SCHEMA,
-		"notebook.save-sql": NOTEBOOK_SAVE_SQL_OUTPUT_SCHEMA,
-		"project-library.list": { type: "array", items: PROJECT_LIBRARY_ITEM_OUTPUT_SCHEMA, },
-		"project-library.get-bytes": {
-			type: "object",
-			additionalProperties: false,
-			required: ["path", "bytes", "sha256",],
-			properties: {
-				path: { type: "string", },
-				bytes: { type: "integer", minimum: 0, },
-				sha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
-			},
-		},
-		"project-library.put": {
-			type: "object",
-			additionalProperties: false,
-			required: ["updated", "bytes", "sha256",],
-			properties: {
-				updated: { type: "string", },
-				bytes: { type: "integer", minimum: 0, },
-				sha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
-				beforeSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
-			},
-		},
-		"project-library.diff": {
-			type: "object",
-			additionalProperties: false,
-			required: [
-				"path",
-				"unchanged",
-				"added",
-				"removed",
-				"diff",
-				"diffTruncated",
-				"localSha256",
-				"localBytes",
-				"maxLines",
-			],
-			properties: {
-				path: { type: "string", },
-				unchanged: { type: "boolean", },
-				added: { type: "integer", minimum: 0, },
-				removed: { type: "integer", minimum: 0, },
-				diff: { type: "string", },
-				diffTruncated: { type: "boolean", },
-				binary: { type: "boolean", },
-				remoteAbsent: { type: "boolean", },
-				remoteSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
-				remoteBytes: { type: "integer", minimum: 0, },
-				localSha256: { type: "string", pattern: "^[a-f0-9]{64}$", },
-				localBytes: { type: "integer", minimum: 0, },
-				maxLines: { type: "integer", minimum: 0, },
-			},
-		},
-		"project.list": ProjectSummaryArraySchema,
-		"project.get": ProjectDetailsSchema,
-		"project.metadata": ProjectMetadataSchema,
-		"dataset.list": DatasetSummaryArraySchema,
-		"dataset.get": DatasetDetailsSchema,
-		"dataset.schema": DatasetSchemaSchema,
-		"recipe.list": RecipeSummaryArraySchema,
-		"job.list": JobSummaryArraySchema,
-		"job.wait": JobWaitResultSchema,
-		"job.monitor": JobWaitResultSchema,
-		"scenario.list": ScenarioSummaryArraySchema,
-		"scenario.get": ScenarioDetailsSchema,
-		"scenario.status": ScenarioStatusSchema,
-		"flow-zone.list": FlowZoneArraySchema,
-		"flow-zone.get": FlowZoneSchema,
-		"sql.query": {
-			anyOf: [
-				SqlQueryResponseSchema,
-				{
-					type: "object",
-					required: ["queryId", "rowCount", "preview",],
-					additionalProperties: true,
-					properties: {
-						queryId: { type: "string", },
-						rowCount: { type: "number", },
-						preview: { type: "array", items: true, },
-						truncated: { type: "boolean", },
-						outputPath: { type: "string", },
-						written: { type: "string", },
-					},
-				},
-			],
-		},
-	};
-}
+const actionOutputSchemas: Record<string, Record<string, unknown>> = actionOutputSchemasMetadata
+	.schemas;
 
 function outputJsonSchema(
 	resource: string,
 	action: string,
 	shape: CommandOutputShape,
 ): Record<string, unknown> {
-	const precise = getCommandOutputSchemas()[registryKey(resource, action,)];
+	const precise = actionOutputSchemas[registryKey(resource, action,)];
 	if (precise) return precise;
 	if (shape === "array") return { type: "array", items: true, };
 	if (shape === "string") return { type: "string", };

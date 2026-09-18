@@ -274,23 +274,38 @@ export class MlTasksResource extends BaseResource {
 		const adaptiveEnabled = explicitIntervalMs === undefined;
 		const startedAt = Date.now();
 		let pollCount = 0;
+		let lastStatus: MlTaskStatus | undefined;
 
-		// One status observation always happens; the poll precedes the deadline
-		// check, so `timeoutMs: 0` still reports the freshly-started state once.
 		while (true) {
+			const elapsedBeforeMs = Date.now() - startedAt;
+			// The first observation always happens, even when the budget is
+			// already spent. A later poll is never started after the deadline:
+			// the loop reports the structured timeout from the last observed
+			// status instead of issuing a request the budget cannot cover.
+			if (lastStatus !== undefined && elapsedBeforeMs >= deadlineMs) {
+				return {
+					sessionId: session.sessionId,
+					trainedModelIds: modelIdsFromStatus(lastStatus,),
+					timedOut: true,
+					success: false,
+					state: "RUNNING",
+					elapsedMs: elapsedBeforeMs,
+					pollCount,
+				} as MlTaskTrainResult;
+			}
 			pollCount += 1;
-			// One status observation always happens, even when the budget is
-			// already spent (the poll precedes the deadline check); only the
-			// requests issued while budget remains are bounded by the remaining
-			// time, so a stalled status endpoint can never defeat the deadline.
-			const remainingMs = deadlineMs - (Date.now() - startedAt);
+			// Requests issued while budget remains are bounded by the remaining
+			// time; a spent budget still issues exactly one transport attempt
+			// (no retries, client requestTimeoutMs cap) so the first observation
+			// reaches the server instead of failing before any attempt.
+			const remainingMs = deadlineMs - elapsedBeforeMs;
 			let status: MlTaskStatus;
 			try {
 				status = await this.client.get<MlTaskStatus>(
 					`${this.taskPath(opts.analysisId, opts.mlTaskId, opts.projectKey,)}/status`,
 					remainingMs > 0
 						? { timeoutMs: remainingMs, }
-						: undefined,
+						: { noRetry: true, },
 				);
 			} catch (error) {
 				// The poll budget ran out: report the structured timeout instead
@@ -306,20 +321,13 @@ export class MlTasksResource extends BaseResource {
 					pollCount,
 				};
 			}
+			lastStatus = status;
 			const elapsedMs = Date.now() - startedAt;
 
 			if (status.training !== false) {
-				if (elapsedMs >= deadlineMs) {
-					return {
-						sessionId: session.sessionId,
-						trainedModelIds: modelIdsFromStatus(status,),
-						timedOut: true,
-						success: false,
-						state: "RUNNING",
-						elapsedMs,
-						pollCount,
-					} as MlTaskTrainResult;
-				}
+				// Deadline reached: the guard at the top of the loop reports the
+				// timeout from this status without issuing another request.
+				if (elapsedMs >= deadlineMs) continue;
 				const nextDelayMs = computeNextPollDelayMs({
 					pollCount,
 					baseIntervalMs,
