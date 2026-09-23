@@ -4,11 +4,11 @@ import { dirname, resolve, } from "node:path";
 import { writeResponseToFile, } from "../../utils/response-file.js";
 import { readStdinText, stripUtf8Bom, } from "../coerce.js";
 import { enqueueCliWarning, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { UsageError, } from "../usage.js";
 
-const SQL_QUERY_USAGE =
-	"dss sql query (SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin) (--connection CONN | --dataset FULL_NAME) [--database DB] [--output PATH|--output-file PATH] [--preview N] [--start-retries N] [--request-timeout MS] [--project-key KEY]";
+const SQL_QUERY_USAGE = commandUsage("sql", "query",);
 
 const DEFAULT_SQL_PREVIEW_ROWS = 5;
 
@@ -128,7 +128,7 @@ export function resolveSqlQueryInvocation(
 	};
 }
 
-export const sqlCommands: Record<string, CommandMeta> = {
+export const sqlCommands: Record<string, CommandMeta> = withUsage("sql", {
 	query: {
 		handler: async (c, a, f,) => {
 			const outputFile = (f["output"] as string | undefined)
@@ -179,7 +179,6 @@ export const sqlCommands: Record<string, CommandMeta> = {
 				written: outputPath,
 			};
 		},
-		usage: SQL_QUERY_USAGE,
 		description:
 			"Run potentially mutating SQL against a DSS connection or dataset. Use --preview N for bounded stdout or --output PATH for full rows. --start-retries may execute SQL more than once; use it only when repetition is safe.",
 		examples: [
@@ -191,4 +190,4 @@ export const sqlCommands: Record<string, CommandMeta> = {
 			"dss sql query 'SELECT 1' --connection my_pg --start-retries 4",
 		],
 	},
-};
+},);

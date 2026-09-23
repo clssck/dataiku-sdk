@@ -1,8 +1,9 @@
-import { createHash, } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, } from "node:url";
+import { ClientValidationError, } from "./errors.js";
+import { sha256Hex, } from "./utils/stable-hash.js";
 
 // ---------------------------------------------------------------------------
 // Agent definitions
@@ -36,8 +37,9 @@ function skillDirectory(): URL {
 	for (const skillUrl of SKILL_URLS) {
 		if (fs.existsSync(skillUrl,)) return new URL("./", skillUrl,);
 	}
-	throw new Error(
+	throw new ClientValidationError(
 		`Bundled Dataiku skill not found. Checked: ${SKILL_URLS.map((url,) => url.pathname).join(", ",)}`,
+		"internal_error",
 	);
 }
 
@@ -168,10 +170,6 @@ export interface InstallResult {
 	files: InstalledSkillFile[];
 }
 
-function sha256Hex(value: string | Buffer,): string {
-	return createHash("sha256",).update(value,).digest("hex",);
-}
-
 function skillState(
 	target: string,
 	expectedSha256: string,
@@ -199,7 +197,10 @@ function skillFiles(): Map<string, Buffer> {
 			if (entry.isDirectory()) visit(relativePath,);
 			else if (entry.isFile()) {
 				files.set(relativePath, fs.readFileSync(path.join(root, relativePath,),),);
-			} else throw new Error(`Unsupported bundled skill entry: ${relativePath}`,);
+			} else {throw new ClientValidationError(
+					`Unsupported bundled skill entry: ${relativePath}`,
+					"internal_error",
+				);}
 		}
 	}
 	visit("",);

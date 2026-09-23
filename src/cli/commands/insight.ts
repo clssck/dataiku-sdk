@@ -2,22 +2,21 @@ import { deepMerge, } from "../../utils/deep-merge.js";
 import { json, jsonInput, parseBooleanOption, textInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
-export const insightCommands: Record<string, CommandMeta> = {
+export const insightCommands: Record<string, CommandMeta> = withUsage("insight", {
 	list: {
 		handler: (c, _a, f,) => c.insights.list(f["project-key"] as string | undefined,),
-		usage: "dss insight list [--project-key KEY]",
 		description: "List project insights.",
 		examples: ["dss insight list",],
 	},
 	get: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss insight get <id>",);
+			requireArgs(a, 1, commandUsage("insight", "get",),);
 			return c.insights.get(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss insight get <id> [--project-key KEY]",
 		description: "Get insight definition.",
 		examples: ["dss insight get INSIGHT_ID",],
 	},
@@ -32,7 +31,7 @@ export const insightCommands: Record<string, CommandMeta> = {
 			const payload = textInput(f,);
 			if (!data && (!name || !type)) {
 				throw new UsageError(
-					"--data or both --name and --type are required. Usage: dss insight create --name NAME --type TYPE",
+					`--data or both --name and --type are required. Usage: ${commandUsage("insight", "create",)}`,
 				);
 			}
 			const prototype: Record<string, unknown> = { ...data, };
@@ -76,8 +75,6 @@ export const insightCommands: Record<string, CommandMeta> = {
 			},);
 			return { created: created.id, resource: "insight", ...created, };
 		},
-		usage:
-			"dss insight create (--data JSON|--data-file PATH|--stdin | --name NAME --type TYPE [--params JSON] [--listed true|false]) [--content TEXT|--file PATH --content-type MIME] [--if-not-exists] [--dry-run] [--project-key KEY]",
 		description: "Create an insight from a raw prototype or minimal name/type fields.",
 		examples: [
 			"dss insight create --name 'Agent chart' --type chart --params '{\"dataset\":\"orders\"}' --dry-run",
@@ -89,7 +86,7 @@ export const insightCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss insight update <id> (--name NAME|--listed true|false|--params JSON|--content TEXT|--file PATH|--content-type MIME|--data JSON|--data-file PATH|--stdin)",
+				commandUsage("insight", "update",),
 			);
 			const data = jsonInput(f,);
 			const name = f["name"] as string | undefined;
@@ -138,14 +135,12 @@ export const insightCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage:
-			"dss insight update <id> (--name NAME|--listed true|false|--params JSON|--content TEXT|--file PATH|--content-type MIME|--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description: "Update an insight using GET-before-POST merge semantics.",
 		examples: ["dss insight update INSIGHT_ID --name 'Updated' --dry-run",],
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss insight delete <id>",);
+			requireArgs(a, 1, commandUsage("insight", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.insights.get(a[0], pk,));
@@ -157,8 +152,7 @@ export const insightCommands: Record<string, CommandMeta> = {
 			await c.insights.delete(a[0], pk,);
 			return { deleted: a[0], resource: "insight", };
 		},
-		usage: "dss insight delete <id> [--if-exists] [--dry-run] [--project-key KEY]",
 		description: "Delete an insight.",
 		examples: ["dss insight delete INSIGHT_ID --dry-run",],
 	},
-};
+},);

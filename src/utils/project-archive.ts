@@ -1,7 +1,7 @@
 import StreamZip from "node-stream-zip";
 import { stat, } from "node:fs/promises";
 import type { Readable, } from "node:stream";
-import { ClientValidationError, } from "../errors.js";
+import { ClientValidationError, unexpectedResponseError, } from "../errors.js";
 
 const MANIFEST_MEMBER = "export-manifest.json";
 const DATASETS_ROOT = "project_config/datasets";
@@ -231,7 +231,7 @@ function streamMember(
 			return reject(err,);
 		}
 		if (!stm) {
-			return reject(new Error("archive produced no member stream",),);
+			return reject(unexpectedResponseError("archive produced no member stream",),);
 		}
 		const stream = stm as Readable;
 		let bytes = 0;

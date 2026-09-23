@@ -41,7 +41,11 @@ export interface CommandMeta extends CommandRegistryOverride {
 	 * credentials are configured, instead of being masked by a missing-URL error.
 	 */
 	validate?: (args: string[], flags: Record<string, string | boolean>,) => void;
+	/** Rendered from the command's syntax tree in `src/cli/command-syntax.json`; never hand-written. */
 	usage: string;
 	description?: string;
 	examples?: string[];
 }
+
+/** A command as authored: its usage line comes from `src/cli/command-syntax.json` (see `withUsage`). */
+export type CommandDefinition = Omit<CommandMeta, "usage">;

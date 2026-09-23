@@ -301,7 +301,7 @@ describe("CLI registry required-input usage accuracy", () => {
 			[
 				"wiki",
 				"update",
-				"(--name NAME | --content TEXT|--file PATH|--data JSON|--data-file PATH|--stdin)",
+				"(--name NAME | --content TEXT | --file PATH | --data JSON | --data-file PATH | --stdin)",
 			],
 		];
 		for (const [resource, action, requiredGroup,] of expectedRequired) {

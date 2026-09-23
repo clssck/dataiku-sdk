@@ -1,4 +1,9 @@
-import { ClientValidationError, DataikuError, } from "../errors.js";
+import {
+	ClientValidationError,
+	DataikuError,
+	nonJsonResponseBody,
+	SQL_QUERY_FAILED_MARKER,
+} from "../errors.js";
 import type { SqlQueryResponse, SqlQueryResult, } from "../schemas.js";
 import { BaseResource, } from "./base.js";
 
@@ -198,7 +203,11 @@ export class SqlResource extends BaseResource {
 				`SQL stream results exceeded the ${maxBytes}-byte response limit and were not parsed.`,
 			);
 		}
-		return JSON.parse(text,) as unknown[][];
+		try {
+			return JSON.parse(text,) as unknown[][];
+		} catch {
+			throw new DataikuError(200, "Invalid JSON response", nonJsonResponseBody(text,),);
+		}
 	}
 
 	/**
@@ -220,7 +229,11 @@ export class SqlResource extends BaseResource {
 			);
 		}
 		if (text.length > 0) {
-			throw new Error(`SQL query ${queryId} failed: ${text}`,);
+			throw new DataikuError(
+				200,
+				"SQL Query Failed",
+				`${SQL_QUERY_FAILED_MARKER} (${queryId}): ${text}`,
+			);
 		}
 	}
 

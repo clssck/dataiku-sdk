@@ -1,5 +1,5 @@
 import { describe, expect, it, } from "bun:test";
-import { buildAgentContract, buildCommandRegistry, } from "../../src/cli/contract.js";
+import { buildCommandRegistry, } from "../../src/cli/contract.js";
 import {
 	cliEnv,
 	dss,

@@ -11,7 +11,7 @@ import {
 	ClientValidationError,
 	DataikuError,
 	type DataikuRetryMetadata,
-	NON_JSON_RESPONSE_MARKER,
+	nonJsonResponseBody,
 } from "./errors.js";
 
 import { AnalysesResource, } from "./resources/analyses.js";
@@ -337,9 +337,15 @@ function buildFetchTlsOptions(config: DataikuClientConfig,): FetchTlsOptions | u
 			tls.ca = [...getCACertificates("default",), readFileSync(caCertPath, "utf-8",),];
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error,);
-			throw new Error(`Unable to read CA certificate bundle at ${caCertPath}: ${message}`, {
-				cause: error,
-			},);
+			throw new ClientValidationError(
+				`Unable to read CA certificate bundle at ${caCertPath}: ${message}`,
+				"invalid_flag_value",
+				undefined,
+				undefined,
+				{
+					cause: error,
+				},
+			);
 		}
 	}
 
@@ -573,13 +579,16 @@ export class DataikuClient {
 	}
 
 	constructor(config?: DataikuClientConfig,) {
+		/* oxlint-disable dss/no-direct-process-env -- SDK constructor defaults (DATAIKU_URL/DATAIKU_API_KEY) for library callers */
 		const envUrl = process.env["DATAIKU_URL"]?.trim();
 		const envApiKey = process.env["DATAIKU_API_KEY"]?.trim();
+		/* oxlint-enable dss/no-direct-process-env */
 		const url = config?.url?.trim() || envUrl;
 		const apiKey = config?.apiKey?.trim() || envApiKey;
 		if (!url || !apiKey) {
-			throw new Error(
+			throw new ClientValidationError(
 				"Dataiku URL and API key are required: pass {url, apiKey} or set DATAIKU_URL/DATAIKU_API_KEY",
+				"missing_required_flag",
 			);
 		}
 		if (hasEmbeddedUserinfo(url,)) {
@@ -632,8 +641,10 @@ export class DataikuClient {
 		const pk = paramValue?.trim();
 		if (pk) return pk;
 		if (this.defaultProjectKey) return this.defaultProjectKey;
-		throw new Error(
+		throw new ClientValidationError(
 			"projectKey is required — pass it as a parameter or set projectKey in DataikuClientConfig",
+			"missing_required_flag",
+			"Pass --project-key or set DATAIKU_PROJECT_KEY.",
 		);
 	}
 
@@ -1047,11 +1058,10 @@ export class DataikuClient {
 		try {
 			return JSON.parse(text,) as T;
 		} catch {
-			const summary = text.length > 300 ? `${text.slice(0, 300,)}…` : text;
 			throw new DataikuError(
 				res.status,
 				res.statusText || "Invalid JSON response",
-				`${NON_JSON_RESPONSE_MARKER}: ${summary}`,
+				nonJsonResponseBody(text,),
 				undefined,
 				this.requestIdFromHeaders(res.headers,),
 			);

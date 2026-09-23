@@ -1,3 +1,7 @@
+/** Default fixed poll interval and overall wait budget for long-running DSS operations. */
+export const DEFAULT_POLL_INTERVAL_MS = 2_000;
+export const DEFAULT_TIMEOUT_MS = 120_000;
+
 import { DataikuError, } from "../errors.js";
 
 /**

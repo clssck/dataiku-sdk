@@ -7,6 +7,7 @@ import {
 	resolve as resolvePath,
 	sep,
 } from "node:path";
+import { ClientValidationError, } from "../../errors.js";
 import { sanitizeFileName, } from "../../utils/sanitize.js";
 import { normalizeLineEndings, sha256Hex, stableHash, } from "../coerce.js";
 import { UsageError, } from "../usage.js";
@@ -148,7 +149,10 @@ function writeAllSync(fd: number, payload: Buffer,): void {
 	while (offset < payload.length) {
 		const written = fs.writeSync(fd, payload, offset, payload.length - offset, offset,);
 		if (written <= 0) {
-			throw new Error(`Stalled writing recipe backup at byte ${offset}.`,);
+			throw new ClientValidationError(
+				`Stalled writing recipe backup at byte ${offset}.`,
+				"internal_error",
+			);
 		}
 		offset += written;
 	}

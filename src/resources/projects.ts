@@ -1,5 +1,5 @@
 import type { DataikuGetOptions, } from "../client.js";
-import { ClientValidationError, DataikuError, } from "../errors.js";
+import { ClientValidationError, DataikuError, unexpectedResponseError, } from "../errors.js";
 import { isRequestDeadlineError, } from "../utils/polling.js";
 import { writeResponseToFile, } from "../utils/response-file.js";
 
@@ -327,7 +327,9 @@ export class ProjectsResource extends BaseResource {
 			`/public/api/projects/${encodeURIComponent(projectKey,)}/export`,
 			options ?? {},
 		);
-		if (!res.body) throw new Error("projects.exportArchive response did not include a body",);
+		if (!res.body) {
+			throw unexpectedResponseError("projects.exportArchive response did not include a body",);
+		}
 
 		await writeResponseToFile(filePath, res,);
 	}

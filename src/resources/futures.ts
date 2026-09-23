@@ -1,10 +1,12 @@
 import type { FutureState, FutureWaitResult, } from "../schemas.js";
 import { FutureStateSchema, FutureWaitResultSchema, } from "../schemas.js";
-import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
+import {
+	computeNextPollDelayMs,
+	DEFAULT_POLL_INTERVAL_MS,
+	DEFAULT_TIMEOUT_MS,
+	isRequestDeadlineError,
+} from "../utils/polling.js";
 import { BaseResource, } from "./base.js";
-
-const DEFAULT_POLL_INTERVAL_MS = 2_000;
-const DEFAULT_TIMEOUT_MS = 120_000;
 
 export interface FutureWaitOptions {
 	pollIntervalMs?: number;

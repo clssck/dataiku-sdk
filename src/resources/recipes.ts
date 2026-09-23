@@ -1,6 +1,11 @@
 import { writeFile, } from "node:fs/promises";
 import { resolve, } from "node:path";
-import { DataikuError, } from "../errors.js";
+import {
+	ClientValidationError,
+	DataikuError,
+	nonJsonResponseBody,
+	unexpectedResponseError,
+} from "../errors.js";
 import { ProjectMetadataSchema, RecipeSummaryArraySchema, } from "../schemas.js";
 import type {
 	BuildMode,
@@ -43,7 +48,12 @@ type JoinKeyPair = {
 
 function parseRecipePayload(payload: string | undefined,): Record<string, unknown> {
 	if (!payload) return {};
-	const parsed = JSON.parse(payload,) as unknown;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(payload,);
+	} catch {
+		throw new DataikuError(200, "Invalid JSON response", nonJsonResponseBody(payload,),);
+	}
 	return asRecord(parsed,) ?? {};
 }
 
@@ -59,7 +69,12 @@ function parseJoinKeyPairs(values: string[], optionName = "joinOn",): JoinKeyPai
 		}
 		const left = token.slice(0, eq,).trim();
 		const right = token.slice(eq + 1,).trim();
-		if (!left || !right) throw new Error(`${optionName} values must use COL or LEFT=RIGHT.`,);
+		if (!left || !right) {
+			throw new ClientValidationError(
+				`${optionName} values must use COL or LEFT=RIGHT.`,
+				"validation_failed",
+			);
+		}
 		pairs.push({ left, right, },);
 	}
 	return pairs;
@@ -76,8 +91,9 @@ function normalizeFuzzyDistance(value: unknown,): string {
 	) {
 		return normalized;
 	}
-	throw new Error(
+	throw new ClientValidationError(
 		"fuzzyDistance must be one of DAMERAU_LEVENSHTEIN, HAMMING, JACCARD, COSINE, or EUCLIDEAN.",
+		"validation_failed",
 	);
 }
 
@@ -91,7 +107,10 @@ function normalizeJoinType(value: unknown,): JoinType {
 	) {
 		return normalized;
 	}
-	throw new Error("joinType must be one of LEFT, INNER, RIGHT, or FULL.",);
+	throw new ClientValidationError(
+		"joinType must be one of LEFT, INNER, RIGHT, or FULL.",
+		"validation_failed",
+	);
 }
 
 function recipeVirtualInputs(
@@ -311,7 +330,10 @@ function rewriteSqlTableReferences(
 					return `${keyword}${space}[${escapedTo}]`;
 				}
 				if (!bareIdentifierPattern.test(to,)) {
-					throw new Error(`Unsafe SQL rewrite target for ${from}: ${to}`,);
+					throw new ClientValidationError(
+						`Unsafe SQL rewrite target for ${from}: ${to}`,
+						"validation_failed",
+					);
 				}
 				return `${keyword}${space}${to}`;
 			},
@@ -417,6 +439,108 @@ function shouldRetryRecipeCreateWithOutputProvisioning(error: unknown,): error i
 // ---------------------------------------------------------------------------
 // Resource
 // ---------------------------------------------------------------------------
+
+/**
+ * Pure request construction for POST /recipes/ (no DSS calls). Shared with
+ * `recipe create --plan` so the plan equals the request the command sends.
+ */
+export function buildRecipeCreateRequest(opts: RecipeCreateOptions, pk: string,) {
+	const { type, payload, outputConnection: rawConnection, joinType: rawJoinType, } = opts;
+	const outputFolder = asString(opts.outputFolder,);
+
+	// Build inputs/outputs from simple form (inputDatasets + outputDataset) or
+	// advanced form (inputs + outputs); both may coexist — simple form wins when
+	// the advanced form is absent.
+	const inputDatasets = asStringArray(opts.inputDatasets,);
+	const requestedOutputDataset = asString(opts.outputDataset,);
+
+	let inputs: Record<string, unknown> | undefined = asRecord(opts.inputs,);
+	let outputs: Record<string, unknown> | undefined = asRecord(opts.outputs,);
+
+	if (!inputs) {
+		inputs = {
+			main: {
+				items: inputDatasets?.map((ref,) => ({ ref, deps: [], })) ?? [],
+			},
+		};
+	}
+
+	// Auto-generate name if not provided
+	const outputNameForDefaultRecipe = requestedOutputDataset ?? outputFolder;
+	const name = opts.name ?? (type && outputNameForDefaultRecipe
+		? `${type}_${outputNameForDefaultRecipe}`
+		: undefined);
+	const temporaryOutputDataset = outputFolder && !requestedOutputDataset && name
+		? `${name}_folder_output_marker`
+		: undefined;
+	const outputDataset = requestedOutputDataset ?? temporaryOutputDataset;
+
+	if (!outputs && outputDataset) {
+		outputs = {
+			main: {
+				items: [{ ref: outputDataset, appendMode: false, },],
+			},
+		};
+	}
+
+	if (!type || !name || !outputs) {
+		throw new ClientValidationError(
+			"type and outputDataset/outputFolder or (name + outputs) are required for create.",
+			"validation_failed",
+		);
+	}
+
+	const joinCols = typeof opts.joinOn === "string" ? [opts.joinOn,] : asStringArray(opts.joinOn,);
+	const joinKeys = type === "join" && joinCols?.length
+		? parseJoinKeyPairs(joinCols,)
+		: undefined;
+	const fuzzyOn = opts.fuzzyOn ?? (type === "fuzzyjoin" ? opts.joinOn : undefined);
+	const fuzzyCols = typeof fuzzyOn === "string" ? [fuzzyOn,] : asStringArray(fuzzyOn,);
+	const fuzzyKeys = type === "fuzzyjoin" && fuzzyCols?.length
+		? parseJoinKeyPairs(fuzzyCols, "fuzzyOn",)
+		: undefined;
+	const normalizedJoinType = joinKeys?.length || fuzzyKeys?.length
+		? normalizeJoinType(rawJoinType,)
+		: undefined;
+	const fuzzyDistance = fuzzyKeys?.length ? normalizeFuzzyDistance(opts.fuzzyDistance,) : undefined;
+	const fuzzyThreshold = opts.fuzzyThreshold ?? 1;
+	if (!Number.isFinite(fuzzyThreshold,)) {
+		throw new ClientValidationError("fuzzyThreshold must be a finite number.", "validation_failed",);
+	}
+
+	const recipePrototype: Record<string, unknown> = {
+		type,
+		name,
+		projectKey: pk,
+		...(type === "fuzzyjoin" ? {} : { inputs, }),
+		outputs,
+	};
+	const creationSettings: Record<string, unknown> = {};
+	if (payload !== undefined) {
+		creationSettings.script = payload;
+	}
+	if (type === "fuzzyjoin") {
+		creationSettings.virtualInputs = recipeInputItems({ inputs, },).map((item,) => item.ref);
+	}
+	return {
+		creationSettings,
+		fuzzyDistance,
+		fuzzyKeys,
+		fuzzyThreshold,
+		inputDatasets,
+		inputs,
+		joinKeys,
+		name,
+		normalizedJoinType,
+		outputFolder,
+		outputs,
+		payload,
+		rawConnection,
+		recipePrototype,
+		temporaryOutputDataset,
+		type,
+	};
+}
 
 export class RecipesResource extends BaseResource {
 	/** List all recipes in a project. */
@@ -601,7 +725,10 @@ export class RecipesResource extends BaseResource {
 		const { recipe, } = await this.get(recipeName, { projectKey: pk, },);
 		const outputItems = recipeOutputItems(recipe,);
 		if (outputItems.length === 0) {
-			throw new Error(`Recipe "${recipeName}" has no output items to build.`,);
+			throw new ClientValidationError(
+				`Recipe "${recipeName}" has no output items to build.`,
+				"validation_failed",
+			);
 		}
 
 		const [datasets, folders,] = await Promise.all([
@@ -655,8 +782,9 @@ export class RecipesResource extends BaseResource {
 
 			const isDataset = datasetNames.has(item.ref,);
 			if (isDataset && folderId) {
-				throw new Error(
+				throw new ClientValidationError(
 					`Recipe "${recipeName}" output "${item.ref}" matches both a dataset and a managed folder. Add an explicit output type to the recipe definition or build the target directly with --target-type.`,
+					"validation_failed",
 				);
 			}
 			if (folderId) {
@@ -679,8 +807,9 @@ export class RecipesResource extends BaseResource {
 					partition: opts?.partition,
 				};
 			}
-			throw new Error(
+			throw new ClientValidationError(
 				`Recipe "${recipeName}" output "${item.ref}" was not found as a dataset or managed folder in project "${pk}".`,
+				"validation_failed",
 			);
 		},);
 	}
@@ -724,82 +853,23 @@ export class RecipesResource extends BaseResource {
 		const pk = this.resolveProjectKey(opts.projectKey,);
 		const enc = encodeURIComponent(pk,);
 
-		const { type, payload, outputConnection: rawConnection, joinType: rawJoinType, } = opts;
-		const outputFolder = asString(opts.outputFolder,);
-
-		// Build inputs/outputs from simple form (inputDatasets + outputDataset) or
-		// advanced form (inputs + outputs); both may coexist — simple form wins when
-		// the advanced form is absent.
-		const inputDatasets = asStringArray(opts.inputDatasets,);
-		const requestedOutputDataset = asString(opts.outputDataset,);
-
-		let inputs: Record<string, unknown> | undefined = asRecord(opts.inputs,);
-		let outputs: Record<string, unknown> | undefined = asRecord(opts.outputs,);
-
-		if (!inputs) {
-			inputs = {
-				main: {
-					items: inputDatasets?.map((ref,) => ({ ref, deps: [], })) ?? [],
-				},
-			};
-		}
-
-		// Auto-generate name if not provided
-		const outputNameForDefaultRecipe = requestedOutputDataset ?? outputFolder;
-		const name = opts.name ?? (type && outputNameForDefaultRecipe
-			? `${type}_${outputNameForDefaultRecipe}`
-			: undefined);
-		const temporaryOutputDataset = outputFolder && !requestedOutputDataset && name
-			? `${name}_folder_output_marker`
-			: undefined;
-		const outputDataset = requestedOutputDataset ?? temporaryOutputDataset;
-
-		if (!outputs && outputDataset) {
-			outputs = {
-				main: {
-					items: [{ ref: outputDataset, appendMode: false, },],
-				},
-			};
-		}
-
-		if (!type || !name || !outputs) {
-			throw new Error(
-				"type and outputDataset/outputFolder or (name + outputs) are required for create.",
-			);
-		}
-
-		const joinCols = typeof opts.joinOn === "string" ? [opts.joinOn,] : asStringArray(opts.joinOn,);
-		const joinKeys = type === "join" && joinCols?.length
-			? parseJoinKeyPairs(joinCols,)
-			: undefined;
-		const fuzzyOn = opts.fuzzyOn ?? (type === "fuzzyjoin" ? opts.joinOn : undefined);
-		const fuzzyCols = typeof fuzzyOn === "string" ? [fuzzyOn,] : asStringArray(fuzzyOn,);
-		const fuzzyKeys = type === "fuzzyjoin" && fuzzyCols?.length
-			? parseJoinKeyPairs(fuzzyCols, "fuzzyOn",)
-			: undefined;
-		const normalizedJoinType = joinKeys?.length || fuzzyKeys?.length
-			? normalizeJoinType(rawJoinType,)
-			: undefined;
-		const fuzzyDistance = fuzzyKeys?.length ? normalizeFuzzyDistance(opts.fuzzyDistance,) : undefined;
-		const fuzzyThreshold = opts.fuzzyThreshold ?? 1;
-		if (!Number.isFinite(fuzzyThreshold,)) {
-			throw new Error("fuzzyThreshold must be a finite number.",);
-		}
-
-		const recipePrototype: Record<string, unknown> = {
-			type,
+		const {
+			creationSettings,
+			fuzzyDistance,
+			fuzzyKeys,
+			fuzzyThreshold,
+			inputDatasets,
+			inputs,
+			joinKeys,
 			name,
-			projectKey: pk,
-			...(type === "fuzzyjoin" ? {} : { inputs, }),
+			normalizedJoinType,
+			outputFolder,
 			outputs,
-		};
-		const creationSettings: Record<string, unknown> = {};
-		if (payload !== undefined) {
-			creationSettings.script = payload;
-		}
-		if (type === "fuzzyjoin") {
-			creationSettings.virtualInputs = recipeInputItems({ inputs, },).map((item,) => item.ref);
-		}
+			rawConnection,
+			recipePrototype,
+			temporaryOutputDataset,
+			type,
+		} = buildRecipeCreateRequest(opts, pk,);
 
 		const createRecipe = () =>
 			this.client.post<Record<string, unknown>>(`/public/api/projects/${enc}/recipes/`, {
@@ -906,7 +976,7 @@ export class RecipesResource extends BaseResource {
 			const created = await createRecipe();
 			const receivedName = asString(created?.["name"],);
 			if (!receivedName) {
-				throw new Error(
+				throw unexpectedResponseError(
 					'DSS create-recipe response did not include the final recipe name (documented body: {"name": ...}).',
 				);
 			}
@@ -920,9 +990,8 @@ export class RecipesResource extends BaseResource {
 			const retryCreated = await createRecipe();
 			const retryName = asString(retryCreated?.["name"],);
 			if (!retryName) {
-				throw new Error(
+				throw unexpectedResponseError(
 					'DSS create-recipe response did not include the final recipe name (documented body: {"name": ...}).',
-					{ cause: error, },
 				);
 			}
 			finalRecipeName = retryName;
@@ -1106,14 +1175,18 @@ export class RecipesResource extends BaseResource {
 		);
 		const currentRecipe = asRecord(current.recipe,);
 		if (!currentRecipe) {
-			throw new Error(`Recipe "${recipeName}" was not found or returned an empty definition.`,);
+			throw new ClientValidationError(
+				`Recipe "${recipeName}" was not found or returned an empty definition.`,
+				"validation_failed",
+			);
 		}
 		const misplacedRecipeFields = rootRecipeDefinitionFields(data,);
 		if (misplacedRecipeFields.length > 0) {
-			throw new Error(
+			throw new ClientValidationError(
 				`Recipe fields ${
 					misplacedRecipeFields.join(", ",)
 				} must be nested under "recipe". Example: {"recipe":{"outputs":{...},"params":{...}}}`,
+				"validation_failed",
 			);
 		}
 		const mergedRecipe = deepMerge(currentRecipe, asRecord(data.recipe,) ?? {},);
@@ -1149,8 +1222,9 @@ export class RecipesResource extends BaseResource {
 				item.type !== "MANAGED_FOLDER"
 			);
 			if (outputs.length !== 1 && Object.keys(outputRewrites,).length === 0) {
-				throw new Error(
+				throw new ClientValidationError(
 					`Recipe "${sourceName}" has ${outputs.length} dataset outputs; pass explicit outputRewrites instead of outputDataset.`,
+					"validation_failed",
 				);
 			}
 			if (outputs[0]) outputRewrites[outputs[0].ref] = opts.outputDataset;
@@ -1165,8 +1239,9 @@ export class RecipesResource extends BaseResource {
 			&& Object.keys(outputRewrites,).length > 1
 			&& (opts.outputPath !== undefined || opts.metastoreTableName !== undefined)
 		) {
-			throw new Error(
+			throw new ClientValidationError(
 				"Cannot reuse --path or --metastore-table for multiple cloned output datasets; pass per-output settings in a separate step.",
+				"validation_failed",
 			);
 		}
 		const payloadTextRewrites: Record<string, string> = {};
@@ -1227,7 +1302,10 @@ export class RecipesResource extends BaseResource {
 			projectKey: opts?.projectKey,
 		},);
 		if (!result.payload) {
-			throw new Error(`Recipe "${recipeName}" has no code payload.`,);
+			throw new ClientValidationError(
+				`Recipe "${recipeName}" has no code payload.`,
+				"validation_failed",
+			);
 		}
 		const safeRecipeName = sanitizeFileName(recipeName, "recipe",);
 		const filePath = opts?.outputPath ?? resolve(
@@ -1248,7 +1326,10 @@ export class RecipesResource extends BaseResource {
 			projectKey: opts?.projectKey,
 		},);
 		if (!result.payload) {
-			throw new Error(`Recipe "${recipeName}" has no code payload.`,);
+			throw new ClientValidationError(
+				`Recipe "${recipeName}" has no code payload.`,
+				"validation_failed",
+			);
 		}
 		return result.payload;
 	}

@@ -1,7 +1,7 @@
 import { ClientValidationError, } from "../errors.js";
 import type { FutureWaitResult, } from "../schemas.js";
 import { deepMerge, } from "../utils/deep-merge.js";
-import { stableHash, } from "../utils/stable-hash.js";
+import { SHA256_HEX_PATTERN, stableHash, } from "../utils/stable-hash.js";
 import { BaseResource, } from "./base.js";
 
 export interface WebappListItem {
@@ -32,15 +32,13 @@ export interface WebappWaitOptions {
 	timeoutMs?: number;
 }
 
-const EXPECT_HASH_PATTERN = /^[0-9a-fA-F]{64}$/;
-
 function assertExpectedHash(
 	id: string,
 	expectHash: string,
 	current: Record<string, unknown>,
 	projectKey: string | undefined,
 ): void {
-	if (!EXPECT_HASH_PATTERN.test(expectHash,)) {
+	if (!SHA256_HEX_PATTERN.test(expectHash,)) {
 		throw new ClientValidationError(
 			"Expected webapp hash must be a 64-character SHA-256 hex digest.",
 			"validation_failed",

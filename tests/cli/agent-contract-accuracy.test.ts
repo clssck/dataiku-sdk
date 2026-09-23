@@ -263,7 +263,7 @@ describe("agent contract accuracy", () => {
 				category: "usage",
 				exitCode: 1,
 				hint:
-					"Use `dss commands run --fields RESOURCE.ACTION\` for scoped command discovery; use `dss commands run\` for the action summary or `--output PATH\` to export the full registry.",
+					"Use `dss commands run --fields RESOURCE.ACTION` for scoped command discovery; use `dss commands run` for the action summary or `--output PATH` to export the full registry.",
 				details: { fields: value, },
 				resource: "commands",
 				action: "run",
@@ -327,7 +327,7 @@ describe("agent contract accuracy", () => {
 		expect(report,).toMatchObject({
 			error: "Unknown flag --name for project list",
 			code: "unknown_flag",
-			hint: "Use `dss commands run --fields project.list\` to list the flags this command supports.",
+			hint: "Use `dss commands run --fields project.list` to list the flags this command supports.",
 		},);
 	});
 
@@ -1201,7 +1201,8 @@ describe("agent contract accuracy: coding plans", () => {
 			"release-notes": "ready now",
 			"evaluate-standards-checks": "false",
 		},);
-		expect(exported,).toMatchObject({ method: "PUT", payload: {}, },);
+		expect(exported,).toMatchObject({ method: "PUT", },);
+		expect(exported,).not.toHaveProperty("payload",);
 		expect(exported.endpoint,).toBe(
 			"/public/api/projects/TEST/bundles/exported/v1?releaseNotes=ready+now&evaluateProjectStandardsChecks=false",
 		);

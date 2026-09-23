@@ -1,12 +1,12 @@
 import { json, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
+import { withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { UsageError, } from "../usage.js";
 
-export const variableCommands: Record<string, CommandMeta> = {
+export const variableCommands: Record<string, CommandMeta> = withUsage("variable", {
 	get: {
 		handler: (c, _a, f,) => c.variables.get(f["project-key"] as string | undefined,),
-		usage: "dss variable get [--project-key KEY]",
 		description: "Get project variables (standard and local).",
 		examples: ["dss variable get", "dss variable get --project-key MYPROJ",],
 	},
@@ -42,12 +42,10 @@ export const variableCommands: Record<string, CommandMeta> = {
 				projectKey: pk,
 			},);
 		},
-		usage:
-			`dss variable set (--standard '{"k":"v"}'|--local '{"k":"v"}') [--replace] [--dry-run] [--project-key KEY]`,
 		description: "Set project variables via JSON merge (or full replace with --replace).",
 		examples: [
 			'dss variable set --standard \'{"env":"staging"}\' --dry-run',
 			"dss variable set --local '{\"debug\":true}' --replace",
 		],
 	},
-};
+},);

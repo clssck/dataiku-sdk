@@ -1,4 +1,5 @@
 import type { StableErrorCode, } from "../errors.js";
+import { commandSyntaxTree, syntaxHasFlag, } from "./syntax.js";
 
 export const RESOURCE_NAMES = [
 	"agent",
@@ -83,7 +84,7 @@ const PROJECT_SCOPED_RESOURCES = new Set([
 	"wiki",
 ],);
 
-export function inferRequiresProject(resource: string, action: string, usage: string,): boolean {
+export function inferRequiresProject(resource: string, action: string,): boolean {
 	if (
 		resource === "agent" || resource === "auth" || resource === "doctor" || resource === "commands"
 		|| resource === "install-skill" || resource === "version"
@@ -93,7 +94,8 @@ export function inferRequiresProject(resource: string, action: string, usage: st
 	// Plugin project scope is optional, not a requirement.
 	if (resource === "plugin") return false;
 	if (resource === "project-git") return !action.startsWith("future-",);
-	return usage.includes("--project-key",);
+	const syntax = commandSyntaxTree(resource, action,);
+	return syntax !== undefined && syntaxHasFlag(syntax, "project-key",);
 }
 
 export class UsageError extends Error {

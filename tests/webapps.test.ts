@@ -148,7 +148,7 @@ describe("WebappsResource", () => {
 			id: "webapp/1",
 			name: "Updated",
 			type: "STANDARD",
-			params: { html: "<main />", backend: "python", },
+			params: { html: "<section />", backend: "python", },
 			tags: ["prod",],
 		};
 		const response = { ...merged, saved: true, };
@@ -167,7 +167,7 @@ describe("WebappsResource", () => {
 			const resource = new WebappsResource(createClient(url,),);
 
 			await expect(
-				resource.updateSettings("webapp/1", { name: "Updated", params: { html: "<main />", }, },),
+				resource.updateSettings("webapp/1", patch,),
 			).resolves.toEqual(response,);
 		},);
 

@@ -1,6 +1,11 @@
 import { ClientValidationError, DataikuError, type DataikuErrorCategory, } from "../errors.js";
 import { projectIncarnationHash, } from "../utils/project-incarnation.js";
-import { compareStrings, stableHash, stableJson, } from "../utils/stable-hash.js";
+import {
+	compareStrings,
+	SHA256_HEX_PATTERN,
+	stableHash,
+	stableJson,
+} from "../utils/stable-hash.js";
 import { BaseResource, } from "./base.js";
 
 export interface AppListItem extends Record<string, unknown> {
@@ -271,9 +276,6 @@ function omitRootFields(value: unknown, omitted: readonly string[],): unknown {
 	}
 	return result;
 }
-
-/** Lowercase or uppercase SHA-256 hex digest, as emitted by `stableHash`. */
-const EXPECT_HASH_PATTERN = /^[0-9a-fA-F]{64}$/;
 
 /**
  * Project a manifest onto its version state. Only string values count: a
@@ -559,7 +561,7 @@ export class ApplicationsResource extends BaseResource {
 		const expectHash = update.expectHash;
 		if (
 			expectHash !== undefined
-			&& (typeof expectHash !== "string" || !EXPECT_HASH_PATTERN.test(expectHash,))
+			&& (typeof expectHash !== "string" || !SHA256_HEX_PATTERN.test(expectHash,))
 		) {
 			throw new ClientValidationError(
 				"Expected manifest hash must be a 64-character SHA-256 hex digest.",

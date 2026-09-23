@@ -9,6 +9,7 @@ import {
 import { num, readStdinText, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { planResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, requireNoArgs, UsageError, } from "../usage.js";
 
@@ -95,47 +96,38 @@ function optionalStringFlag(
 	return value.trim();
 }
 
-const LIST_USAGE = "dss plugin list";
-const INSTALL_ZIP_USAGE = "dss plugin install-from-zip --file PATH [--dry-run] [--plan]";
-const INSTALL_STORE_USAGE = "dss plugin install-from-store <pluginId> [--dry-run] [--plan]";
-const INSTALL_GIT_USAGE =
-	"dss plugin install-from-git --repository URL [--checkout REF] [--path-in-repository PATH] [--dry-run] [--plan]";
-const DOWNLOAD_USAGE = "dss plugin download <pluginId> --output PATH";
-const UPDATE_ZIP_USAGE = "dss plugin update-from-zip <pluginId> --file PATH [--dry-run] [--plan]";
-const UPDATE_STORE_USAGE = "dss plugin update-from-store <pluginId> [--dry-run] [--plan]";
-const UPDATE_GIT_USAGE =
-	"dss plugin update-from-git <pluginId> --repository URL [--checkout REF] [--path-in-repository PATH] [--dry-run] [--plan]";
-const SETTINGS_GET_USAGE = "dss plugin settings-get <pluginId> [--project-key KEY]";
-const SETTINGS_SET_USAGE =
-	"dss plugin settings-set <pluginId> (--content JSON|--file PATH|--stdin) [--project-key KEY] [--dry-run] [--plan]";
-const CODE_ENV_CREATE_USAGE =
-	"dss plugin code-env-create <pluginId> [--conda] [--python-interpreter PY] [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--plan]";
-const CODE_ENV_UPDATE_USAGE =
-	"dss plugin code-env-update <pluginId> [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--plan]";
-const MOVE_TO_DEV_USAGE = "dss plugin move-to-dev <pluginId> [--dry-run] [--plan]";
-const USAGES_USAGE = "dss plugin usages <pluginId> [--project-key KEY]";
-const DELETE_USAGE = "dss plugin delete <pluginId> [--force] [--dry-run] [--plan]";
-const CREATE_DEV_USAGE =
-	"dss plugin create-dev <pluginId> --creation-mode EMPTY|GIT_CLONE|GIT_EXPORT [--repository URL] [--checkout REF] [--path-in-repository PATH] [--dry-run] [--plan]";
-const GET_GIT_REMOTE_USAGE = "dss plugin get-git-remote <pluginId>";
-const SET_GIT_REMOTE_USAGE =
-	"dss plugin set-git-remote <pluginId> --repository URL [--dry-run] [--plan]";
-const DELETE_GIT_REMOTE_USAGE = "dss plugin delete-git-remote <pluginId> [--dry-run] [--plan]";
-const GIT_BRANCHES_USAGE = "dss plugin git-branches <pluginId>";
-const PUSH_USAGE = "dss plugin push <pluginId> [--dry-run] [--plan]";
-const PULL_USAGE = "dss plugin pull <pluginId> [--dry-run] [--plan]";
-const FETCH_USAGE = "dss plugin fetch <pluginId> [--dry-run] [--plan]";
-const RESET_LOCAL_USAGE = "dss plugin reset-local <pluginId> [--dry-run] [--plan]";
-const RESET_REMOTE_USAGE = "dss plugin reset-remote <pluginId> [--dry-run] [--plan]";
-const CONTENTS_LIST_USAGE = "dss plugin contents-list <pluginId>";
-const CONTENTS_GET_USAGE = "dss plugin contents-get <pluginId> <path> [--output PATH]";
-const CONTENTS_PUT_USAGE =
-	"dss plugin contents-put <pluginId> <path> (--content TEXT|--file PATH|--stdin) [--dry-run] [--plan]";
-const CONTENTS_DELETE_USAGE = "dss plugin contents-delete <pluginId> <path> [--dry-run] [--plan]";
-const DETAILS_USAGE = "dss plugin details <pluginId> <path>";
-const FOLDER_ADD_USAGE = "dss plugin folder-add <pluginId> <path> [--dry-run] [--plan]";
-const RENAME_USAGE = "dss plugin rename <pluginId> <path> <new-name> [--dry-run] [--plan]";
-const MOVE_USAGE = "dss plugin move <pluginId> <path> <destination-folder> [--dry-run] [--plan]";
+const INSTALL_ZIP_USAGE = commandUsage("plugin", "install-from-zip",);
+const INSTALL_STORE_USAGE = commandUsage("plugin", "install-from-store",);
+const INSTALL_GIT_USAGE = commandUsage("plugin", "install-from-git",);
+const DOWNLOAD_USAGE = commandUsage("plugin", "download",);
+const UPDATE_ZIP_USAGE = commandUsage("plugin", "update-from-zip",);
+const UPDATE_STORE_USAGE = commandUsage("plugin", "update-from-store",);
+const UPDATE_GIT_USAGE = commandUsage("plugin", "update-from-git",);
+const SETTINGS_GET_USAGE = commandUsage("plugin", "settings-get",);
+const SETTINGS_SET_USAGE = commandUsage("plugin", "settings-set",);
+const CODE_ENV_CREATE_USAGE = commandUsage("plugin", "code-env-create",);
+const CODE_ENV_UPDATE_USAGE = commandUsage("plugin", "code-env-update",);
+const MOVE_TO_DEV_USAGE = commandUsage("plugin", "move-to-dev",);
+const USAGES_USAGE = commandUsage("plugin", "usages",);
+const DELETE_USAGE = commandUsage("plugin", "delete",);
+const CREATE_DEV_USAGE = commandUsage("plugin", "create-dev",);
+const GET_GIT_REMOTE_USAGE = commandUsage("plugin", "get-git-remote",);
+const SET_GIT_REMOTE_USAGE = commandUsage("plugin", "set-git-remote",);
+const DELETE_GIT_REMOTE_USAGE = commandUsage("plugin", "delete-git-remote",);
+const GIT_BRANCHES_USAGE = commandUsage("plugin", "git-branches",);
+const PUSH_USAGE = commandUsage("plugin", "push",);
+const PULL_USAGE = commandUsage("plugin", "pull",);
+const FETCH_USAGE = commandUsage("plugin", "fetch",);
+const RESET_LOCAL_USAGE = commandUsage("plugin", "reset-local",);
+const RESET_REMOTE_USAGE = commandUsage("plugin", "reset-remote",);
+const CONTENTS_LIST_USAGE = commandUsage("plugin", "contents-list",);
+const CONTENTS_GET_USAGE = commandUsage("plugin", "contents-get",);
+const CONTENTS_PUT_USAGE = commandUsage("plugin", "contents-put",);
+const CONTENTS_DELETE_USAGE = commandUsage("plugin", "contents-delete",);
+const DETAILS_USAGE = commandUsage("plugin", "details",);
+const FOLDER_ADD_USAGE = commandUsage("plugin", "folder-add",);
+const RENAME_USAGE = commandUsage("plugin", "rename",);
+const MOVE_USAGE = commandUsage("plugin", "move",);
 
 async function waitFuture(
 	client: unknown,
@@ -149,10 +141,9 @@ async function waitFuture(
 		},);
 }
 
-export const pluginCommands: Record<string, CommandMeta> = {
+export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 	list: {
 		handler: (c,) => c.plugins.list(),
-		usage: LIST_USAGE,
 		description: "List installed plugins (including development plugins).",
 		examples: ["dss plugin list",],
 	},
@@ -171,7 +162,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			await c.plugins.installFromZip(file,);
 			return { installed: true, from: "zip", };
 		},
-		usage: INSTALL_ZIP_USAGE,
 		description:
 			"Install a plugin from a zip file. Fails when the plugin is already installed (use update-from-zip to replace).",
 		examples: ["dss plugin install-from-zip --file ./my-plugin.zip",],
@@ -191,7 +181,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			await c.plugins.installFromStore(pluginId,);
 			return { installed: pluginId, from: "store", };
 		},
-		usage: INSTALL_STORE_USAGE,
 		description: "Install a plugin from the Dataiku store. Fails when already installed.",
 		examples: ["dss plugin install-from-store my-plugin",],
 	},
@@ -224,7 +213,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			},);
 			return { installed: true, from: "git", repositoryUrl: url, };
 		},
-		usage: INSTALL_GIT_USAGE,
 		description:
 			"Install a plugin by checking out a Git repository (must contain plugin.json). Fails when already installed. HTTP(S) URLs must not embed credentials.",
 		examples: [
@@ -243,7 +231,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			const bytes = await writeResponseToFileForPlugin(out, res,);
 			return { path: out, bytes, };
 		},
-		usage: DOWNLOAD_USAGE,
 		description: "Download a development plugin as a zip archive to a local file.",
 		examples: ["dss plugin download my-plugin --output ./my-plugin.zip",],
 	},
@@ -263,7 +250,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			await c.plugins.updateFromZip(pluginId, file,);
 			return { updated: pluginId, from: "zip", };
 		},
-		usage: UPDATE_ZIP_USAGE,
 		description:
 			"Re-install a plugin from a zip file. Fails when the plugin is not already installed.",
 		examples: ["dss plugin update-from-zip my-plugin --file ./my-plugin.zip",],
@@ -282,7 +268,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			await c.plugins.updateFromStore(pluginId,);
 			return { updated: pluginId, from: "store", };
 		},
-		usage: UPDATE_STORE_USAGE,
 		description: "Update a plugin from the Dataiku Store.",
 		examples: ["dss plugin update-from-store my-plugin",],
 	},
@@ -316,7 +301,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			},);
 			return { updated: true, from: "git", repositoryUrl: url, };
 		},
-		usage: UPDATE_GIT_USAGE,
 		description:
 			"Update an installed plugin from a Git repository (must contain plugin.json). Fails when not installed. HTTP(S) URLs must not embed credentials.",
 		examples: [
@@ -330,7 +314,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 				projectKey: optionalStringFlag(f, "project-key",),
 			},);
 		},
-		usage: SETTINGS_GET_USAGE,
 		description:
 			"Get plugin settings (config parameters and code env name), optionally scoped to a project.",
 		examples: ["dss plugin settings-get my-plugin --project-key MYPROJECT",],
@@ -358,7 +341,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			},);
 			return { updated: pluginId, settingsKeys: Object.keys(settings,), };
 		},
-		usage: SETTINGS_SET_USAGE,
 		description:
 			"Replace plugin settings. Send only settings previously obtained through settings-get; DSS rejects unknown shapes.",
 		examples: [
@@ -388,7 +370,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			if (f["wait"] !== true) return future;
 			return await waitFuture(c, future.jobId, f,);
 		},
-		usage: CODE_ENV_CREATE_USAGE,
 		description:
 			"Create the code env of a plugin. Returns the DSS future (jobId); --wait polls it to completion.",
 		examples: [
@@ -412,7 +393,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			if (f["wait"] !== true) return future;
 			return await waitFuture(c, future.jobId, f,);
 		},
-		usage: CODE_ENV_UPDATE_USAGE,
 		description:
 			"Update (rebuild) the code env of a plugin. Returns the DSS future (jobId); --wait polls it to completion.",
 		examples: ["dss plugin code-env-update my-plugin --wait",],
@@ -431,7 +411,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			await c.plugins.moveToDev(pluginId,);
 			return { moved: pluginId, to: "dev", };
 		},
-		usage: MOVE_TO_DEV_USAGE,
 		description: "Move an installed plugin to the development environment for editing.",
 		examples: ["dss plugin move-to-dev my-plugin",],
 	},
@@ -442,7 +421,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 				projectKey: optionalStringFlag(f, "project-key",),
 			},);
 		},
-		usage: USAGES_USAGE,
 		description:
 			"List usages of a plugin's elements in projects or globally; missingTypes reports types the usage analysis could not resolve.",
 		examples: ["dss plugin usages my-plugin --project-key MYPROJECT",],
@@ -464,7 +442,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			await c.plugins.delete(pluginId, { force, },);
 			return { deleted: pluginId, force, };
 		},
-		usage: DELETE_USAGE,
 		description: "Delete a plugin. DSS refuses when usages are detected unless --force is passed.",
 		examples: ["dss plugin delete my-plugin", "dss plugin delete my-plugin --force",],
 	},
@@ -506,7 +483,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			},);
 			return { created: pluginId, creationMode, };
 		},
-		usage: CREATE_DEV_USAGE,
 		description:
 			"Create a new development plugin: EMPTY, GIT_CLONE (clone the repository as the plugin), or GIT_EXPORT (use a subpath of the repository). HTTP(S) URLs must not embed credentials.",
 		examples: [
@@ -519,7 +495,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, GET_GIT_REMOTE_USAGE,);
 			return c.plugins.getGitRemote(validatePluginId(a[0],),);
 		},
-		usage: GET_GIT_REMOTE_USAGE,
 		description:
 			"Get the Git remote declared for a development plugin (repositoryUrl is null when unset).",
 		examples: ["dss plugin get-git-remote my-plugin",],
@@ -544,7 +519,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			const result = await c.plugins.setGitRemote(pluginId, url,);
 			return { pluginId, ...result, };
 		},
-		usage: SET_GIT_REMOTE_USAGE,
 		description:
 			"Declare the Git remote for a development plugin. HTTP(S) URLs must not embed credentials; use SSH remotes or DSS-managed Git credentials.",
 		examples: ["dss plugin set-git-remote my-plugin --repository git@github.com:acme/my-plugin.git",],
@@ -563,7 +537,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			await c.plugins.deleteGitRemote(pluginId,);
 			return { deleted: "gitRemote", pluginId, };
 		},
-		usage: DELETE_GIT_REMOTE_USAGE,
 		description: "Delete the Git remote declared for a development plugin.",
 		examples: ["dss plugin delete-git-remote my-plugin",],
 	},
@@ -572,7 +545,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, GIT_BRANCHES_USAGE,);
 			return c.plugins.listGitBranches(validatePluginId(a[0],),);
 		},
-		usage: GIT_BRANCHES_USAGE,
 		description: "List the Git branches of a development plugin's declared remote.",
 		examples: ["dss plugin git-branches my-plugin",],
 	},
@@ -590,7 +562,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			const result = await c.plugins.push(pluginId,);
 			return { pushed: pluginId, result, };
 		},
-		usage: PUSH_USAGE,
 		description: "Push the development plugin's content to its previously-declared Git remote.",
 		examples: ["dss plugin push my-plugin",],
 	},
@@ -608,7 +579,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			const result = await c.plugins.pull(pluginId,);
 			return { pulled: pluginId, result, };
 		},
-		usage: PULL_USAGE,
 		description: "Pull (and rebase) the development plugin's content from its Git remote.",
 		examples: ["dss plugin pull my-plugin",],
 	},
@@ -626,7 +596,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			const result = await c.plugins.fetch(pluginId,);
 			return { fetched: pluginId, result, };
 		},
-		usage: FETCH_USAGE,
 		description: "Fetch the development plugin's content from its Git remote without changing files.",
 		examples: ["dss plugin fetch my-plugin",],
 	},
@@ -644,7 +613,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			const result = await c.plugins.resetToLocalHeadState(pluginId,);
 			return { reset: "localHeadState", pluginId, result, };
 		},
-		usage: RESET_LOCAL_USAGE,
 		description:
 			"Reset the development plugin to its local HEAD state, discarding uncommitted edits.",
 		examples: ["dss plugin reset-local my-plugin",],
@@ -663,7 +631,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			const result = await c.plugins.resetToRemoteHeadState(pluginId,);
 			return { reset: "remoteHeadState", pluginId, result, };
 		},
-		usage: RESET_REMOTE_USAGE,
 		description:
 			"Reset the development plugin to the remote HEAD state, discarding local work. The remote must be declared first.",
 		examples: ["dss plugin reset-remote my-plugin",],
@@ -673,7 +640,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 1, CONTENTS_LIST_USAGE,);
 			return c.plugins.listContents(validatePluginId(a[0],),);
 		},
-		usage: CONTENTS_LIST_USAGE,
 		description: "List the file tree of a development plugin.",
 		examples: ["dss plugin contents-list my-plugin",],
 	},
@@ -690,7 +656,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			}
 			return { data: await c.plugins.getFile(pluginId, path,), };
 		},
-		usage: CONTENTS_GET_USAGE,
 		description:
 			"Read a development plugin file as text. --output PATH writes the raw bytes to a local file instead.",
 		examples: [
@@ -728,7 +693,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			const sha256 = hasher.digest("hex",);
 			return { written: path, pluginId, bytes, sha256, };
 		},
-		usage: CONTENTS_PUT_USAGE,
 		description:
 			"Create or replace a development plugin file with text or binary content; reports the written byte count and sha256.",
 		examples: [
@@ -751,7 +715,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			await c.plugins.deleteFile(pluginId, path,);
 			return { deleted: path, pluginId, };
 		},
-		usage: CONTENTS_DELETE_USAGE,
 		description: "Delete a file (or folder) from a development plugin.",
 		examples: ["dss plugin contents-delete my-plugin python/old.py",],
 	},
@@ -760,7 +723,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			requireArgs(a, 2, DETAILS_USAGE,);
 			return c.plugins.getFileDetails(validatePluginId(a[0],), validatePluginPath(a[1],),);
 		},
-		usage: DETAILS_USAGE,
 		description:
 			"Get a single development plugin file's detail record (size, mime type, timestamps).",
 		examples: ["dss plugin details my-plugin python/my-plugin.py",],
@@ -780,7 +742,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			await c.plugins.addFolder(pluginId, path,);
 			return { created: path, pluginId, kind: "folder", };
 		},
-		usage: FOLDER_ADD_USAGE,
 		description: "Add a folder to a development plugin.",
 		examples: ["dss plugin folder-add my-plugin python/mylib",],
 	},
@@ -801,7 +762,6 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			await c.plugins.rename(pluginId, path, newName,);
 			return { renamed: path, to: newName, pluginId, };
 		},
-		usage: RENAME_USAGE,
 		description: "Rename a file or folder inside a development plugin (same parent folder).",
 		examples: ["dss plugin rename my-plugin python/old.py new.py",],
 	},
@@ -822,12 +782,11 @@ export const pluginCommands: Record<string, CommandMeta> = {
 			await c.plugins.move(pluginId, path, destination,);
 			return { moved: path, to: destination, pluginId, };
 		},
-		usage: MOVE_USAGE,
 		description:
 			"Move a file or folder inside a development plugin. The destination folder must already exist.",
 		examples: ["dss plugin move my-plugin python/old.py python/mylib",],
 	},
-};
+},);
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */

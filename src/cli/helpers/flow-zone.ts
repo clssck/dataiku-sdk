@@ -12,6 +12,7 @@ import {
 	requiredStringArray,
 	splitCsvFlag,
 } from "../coerce.js";
+import { commandUsage, } from "../syntax.js";
 import { UsageError, } from "../usage.js";
 
 export function flowZoneId(value: string,): string {
@@ -23,7 +24,7 @@ export function flowZoneId(value: string,): string {
 export function flowZoneName(value: string | boolean | undefined,): string {
 	if (typeof value !== "string" || value.trim().length === 0) {
 		throw new UsageError(
-			"--name is required. Usage: dss flow-zone create --name NAME [--color #RRGGBB]",
+			`--name is required. Usage: ${commandUsage("flow-zone", "create",)}`,
 		);
 	}
 	return value.trim();

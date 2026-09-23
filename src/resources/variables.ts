@@ -1,3 +1,4 @@
+import { ClientValidationError, } from "../errors.js";
 import type { ProjectVariables, } from "../schemas.js";
 import { ProjectVariablesSchema, } from "../schemas.js";
 import { BaseResource, } from "./base.js";
@@ -28,7 +29,10 @@ export class VariablesResource extends BaseResource {
 		}
 
 		if (opts.standard === undefined && opts.local === undefined) {
-			throw new Error("At least one of standard or local must be provided",);
+			throw new ClientValidationError(
+				"At least one of standard or local must be provided",
+				"validation_failed",
+			);
 		}
 
 		const existing = await this.get(opts.projectKey,);

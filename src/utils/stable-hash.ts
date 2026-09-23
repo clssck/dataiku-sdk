@@ -1,6 +1,9 @@
-export function sha256Hex(value: string,): string {
+export function sha256Hex(value: string | Uint8Array,): string {
 	return new Bun.CryptoHasher("sha256",).update(value,).digest("hex",);
 }
+
+/** Lowercase or uppercase SHA-256 hex digest accepted by every `--expect-hash` guard. */
+export const SHA256_HEX_PATTERN = /^[0-9a-fA-F]{64}$/;
 
 /** Locale-independent UTF-16 code-unit order for deterministic machine output. */
 export function compareStrings(a: string, b: string,): number {

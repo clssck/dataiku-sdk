@@ -1,6 +1,7 @@
 import { requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -16,26 +17,24 @@ function requireGroupName(value: string | undefined, usage: string,): string {
 	return trimmed;
 }
 
-export const groupCommands: Record<string, CommandMeta> = {
+export const groupCommands: Record<string, CommandMeta> = withUsage("group", {
 	list: {
 		handler: (c,) => c.groups.list(),
-		usage: "dss group list",
 		description: "List DSS groups (admin).",
 		examples: ["dss group list",],
 	},
 	get: {
 		handler: (c, a,) => {
-			const usage = "dss group get <name>";
+			const usage = commandUsage("group", "get",);
 			requireArgs(a, 1, usage,);
 			return c.groups.get(requireGroupName(a[0], usage,),);
 		},
-		usage: "dss group get <name>",
 		description: "Get a DSS group (admin).",
 		examples: ["dss group get administrators",],
 	},
 	create: {
 		handler: async (c, _a, f,) => {
-			const usage = "dss group create (--data JSON|--data-file PATH|--stdin)";
+			const usage = commandUsage("group", "create",);
 			const body = requiredJsonInput(
 				f,
 				`--data, --data-file, or --stdin is required (group definition). Usage: ${usage}`,
@@ -53,7 +52,6 @@ export const groupCommands: Record<string, CommandMeta> = {
 			}
 			return c.groups.create(body as Parameters<typeof c.groups.create>[0],);
 		},
-		usage: "dss group create (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description:
 			'Create a DSS group (admin). Body follows the DSS Group schema, e.g. {"name":"analysts","admin":false,"description":"..."}.',
 		examples: [
@@ -62,7 +60,7 @@ export const groupCommands: Record<string, CommandMeta> = {
 	},
 	update: {
 		handler: async (c, a, f,) => {
-			const usage = "dss group update <name> (--data JSON|--data-file PATH|--stdin) [--dry-run]";
+			const usage = commandUsage("group", "update",);
 			requireArgs(a, 1, usage,);
 			const name = requireGroupName(a[0], usage,);
 			const body = requiredJsonInput(
@@ -85,7 +83,6 @@ export const groupCommands: Record<string, CommandMeta> = {
 			await c.groups.update(name, body as Parameters<typeof c.groups.update>[1],);
 			return { updated: name, };
 		},
-		usage: "dss group update <name> (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description:
 			"Update a DSS group (admin). The body MUST be the Group object obtained from `dss group get` (PUT semantics); pass undocumented attributes through unchanged. Use --dry-run to preview the merged result without writing.",
 		examples: [
@@ -94,7 +91,7 @@ export const groupCommands: Record<string, CommandMeta> = {
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			const usage = "dss group delete <name> [--if-exists] [--dry-run]";
+			const usage = commandUsage("group", "delete",);
 			requireArgs(a, 1, usage,);
 			const name = requireGroupName(a[0], usage,);
 			if (executionMode(f,).dryRun) {
@@ -116,8 +113,7 @@ export const groupCommands: Record<string, CommandMeta> = {
 			}
 			return c.groups.delete(name,);
 		},
-		usage: "dss group delete <name> [--if-exists] [--dry-run]",
 		description: "Delete a DSS group (admin). Destructive and irreversible.",
 		examples: ["dss group delete analysts", "dss group delete analysts --if-exists",],
 	},
-};
+},);

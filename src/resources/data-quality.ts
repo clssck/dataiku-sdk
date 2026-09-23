@@ -1,4 +1,4 @@
-import { DataikuError, } from "../errors.js";
+import { DataikuError, unexpectedResponseError, } from "../errors.js";
 import type {
 	DataQualityComputeResult,
 	DataQualityProjectStatus,
@@ -240,7 +240,9 @@ export class DataQualityResource extends BaseResource {
 		opts: DataQualityComputeAndWaitOptions = {},
 	): Promise<FutureWaitResult> {
 		const future = await this.computeRules(datasetName, opts,);
-		if (!future.jobId) throw new Error("Data quality compute did not return a future jobId.",);
+		if (!future.jobId) {
+			throw unexpectedResponseError("Data quality compute did not return a future jobId.",);
+		}
 		return this.client.futures.wait(future.jobId, {
 			pollIntervalMs: opts.pollIntervalMs,
 			timeoutMs: opts.timeoutMs,

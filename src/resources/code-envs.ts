@@ -262,8 +262,9 @@ export class CodeEnvsResource extends BaseResource {
 		let raw: unknown;
 		if (envLang !== undefined || envName !== undefined) {
 			if (!envLang || !envName) {
-				throw new Error(
+				throw new ClientValidationError(
 					"codeEnvs.listUsages requires both envLang and envName when either is provided",
+					"validation_failed",
 				);
 			}
 			const langEnc = encodeURIComponent(envLang,);
@@ -303,7 +304,7 @@ function assertDefinitionHash(
 	expected: string,
 ): void {
 	const currentHash = stableHash(current,);
-	if (currentHash === expected) return;
+	if (currentHash === expected.toLowerCase()) return;
 	throw new ClientValidationError(
 		`Code env ${envLang}/${envName} changed since the expected definition hash was captured; refusing to overwrite it.`,
 		"validation_failed",

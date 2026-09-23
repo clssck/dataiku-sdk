@@ -24,6 +24,23 @@ export function dataikuEnvironmentEnabled(): boolean {
 	return process.env.DATAIKU_DISABLE_ENV !== "1";
 }
 
+/** DATAIKU_PROJECT_KEY from the environment, unless `DATAIKU_DISABLE_ENV=1`. */
+export function ambientProjectKey(): string | undefined {
+	return dataikuEnvironmentEnabled() ? process.env.DATAIKU_PROJECT_KEY : undefined;
+}
+
+const allowedEnvKeys = new Set<string>(["NODE_EXTRA_CA_CERTS", "NODE_TLS_REJECT_UNAUTHORIZED",],);
+
+/**
+ * `.env` files are untrusted input: only the CLI's own `DATAIKU_*` variables and
+ * Node's TLS trust knobs are read. Every other key is ignored silently, so a
+ * project working tree cannot redirect the CLI (for example by smuggling in
+ * `DSS_CONFIG_DIR` and sending saved credentials elsewhere).
+ */
+function isAllowedEnvKey(key: string,): boolean {
+	return key.startsWith("DATAIKU_",) || allowedEnvKeys.has(key,);
+}
+
 export function loadEnvFile(): void {
 	if (!dataikuEnvironmentEnabled()) return;
 	// The invocation cwd takes precedence over the CLI install/root directory, so a
@@ -43,7 +60,7 @@ export function loadEnvFile(): void {
 				if (eq === -1) continue;
 				const key = trimmed.slice(0, eq,).trim();
 				const val = trimmed.slice(eq + 1,).trim().replace(/^['"]|['"]$/g, "",);
-				if (!process.env[key]) {
+				if (isAllowedEnvKey(key,) && !process.env[key]) {
 					process.env[key] = val;
 					(index === 0 ? projectEnvVars : installEnvVars).add(key,);
 				}

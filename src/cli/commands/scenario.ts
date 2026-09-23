@@ -1,29 +1,28 @@
 import { jsonInput, num, parseBooleanOption, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
-export const scenarioCommands: Record<string, CommandMeta> = {
+export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario", {
 	list: {
 		handler: (c, _a, f,) => c.scenarios.list(f["project-key"] as string | undefined,),
-		usage: "dss scenario list [--project-key KEY]",
 		description: "List all scenarios in a project.",
 		examples: ["dss scenario list",],
 	},
 	get: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss scenario get <id>",);
+			requireArgs(a, 1, commandUsage("scenario", "get",),);
 			return c.scenarios.get(a[0], { projectKey: f["project-key"] as string | undefined, },);
 		},
-		usage: "dss scenario get <id> [--project-key KEY]",
 		description:
 			"Get raw scenario definition. For step-based scenario edits, patch params.steps; rawParams.params is DSS echo data.",
 		examples: ["dss scenario get my_scenario",],
 	},
 	run: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss scenario run <id>",);
+			requireArgs(a, 1, commandUsage("scenario", "run",),);
 			const pk = f["project-key"] as string | undefined;
 			const options = {
 				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
@@ -49,14 +48,12 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			}
 			return c.scenarios.run(a[0], pk,);
 		},
-		usage:
-			"dss scenario run <id> [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
 		description: "Trigger a scenario run, optionally waiting for completion.",
 		examples: ["dss scenario run my_scenario", "dss scenario run my_scenario --wait",],
 	},
 	"run-and-wait": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss scenario run-and-wait <id>",);
+			requireArgs(a, 1, commandUsage("scenario", "run-and-wait",),);
 			const pk = f["project-key"] as string | undefined;
 			const options = {
 				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
@@ -79,8 +76,6 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			}
 			return c.scenarios.runAndWait(a[0], { ...options, projectKey: pk, },);
 		},
-		usage:
-			"dss scenario run-and-wait <id> [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
 		description: "Run a scenario and wait for completion.",
 		examples: [
 			"dss scenario run-and-wait my_scenario",
@@ -89,16 +84,15 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 	},
 	status: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss scenario status <id>",);
+			requireArgs(a, 1, commandUsage("scenario", "status",),);
 			return c.scenarios.status(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss scenario status <id> [--project-key KEY]",
 		description: "Get the current run status of a scenario.",
 		examples: ["dss scenario status my_scenario",],
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss scenario delete <id>",);
+			requireArgs(a, 1, commandUsage("scenario", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.scenarios.get(a[0], { projectKey: pk, },));
@@ -110,13 +104,12 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			await c.scenarios.delete(a[0], pk,);
 			return { deleted: a[0], resource: "scenario", };
 		},
-		usage: "dss scenario delete <id> [--if-exists] [--dry-run] [--project-key KEY]",
 		description: "Delete a scenario.",
 		examples: ["dss scenario delete my_scenario", "dss scenario delete my_scenario --if-exists",],
 	},
 	create: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 2, "dss scenario create <id> <name>",);
+			requireArgs(a, 2, commandUsage("scenario", "create",),);
 			const pk = f["project-key"] as string | undefined;
 			const payload = {
 				scenarioId: a[0],
@@ -147,8 +140,6 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			},);
 			return { created: a[0], name: a[1], resource: "scenario", };
 		},
-		usage:
-			"dss scenario create <id> <name> [--type step_based|custom_python] [--if-not-exists] [--dry-run] [--project-key KEY]",
 		description: "Create a new scenario.",
 		examples: [
 			'dss scenario create my_scenario "My Scenario"',
@@ -157,11 +148,11 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 	},
 	update: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin]",);
+			requireArgs(a, 1, commandUsage("scenario", "update",),);
 			const data = jsonInput(f,);
 			if (data === undefined) {
 				throw new UsageError(
-					"--data, --data-file, or --stdin is required. Usage: dss scenario update <id> [--data '{...}' | --data-file PATH | --stdin]",
+					`--data, --data-file, or --stdin is required. Usage: ${commandUsage("scenario", "update",)}`,
 				);
 			}
 			const pk = f["project-key"] as string | undefined;
@@ -196,8 +187,6 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 				unchangedPaths: result.unchangedPaths,
 			};
 		},
-		usage:
-			"dss scenario update <id> (--data '{...}' | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description:
 			"Update scenario settings via JSON merge; edit step-based scenario steps at params.steps, not rawParams.params.steps.",
 		examples: [
@@ -207,7 +196,7 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 	},
 	abort: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss scenario abort <id>",);
+			requireArgs(a, 1, commandUsage("scenario", "abort",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
 				return {
@@ -226,37 +215,34 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			await c.scenarios.abort(a[0], pk,);
 			return { aborted: a[0], resource: "scenario", };
 		},
-		usage: "dss scenario abort <id> [--dry-run] [--project-key KEY]",
 		description:
 			"Abort a running scenario. Returns when DSS accepts the abort; the scenario may take time to stop.",
 		examples: ["dss scenario abort my_scenario",],
 	},
 	"last-runs": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss scenario last-runs <id>",);
+			requireArgs(a, 1, commandUsage("scenario", "last-runs",),);
 			return c.scenarios.getLastRuns(a[0], {
 				limit: num(f["limit"], "--limit",),
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss scenario last-runs <id> [--limit N] [--project-key KEY]",
 		description: "List the most recent runs of a scenario (run id, start/end, outcome).",
 		examples: ["dss scenario last-runs my_scenario --limit 10",],
 	},
 	"get-run": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 2, "dss scenario get-run <id> <runId>",);
+			requireArgs(a, 2, commandUsage("scenario", "get-run",),);
 			return c.scenarios.getRunDetails(a[0], a[1], {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss scenario get-run <id> <runId> [--project-key KEY]",
 		description: "Get the details of a specific scenario run, including per-step outcomes.",
 		examples: ["dss scenario get-run my_scenario 2024-09-01-01-02-03-123",],
 	},
 	log: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 2, "dss scenario log <id> <runId>",);
+			requireArgs(a, 2, commandUsage("scenario", "log",),);
 			const result = await c.scenarios.getRunLog(a[0], a[1], {
 				stepId: f["step-id"] as string | undefined,
 				maxLogBytes: num(f["max-log-bytes"], "--max-log-bytes",),
@@ -274,8 +260,6 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			}
 			return result.text;
 		},
-		usage:
-			"dss scenario log <id> <runId> [--step-id STEP_ID] [--max-log-bytes N] [--output PATH] [--project-key KEY]",
 		description:
 			"Get the log of a scenario run (or one step via --step-id). Byte-bounded at --max-log-bytes (default 1 MiB); --output PATH writes it to a file (stdout returns the path).",
 		examples: [
@@ -285,10 +269,9 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 	},
 	"payload-get": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss scenario payload-get <id>",);
+			requireArgs(a, 1, commandUsage("scenario", "payload-get",),);
 			return c.scenarios.getPayload(a[0], { projectKey: f["project-key"] as string | undefined, },);
 		},
-		usage: "dss scenario payload-get <id> [--project-key KEY]",
 		description: "Get the payload of a custom scenario (e.g. its Python script).",
 		examples: ["dss scenario payload-get my_custom_scenario",],
 	},
@@ -297,12 +280,14 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss scenario payload-set <id> (--data '{...}' | --data-file PATH | --stdin)",
+				commandUsage("scenario", "payload-set",),
 			);
 			const payload = jsonInput(f,);
 			if (payload === undefined) {
 				throw new UsageError(
-					"--data, --data-file, or --stdin is required. Usage: dss scenario payload-set <id> (--data '{...}' | --data-file PATH | --stdin)",
+					`--data, --data-file, or --stdin is required. Usage: ${
+						commandUsage("scenario", "payload-set",)
+					}`,
 				);
 			}
 			const pk = f["project-key"] as string | undefined;
@@ -324,8 +309,6 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			await c.scenarios.setPayload(a[0], payload, { projectKey: pk, },);
 			return { updated: a[0], resource: "scenario", part: "payload", };
 		},
-		usage:
-			"dss scenario payload-set <id> (--data '{...}' | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description: "Update the payload of a custom scenario (e.g. replace its Python script).",
 		examples: [
 			'dss scenario payload-set my_custom_scenario --data \'{"script":"print(1)"}\' --dry-run',
@@ -334,11 +317,11 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 	},
 	"active-set": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 2, "dss scenario active-set <id> <true|false>",);
+			requireArgs(a, 2, commandUsage("scenario", "active-set",),);
 			const active = parseBooleanOption(a[1], "active",);
 			if (active === undefined) {
 				throw new UsageError(
-					"active must be 'true' or 'false'. Usage: dss scenario active-set <id> <true|false>",
+					`active must be 'true' or 'false'. Usage: ${commandUsage("scenario", "active-set",)}`,
 				);
 			}
 			const pk = f["project-key"] as string | undefined;
@@ -355,7 +338,6 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			}
 			return c.scenarios.setActive(a[0], active, { projectKey: pk, },);
 		},
-		usage: "dss scenario active-set <id> <true|false> [--dry-run] [--project-key KEY]",
 		description:
 			"Activate or deactivate a scenario (light update; deactivated scenarios ignore triggers).",
 		examples: [
@@ -363,4 +345,4 @@ export const scenarioCommands: Record<string, CommandMeta> = {
 			"dss scenario active-set my_scenario true --dry-run",
 		],
 	},
-};
+},);

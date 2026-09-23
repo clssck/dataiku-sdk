@@ -1,5 +1,5 @@
-import { createHash, } from "node:crypto";
 import { ClientValidationError, DataikuError, } from "../errors.js";
+import { SHA256_HEX_PATTERN, sha256Hex, } from "../utils/stable-hash.js";
 import { BaseResource, } from "./base.js";
 
 export interface ProjectLibraryItem {
@@ -86,13 +86,6 @@ export interface ProjectLibraryDiffResult {
  * checked; it can never turn the subsequent POST into a conditional write.
  */
 export const PROJECT_LIBRARY_CONCURRENCY_CONTROL = "client-side-non-atomic-stale-read-check";
-
-/** Lowercase or uppercase SHA-256 hex digest. */
-export const EXPECT_SHA256_PATTERN = /^[0-9a-fA-F]{64}$/;
-
-function sha256Hex(value: string | Uint8Array,): string {
-	return createHash("sha256",).update(value,).digest("hex",);
-}
 
 const CONTROL_CHARACTER_RE = /[\u0000-\u001f\u007f]/;
 const BACKSLASH_RE = /\\/;
@@ -558,7 +551,7 @@ export class ProjectLibraryResource extends BaseResource {
 		const expectSha256 = options?.expectSha256;
 		if (
 			expectSha256 !== undefined
-			&& (typeof expectSha256 !== "string" || !EXPECT_SHA256_PATTERN.test(expectSha256,))
+			&& (typeof expectSha256 !== "string" || !SHA256_HEX_PATTERN.test(expectSha256,))
 		) {
 			throw new ClientValidationError(
 				"expectSha256 must be a 64-character SHA-256 hex digest.",

@@ -7,10 +7,11 @@ import { projectIncarnationHash, } from "../../utils/project-incarnation.js";
 import { jsonInput, num, requiredJsonInput, requiredStringFlag, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { CommandResultFailure, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
-const INSPECT_ARCHIVE_USAGE = "dss project inspect-archive <file>";
+const INSPECT_ARCHIVE_USAGE = commandUsage("project", "inspect-archive",);
 
 function flowRenderFormat(value: string | boolean | undefined,): FlowRenderFormat | undefined {
 	if (value === undefined) return undefined;
@@ -24,28 +25,24 @@ function inspectArchiveCommand(args: string[],): Promise<ProjectArchiveInspectio
 	return inspectProjectArchive(args[0]!,);
 }
 
-export const projectCommands: Record<string, CommandMeta> = {
+export const projectCommands: Record<string, CommandMeta> = withUsage("project", {
 	list: {
 		handler: (c,) => c.projects.list(),
-		usage: "dss project list",
 		description: "List all accessible projects.",
 		examples: ["dss project list",],
 	},
 	get: {
 		handler: (c, _a, f,) => c.projects.get(f["project-key"] as string | undefined,),
-		usage: "dss project get [--project-key KEY]",
 		description: "Get project settings and metadata.",
 		examples: ["dss project get", "dss project get --project-key MYPROJ",],
 	},
 	metadata: {
 		handler: (c, _a, f,) => c.projects.metadata(f["project-key"] as string | undefined,),
-		usage: "dss project metadata [--project-key KEY]",
 		description: "Get project-level metadata (tags, labels, custom fields).",
 		examples: ["dss project metadata", "dss project metadata --project-key MYPROJ",],
 	},
 	flow: {
 		handler: (c, _a, f,) => c.projects.flow(f["project-key"] as string | undefined,),
-		usage: "dss project flow [--project-key KEY]",
 		description: "Get the raw flow graph (all datasets, recipes, and edges).",
 		examples: ["dss project flow", "dss project flow --project-key MYPROJ",],
 	},
@@ -63,8 +60,6 @@ export const projectCommands: Record<string, CommandMeta> = {
 			num(f["max-nodes"], "--max-nodes",);
 			num(f["max-edges"], "--max-edges",);
 		},
-		usage:
-			"dss project map [--max-nodes N] [--max-edges N] [--include-raw] [--render ascii|mermaid] [--project-key KEY]",
 		description: "Get an analyzed flow map with zones, layers, components, and diagnostics.",
 		examples: [
 			"dss project map",
@@ -75,22 +70,18 @@ export const projectCommands: Record<string, CommandMeta> = {
 	},
 	create: {
 		handler: (c, a, f,) => {
-			const usage =
-				"dss project create <projectKey> <name> --owner LOGIN [--data JSON|--data-file PATH|--stdin]";
+			const usage = commandUsage("project", "create",);
 			requireArgs(a, 2, usage,);
 			const owner = f["owner"] as string | undefined;
 			if (!owner) throw new UsageError(`--owner is required. Usage: ${usage}`,);
 			return c.projects.createProject(a[0], a[1], owner, jsonInput(f,),);
 		},
-		usage:
-			"dss project create <projectKey> <name> --owner LOGIN [--data JSON|--data-file PATH|--stdin]",
 		description: "Create a new project with owner login and optional settings.",
 		examples: ["dss project create MY_PROJ MyProject --owner alice",],
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss project delete <projectKey> [--drop-data] [--if-exists] [--dry-run] [--expect-project-incarnation HASH]";
+			const usage = commandUsage("project", "delete",);
 			requireArgs(a, 1, usage,);
 			const projectKey = a[0];
 			const expectedIncarnation = f["expect-project-incarnation"] === undefined
@@ -171,8 +162,6 @@ export const projectCommands: Record<string, CommandMeta> = {
 					: {}),
 			};
 		},
-		usage:
-			"dss project delete <projectKey> [--drop-data] [--if-exists] [--dry-run] [--expect-project-incarnation HASH]",
 		description:
 			"Delete a project (destructive). --drop-data also clears managed datasets; --if-exists treats an absent project as already deleted; --dry-run verifies without deleting; --expect-project-incarnation HASH refuses deletion unless the project still matches the recorded incarnation.",
 		examples: ["dss project delete MY_PROJ",],
@@ -182,12 +171,10 @@ export const projectCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				3,
-				"dss project duplicate <sourceKey> <targetKey> <targetName> [--data JSON|--data-file PATH|--stdin]",
+				commandUsage("project", "duplicate",),
 			);
 			return c.projects.duplicate(a[0], a[1], a[2], jsonInput(f,),);
 		},
-		usage:
-			"dss project duplicate <sourceKey> <targetKey> <targetName> [--data JSON|--data-file PATH|--stdin]",
 		description: "Duplicate a project into a new project key.",
 		examples: ["dss project duplicate SRC NEW NewProject",],
 	},
@@ -196,21 +183,19 @@ export const projectCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss project export <projectKey> --output PATH [--data JSON|--data-file PATH|--stdin]",
+				commandUsage("project", "export",),
 			);
 			const out = f["output"] as string | undefined;
 			if (!out) throw new UsageError("--output PATH is required.", "missing_required_flag",);
 			await c.projects.exportArchive(a[0], out, jsonInput(f,),);
 			return { path: out, };
 		},
-		usage: "dss project export <projectKey> --output PATH [--data JSON|--data-file PATH|--stdin]",
 		description: "Export a project to a local archive (.zip).",
 		examples: ["dss project export MY_PROJ --output ./my_proj.zip",],
 	},
 	import: {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss project import <filePath> [--target-project-key KEY] [--data JSON|--data-file PATH|--stdin]";
+			const usage = commandUsage("project", "import",);
 			requireArgs(a, 1, usage,);
 			const settings = jsonInput(f,) ?? {};
 			const rawTarget = f["target-project-key"] as string | undefined;
@@ -248,8 +233,6 @@ export const projectCommands: Record<string, CommandMeta> = {
 			}
 			return result;
 		},
-		usage:
-			"dss project import <filePath> [--target-project-key KEY] [--data JSON|--data-file PATH|--stdin]",
 		description:
 			"Upload and process a project archive, optionally overriding its project key. The archive is validated locally before upload; verified success reports the used project key, explicit request/actual remapping, and the landed incarnation hash.",
 		examples: [
@@ -260,7 +243,6 @@ export const projectCommands: Record<string, CommandMeta> = {
 	"inspect-archive": {
 		handler: async (_c, a,) => inspectArchiveCommand(a,),
 		localHandler: inspectArchiveCommand,
-		usage: INSPECT_ARCHIVE_USAGE,
 		description:
 			"Read-only local inspection of a project export archive: member names, sizes, manifest validity, archive issues, and the source project key. Never contacts DSS.",
 		examples: ["dss project inspect-archive ./my_proj.zip",],
@@ -274,13 +256,11 @@ export const projectCommands: Record<string, CommandMeta> = {
 			await c.projects.setPermissions(f["project-key"] as string | undefined, body,);
 			return { updated: true, };
 		},
-		usage: "dss project permissions-set (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
 		description: "Replace a project's permissions.",
 		examples: ["dss project permissions-set --data-file perms.json --project-key MY_PROJ",],
 	},
 	"permissions-get": {
 		handler: (c, _a, f,) => c.projects.getPermissions(f["project-key"] as string | undefined,),
-		usage: "dss project permissions-get [--project-key KEY]",
 		description: "Get a project's permissions.",
 		examples: ["dss project permissions-get --project-key MY_PROJ",],
 	},
@@ -301,8 +281,6 @@ export const projectCommands: Record<string, CommandMeta> = {
 			await c.projects.setMetadata(f["project-key"] as string | undefined, metadata,);
 			return { updated: true, };
 		},
-		usage:
-			"dss project metadata-set (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description:
 			"Replace project metadata with a full object obtained from a previous metadata GET. Fields absent from the payload are removed.",
 		examples: [
@@ -311,7 +289,6 @@ export const projectCommands: Record<string, CommandMeta> = {
 	},
 	"tags-get": {
 		handler: (c, _a, f,) => c.projects.tags(f["project-key"] as string | undefined,),
-		usage: "dss project tags-get [--project-key KEY]",
 		description: "Get project-level tags as a dictionary of tag name to display settings.",
 		examples: ["dss project tags-get", "dss project tags-get --project-key MY_PROJ",],
 	},
@@ -335,8 +312,6 @@ export const projectCommands: Record<string, CommandMeta> = {
 			);
 			return { updated: true, };
 		},
-		usage:
-			"dss project tags-set (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description:
 			"Replace project tags with a full object obtained from a previous tags GET. Tags absent from the payload are removed.",
 		examples: [
@@ -345,7 +320,6 @@ export const projectCommands: Record<string, CommandMeta> = {
 	},
 	"settings-get": {
 		handler: (c, _a, f,) => c.projects.getSettings(f["project-key"] as string | undefined,),
-		usage: "dss project settings-get [--project-key KEY]",
 		description: "Get a project's settings.",
 		examples: ["dss project settings-get --project-key MY_PROJ",],
 	},
@@ -361,8 +335,7 @@ export const projectCommands: Record<string, CommandMeta> = {
 			await c.projects.setSettings(projectKey, next,);
 			return { updated: true, };
 		},
-		usage: "dss project settings-set (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
 		description: "Update a project's settings via JSON merge.",
 		examples: ["dss project settings-set --data-file settings.json --project-key MY_PROJ",],
 	},
-};
+},);

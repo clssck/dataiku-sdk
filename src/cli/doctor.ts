@@ -124,6 +124,7 @@ export function firstStringField(items: unknown[] | undefined, fields: string[],
 }
 
 export function integrationFlag(name: string,): boolean {
+	// oxlint-disable-next-line dss/no-direct-process-env -- RUN_DATAIKU_* integration opt-in flags
 	const value = process.env[name];
 	return value === "1" || value?.toLowerCase() === "true";
 }

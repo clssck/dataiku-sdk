@@ -1,4 +1,5 @@
 import { describe, expect, it, } from "bun:test";
+import { commandUsage, } from "../../src/cli/syntax.js";
 import {
 	cliEnv,
 	dss,
@@ -28,9 +29,9 @@ describe("CLI planned command coverage", () => {
 
 		expect(failure.code,).toBe(1,);
 		expect(failure.stderr,).toBe("",);
-		expect(failure.stdout,).toContain("--output or --output-folder is required",);
-		expect(failure.stdout,).toContain(
-			"dss recipe create --type TYPE [--input DS] (--output DS | --output-folder FOLDER_ID)",
+		const report = JSON.parse(failure.stdout,) as { error: string; };
+		expect(report.error,).toBe(
+			`--output or --output-folder is required. Usage: ${commandUsage("recipe", "create",)}`,
 		);
 	});
 
@@ -200,8 +201,14 @@ describe("CLI planned command coverage", () => {
 		},);
 
 		expect(stderr,).toBe("",);
-		const result = JSON.parse(stdout,) as { payload: { inputDatasets: string[]; }; };
-		expect(result.payload.inputDatasets,).toEqual(["source_a", "source_b", "source_c",],);
+		const result = JSON.parse(stdout,) as {
+			payload: { recipePrototype: { inputs: { main: { items: Array<{ ref: string; }>; }; }; }; };
+		};
+		expect(result.payload.recipePrototype.inputs.main.items.map((item,) => item.ref),).toEqual([
+			"source_a",
+			"source_b",
+			"source_c",
+		],);
 	});
 
 	it("recipe clone dry-run accepts from/to and input/output rewrites", async () => {
@@ -425,8 +432,9 @@ describe("CLI planned command coverage", () => {
 				"target_ds",
 				"--dry-run",
 			], { env: cliEnv(url,), },);
-			expect(failure.code,).toBe(2,);
+			expect(failure.code,).toBe(1,);
 			expect(failure.stderr,).toBe("",);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({ code: "validation_failed", exitCode: 1, },);
 			expect(failure.stdout,).toContain("Refusing to clone managed dataset",);
 		},);
 	});
@@ -836,7 +844,8 @@ describe("CLI planned command coverage", () => {
 		expect(planned,).toMatchObject({
 			plan: true,
 			method: "POST",
-			endpoint: "/public/api/projects/PROJ/savedmodels/SM1/versions/v1/external-ml/actions/evaluate",
+			endpoint:
+				"/public/api/projects/PROJ/savedmodels/SM1/versions/v1/external-ml/actions/evaluate?useOptimalThreshold=true&skipExpensiveReports=true",
 			payload: {
 				datasetRef: "PROJ.ds",
 				containerExecConfigName: "NONE",

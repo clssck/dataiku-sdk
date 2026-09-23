@@ -244,8 +244,10 @@ export const AGENT_CONTRACT_SCHEMA_ID =
 	"https://clssck.github.io/dataiku-sdk/schemas/agent-contract-v2.json";
 
 export function cliVersionResult(): CliVersionPayload {
+	/* oxlint-disable dss/no-direct-process-env -- launcher-injected load source and build revision */
 	const loadSource = process.env["DSS_LOAD_SOURCE"] ?? detectLoadSource();
 	const envBuildRevision = process.env["DSS_BUILD_REVISION"];
+	/* oxlint-enable dss/no-direct-process-env */
 	return buildVersionPayload({
 		packageVersion: CLI_VERSION,
 		checkoutRevision: CLI_GIT_REVISION,

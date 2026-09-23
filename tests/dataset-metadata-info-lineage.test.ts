@@ -35,7 +35,6 @@ async function withServer(
 describe("DatasetsResource metadata PUT", () => {
 	it("replaces metadata verbatim, preserving optional server fields the caller sends back", async () => {
 		let method = "";
-		let path = "";
 		let body: Record<string, unknown> | undefined;
 		await withServer(async (req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);

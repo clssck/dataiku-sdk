@@ -1,11 +1,14 @@
-import { DataikuError, } from "../errors.js";
+import { ClientValidationError, DataikuError, } from "../errors.js";
 import { JobSummaryArraySchema, } from "../schemas.js";
 import type { BuildMode, JobSummary, JobWaitResult, } from "../schemas.js";
-import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
+import {
+	computeNextPollDelayMs,
+	DEFAULT_POLL_INTERVAL_MS,
+	DEFAULT_TIMEOUT_MS,
+	isRequestDeadlineError,
+} from "../utils/polling.js";
 import { BaseResource, } from "./base.js";
 
-const DEFAULT_POLL_INTERVAL_MS = 2_000;
-const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_LOG_LINES = 500;
 /**
  * Default bytes retained from a job log body (default 10 MiB). Logs larger
@@ -128,7 +131,7 @@ function jobBuildDefinition(
 	opts: JobBuildOptions | undefined,
 ): Record<string, unknown> {
 	if (targets.length === 0) {
-		throw new Error("At least one build target is required.",);
+		throw new ClientValidationError("At least one build target is required.", "validation_failed",);
 	}
 	const payload: Record<string, unknown> = {
 		outputs: targets.map((target,) =>
@@ -329,8 +332,9 @@ export class JobsResource extends BaseResource {
 		const jobId = parsed.searchParams.get("jobId",) ?? undefined;
 		const activity = parsed.searchParams.get("activityId",) ?? undefined;
 		if (!projectKey || !jobId || !activity) {
-			throw new Error(
+			throw new ClientValidationError(
 				"Log URL must include projectKey, jobId, and activityId query parameters.",
+				"validation_failed",
 			);
 		}
 		return this.log(jobId, {

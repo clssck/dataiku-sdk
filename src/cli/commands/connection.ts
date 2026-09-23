@@ -2,6 +2,7 @@ import { sanitizeErrorSecrets, sanitizeSecrets, } from "../../utils/secret-sanit
 import { requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -91,13 +92,12 @@ function requireConnectionName(value: string | undefined, usage: string,): strin
 	}
 	return trimmed;
 }
-export const connectionCommands: Record<string, CommandMeta> = {
+export const connectionCommands: Record<string, CommandMeta> = withUsage("connection", {
 	list: {
 		handler: (c, _a, f,) =>
 			c.connections.list({
 				type: f["type"] as string | undefined,
 			},),
-		usage: "dss connection list [--type TYPE]",
 		description: "List all connection names, optionally filtered by connection type.",
 		examples: ["dss connection list", "dss connection list --type Filesystem",],
 	},
@@ -107,26 +107,24 @@ export const connectionCommands: Record<string, CommandMeta> = {
 				mode: f["mode"] as "fast" | "rich" | undefined,
 				projectKey: f["project-key"] as string | undefined,
 			},),
-		usage: "dss connection infer [--mode fast|rich] [--project-key KEY]",
 		description: "List connections with inferred types and metadata.",
 		examples: ["dss connection infer", "dss connection infer --mode rich",],
 	},
 
 	get: {
 		handler: async (c, a,) => {
-			const usage = "dss connection get <name>";
+			const usage = commandUsage("connection", "get",);
 			requireArgs(a, 1, usage,);
 			const details = await c.connections.adminGet(requireConnectionName(a[0], usage,),);
 			return sanitizeConnectionSecrets(details,);
 		},
-		usage: "dss connection get <name>",
 		description:
 			"Get a connection by name (admin). Credential-bearing params (e.g. params.password) are redacted in output.",
 		examples: ["dss connection get postgres",],
 	},
 	create: {
 		handler: async (c, _a, f,) => {
-			const usage = "dss connection create (--data JSON|--data-file PATH|--stdin)";
+			const usage = commandUsage("connection", "create",);
 			const body = requiredConnectionJson(f, usage,);
 			if (executionMode(f,).dryRun) {
 				return {
@@ -147,7 +145,6 @@ export const connectionCommands: Record<string, CommandMeta> = {
 				throw sanitizeConnectionError(error, connectionSecretsFromBody(body,),);
 			}
 		},
-		usage: "dss connection create (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description:
 			'Create a connection (admin). Body is the Connection definition, e.g. {"name":"new-connection","type":"PostgreSQL","params":{"host":"...","user":"...","password":"..."}}. Secrets are never echoed in errors or output.',
 		examples: [
@@ -156,7 +153,7 @@ export const connectionCommands: Record<string, CommandMeta> = {
 	},
 	update: {
 		handler: async (c, a, f,) => {
-			const usage = "dss connection update <name> (--data JSON|--data-file PATH|--stdin) [--dry-run]";
+			const usage = commandUsage("connection", "update",);
 			requireArgs(a, 1, usage,);
 			const name = requireConnectionName(a[0], usage,);
 			const body = requiredConnectionJson(f, usage,);
@@ -184,7 +181,6 @@ export const connectionCommands: Record<string, CommandMeta> = {
 				throw sanitizeConnectionError(error, secrets,);
 			}
 		},
-		usage: "dss connection update <name> (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description:
 			"Update a connection (admin). The body MUST be the Connection object obtained from `dss connection get` (PUT semantics); type and name cannot be modified. Use --dry-run to preview the merged result without writing.",
 		examples: [
@@ -193,7 +189,7 @@ export const connectionCommands: Record<string, CommandMeta> = {
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			const usage = "dss connection delete <name> [--if-exists] [--dry-run]";
+			const usage = commandUsage("connection", "delete",);
 			requireArgs(a, 1, usage,);
 			const name = requireConnectionName(a[0], usage,);
 			if (executionMode(f,).dryRun) {
@@ -215,19 +211,17 @@ export const connectionCommands: Record<string, CommandMeta> = {
 			}
 			return c.connections.adminDelete(name,);
 		},
-		usage: "dss connection delete <name> [--if-exists] [--dry-run]",
 		description:
 			"Delete a connection (admin). Destructive: per the DSS docs no check is performed that the connection is not in use by a dataset.",
 		examples: ["dss connection delete old-conn", "dss connection delete old-conn --if-exists",],
 	},
 	test: {
 		handler: async (c, a,) => {
-			const usage = "dss connection test <name>";
+			const usage = commandUsage("connection", "test",);
 			requireArgs(a, 1, usage,);
 			const result = await c.connections.adminTest(requireConnectionName(a[0], usage,),);
 			return sanitizeConnectionSecrets(result,);
 		},
-		usage: "dss connection test <name>",
 		description:
 			"Test whether a connection is available (uses the same GET /connections/{name}/test route as the official Python client; returns connectionOK, errors when testing is unsupported for the type). Credential-bearing fields are redacted in output.",
 		examples: ["dss connection test postgres",],
@@ -237,7 +231,7 @@ export const connectionCommands: Record<string, CommandMeta> = {
 			const connection = f["connection"] as string | undefined;
 			if (!connection) {
 				throw new UsageError(
-					"--connection is required. Usage: dss connection schemas --connection CONN",
+					`--connection is required. Usage: ${commandUsage("connection", "schemas",)}`,
 				);
 			}
 			return c.connections.schemas({
@@ -245,7 +239,6 @@ export const connectionCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss connection schemas --connection CONN [--project-key KEY]",
 		description: "List schemas in a SQL connection.",
 		examples: ["dss connection schemas --connection ATHENA_CONN --project-key MYPROJ",],
 	},
@@ -254,7 +247,7 @@ export const connectionCommands: Record<string, CommandMeta> = {
 			const connection = f["connection"] as string | undefined;
 			if (!connection) {
 				throw new UsageError(
-					"--connection is required. Usage: dss connection tables --connection CONN",
+					`--connection is required. Usage: ${commandUsage("connection", "tables",)}`,
 				);
 			}
 			return c.connections.tables({
@@ -264,8 +257,6 @@ export const connectionCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage:
-			"dss connection tables --connection CONN [--catalog CATALOG] [--schema SCHEMA] [--project-key KEY]",
 		description:
 			"List importable tables in a SQL connection, optionally scoped by catalog and schema.",
 		examples: [
@@ -274,8 +265,7 @@ export const connectionCommands: Record<string, CommandMeta> = {
 	},
 	"prepare-import": {
 		handler: async (c, _a, f,) => {
-			const usage =
-				"dss connection prepare-import (--data JSON|--data-file PATH|--stdin) [--project-key KEY]";
+			const usage = commandUsage("connection", "prepare-import",);
 			const body = requiredJsonInput(
 				f,
 				`--data, --data-file, or --stdin is required (tables-import request). Usage: ${usage}`,
@@ -321,8 +311,6 @@ export const connectionCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage:
-			"dss connection prepare-import (--data JSON|--data-file PATH|--stdin) [--project-key KEY] [--dry-run]",
 		description:
 			'Prepare the import of selected SQL or Hive tables (WRITE_CONF). Body is {"keys":[...]} per the DSS tables-import docs. Returns a DSS future; poll with `dss future wait <jobId>`.',
 		examples: [
@@ -331,8 +319,7 @@ export const connectionCommands: Record<string, CommandMeta> = {
 	},
 	"execute-import": {
 		handler: async (c, _a, f,) => {
-			const usage =
-				"dss connection execute-import (--data JSON|--data-file PATH|--stdin) [--project-key KEY]";
+			const usage = commandUsage("connection", "execute-import",);
 			const body = requiredJsonInput(
 				f,
 				`--data, --data-file, or --stdin is required (tables-import request). Usage: ${usage}`,
@@ -371,12 +358,10 @@ export const connectionCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage:
-			"dss connection execute-import (--data JSON|--data-file PATH|--stdin) [--project-key KEY] [--dry-run]",
 		description:
 			"Perform an import from SQL/Hive table candidates (WRITE_CONF). Body carries sqlImportCandidates and/or hiveImportCandidates per the DSS tables-import docs. Returns a DSS future.",
 		examples: [
 			`dss connection execute-import --data '{"sqlImportCandidates":[{"connectionName":"pgsql","table":"my_table","checked":false,"datasetName":"imported_from_db","existingDatasetsNames":[]}]}' --project-key MYPROJ`,
 		],
 	},
-};
+},);

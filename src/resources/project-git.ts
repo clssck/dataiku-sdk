@@ -1,4 +1,4 @@
-import { ClientValidationError, } from "../errors.js";
+import { ClientValidationError, DataikuError, nonJsonResponseBody, } from "../errors.js";
 import type {
 	ProjectGitActionResult,
 	ProjectGitDiffResult,
@@ -22,7 +22,12 @@ import {
 	ProjectGitTagsSchema,
 } from "../schemas.js";
 import { encodeGitReferencePath, validateGitReferencePath, } from "../utils/git-reference.js";
-import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
+import {
+	computeNextPollDelayMs,
+	DEFAULT_POLL_INTERVAL_MS,
+	DEFAULT_TIMEOUT_MS,
+	isRequestDeadlineError,
+} from "../utils/polling.js";
 import { sanitizeErrorSecrets, } from "../utils/secret-sanitize.js";
 import { BaseResource, } from "./base.js";
 
@@ -36,8 +41,6 @@ const GIT_API_BASE = "/dip/publicapi";
 const DEFAULT_REMOTE = "origin";
 const DEFAULT_LOG_COUNT = 1_000;
 const DEFAULT_TAG_REFERENCE = "HEAD";
-const DEFAULT_POLL_INTERVAL_MS = 2_000;
-const DEFAULT_TIMEOUT_MS = 120_000;
 
 /* ------------------------------------------------------------------ */
 /*  Options                                                            */
@@ -727,8 +730,9 @@ export class ProjectGitResource extends BaseResource {
 			// the loop reports the documented timeout from the last observed
 			// state instead of issuing a request the budget cannot cover.
 			if (lastState !== undefined && elapsedBeforeMs >= timeoutMs) {
-				throw new Error(
+				throw new ClientValidationError(
 					`Timed out after ${String(elapsedBeforeMs,)}ms waiting for Dataiku future ${jobId}`,
+					"long_running_failure",
 				);
 			}
 			// Unlike peek state, the ordinary state includes the completed result.
@@ -754,8 +758,11 @@ export class ProjectGitResource extends BaseResource {
 				// timeout failure instead of letting the transport deadline
 				// error escape.
 				if (!isRequestDeadlineError(error, startedAt + timeoutMs,)) throw error;
-				throw new Error(
+				throw new ClientValidationError(
 					`Timed out after ${String(Date.now() - startedAt,)}ms waiting for Dataiku future ${jobId}`,
+					"long_running_failure",
+					undefined,
+					undefined,
 					{ cause: error, },
 				);
 			}
@@ -763,17 +770,26 @@ export class ProjectGitResource extends BaseResource {
 			lastState = state;
 			const failure = describeFutureFailure(state.error,);
 			if (failure !== undefined) {
-				throw new Error(`Dataiku future ${jobId} failed: ${failure}`,);
+				throw new ClientValidationError(
+					`Dataiku future ${jobId} failed: ${failure}`,
+					"long_running_failure",
+				);
 			}
 			if (state.aborted === true) {
-				throw new Error(`Dataiku future ${jobId} was aborted`,);
+				throw new ClientValidationError(`Dataiku future ${jobId} was aborted`, "long_running_failure",);
 			}
 			if (state.hasResult === true) return state.result;
 			if (state.unknown === true) {
-				throw new Error(`Dataiku future ${jobId} is unknown to the server`,);
+				throw new ClientValidationError(
+					`Dataiku future ${jobId} is unknown to the server`,
+					"long_running_failure",
+				);
 			}
 			if (state.alive === false) {
-				throw new Error(`Dataiku future ${jobId} ended without producing a result`,);
+				throw new ClientValidationError(
+					`Dataiku future ${jobId} ended without producing a result`,
+					"long_running_failure",
+				);
 			}
 
 			const elapsedMs = Date.now() - startedAt;
@@ -835,7 +851,7 @@ export class ProjectGitResource extends BaseResource {
 			try {
 				return JSON.parse(text,) as unknown;
 			} catch {
-				throw new Error(`Dataiku Git API returned a non-JSON response for ${method} ${path}`,);
+				throw new DataikuError(res.status, "Invalid JSON response", nonJsonResponseBody(text,),);
 			}
 		} catch (error) {
 			scrubErrorSecrets(error, secrets,);

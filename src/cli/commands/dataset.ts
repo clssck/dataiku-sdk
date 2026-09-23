@@ -5,6 +5,7 @@ import { executionMode, } from "../flags.js";
 import { datasetSourceSummary, } from "../helpers/dataset.js";
 import { moveCreatedItemsToZone, resolveFlowZoneIdFromFlags, } from "../helpers/flow-zone.js";
 import { enqueueCliWarning, readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -142,84 +143,76 @@ export function compareDatasetSchemas(
 	};
 }
 
-export const datasetCommands: Record<string, CommandMeta> = {
+export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset", {
 	list: {
 		handler: (c, _a, f,) => c.datasets.list(f["project-key"] as string | undefined,),
-		usage: "dss dataset list [--project-key KEY]",
 		description: "List all datasets in a project.",
 		examples: ["dss dataset list", "dss dataset list --project-key MYPROJ",],
 	},
 	rename: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 2, "dss dataset rename <oldName> <newName> [--project-key KEY]",);
+			requireArgs(a, 2, commandUsage("dataset", "rename",),);
 			await c.datasets.rename(a[0], a[1], f["project-key"] as string | undefined,);
 			return { renamed: a[0], to: a[1], };
 		},
-		usage: "dss dataset rename <oldName> <newName> [--project-key KEY]",
 		description: "Rename a dataset (updates downstream flow references).",
 		examples: ["dss dataset rename old_ds new_ds",],
 	},
 	"list-partitions": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset list-partitions <name> [--project-key KEY]",);
+			requireArgs(a, 1, commandUsage("dataset", "list-partitions",),);
 			return c.datasets.listPartitions(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss dataset list-partitions <name> [--project-key KEY]",
 		description: "List the partitions of a partitioned dataset.",
 		examples: ["dss dataset list-partitions events",],
 	},
 	clear: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset clear <name> [--partitions SPEC] [--project-key KEY]",);
+			requireArgs(a, 1, commandUsage("dataset", "clear",),);
 			const partitions = f["partitions"] as string | undefined;
 			await c.datasets.clear(a[0], partitions, f["project-key"] as string | undefined,);
 			return { cleared: a[0], partitions: partitions ?? "ALL", };
 		},
-		usage: "dss dataset clear <name> [--partitions SPEC] [--project-key KEY]",
 		description: "Clear a dataset's data (all, or a partition spec); keeps the dataset.",
 		examples: ["dss dataset clear staging", "dss dataset clear events --partitions 2024-01",],
 	},
 	get: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset get <name>",);
+			requireArgs(a, 1, commandUsage("dataset", "get",),);
 			return c.datasets.get(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss dataset get <name> [--project-key KEY]",
 		description: "Get full settings for a dataset.",
 		examples: ["dss dataset get orders", "dss dataset get orders --project-key MYPROJ",],
 	},
 	schema: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset schema <name>",);
+			requireArgs(a, 1, commandUsage("dataset", "schema",),);
 			return c.datasets.schema(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss dataset schema <name> [--project-key KEY]",
 		description: "Show the column schema of a dataset.",
 		examples: ["dss dataset schema orders",],
 	},
 	source: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset source <name>",);
+			requireArgs(a, 1, commandUsage("dataset", "source",),);
 			return datasetSourceSummary(
 				await c.datasets.get(a[0], f["project-key"] as string | undefined,),
 			);
 		},
-		usage: "dss dataset source <name> [--project-key KEY]",
 		description: "Show backing connection, catalog/schema/table, path, and format for a dataset.",
 		examples: ["dss dataset source orders",],
 	},
 	files: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset files <name> [--project-key KEY]",);
+			requireArgs(a, 1, commandUsage("dataset", "files",),);
 			return c.datasets.listUploadedFiles(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss dataset files <name> [--project-key KEY]",
 		description: "List files stored by an UploadedFiles dataset.",
 		examples: ["dss dataset files uploaded_input",],
 	},
 	"upload-file": {
 		handler: (c, a, f,) => {
-			const usage = "dss dataset upload-file <name> <localPath> --file-name NAME [--project-key KEY]";
+			const usage = commandUsage("dataset", "upload-file",);
 			requireArgs(a, 2, usage,);
 			const fileName = f["file-name"] as string | undefined;
 			if (!fileName || fileName.trim() === "") {
@@ -230,7 +223,6 @@ export const datasetCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss dataset upload-file <name> <localPath> --file-name NAME [--project-key KEY]",
 		description: "Add one new file to an UploadedFiles dataset and verify the stored byte length.",
 		examples: [
 			"dss dataset upload-file uploaded_input ./input.csv --file-name input.csv",
@@ -238,8 +230,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 	},
 	"refresh-schema": {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss dataset refresh-schema <name> [--data JSON | --data-file PATH | --stdin] [--dry-run] [--project-key KEY]";
+			const usage = commandUsage("dataset", "refresh-schema",);
 			requireArgs(a, 1, usage,);
 			const columns = schemaColumnsInput(f, usage,);
 			const pk = f["project-key"] as string | undefined;
@@ -257,8 +248,6 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			await c.datasets.updateSchema(a[0], columns, pk,);
 			return { updated: a[0], resource: "dataset", schema: { columns, }, };
 		},
-		usage:
-			"dss dataset refresh-schema <name> (--data JSON | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description: "Replace a dataset schema through the DSS schema endpoint.",
 		examples: [
 			`dss dataset refresh-schema orders --data '{"columns":[{"name":"id","type":"bigint"}]}' --dry-run`,
@@ -266,17 +255,15 @@ export const datasetCommands: Record<string, CommandMeta> = {
 	},
 	"validate-build": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset validate-build <name>",);
+			requireArgs(a, 1, commandUsage("dataset", "validate-build",),);
 			return c.datasets.validateBuildSettings(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss dataset validate-build <name> [--project-key KEY]",
 		description: "Check common dataset settings that can make file-backed builds fail.",
 		examples: ["dss dataset validate-build orders",],
 	},
 	preview: {
 		handler: async (c, a, f,) => {
-			const previewUsage =
-				"dss dataset preview <name> [--max-rows N] [--rows N] [--project-key KEY] [--timeout MS]";
+			const previewUsage = commandUsage("dataset", "preview",);
 			requireArgs(a, 1, previewUsage,);
 			const maxRows = num(f["max-rows"], "--max-rows",);
 			if (
@@ -310,14 +297,13 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			}
 			return result;
 		},
-		usage: "dss dataset preview <name> [--max-rows N] [--rows N] [--project-key KEY] [--timeout MS]",
 		description:
 			"Preview dataset rows (--rows is an alias for --max-rows). Returns { columns, rows, rowCount, truncated, limit }; when the dataset has more rows than the cap, truncated is true and a dataset_preview_truncated warning is written to stderr.",
 		examples: ["dss dataset preview orders", "dss dataset preview orders --rows 5",],
 	},
 	"assert-count": {
 		handler: async (c, a, f,) => {
-			const assertUsage = "dss dataset assert-count <dataset> --expected N [--project-key KEY]";
+			const assertUsage = commandUsage("dataset", "assert-count",);
 			requireArgs(a, 1, assertUsage,);
 			const expected = num(f["expected"], "--expected",);
 			if (expected === undefined || !Number.isSafeInteger(expected,) || expected < 0) {
@@ -334,15 +320,13 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			);
 			return { ...result, dataset: a[0], };
 		},
-		usage: "dss dataset assert-count <dataset> --expected N [--project-key KEY]",
 		description:
 			"Stream the dataset and assert it holds exactly --expected rows, probing at most N+1 rows. Returns { satisfied, expected, count, exact }; a mismatch exits 4 with assertion_failed.",
 		examples: ["dss dataset assert-count orders --expected 1000",],
 	},
 	"assert-schema": {
 		handler: async (c, a, f,) => {
-			const assertUsage =
-				"dss dataset assert-schema <dataset> (--data JSON | --data-file PATH | --stdin) [--project-key KEY]";
+			const assertUsage = commandUsage("dataset", "assert-schema",);
 			requireArgs(a, 1, assertUsage,);
 			const expected = unknownJsonInput(f,);
 			if (expected === undefined) {
@@ -365,8 +349,6 @@ export const datasetCommands: Record<string, CommandMeta> = {
 				differences: comparison.differences,
 			};
 		},
-		usage:
-			"dss dataset assert-schema <dataset> (--data JSON | --data-file PATH | --stdin) [--project-key KEY]",
 		description:
 			"Assert the dataset's full schema equals the expected schema object; reports concise per-path differences with sha256 subtree hashes. A mismatch exits 4 with assertion_failed.",
 		examples: [
@@ -376,17 +358,15 @@ export const datasetCommands: Record<string, CommandMeta> = {
 	},
 	metadata: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset metadata <name>",);
+			requireArgs(a, 1, commandUsage("dataset", "metadata",),);
 			return c.datasets.metadata(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss dataset metadata <name> [--project-key KEY]",
 		description: "Get dataset-level metadata.",
 		examples: ["dss dataset metadata orders",],
 	},
 	"metadata-set": {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss dataset metadata-set <name> (--data JSON | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]";
+			const usage = commandUsage("dataset", "metadata-set",);
 			requireArgs(a, 1, usage,);
 			// Validated identically for live, --plan, and --dry-run: the JSON
 			// input replaces the server metadata object verbatim (faithful PUT;
@@ -413,8 +393,6 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			const updated = await c.datasets.updateMetadata(a[0], metadata, pk,);
 			return { updated: a[0], resource: "dataset", metadata: updated, };
 		},
-		usage:
-			"dss dataset metadata-set <name> (--data JSON | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description:
 			"Replace dataset-level metadata with the given JSON object (faithful PUT: GET, edit, PUT full object; no merge).",
 		examples: [
@@ -430,7 +408,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			const dsType = f["type"] as string | undefined;
 			if (!name || !dsType) {
 				throw new UsageError(
-					"--name and --type are required. Usage: dss dataset create --name NAME --type TYPE [--connection CONN]",
+					`--name and --type are required. Usage: ${commandUsage("dataset", "create",)}`,
 				);
 			}
 			if (!connection && dsType.toLowerCase() !== "uploadedfiles") {
@@ -470,8 +448,6 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			);
 			return { created: name, resource: "dataset", ...moved, };
 		},
-		usage:
-			"dss dataset create --name NAME --type TYPE [--connection CONN] [--zone ZONE|--zone-id ID] [--if-not-exists] [--dry-run] [--project-key KEY]",
 		description:
 			"Create a new dataset. UploadedFiles uses the server's default upload connection when omitted.",
 		examples: [
@@ -482,8 +458,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 	},
 	"create-managed": {
 		handler: async (c, _a, f,) => {
-			const usage =
-				"dss dataset create-managed --name NAME --connection CONN [--type-option-id ID] [--format-option-id ID] [--copy-partitioning-from REF] [--partitioning-folder] [--dry-run] [--project-key KEY]";
+			const usage = commandUsage("dataset", "create-managed",);
 			const name = f["name"] as string | undefined;
 			if (!name || name.trim() === "") {
 				throw new UsageError(`--name is required. Usage: ${usage}`,);
@@ -537,8 +512,6 @@ export const datasetCommands: Record<string, CommandMeta> = {
 				creationSettings: created.creationSettings,
 			};
 		},
-		usage:
-			"dss dataset create-managed --name NAME --connection CONN [--type-option-id ID] [--format-option-id ID] [--copy-partitioning-from REF] [--partitioning-folder] [--dry-run] [--project-key KEY]",
 		description:
 			"Create a managed dataset via the dedicated endpoint: DSS derives storage/format details; you pick name, connection, and optional type/format/partitioning options.",
 		examples: [
@@ -549,18 +522,16 @@ export const datasetCommands: Record<string, CommandMeta> = {
 	},
 	info: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset info <name>",);
+			requireArgs(a, 1, commandUsage("dataset", "info",),);
 			return c.datasets.info(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss dataset info <name> [--project-key KEY]",
 		description:
 			"Get the full info object for a dataset (type, parameters, last build information, schema, etc.).",
 		examples: ["dss dataset info orders", "dss dataset info orders --project-key MYPROJ",],
 	},
 	"column-lineage": {
 		handler: (c, a, f,) => {
-			const usage =
-				"dss dataset column-lineage <name> <column> [--max-dataset-count N] [--project-key KEY]";
+			const usage = commandUsage("dataset", "column-lineage",);
 			requireArgs(a, 2, usage,);
 			const maxDatasetCount = num(f["max-dataset-count"], "--max-dataset-count",);
 			if (
@@ -578,7 +549,6 @@ export const datasetCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss dataset column-lineage <name> <column> [--max-dataset-count N] [--project-key KEY]",
 		description:
 			"Get the full column lineage (auto-computed and manual) of a column; includes local and foreign project relations.",
 		examples: [
@@ -588,7 +558,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 	},
 	download: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset download <name>",);
+			requireArgs(a, 1, commandUsage("dataset", "download",),);
 			const result = await c.datasets.download(a[0], {
 				outputPath: f["output"] as string | undefined,
 				projectKey: f["project-key"] as string | undefined,
@@ -621,7 +591,6 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			}
 			return result;
 		},
-		usage: "dss dataset download <name> [--output PATH] [--limit N] [--raw-data] [--project-key KEY]",
 		description:
 			"Download up to --limit rows (default 100k) as CSV and return { path, rows, truncated, limit }. Formula-like cells are neutralized for spreadsheets; --raw-data preserves exact bytes. Warnings report truncation and the default output path.",
 		examples: [
@@ -632,8 +601,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 	},
 	clone: {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss dataset clone <source> <target> [--path PATH] [--table TABLE] [--metastore-table TABLE] [--allow-same-path] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
+			const usage = commandUsage("dataset", "clone",);
 			requireArgs(a, 2, usage,);
 			const pk = f["project-key"] as string | undefined;
 			const opts = {
@@ -668,8 +636,6 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			);
 			return { ...cloned, resource: "dataset", ...moved, };
 		},
-		usage:
-			"dss dataset clone <source> <target> [--path PATH] [--table TABLE] [--metastore-table TABLE] [--allow-same-path] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
 		description: "Clone dataset settings into a new dataset, with storage/table overrides.",
 		examples: [
 			"dss dataset clone source_ds experiment_ds --path /dataiku/TEST/experiment_ds --dry-run",
@@ -678,7 +644,7 @@ export const datasetCommands: Record<string, CommandMeta> = {
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset delete <name>",);
+			requireArgs(a, 1, commandUsage("dataset", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.datasets.get(a[0], pk,));
@@ -690,17 +656,16 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			await c.datasets.delete(a[0], pk,);
 			return { deleted: a[0], resource: "dataset", };
 		},
-		usage: "dss dataset delete <name> [--if-exists] [--dry-run] [--project-key KEY]",
 		description: "Delete a dataset.",
 		examples: ["dss dataset delete orders", "dss dataset delete orders --if-exists",],
 	},
 	update: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin]",);
+			requireArgs(a, 1, commandUsage("dataset", "update",),);
 			const data = jsonInput(f,);
 			if (!data) {
 				throw new UsageError(
-					"--data, --data-file, or --stdin is required. Usage: dss dataset update <name> [--data '{...}' | --data-file PATH | --stdin]",
+					`--data, --data-file, or --stdin is required. Usage: ${commandUsage("dataset", "update",)}`,
 				);
 			}
 			const pk = f["project-key"] as string | undefined;
@@ -712,12 +677,10 @@ export const datasetCommands: Record<string, CommandMeta> = {
 			await c.datasets.update(a[0], data, pk,);
 			return { updated: a[0], resource: "dataset", };
 		},
-		usage:
-			"dss dataset update <name> (--data '{...}' | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description: "Update dataset settings via JSON merge.",
 		examples: [
 			'dss dataset update orders --data \'{"tags":["production"]}\' --dry-run',
 			"echo '{\"tags\":[]}' | dss dataset update orders --stdin",
 		],
 	},
-};
+},);

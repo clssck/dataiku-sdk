@@ -1,20 +1,19 @@
 import { requiredJsonInput, } from "../coerce.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
 
-export const workspaceCommands: Record<string, CommandMeta> = {
+export const workspaceCommands: Record<string, CommandMeta> = withUsage("workspace", {
 	list: {
 		handler: (c,) => c.workspaces.list(),
-		usage: "dss workspace list",
 		description: "List collaboration workspaces on the instance.",
 		examples: ["dss workspace list",],
 	},
 	get: {
 		handler: (c, a,) => {
-			requireArgs(a, 1, "dss workspace get <workspaceKey>",);
+			requireArgs(a, 1, commandUsage("workspace", "get",),);
 			return c.workspaces.get(a[0],);
 		},
-		usage: "dss workspace get <workspaceKey>",
 		description: "Get a workspace's settings.",
 		examples: ["dss workspace get MY_WS",],
 	},
@@ -26,7 +25,6 @@ export const workspaceCommands: Record<string, CommandMeta> = {
 			);
 			return c.workspaces.create(body as Parameters<typeof c.workspaces.create>[0],);
 		},
-		usage: "dss workspace create (--data JSON|--data-file PATH|--stdin)",
 		description: "Create a collaboration workspace.",
 		examples: ["dss workspace create --data-file ws.json",],
 	},
@@ -35,7 +33,7 @@ export const workspaceCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss workspace update-settings <workspaceKey> (--data JSON|--data-file PATH|--stdin)",
+				commandUsage("workspace", "update-settings",),
 			);
 			const body = requiredJsonInput(
 				f,
@@ -44,26 +42,23 @@ export const workspaceCommands: Record<string, CommandMeta> = {
 			await c.workspaces.updateSettings(a[0], body,);
 			return { updated: a[0], };
 		},
-		usage: "dss workspace update-settings <workspaceKey> (--data JSON|--data-file PATH|--stdin)",
 		description: "Replace a workspace's settings (admin).",
 		examples: ["dss workspace update-settings MY_WS --data-file ws.json",],
 	},
 	delete: {
 		handler: async (c, a,) => {
-			requireArgs(a, 1, "dss workspace delete <workspaceKey>",);
+			requireArgs(a, 1, commandUsage("workspace", "delete",),);
 			await c.workspaces.delete(a[0],);
 			return { deleted: a[0], };
 		},
-		usage: "dss workspace delete <workspaceKey>",
 		description: "Delete a workspace (admin).",
 		examples: ["dss workspace delete MY_WS",],
 	},
 	"list-objects": {
 		handler: (c, a,) => {
-			requireArgs(a, 1, "dss workspace list-objects <workspaceKey>",);
+			requireArgs(a, 1, commandUsage("workspace", "list-objects",),);
 			return c.workspaces.listObjects(a[0],);
 		},
-		usage: "dss workspace list-objects <workspaceKey>",
 		description: "List objects shared in a workspace.",
 		examples: ["dss workspace list-objects MY_WS",],
 	},
@@ -72,7 +67,7 @@ export const workspaceCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss workspace add-object <workspaceKey> (--data JSON|--data-file PATH|--stdin)",
+				commandUsage("workspace", "add-object",),
 			);
 			const object = requiredJsonInput(
 				f,
@@ -80,8 +75,7 @@ export const workspaceCommands: Record<string, CommandMeta> = {
 			);
 			return c.workspaces.addObject(a[0], object,);
 		},
-		usage: "dss workspace add-object <workspaceKey> (--data JSON|--data-file PATH|--stdin)",
 		description: "Add an object (link or DSS object) to a workspace.",
 		examples: ["dss workspace add-object MY_WS --data-file object.json",],
 	},
-};
+},);

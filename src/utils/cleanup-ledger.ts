@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { ClientValidationError, } from "../errors.js";
 import { canonicalDssUrl, } from "./dss-url.js";
 
 export type CleanupLedgerAction =
@@ -52,16 +53,22 @@ export async function preflightCleanupLedgerPath(filePath: string,): Promise<voi
 		stats = await fs.stat(resolved,);
 	} catch (error) {
 		if ((error as { code?: string; }).code !== "ENOENT") {
-			throw new Error(
+			throw new ClientValidationError(
 				`Could not preflight cleanup ledger ${resolved}: ${
 					error instanceof Error ? error.message : String(error,)
 				}`,
+				"validation_failed",
+				undefined,
+				undefined,
 				{ cause: error, },
 			);
 		}
 	}
 	if (stats?.isDirectory()) {
-		throw new Error(`Cleanup ledger path is a directory, not a file: ${resolved}`,);
+		throw new ClientValidationError(
+			`Cleanup ledger path is a directory, not a file: ${resolved}`,
+			"validation_failed",
+		);
 	}
 	if (stats !== undefined) {
 		try {
@@ -69,12 +76,15 @@ export async function preflightCleanupLedgerPath(filePath: string,): Promise<voi
 			await handle.close();
 		} catch (error) {
 			const code = (error as { code?: string; }).code;
-			throw new Error(
+			throw new ClientValidationError(
 				code === "EACCES" || code === "EPERM"
 					? `Cleanup ledger file is not writable: ${resolved}`
 					: `Could not preflight cleanup ledger ${resolved}: ${
 						error instanceof Error ? error.message : String(error,)
 					}`,
+				"validation_failed",
+				undefined,
+				undefined,
 				{ cause: error, },
 			);
 		}
@@ -85,10 +95,13 @@ export async function preflightCleanupLedgerPath(filePath: string,): Promise<voi
 		const probe = await fs.mkdtemp(probePrefix,);
 		await fs.rm(probe, { recursive: true, force: true, },);
 	} catch (error) {
-		throw new Error(
+		throw new ClientValidationError(
 			`Cleanup ledger directory is not writable: ${parent}${
 				error instanceof Error ? ` (${error.message})` : ""
 			}`,
+			"validation_failed",
+			undefined,
+			undefined,
 			{ cause: error, },
 		);
 	}
@@ -125,10 +138,19 @@ export async function reserveCleanupLedgerDssUrl(
 	try {
 		found = canonicalDssUrl(raw.trim(),);
 	} catch (error) {
-		throw new Error("Cleanup ledger DSS binding is invalid.", { cause: error, },);
+		throw new ClientValidationError(
+			"Cleanup ledger DSS binding is invalid.",
+			"validation_failed",
+			undefined,
+			undefined,
+			{ cause: error, },
+		);
 	}
 	if (found !== expected) {
-		throw new Error("Cleanup ledger is reserved for a different DSS server.",);
+		throw new ClientValidationError(
+			"Cleanup ledger is reserved for a different DSS server.",
+			"validation_failed",
+		);
 	}
 }
 
@@ -190,7 +212,10 @@ export async function readCleanupLedger(filePath: string,): Promise<CleanupLedge
 		.map((line, index,) => {
 			const parsed: unknown = JSON.parse(line,);
 			if (!isCleanupLedgerEntry(parsed,)) {
-				throw new Error(`Invalid cleanup ledger entry at line ${index + 1}`,);
+				throw new ClientValidationError(
+					`Invalid cleanup ledger entry at line ${index + 1}`,
+					"validation_failed",
+				);
 			}
 			return parsed;
 		},);

@@ -1,9 +1,10 @@
 import { readFileSync, writeFileSync, } from "node:fs";
 import { ClientValidationError, } from "../../errors.js";
-import { stableHash, } from "../../utils/stable-hash.js";
+import { SHA256_HEX_PATTERN, stableHash, } from "../../utils/stable-hash.js";
 import { json, jsonInput, num, numFlag, parseBooleanOption, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { enqueueCliWarning, isNotFoundError, readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -43,14 +44,14 @@ function definitionHashMismatch(
 
 function validateExpectHash(value: string | boolean | undefined,): string | undefined {
 	if (value === undefined || value === false) return undefined;
-	if (typeof value !== "string" || !/^[0-9a-fA-F]{64}$/.test(value,)) {
+	if (typeof value !== "string" || !SHA256_HEX_PATTERN.test(value,)) {
 		throw new ClientValidationError(
 			"Expected code env definition hash must be a 64-character SHA-256 hex digest.",
 			"validation_failed",
 			"Use the definitionHash value returned by dss code-env get.",
 		);
 	}
-	return value;
+	return value.toLowerCase();
 }
 
 function codeEnvWait(flags: Record<string, string | boolean>,): boolean {
@@ -96,10 +97,10 @@ function codeEnvPackageList(flags: Record<string, string | boolean>,): string[] 
 	return packages;
 }
 
-export const codeEnvCommands: Record<string, CommandMeta> = {
+export const codeEnvCommands: Record<string, CommandMeta> = withUsage("code-env", {
 	list: {
 		handler: (c, _a, f,) => {
-			const usage = "dss code-env list [--lang PYTHON|R]";
+			const usage = commandUsage("code-env", "list",);
 			const lang = f["lang"];
 			return c.codeEnvs.list({
 				envLang: typeof lang === "string"
@@ -107,49 +108,44 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 					: undefined,
 			},);
 		},
-		usage: "dss code-env list [--lang PYTHON|R]",
 		description: "List code environments, optionally filtered to one language.",
 		examples: ["dss code-env list", "dss code-env list --lang PYTHON",],
 	},
 	get: {
 		handler: (c, a,) => {
-			const usage = "dss code-env get <lang> <name>";
+			const usage = commandUsage("code-env", "get",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			return c.codeEnvs.get(envLang, a[1],);
 		},
-		usage: "dss code-env get <lang> <name>",
 		description:
 			"Get code environment details: requested vs installed packages, Python interpreter, deployment mode, and the stable definition hash (definitionHash) used by set-definition --expect-hash.",
 		examples: ["dss code-env get PYTHON my_env",],
 	},
 	"get-definition": {
 		handler: (c, a,) => {
-			const usage = "dss code-env get-definition <lang> <name>";
+			const usage = commandUsage("code-env", "get-definition",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			return c.codeEnvs.getDefinition(envLang, a[1],);
 		},
-		usage: "dss code-env get-definition <lang> <name>",
 		description:
 			"Get the raw code environment definition exactly as DSS stores it; capture its hash (definitionHash from code-env get) before replacing it with set-definition --expect-hash.",
 		examples: ["dss code-env get-definition PYTHON my_env",],
 	},
 	"list-logs": {
 		handler: (c, a,) => {
-			const usage = "dss code-env list-logs <lang> <name>";
+			const usage = commandUsage("code-env", "list-logs",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			return c.codeEnvs.listLogs(envLang, a[1],);
 		},
-		usage: "dss code-env list-logs <lang> <name>",
 		description: "List the build log files DSS keeps for a code environment.",
 		examples: ["dss code-env list-logs PYTHON my_env",],
 	},
 	"get-log": {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss code-env get-log <lang> <name> <logName> [--max-lines N|--max-log-lines N] [--max-log-bytes N] [--output PATH]";
+			const usage = commandUsage("code-env", "get-log",);
 			requireArgs(a, 3, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			const maxLines = numFlag(f, ["max-lines", "max-log-lines",],);
@@ -190,8 +186,6 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			}
 			return { ...result, envLang, envName: a[1], logName: a[2], };
 		},
-		usage:
-			"dss code-env get-log <lang> <name> <logName> [--max-lines N|--max-log-lines N] [--max-log-bytes N] [--output PATH]",
 		description:
 			"Fetch one code-env build log, bounded for safe output: the last --max-lines lines (default 500, 0 for all) and at most --max-log-bytes bytes (default 10 MiB, 0 for all). --output PATH writes the kept content to a file; stdout then carries the path metadata. A truncation warning names which cap hit.",
 		examples: [
@@ -201,25 +195,24 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 	},
 	version: {
 		handler: (c, a,) => {
-			const usage = "dss code-env version <lang> <name> <projectKey>";
+			const usage = commandUsage("code-env", "version",);
 			requireArgs(a, 3, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			return c.codeEnvs.getVersionForProject(envLang, a[1], a[2],);
 		},
-		usage: "dss code-env version <lang> <name> <projectKey>",
 		description:
 			"Resolve the code environment version a project uses (versioned automation environments); empty version for unversioned environments.",
 		examples: ["dss code-env version PYTHON my_env MY_PROJ",],
 	},
 	create: {
 		handler: async (c, a, f,) => {
-			const usage = "dss code-env create <lang> <name> --deployment-mode MODE";
+			const usage = commandUsage("code-env", "create",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			const deploymentMode = f["deployment-mode"] as string | undefined;
 			if (!deploymentMode) {
 				throw new UsageError(
-					"--deployment-mode is required. Usage: dss code-env create <lang> <name> --deployment-mode MODE",
+					`--deployment-mode is required. Usage: ${commandUsage("code-env", "create",)}`,
 				);
 			}
 			const params = codeEnvParams(f,);
@@ -255,8 +248,6 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			},);
 			return { created: a[1], resource: "code-env", envLang, ...created, };
 		},
-		usage:
-			"dss code-env create <lang> <name> --deployment-mode MODE [--params JSON|--data JSON|--data-file PATH|--stdin] [--python-interpreter PYTHON311] [--no-wait] [--if-not-exists] [--dry-run]",
 		description:
 			"Create a code environment; --no-wait hands back a DSS future payload you can settle with dss future wait.",
 		examples: [
@@ -266,14 +257,15 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 	},
 	"set-definition": {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss code-env set-definition <lang> <name> (--data JSON|--data-file PATH|--stdin) [--expect-hash SHA256]";
+			const usage = commandUsage("code-env", "set-definition",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			const definition = jsonInput(f,);
 			if (!definition) {
 				throw new UsageError(
-					"--data, --data-file, or --stdin is required. Usage: dss code-env set-definition <lang> <name> --data JSON",
+					`--data, --data-file, or --stdin is required. Usage: ${
+						commandUsage("code-env", "set-definition",)
+					}`,
 				);
 			}
 			const expectHash = validateExpectHash(f["expect-hash"],);
@@ -300,8 +292,6 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			}
 			return c.codeEnvs.setDefinition(envLang, a[1], definition, { expectHash, },);
 		},
-		usage:
-			"dss code-env set-definition <lang> <name> (--data JSON|--data-file PATH|--stdin) [--expect-hash SHA256] [--dry-run]",
 		description:
 			"Replace a code environment definition previously fetched from DSS (get-definition). --expect-hash SHA256 refuses the PUT unless the current definition still hashes to the hash captured with code-env get, so concurrent edits are never clobbered; --dry-run also fetches the current definition and reports both hashes plus a changed flag.",
 		examples: [
@@ -310,8 +300,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 	},
 	"set-packages": {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss code-env set-packages <lang> <name> (--packages PKGS|--package PKG|--file PATH)";
+			const usage = commandUsage("code-env", "set-packages",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			const packages = codeEnvPackageList(f,);
@@ -334,8 +323,6 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			}
 			return c.codeEnvs.setPackages(envLang, a[1], packages, { installCorePackages, expectHash, },);
 		},
-		usage:
-			"dss code-env set-packages <lang> <name> (--packages PKGS|--package PKG|--file PATH) [--install-core-packages true|false] [--expect-hash SHA256] [--dry-run]",
 		description:
 			"Fetch the current definition, merge the requested package specs (and --install-core-packages) into it, then PUT the merged definition, so fields outside the package list are never dropped; --expect-hash refuses the merge when DSS changed since the hash was captured. The package list is replaced wholesale, so an explicitly empty --packages value or an empty --file clears the requested packages.",
 		examples: [
@@ -345,7 +332,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 	},
 	"update-packages": {
 		handler: async (c, a, f,) => {
-			const usage = "dss code-env update-packages <lang> <name>";
+			const usage = commandUsage("code-env", "update-packages",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			const wait = codeEnvWait(f,);
@@ -371,15 +358,13 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			}
 			return c.codeEnvs.updatePackages(envLang, a[1], opts,);
 		},
-		usage:
-			"dss code-env update-packages <lang> <name> [--force-rebuild] [--env-version VERSION] [--no-wait] [--dry-run]",
 		description:
 			"Rebuild or update code environment packages to match the requested specs; --no-wait hands back a DSS future payload you can settle with dss future wait.",
 		examples: ["dss code-env update-packages PYTHON my_env --force-rebuild --dry-run",],
 	},
 	"update-images": {
 		handler: async (c, a, f,) => {
-			const usage = "dss code-env update-images <lang> <name>";
+			const usage = commandUsage("code-env", "update-images",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			const wait = codeEnvWait(f,);
@@ -397,7 +382,6 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			}
 			return c.codeEnvs.updateImages(envLang, a[1], { envVersion, wait, },);
 		},
-		usage: "dss code-env update-images <lang> <name> [--env-version VERSION] [--no-wait] [--dry-run]",
 		description:
 			"Rebuild the Docker image(s) of a code environment to match its settings; --env-version targets one version of a versioned environment and --no-wait hands back a DSS future payload you can settle with dss future wait.",
 		examples: [
@@ -407,13 +391,13 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 	},
 	"set-jupyter": {
 		handler: async (c, a, f,) => {
-			const usage = "dss code-env set-jupyter <lang> <name> --active true|false";
+			const usage = commandUsage("code-env", "set-jupyter",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			const active = parseBooleanOption(f["active"], "--active",);
 			if (active === undefined) {
 				throw new UsageError(
-					"--active is required. Usage: dss code-env set-jupyter <lang> <name> --active true|false",
+					`--active is required. Usage: ${commandUsage("code-env", "set-jupyter",)}`,
 				);
 			}
 			const wait = codeEnvWait(f,);
@@ -430,14 +414,13 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			}
 			return c.codeEnvs.setJupyterSupport(envLang, a[1], active, { wait, },);
 		},
-		usage: "dss code-env set-jupyter <lang> <name> --active true|false [--no-wait] [--dry-run]",
 		description:
 			"Enable or disable Jupyter support for a code environment; --no-wait hands back a DSS future payload you can settle with dss future wait.",
 		examples: ["dss code-env set-jupyter PYTHON my_env --active true --dry-run",],
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			const usage = "dss code-env delete <lang> <name>";
+			const usage = commandUsage("code-env", "delete",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
 			const wait = codeEnvWait(f,);
@@ -464,7 +447,6 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 			}
 			return c.codeEnvs.delete(envLang, a[1], { wait, },);
 		},
-		usage: "dss code-env delete <lang> <name> [--no-wait] [--if-exists] [--dry-run]",
 		description:
 			"Delete a code environment; --no-wait hands back a DSS future payload you can settle with dss future wait.",
 		examples: ["dss code-env delete PYTHON my_env --dry-run",],
@@ -473,10 +455,9 @@ export const codeEnvCommands: Record<string, CommandMeta> = {
 		handler: (c, a,) => {
 			if (a.length === 0) return c.codeEnvs.listUsages();
 			if (a.length === 2) return c.codeEnvs.listUsages(a[0], a[1],);
-			throw new UsageError("Usage: dss code-env usages [<lang> <name>]",);
+			throw new UsageError(`Usage: ${commandUsage("code-env", "usages",)}`,);
 		},
-		usage: "dss code-env usages [<lang> <name>]",
 		description: "List code environment usages globally or for one environment.",
 		examples: ["dss code-env usages", "dss code-env usages PYTHON my_env",],
 	},
-};
+},);

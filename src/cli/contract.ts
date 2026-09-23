@@ -7,6 +7,8 @@ import actionOutputSchemasMetadata from "../generated/action-output-schemas.json
 	type: "json",
 };
 import { APP_MANIFEST_CONCURRENCY_CONTROL, } from "../resources/applications.js";
+import { buildDatasetCreateBody, } from "../resources/datasets.js";
+import { validatePluginDestinationPath, validatePluginPath, } from "../resources/plugins.js";
 import {
 	encodeLibraryPath,
 	PROJECT_LIBRARY_CONCURRENCY_CONTROL,
@@ -14,6 +16,7 @@ import {
 	validateLibraryName,
 	validateLibraryPath,
 } from "../resources/project-library.js";
+import { buildRecipeCreateRequest, } from "../resources/recipes.js";
 import { encodeGitReferencePath, validateGitReferencePath, } from "../utils/git-reference.js";
 import {
 	jobBuildTargetTypeFromFlags,
@@ -22,7 +25,6 @@ import {
 	num,
 	parseBooleanOption,
 	parseJsonObject,
-	recipeInputDatasetsFromFlags,
 	requiredJsonInput,
 	rewritePairsFromFlags,
 	schemaColumnsInput,
@@ -34,19 +36,25 @@ import {
 import { parseCodeRunIntegerFlag, resolveCodeInputWithSource, } from "./commands/code.js";
 import { commands, } from "./commands/index.js";
 import { projectLibraryPutPayload, } from "./commands/project-library.js";
+import { recipeCreateOptionsFromFlags, } from "./commands/recipe.js";
 import { resolveSqlQueryInvocation, } from "./commands/sql.js";
-import { dataikuEnvironmentEnabled, } from "./env.js";
-import {
-	BOOLEAN_FLAGS,
-	executionMode,
-	FLAG_ALIASES,
-	KNOWN_LONG_FLAGS,
-	SHORT_FLAGS,
-} from "./flags.js";
+import { ambientProjectKey, } from "./env.js";
+import { BOOLEAN_FLAGS, executionMode, FLAG_ALIASES, SHORT_FLAGS, } from "./flags.js";
 import { flowZoneColor, flowZoneMoveItems, flowZoneName, } from "./helpers/flow-zone.js";
 import { recipeBackupPath, recipeRunShouldWait, } from "./helpers/recipe.js";
 import { encodedProjectEndpointForPlan, planResult, } from "./output.js";
 import { resolveLoginCredentials, } from "./runtime.js";
+import {
+	type CommandInputContract,
+	type CommandPositionalMetadata,
+	commandSyntax,
+	commandSyntaxTree,
+	commandUsage,
+	renderNodes,
+	syntaxCommandWords,
+	syntaxHasFlag,
+	type SyntaxNode,
+} from "./syntax.js";
 import type {
 	CommandFlagChoice,
 	CommandMeta,
@@ -117,7 +125,6 @@ function codeEnvPackageList(flags: Record<string, string | boolean>,): string[] 
 
 export const AUTH_ACTIONS: Record<string, {
 	handler: (flags: Record<string, string | boolean>,) => Promise<unknown>;
-	usage: string;
 	description?: string;
 	examples?: string[];
 	requiredFlags?: string[];
@@ -149,7 +156,6 @@ export const AUTH_ACTIONS: Record<string, {
 			saveCredentials({ url, apiKey, projectKey, ...tlsSettings, },);
 			return { saved: true, path: credentialsPath, };
 		},
-		usage: "dss auth login --url URL --api-key KEY [--project-key KEY] [--insecure] [--ca-cert PATH]",
 		description: "Validate and save DSS credentials from flags or environment variables.",
 		examples: [
 			"dss auth login --url https://dss.example.com --api-key YOUR_KEY",
@@ -164,12 +170,6 @@ export type CommandOutputShape = "object" | "array" | "string" | "void";
 export type CommandDestructiveLevel = "none" | "reversible" | "destructive";
 export type CommandAsyncKind = "none" | "job" | "future";
 export type CommandIdempotency = "safe" | "convergent" | "if-not-exists" | "if-exists" | "none";
-
-export interface CommandInputContract {
-	stdin?: boolean;
-	dataFlag?: boolean;
-	dataFileFlag?: boolean;
-}
 
 export interface CommandExitCodes {
 	ok: 0;
@@ -188,11 +188,6 @@ export type CommandFlagMetadata = {
 	aliases?: string[];
 	allowEmptyValue?: boolean;
 };
-
-export interface CommandPositionalMetadata {
-	name: string;
-	required: boolean;
-}
 
 export interface CommandRequiredInputAlternative {
 	flags?: string[];
@@ -413,7 +408,7 @@ const AUTHENTICATED_AGENT_FLAGS = [
 	"insecure",
 	"ca-cert",
 ];
-export const COMMANDS_USAGE = "dss commands run [--fields PATHS] [--output PATH]";
+export const COMMANDS_USAGE = commandUsage("commands", "run",);
 const COMMANDS_DESCRIPTION =
 	"Print a compact resource/action summary by default; use --fields for scoped command metadata or --output PATH to export the full registry without sending it through stdout.";
 const COMMANDS_EXAMPLES = [
@@ -424,33 +419,32 @@ const COMMANDS_EXAMPLES = [
 	"dss commands run --output commands.json",
 ];
 export const AGENT_CONTRACT_COMMAND = "dss agent contract";
-export const AGENT_CONTRACT_USAGE = "dss agent contract [--fields PATHS]";
+export const AGENT_CONTRACT_USAGE = commandUsage("agent", "contract",);
 const AGENT_CONTRACT_DESCRIPTION =
 	"Print the versioned JSON agent contract; scope bootstrap fields, use commands.actions to enumerate the surface, and read schemas only when needed.";
 const AGENT_CONTRACT_EXAMPLES = [
 	"dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility",
 	"dss agent contract --fields commands.actions",
 ];
-const VERSION_USAGE = "dss version";
+const VERSION_USAGE = commandUsage("version", "run",);
 const VERSION_DESCRIPTION =
 	"Print the CLI version, checkout/build revisions, load source, runtime, and stale-build status as JSON.";
 const VERSION_EXAMPLES = ["dss version", "dss --version",];
-const INSTALL_SKILL_USAGE =
-	"dss install-skill [--global] [--agent NAME] [--target PATH] [--list-agents] [--dry-run] [--plan]";
+const INSTALL_SKILL_USAGE = commandUsage("install-skill", "run",);
 const INSTALL_SKILL_DESCRIPTION =
 	"Report missing/stale/current skill status and atomically install changed dataiku-dss agent skills.";
 const INSTALL_SKILL_EXAMPLES = [
 	"dss install-skill --list-agents",
 	"dss install-skill --agent omp --dry-run",
 ];
-export const CLEANUP_USAGE = "dss cleanup --file PATH [--dry-run|--apply] [--continue-on-error]";
+export const CLEANUP_USAGE = commandUsage("cleanup", "run",);
 const CLEANUP_DESCRIPTION =
 	"Replay cleanup entries in reverse order; failures include structured code/category/exitCode/retryability summaries.";
 const CLEANUP_EXAMPLES = [
 	"dss cleanup --file cleanup.jsonl",
 	"dss cleanup --file cleanup.jsonl --apply",
 ];
-const FIXTURES_USAGE = "dss fixtures [--project-key KEY] [--allow-types CSV]";
+const FIXTURES_USAGE = commandUsage("fixtures", "run",);
 const FIXTURES_DESCRIPTION = "Discover safe live-test fixtures for agent workflows.";
 const FIXTURES_EXAMPLES = [
 	"dss fixtures",
@@ -703,10 +697,9 @@ function shortFlagPattern(flags: CommandFlagMetadata[],): string | undefined {
  * use an actionless prefix, while real command paths that spell `run` in their
  * usage (e.g. `dss commands run`) keep the action token.
  */
-function argvPrefix(resource: string, action: string, usage: string,): string[] {
-	const usageTokens = usage.split(/\s+/,).filter((token,) => token.length > 0);
-	const head = usageTokens.slice(1,);
-	return head[0] === resource && head[1] === action ? [resource, action,] : [resource,];
+function argvPrefix(resource: string, action: string,): string[] {
+	const words = syntaxCommandWords(commandSyntaxTree(resource, action,) ?? [],);
+	return words[0] === resource && words[1] === action ? [resource, action,] : [resource,];
 }
 
 /**
@@ -731,7 +724,7 @@ function argvJsonSchema(
 	requiredFlags: string[],
 	requiredOneOf: CommandFlagChoice[],
 ): Record<string, unknown> {
-	const prefix = argvPrefix(resource, action, usage,);
+	const prefix = argvPrefix(resource, action,);
 	const aliases: Record<string, string[]> = {};
 	for (const flag of flags) {
 		aliases[flag.name] = flag.aliases ?? [];
@@ -739,7 +732,8 @@ function argvJsonSchema(
 	const booleanNames = flags.filter((flag,) => flag.kind === "boolean")
 		.flatMap((flag,) => [flag.name, ...(flag.aliases ?? []),]);
 	const valueFlags = flags.filter((flag,) => flag.kind === "value");
-	const requiredPositionals = requiredPlanPositionals(usage,);
+	const requiredPositionals = commandSyntax(resource, action,).positionalArguments
+		.filter((positional,) => positional.required).map((positional,) => positional.name);
 	const itemSchemas: Record<string, unknown>[] = [
 		{ not: { pattern: "^-", }, },
 		{ const: "-", },
@@ -887,43 +881,6 @@ const EXPLICIT_REGISTRY_OVERRIDES: Record<string, CommandRegistryOverride> = {
 		examplePayload: { article: { name: "Updated article", }, },
 	},
 };
-
-function extractUsageFlags(usage: string,): string[] {
-	const flags: string[] = [];
-	for (const match of usage.matchAll(/--([a-z0-9-]+)/g,)) {
-		flags.push(FLAG_ALIASES[match[1]!] ?? match[1]!,);
-	}
-	return uniqueStrings(flags,).filter((flag,) => KNOWN_LONG_FLAGS.has(flag,));
-}
-
-function extractPositionalArguments(usage: string,): CommandPositionalMetadata[] {
-	const positionals: CommandPositionalMetadata[] = [];
-	const add = (name: string, required: boolean,) => {
-		const existing = positionals.find((positional,) => positional.name === name);
-		if (existing) existing.required ||= required;
-		else positionals.push({ name, required, },);
-	};
-	for (const match of usage.matchAll(/<([^>]+)>/g,)) {
-		const before = usage.slice(0, match.index,);
-		const openParen = before.lastIndexOf("(",);
-		const insideParen = openParen > before.lastIndexOf(")",);
-		const closeParen = insideParen ? usage.indexOf(")", match.index,) : -1;
-		const group = closeParen >= 0 ? usage.slice(openParen + 1, closeParen,) : "";
-		const hasFlagAlternative = group.split("|",).some((alternative,) => alternative.includes("--",));
-		const required = before.lastIndexOf("[",) <= before.lastIndexOf("]",)
-			&& !hasFlagAlternative;
-		add(match[1]!, required,);
-	}
-	for (const suffix of usage.split("[",).slice(1,)) {
-		const candidate = suffix.split("]", 1,)[0];
-		if (candidate && /^[A-Za-z][A-Za-z0-9_-]*$/.test(candidate,)) add(candidate, false,);
-	}
-	for (const group of topLevelParenGroups(usage,)) {
-		const candidate = group.split("|", 1,)[0]?.trim();
-		if (candidate && /^[A-Z][A-Z0-9_-]*$/.test(candidate,)) add(candidate, false,);
-	}
-	return positionals;
-}
 
 const COMMAND_REQUIRED_INPUT_GROUPS: Record<string, CommandRequiredInputGroup[]> = {
 	"notebook.unload-jupyter": [
@@ -1079,100 +1036,6 @@ function inferOutputShape(resource: string, action: string,): CommandOutputShape
 	return "object";
 }
 
-export function inferInputContract(usage: string,): CommandInputContract {
-	return {
-		...(usage.includes("--stdin",) ? { stdin: true, } : {}),
-		...(usage.includes("--data ",) || usage.includes("--data JSON",) ? { dataFlag: true, } : {}),
-		...(usage.includes("--data-file",) ? { dataFileFlag: true, } : {}),
-	};
-}
-
-function stripOptionalUsageGroups(usage: string,): string {
-	return usage.replace(/\[[^\]]*\]/g, " ",);
-}
-
-function stripAllUsageGroups(usage: string,): string {
-	return usage.replace(/\[[^\]]*\]/g, " ",).replace(/\([^)]*\)/g, " ",);
-}
-
-function topLevelParenGroups(usage: string,): string[] {
-	const groups: string[] = [];
-	let depth = 0;
-	let current = "";
-	for (const char of usage) {
-		if (char === "(") {
-			if (depth > 0) current += char;
-			else current = "";
-			depth++;
-		} else if (char === ")") {
-			depth--;
-			if (depth === 0) groups.push(current,);
-			else current += char;
-		} else if (depth > 0) {
-			current += char;
-		}
-	}
-	return groups;
-}
-
-function splitTopLevelChoices(group: string,): string[] {
-	const parts: string[] = [];
-	let depth = 0;
-	let current = "";
-	for (let index = 0; index < group.length; index++) {
-		const char = group[index]!;
-		if (char === "[" || char === "(") depth++;
-		else if (char === "]" || char === ")") depth--;
-		const nextAlternative = group.slice(index + 1,).trimStart();
-		if (char === "|" && depth === 0 && nextAlternative.startsWith("--",)) {
-			parts.push(current,);
-			current = "";
-		} else {
-			current += char;
-		}
-	}
-	parts.push(current,);
-	return parts;
-}
-
-function flagsInUsageFragment(fragment: string,): string[] {
-	return extractUsageFlags(fragment.replace(/\[[^\]]*\]/g, " ",),);
-}
-
-/**
- * Split required usage flags into unconditional flags and required choice
- * groups. A required `(--a X | --b Y)` group becomes a requiredOneOf entry
- * (at least one alternative; an alternative listing several flags must be
- * supplied together) instead of marking every flag as unconditionally required.
- */
-function deriveRequiredUsage(
-	usage: string,
-): { requiredFlags: string[]; requiredOneOf: CommandFlagChoice[]; } {
-	const requiredFlags = extractUsageFlags(stripAllUsageGroups(usage,),);
-	const requiredOneOf: CommandFlagChoice[] = [];
-	for (const group of topLevelParenGroups(usage,)) {
-		const alternatives = splitTopLevelChoices(group,);
-		if (alternatives.length <= 1) {
-			requiredFlags.push(...flagsInUsageFragment(group,),);
-			continue;
-		}
-		const oneOf = alternatives
-			.map((alternative,) => flagsInUsageFragment(alternative,))
-			.filter((alternativeFlags,) => alternativeFlags.length > 0);
-		// A group mixing a positional alternative with flags (e.g. sql query's
-		// `(SQL | --sql QUERY | --sql-file PATH | --sql - | --stdin)`) cannot be
-		// expressed as a flag-only choice: filtering out the flagless alternative
-		// would falsely require one of the flags. Omit the group from the flag
-		// contract entirely; the handler stays the runtime authority.
-		if (alternatives.some((alternative,) => flagsInUsageFragment(alternative,).length === 0)) {
-			continue;
-		}
-		if (oneOf.length > 1) requiredOneOf.push({ oneOf, },);
-		else if (oneOf.length === 1) requiredFlags.push(...oneOf[0]!,);
-	}
-	return { requiredFlags: uniqueStrings(requiredFlags,), requiredOneOf, };
-}
-
 const GLOBAL_FLAG_VALUE_HINTS: Record<string, { valueType: string; enumValues?: string[]; }> = {
 	url: { valueType: "URL", },
 	fields: { valueType: "CSV", },
@@ -1188,28 +1051,6 @@ const GLOBAL_FLAG_VALUE_HINTS: Record<string, { valueType: string; enumValues?: 
 	standard: { valueType: "JSON", },
 	until: { valueType: "STATE", },
 };
-
-/** Derive a value placeholder (and enum members) for each value flag from its usage token. */
-function extractFlagValueHints(
-	usage: string,
-): Map<string, { valueType: string; enumValues?: string[]; }> {
-	const hints = new Map<string, { valueType: string; enumValues?: string[]; }>();
-	for (
-		const match of usage.matchAll(
-			/--([a-z0-9-]+)\s+([A-Za-z][A-Za-z0-9_-]*(?:\|[A-Za-z][A-Za-z0-9_-]*)+)(?![A-Za-z0-9_=-])/g,
-		)
-	) {
-		const flag = FLAG_ALIASES[match[1]!] ?? match[1]!;
-		if (!hints.has(flag,)) {
-			hints.set(flag, { valueType: "enum", enumValues: match[2]!.split("|",), },);
-		}
-	}
-	for (const match of usage.matchAll(/--([a-z0-9-]+)\s+(<[^>]+>|[A-Z][A-Za-z0-9_]*)/g,)) {
-		const flag = FLAG_ALIASES[match[1]!] ?? match[1]!;
-		if (!hints.has(flag,)) hints.set(flag, { valueType: match[2]!, },);
-	}
-	return hints;
-}
 
 function inferPayloadSchema(
 	inputContract: CommandInputContract,
@@ -1272,10 +1113,10 @@ function cleanupCommandFromDeleteUsage(resource: string, action: string,): strin
 		: action === "create-instance" || action === "create-successor-instance"
 		? "delete-instance"
 		: "delete";
-	const deleteUsage = commands[resource]?.[deleteAction]?.usage;
-	if (!deleteUsage) return undefined;
-	const base = stripOptionalUsageGroups(deleteUsage,).replace(/\s+/g, " ",).trim();
-	if (deleteUsage.includes("--if-exists",)) return `${base} --if-exists`;
+	const deleteSyntax = commandSyntaxTree(resource, deleteAction,);
+	if (!deleteSyntax) return undefined;
+	const base = renderNodes(deleteSyntax, true,);
+	if (syntaxHasFlag(deleteSyntax, "if-exists",)) return `${base} --if-exists`;
 	return base;
 }
 
@@ -1363,12 +1204,14 @@ function inferIdempotency(
 	resource: string,
 	sideEffect: CommandSideEffect,
 	action: string,
-	usage: string,
+	syntax: SyntaxNode[],
 ): CommandIdempotency {
 	if (sideEffect === "read") return "safe";
 	if (`${resource}.${action}` === "install-skill.run") return "convergent";
-	if (action.startsWith("create",) && usage.includes("--if-not-exists",)) return "if-not-exists";
-	if (action.startsWith("delete",) && usage.includes("--if-exists",)) return "if-exists";
+	if (action.startsWith("create",) && syntaxHasFlag(syntax, "if-not-exists",)) {
+		return "if-not-exists";
+	}
+	if (action.startsWith("delete",) && syntaxHasFlag(syntax, "if-exists",)) return "if-exists";
 	if (`${resource}.${action}` === "app.set-manifest-version") return "none";
 	// `app delete-instance` converges without an `--if-exists` flag: an absent
 	// target project is reported as an already-absent success instead of an
@@ -1416,9 +1259,9 @@ export function inferCleanupHint(resource: string, action: string,): string | un
 		: action === "create-instance" || action === "create-successor-instance"
 		? "delete-instance"
 		: "delete";
-	const deleteUsage = commands[resource]?.[deleteAction]?.usage;
-	if (!deleteUsage) return undefined;
-	const ifExists = deleteUsage.includes("--if-exists",) ? " --if-exists" : "";
+	const deleteSyntax = commandSyntaxTree(resource, deleteAction,);
+	if (!deleteSyntax) return undefined;
+	const ifExists = syntaxHasFlag(deleteSyntax, "if-exists",) ? " --if-exists" : "";
 	if (resource === "code-env") {
 		return `Delete with \`dss code-env delete <lang> <name>${ifExists}\`.`;
 	}
@@ -1434,14 +1277,16 @@ function buildRegistryEntry(
 	meta: CommandMeta,
 ): CommandRegistryEntry {
 	const requiresAuth = meta.localHandler === undefined && inferRequiresAuth(resource,);
-	const requiresProject = inferRequiresProject(resource, action, meta.usage,);
+	const requiresProject = inferRequiresProject(resource, action,);
 	const sideEffect = inferSideEffect(resource, action,);
 	const destructive = inferDestructiveLevel(resource, sideEffect, action,);
 	const asyncKind = inferAsyncKind(resource, action,);
 	const mutatesDss = sideEffect === "write" && resource !== "auth" && resource !== "install-skill";
-	const supportsPlan = mutatesDss || sideEffect === "write";
+	// auth login writes local credentials only; its --plan previews that write.
+	const supportsPlan = sideEffect === "write" || resource === "auth";
 	const supportsCleanup = supportsCleanupLedger(resource, action,);
-	const usageFlags = extractUsageFlags(meta.usage,);
+	const syntax = commandSyntax(resource, action,);
+	const usageFlags = syntax.flags;
 	const flags = uniqueStrings([
 		...usageFlags,
 		...(supportsPlan ? ["plan",] : []),
@@ -1450,7 +1295,7 @@ function buildRegistryEntry(
 		...(requiresAuth ? AUTHENTICATED_AGENT_FLAGS : []),
 		...(requiresProject ? ["project-key",] : []),
 	],);
-	const derivedRequired = deriveRequiredUsage(meta.usage,);
+	const derivedRequired = syntax;
 	const requiredFlags = meta.requiredFlags
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.requiredFlags
 		?? derivedRequired.requiredFlags;
@@ -1461,8 +1306,8 @@ function buildRegistryEntry(
 	const optionalFlags = meta.optionalFlags
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.optionalFlags
 		?? flags.filter((flag,) => !requiredFlags.includes(flag,) && !oneOfFlags.has(flag,));
-	const valueHints = extractFlagValueHints(meta.usage,);
-	const inputContract = inferInputContract(meta.usage,);
+	const valueHints = syntax.valueHints;
+	const inputContract = syntax.inputContract;
 	const cleanupHint = inferCleanupHint(resource, action,);
 	const payloadSchema = meta.payloadSchema
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.payloadSchema
@@ -1476,16 +1321,12 @@ function buildRegistryEntry(
 		? undefined
 		: inferredCleanupCommand;
 	const flagMetadata: CommandFlagMetadata[] = flags.map((name,) => {
-		const aliases = Object.entries(FLAG_ALIASES,)
-			.filter(([raw, canonical,],) =>
-				canonical === name && new RegExp(`--${raw}(?![a-z0-9-])`,).test(meta.usage,)
-			)
-			.map(([raw,],) => raw);
+		const aliases = syntax.aliases[name] ?? [];
 		const aliasPart = aliases.length > 0 ? { aliases, } : {};
 		const kind = flagKind(name,);
 		if (kind === "boolean") return { name, kind, ...aliasPart, };
 		const allowEmptyPart = ALLOW_EMPTY_VALUE_FLAGS[name] === true ? { allowEmptyValue: true, } : {};
-		const hint = valueHints.get(name,) ?? GLOBAL_FLAG_VALUE_HINTS[name];
+		const hint = valueHints[name] ?? GLOBAL_FLAG_VALUE_HINTS[name];
 		if (!hint) return { name, kind, ...aliasPart, ...allowEmptyPart, };
 		return {
 			name,
@@ -1496,12 +1337,11 @@ function buildRegistryEntry(
 			...allowEmptyPart,
 		};
 	},);
-	const positionalArguments = extractPositionalArguments(meta.usage,);
+	const positionalArguments = syntax.positionalArguments;
 	const positionals = positionalArguments.map((positional,) => positional.name);
 	const inputGroups = requiredInputGroups(resource, action,);
 	const outputShape = inferOutputShape(resource, action,);
-	const producesLocalFile = meta.usage.includes("--output PATH",)
-		|| meta.usage.includes("--output-file PATH",);
+	const producesLocalFile = syntax.producesLocalFile;
 	const uniqueRequiredFlags = uniqueStrings(requiredFlags,);
 	const uniqueOptionalFlags = uniqueStrings(optionalFlags,);
 	const unsafe = unsafeOutputs(resource, action, producesLocalFile,);
@@ -1525,8 +1365,13 @@ function buildRegistryEntry(
 		producesLocalFile,
 		mutatesDss,
 		async: asyncKind,
-		idempotency: inferIdempotency(resource, sideEffect, action, meta.usage,),
-		dryRun: meta.usage.includes("--dry-run",),
+		idempotency: inferIdempotency(
+			resource,
+			sideEffect,
+			action,
+			commandSyntaxTree(resource, action,) ?? [],
+		),
+		dryRun: syntax.dryRun,
 		requiredFlags: uniqueRequiredFlags,
 		optionalFlags: uniqueOptionalFlags,
 		...(requiredOneOf.length > 0 ? { requiredOneOf, } : {}),
@@ -1638,7 +1483,7 @@ function commandDefinitions(
 		for (const [action, meta,] of Object.entries(AUTH_ACTIONS,)) {
 			registry.auth[action] = {
 				handler: async () => undefined,
-				usage: meta.usage,
+				usage: commandUsage("auth", action,),
 				description: meta.description,
 				examples: meta.examples,
 				requiredFlags: meta.requiredFlags,
@@ -1923,8 +1768,7 @@ function planProjectKeyFromArgs(
 ): string | undefined {
 	const fromFlag = flags["project-key"];
 	if (typeof fromFlag === "string" && fromFlag.trim().length > 0) return fromFlag.trim();
-	if (!dataikuEnvironmentEnabled()) return undefined;
-	const fromEnv = process.env.DATAIKU_PROJECT_KEY;
+	const fromEnv = ambientProjectKey();
 	return fromEnv !== undefined && fromEnv.trim().length > 0 ? fromEnv.trim() : undefined;
 }
 
@@ -2003,12 +1847,6 @@ function requiredPlanJsonInput(
 	usage: string,
 ): Record<string, unknown> {
 	return requiredJsonInput(flags, `--data, --data-file, or --stdin is required. Usage: ${usage}`,);
-}
-
-function requiredPlanPositionals(usage: string,): string[] {
-	return extractPositionalArguments(usage,)
-		.filter((positional,) => positional.required)
-		.map((positional,) => positional.name);
 }
 
 function dataQualityEndpoint(projectKey: string, datasetName: string, suffix: string,): string {
@@ -2114,14 +1952,12 @@ function pluginGitPlanPayload(
 		"repository",
 		"dss plugin install-from-git --repository URL",
 	);
-	const payload: Record<string, unknown> = {
+	// Mirrors PluginsResource install/update bodies: absent options are sent as null.
+	return {
 		gitRepositoryUrl: validatedPlanRepositoryUrl(repository, "repository", "--repository URL",),
+		gitCheckout: typeof flags["checkout"] === "string" ? flags["checkout"] : null,
+		gitSubpath: typeof flags["path-in-repository"] === "string" ? flags["path-in-repository"] : null,
 	};
-	if (typeof flags["checkout"] === "string") payload.gitCheckout = flags["checkout"];
-	if (typeof flags["path-in-repository"] === "string") {
-		payload.gitSubpath = flags["path-in-repository"];
-	}
-	return payload;
 }
 
 function optionalPlanProjectScope(
@@ -2295,16 +2131,28 @@ export function commandPlanShape(
 			};
 		case "wiki.create": {
 			const name = requiredPlanFlag(flags, "name", entry.usage,);
-			return {
+			const content = textInput(flags,);
+			const create = {
 				method: "POST",
 				endpoint: projectEndpoint("/wiki/",),
+				payload: { projectKey, name, parent: flags["parent"] as string | undefined ?? null, },
+			};
+			return {
+				...create,
 				identifiers: { name, },
-				payload: {
-					projectKey,
-					name,
-					parent: flags["parent"] as string | undefined ?? null,
-					content: textInput(flags,),
-				},
+				// Content is not accepted by the create endpoint; it lands in a follow-up update.
+				...(content === undefined ? {} : {
+					requests: [
+						{ sequence: 1, ...create, },
+						{ sequence: 2, method: "GET", endpoint: projectEndpoint("/wiki/{createdArticleId}",), },
+						{
+							sequence: 3,
+							method: "PUT",
+							endpoint: projectEndpoint("/wiki/{createdArticleId}",),
+							payload: { payload: content, },
+						},
+					],
+				}),
 			};
 		}
 		case "wiki.update":
@@ -2331,7 +2179,9 @@ export function commandPlanShape(
 			const name = flagName ?? (typeof dataName === "string" ? dataName : undefined);
 			if (!name) {
 				throw new UsageError(
-					"--name or dashboard settings containing a string name are required. Usage: dss dashboard create --name NAME",
+					`--name or dashboard settings containing a string name are required. Usage: ${
+						commandUsage("dashboard", "create",)
+					}`,
 				);
 			}
 			const listed = parseBooleanOption(flags["listed"], "--listed",);
@@ -2368,7 +2218,7 @@ export function commandPlanShape(
 			const type = flags["type"] as string | undefined;
 			if (!data && (!name || !type)) {
 				throw new UsageError(
-					"--data or both --name and --type are required. Usage: dss insight create --name NAME --type TYPE",
+					`--data or both --name and --type are required. Usage: ${commandUsage("insight", "create",)}`,
 				);
 			}
 			const prototype: Record<string, unknown> = { ...data, };
@@ -2459,7 +2309,7 @@ export function commandPlanShape(
 			};
 		case "flow-zone.create": {
 			const name = flowZoneName(flags["name"],);
-			const payload = { name, color: flowZoneColor(flags["color"],), projectKey, };
+			const payload = { name, color: flowZoneColor(flags["color"],) ?? "#2ab1ac", };
 			return {
 				method: "POST",
 				endpoint: projectEndpoint("/flow/zones",),
@@ -2498,17 +2348,26 @@ export function commandPlanShape(
 			if (!connection && dsType.toLowerCase() !== "uploadedfiles") {
 				throw new UsageError("--connection is required unless --type is UploadedFiles.",);
 			}
+			const endpoint = projectEndpoint("/datasets/",); // throws without a project key
 			return {
 				method: "POST",
-				endpoint: projectEndpoint("/datasets/",),
+				endpoint,
 				identifiers: { name, },
-				payload: { datasetName: name, connection, dsType, projectKey, },
+				payload: buildDatasetCreateBody({
+					projectKey: projectKey!,
+					datasetName: name,
+					connection,
+					dsType,
+				},),
 			};
 		}
 		case "dataset.clone": {
 			const source = args[0];
 			const target = args[1];
 			return {
+				exact: false,
+				reason:
+					"Apply GETs the source dataset and copies its current connection, format, and schema into the new dataset body.",
 				method: "POST",
 				endpoint: projectEndpoint("/datasets/",),
 				identifiers: { source, target, },
@@ -2681,7 +2540,7 @@ export function commandPlanShape(
 				identifiers: { name: id, },
 			};
 		case "recipe.create": {
-			const type = requiredPlanFlag(flags, "type", entry.usage,);
+			requiredPlanFlag(flags, "type", entry.usage,);
 			const outputDataset = flags["output"] as string | undefined;
 			const outputFolder = flags["output-folder"] as string | undefined;
 			if (outputDataset && outputFolder) {
@@ -2693,19 +2552,17 @@ export function commandPlanShape(
 			if (outputFolder && !flags["output-connection"]) {
 				throw new UsageError("--output-connection is required when using --output-folder.",);
 			}
+			const endpoint = projectEndpoint("/recipes/",); // throws without a project key
+			// Same flag mapping and body construction as the handler and RecipesResource.create.
+			const { recipePrototype, creationSettings, } = buildRecipeCreateRequest(
+				recipeCreateOptionsFromFlags(flags,),
+				projectKey!,
+			);
 			return {
 				method: "POST",
-				endpoint: projectEndpoint("/recipes/",),
-				identifiers: { name: flags["name"] as string | undefined, },
-				payload: {
-					type,
-					name: flags["name"] as string | undefined,
-					inputDatasets: recipeInputDatasetsFromFlags(flags,),
-					outputDataset,
-					outputFolder,
-					outputConnection: flags["output-connection"] as string | undefined,
-					projectKey,
-				},
+				endpoint,
+				identifiers: { name: recipePrototype.name as string, },
+				payload: { recipePrototype, creationSettings, },
 			};
 		}
 		case "recipe.run":
@@ -2833,22 +2690,55 @@ export function commandPlanShape(
 			if (activeRaw !== "true" && activeRaw !== "false") {
 				throw new UsageError(`Usage: ${entry.usage}`,);
 			}
+			const lightEndpoint = projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/light`,);
+			const active = activeRaw === "true";
+			// DSS parses the light PUT as a full Scenario, so the command echoes the
+			// current light status with `active` overridden (see ScenariosResource.setActive).
 			return {
 				method: "PUT",
-				endpoint: projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/light`,),
+				endpoint: lightEndpoint,
 				identifiers: { id, },
-				payload: { id, active: activeRaw === "true", },
+				payload: { active, },
+				requests: [
+					{ sequence: 1, method: "GET", endpoint: lightEndpoint, },
+					{
+						sequence: 2,
+						method: "PUT",
+						endpoint: lightEndpoint,
+						payload: { "...current": true, active, },
+					},
+					{ sequence: 3, method: "GET", endpoint: lightEndpoint, },
+				],
 			};
 		}
 		case "folder.create": {
 			const name = requiredPlanFlag(flags, "name", entry.usage,);
 			const type = flags["type"] as string | undefined;
 			const connection = flags["connection"] as string | undefined;
+			const pathFlag = flags["path"] as string | undefined;
+			const body = {
+				name,
+				projectKey,
+				type: type ?? null,
+				params: { connection, path: pathFlag?.trim() || "/${projectKey}/${odbId}", },
+			};
+			// Mirrors FoldersResource.create.
+			if (connection === undefined) {
+				return {
+					exact: false,
+					reason:
+						"Without --connection, apply reads DSS admin settings to pick the managed-folder connection (falling back to filesystem_folders); params.connection is set then.",
+					method: "POST",
+					endpoint: projectEndpoint("/managedfolders/",),
+					identifiers: { name, },
+					payload: body,
+				};
+			}
 			return {
 				method: "POST",
 				endpoint: projectEndpoint("/managedfolders/",),
 				identifiers: { name, },
-				payload: { name, type, connection, path: flags["path"] as string | undefined, projectKey, },
+				payload: body,
 			};
 		}
 		case "job.abort":
@@ -2872,18 +2762,22 @@ export function commandPlanShape(
 				endpoint: projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/`,),
 				identifiers: { id, },
 			};
-		case "scenario.create":
+		case "scenario.create": {
+			const type = (flags["type"] as string | undefined) ?? "step_based";
 			return {
 				method: "POST",
 				endpoint: projectEndpoint("/scenarios/",),
 				identifiers: { id: args[0], name: args[1], },
+				// Mirrors ScenariosResource.create's default params for step-based scenarios.
 				payload: {
 					id: args[0],
 					name: args[1],
 					projectKey,
-					type: (flags["type"] as string | undefined) ?? "step_based",
+					type,
+					params: type === "step_based" ? { steps: [], triggers: [], reporters: [], } : {},
 				},
 			};
+		}
 		case "scenario.update":
 			return {
 				method: "PUT",
@@ -2922,6 +2816,9 @@ export function commandPlanShape(
 			};
 		case "variable.set":
 			return {
+				exact: false,
+				reason:
+					"The payload lists the requested changes; apply PUTs the full {standard, local} object (merged with the current variables unless --replace).",
 				method: "PUT",
 				endpoint: projectEndpoint("/variables/",),
 				payload: {
@@ -3386,6 +3283,9 @@ export function commandPlanShape(
 			};
 		case "saved-model.import-mlflow-version-from-folder":
 			return {
+				exact: false,
+				reason:
+					"Apply sends these values as query parameters (with codeEnvName and binaryClassificationThreshold defaults) on an empty multipart body; the payload shows them structured.",
 				method: "POST",
 				endpoint: projectEndpoint(
 					`/savedmodels/${encodeURIComponent(id,)}/versions/${encodeURIComponent(args[1] ?? "",)}`,
@@ -3444,11 +3344,17 @@ export function commandPlanShape(
 			}
 			return {
 				method: "POST",
-				endpoint: projectEndpoint(
-					`/savedmodels/${encodeURIComponent(id,)}/versions/${
-						encodeURIComponent(args[1] ?? "",)
-					}/external-ml/actions/evaluate`,
-				),
+				endpoint: `${
+					projectEndpoint(
+						`/savedmodels/${encodeURIComponent(id,)}/versions/${
+							encodeURIComponent(args[1] ?? "",)
+						}/external-ml/actions/evaluate`,
+					)
+				}?useOptimalThreshold=${
+					parseBooleanOption(flags["use-optimal-threshold"], "--use-optimal-threshold",) ?? true
+				}&skipExpensiveReports=${
+					parseBooleanOption(flags["skip-expensive-reports"], "--skip-expensive-reports",) ?? true
+				}`,
 				identifiers: { savedModelId: id, versionId: args[1], },
 				payload,
 			};
@@ -3655,15 +3561,19 @@ export function commandPlanShape(
 			};
 		case "plugin.create-dev": {
 			const creationMode = requiredPlanFlag(flags, "creation-mode", entry.usage,);
+			const needsGit = creationMode !== "EMPTY";
+			// Mirrors PluginsResource.createDev: git fields are always present, null when unused.
 			const payload: Record<string, unknown> = {
 				pluginId: id,
 				creationMode,
+				gitRepository: needsGit && typeof flags["repository"] === "string"
+					? validatedPlanRepositoryUrl(flags["repository"], "repository", "--repository URL",)
+					: null,
+				gitCheckout: needsGit && typeof flags["checkout"] === "string" ? flags["checkout"] : null,
+				gitSubpath: creationMode === "GIT_EXPORT" && typeof flags["path-in-repository"] === "string"
+					? flags["path-in-repository"]
+					: null,
 			};
-			if (typeof flags["repository"] === "string") payload.gitRepository = flags["repository"];
-			if (typeof flags["checkout"] === "string") payload.gitCheckout = flags["checkout"];
-			if (typeof flags["path-in-repository"] === "string") {
-				payload.gitSubpath = flags["path-in-repository"];
-			}
 			return {
 				method: "POST",
 				endpoint: "/public/api/plugins/actions/createDev",
@@ -3724,13 +3634,12 @@ export function commandPlanShape(
 				identifiers: { pluginId: id, path: args[1], },
 			};
 		case "plugin.rename": {
-			const newName = requiredPlanPositionals(entry.usage,)[2];
-			if (!newName) throw new UsageError(`Usage: ${entry.usage}`,);
+			if (!args[2]) throw new UsageError(`Usage: ${entry.usage}`,);
 			return {
 				method: "POST",
 				endpoint: `${pluginRootEndpoint(id, "/contents-actions/rename",)}`,
 				identifiers: { pluginId: id, path: args[1], },
-				payload: { oldPath: args[1], newName: args[2], },
+				payload: { oldPath: `/${validatePluginPath(args[1] ?? "",)}`, newName: args[2], },
 			};
 		}
 		case "plugin.move": {
@@ -3740,7 +3649,10 @@ export function commandPlanShape(
 				method: "POST",
 				endpoint: `${pluginRootEndpoint(id, "/contents-actions/move",)}`,
 				identifiers: { pluginId: id, path: args[1], },
-				payload: { oldPath: args[1], newPath: destination, },
+				payload: {
+					oldPath: `/${validatePluginPath(args[1] ?? "",)}`,
+					newPath: validatePluginDestinationPath(destination,),
+				},
 			};
 		}
 		case "business-app.save-settings":
@@ -3792,6 +3704,9 @@ export function commandPlanShape(
 				// plan carries no preflight requests and no fake concrete GET
 				// path: `{targetProjectKey}` resolves at apply time.
 				return {
+					exact: false,
+					reason:
+						"targetProjectKey (and targetProjectName when omitted) are generated during apply; the sent body adds them.",
 					method: "POST",
 					endpoint: `/public/api/apps/${encodeURIComponent(id,)}/instances`,
 					identifiers: {
@@ -4546,7 +4461,6 @@ export function commandPlanShape(
 					evaluateProjectStandardsChecks,
 				},),
 				identifiers: { bundleId: id, },
-				payload: {},
 			};
 		}
 		case "bundle.publish":
@@ -4779,7 +4693,7 @@ export function commandPlanShape(
 			const active = parseBooleanOption(flags["active"], "--active",);
 			if (active === undefined) {
 				throw new UsageError(
-					"--active is required. Usage: dss code-env set-jupyter <lang> <name> --active true|false",
+					`--active is required. Usage: ${commandUsage("code-env", "set-jupyter",)}`,
 				);
 			}
 			const wait = codeEnvWait(flags,);
@@ -5506,7 +5420,7 @@ export function buildMutationPlan(
 	if (!entry.mutatesDss && entry.sideEffect !== "write") {
 		throw new UsageError(`--plan is only supported for mutating commands. Usage: ${meta.usage}`,);
 	}
-	const requiredPositionals = requiredPlanPositionals(meta.usage,);
+	const requiredPositionals = entry.positionalArguments.filter((positional,) => positional.required);
 	requireArgs(args, requiredPositionals.length, meta.usage,);
 	const projectKey = projectKeyForPlan(entry, flags,);
 	const shape = commandPlanShape(resource, action, args, flags, entry, projectKey,);
@@ -5531,8 +5445,7 @@ export const BATCH_PLAN_EXIT_CODES: Record<string, number> = {
 	assertionFailure: 4,
 };
 
-export const BATCH_USAGE =
-	"dss batch (--data JSON|--data-file PATH|--stdin) [--continue-on-error] [--dry-run]";
+export const BATCH_USAGE = commandUsage("batch", "run",);
 const BATCH_DESCRIPTION =
 	"Run dss argv arrays fail-fast by default. The result aggregates failed/retryable/failureCodes; process exit remains the first failed step's exit code.";
 export const BATCH_HINT =

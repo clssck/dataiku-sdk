@@ -2,6 +2,7 @@ import type { DataikuClient, } from "../../client.js";
 import { requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, planResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
 
@@ -58,22 +59,20 @@ function statisticsPlan(action: string, options: StatisticsPlanOptions,): Record
 	},);
 }
 
-export const statisticsCommands: Record<string, CommandMeta> = {
+export const statisticsCommands: Record<string, CommandMeta> = withUsage("statistics", {
 	"list-worksheets": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss statistics list-worksheets <dataset> [--project-key KEY]",);
+			requireArgs(a, 1, commandUsage("statistics", "list-worksheets",),);
 			return c.statistics.listWorksheets(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss statistics list-worksheets <dataset> [--project-key KEY]",
 		description: "List EDA statistics worksheets for a dataset.",
 		examples: ["dss statistics list-worksheets customers",],
 	},
 	"get-worksheet": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 2, "dss statistics get-worksheet <dataset> <worksheetId> [--project-key KEY]",);
+			requireArgs(a, 2, commandUsage("statistics", "get-worksheet",),);
 			return c.statistics.getWorksheet(a[0], a[1], f["project-key"] as string | undefined,);
 		},
-		usage: "dss statistics get-worksheet <dataset> <worksheetId> [--project-key KEY]",
 		description: "Get one statistics worksheet definition.",
 		examples: ["dss statistics get-worksheet customers ws_1",],
 	},
@@ -82,7 +81,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss statistics create-worksheet <dataset> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
+				commandUsage("statistics", "create-worksheet",),
 			);
 			const body = requiredJsonInput(
 				f,
@@ -99,8 +98,6 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 			}
 			return c.statistics.createWorksheet(a[0], body, projectKey,);
 		},
-		usage:
-			"dss statistics create-worksheet <dataset> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description: "Create a statistics worksheet from a JSON definition.",
 		examples: [
 			'dss statistics create-worksheet customers --data \'{"name":"Customer stats","dataSpec":{"inputDatasetSmartName":"customers","datasetSelection":{"partitionSelectionMethod":"ALL","maxRecords":30000,"samplingMethod":"FULL"}}}\'',
@@ -111,7 +108,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss statistics update-worksheet <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
+				commandUsage("statistics", "update-worksheet",),
 			);
 			const body = requiredJsonInput(
 				f,
@@ -128,8 +125,6 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 			}
 			return c.statistics.updateWorksheet(a[0], a[1], body, projectKey,);
 		},
-		usage:
-			"dss statistics update-worksheet <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description: "Replace a statistics worksheet definition.",
 		examples: ["dss statistics update-worksheet customers ws_1 --data-file ws.json",],
 	},
@@ -138,7 +133,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss statistics delete-worksheet <dataset> <worksheetId> [--dry-run] [--project-key KEY]",
+				commandUsage("statistics", "delete-worksheet",),
 			);
 			const projectKey = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
@@ -151,7 +146,6 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 			await c.statistics.deleteWorksheet(a[0], a[1], projectKey,);
 			return { deleted: a[1], };
 		},
-		usage: "dss statistics delete-worksheet <dataset> <worksheetId> [--dry-run] [--project-key KEY]",
 		description: "Delete a statistics worksheet.",
 		examples: ["dss statistics delete-worksheet customers ws_1",],
 	},
@@ -160,7 +154,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss statistics run-worksheet <dataset> <worksheetId> [--dry-run] [--project-key KEY]",
+				commandUsage("statistics", "run-worksheet",),
 			);
 			const projectKey = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
@@ -173,7 +167,6 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 			}
 			return c.statistics.runWorksheet(a[0], a[1], projectKey,);
 		},
-		usage: "dss statistics run-worksheet <dataset> <worksheetId> [--dry-run] [--project-key KEY]",
 		description: "Run a statistics worksheet and return the DSS future response.",
 		examples: ["dss statistics run-worksheet customers ws_1",],
 	},
@@ -182,7 +175,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss statistics run-card <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
+				commandUsage("statistics", "run-card",),
 			);
 			const card = requiredJsonInput(
 				f,
@@ -200,8 +193,6 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 			}
 			return c.statistics.runCard(a[0], a[1], card, projectKey,);
 		},
-		usage:
-			"dss statistics run-card <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description: "Run a single card in a worksheet context.",
 		examples: ["dss statistics run-card customers ws_1 --data-file card.json",],
 	},
@@ -210,7 +201,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss statistics run-computation <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
+				commandUsage("statistics", "run-computation",),
 			);
 			const computation = requiredJsonInput(
 				f,
@@ -233,9 +224,7 @@ export const statisticsCommands: Record<string, CommandMeta> = {
 				projectKey,
 			);
 		},
-		usage:
-			"dss statistics run-computation <dataset> <worksheetId> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description: "Run a single computation in a worksheet context.",
 		examples: ["dss statistics run-computation customers ws_1 --data-file comp.json",],
 	},
-};
+},);

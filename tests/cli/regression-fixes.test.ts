@@ -1,5 +1,5 @@
 import { describe, expect, it, } from "bun:test";
-import { rmSync, } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, } from "node:fs";
 import { tmpdir, } from "node:os";
 import { join, } from "node:path";
 import { buildCommandRegistry, } from "../../src/cli/contract.js";
@@ -11,6 +11,7 @@ import {
 	dssFailure,
 	dssWithInput,
 	readBody,
+	readFileExists,
 	sendJson,
 	withCliServer,
 } from "./_harness.js";
@@ -362,7 +363,6 @@ describe("CLI regression fixes", () => {
 						action: "export",
 						method: "PUT",
 						endpoint: "/public/api/projects/TEST/bundles/exported/v1?evaluateProjectStandardsChecks=true",
-						payload: {},
 					},
 				},
 			];
@@ -1220,5 +1220,113 @@ describe("CLI regression fixes", () => {
 		expect(report.category,).toBe("usage",);
 		expect(report.error,).toContain("Invalid numeric value",);
 		expect(report.details?.value,).toBe("abc",);
+	});
+});
+
+describe("meta command flag validation", () => {
+	it("refuses cleanup --dry-run --apply before any DSS request", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "dss-cleanup-conflict-",),);
+		let requests = 0;
+		try {
+			await withCliServer((_req, res,) => {
+				requests++;
+				sendJson(res, {},);
+			}, async (url,) => {
+				const ledger = join(dir, "ledger.jsonl",);
+				writeFileSync(
+					ledger,
+					`${
+						JSON.stringify({
+							ts: "2026-01-01T00:00:00Z",
+							action: "create",
+							resource: "variable",
+							projectKey: "P",
+							dssUrl: url,
+							cleanup: { argv: ["variable", "set", "--project-key", "P", "--data", "{}",], },
+						},)
+					}\n`,
+				);
+				const failure = await dssFailure(
+					["cleanup", "--file", ledger, "--dry-run", "--apply", "--url", url, "--api-key", "k",],
+					{ cwd: dir, env: hermeticEnv, },
+				);
+				expect(failure.code,).toBe(1,);
+				expect(JSON.parse(failure.stdout,),).toMatchObject({ code: "usage_error", },);
+			},);
+			expect(requests,).toBe(0,);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("refuses auth login --dry-run without contacting DSS or saving credentials", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "dss-auth-dry-run-",),);
+		let requests = 0;
+		try {
+			await withCliServer((_req, res,) => {
+				requests++;
+				sendJson(res, [],);
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"auth",
+					"login",
+					"--dry-run",
+					"--url",
+					url,
+					"--api-key",
+					"k",
+				], {
+					cwd: dir,
+					env: { ...hermeticEnv, DSS_CONFIG_DIR: dir, },
+				},);
+				expect(JSON.parse(failure.stdout,),).toMatchObject({ code: "unknown_flag", exitCode: 1, },);
+			},);
+			expect(requests,).toBe(0,);
+			expect(readFileExists(join(dir, "credentials.json",),),).toBe(false,);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("rejects flags a meta command does not support", async () => {
+		const failure = await dssFailure(["version", "--drop-data",], { env: hermeticEnv, },);
+		expect(JSON.parse(failure.stdout,),).toMatchObject({ code: "unknown_flag", exitCode: 1, },);
+	});
+
+	it("rejects --plan for commands without a plan mode instead of running them live", async () => {
+		const failure = await dssFailure(["doctor", "--plan",], { env: hermeticEnv, },);
+		expect(JSON.parse(failure.stdout,),).toMatchObject({ code: "usage_error", exitCode: 1, },);
+	});
+
+	it("attributes each batch --dry-run step error to its own step", async () => {
+		const steps = [
+			["dataset", "get",],
+			["recipe", "get",],
+			["scenario", "get",],
+		];
+		const failure = await dssFailure(["batch", "--data", JSON.stringify(steps,), "--dry-run",], {
+			env: hermeticEnv,
+		},);
+		const report = JSON.parse(failure.stdout,) as {
+			steps: Array<{ resource: string; error?: { resource?: string; }; }>;
+		};
+		expect(report.steps.map((step,) => step.error?.resource),).toEqual([
+			"dataset",
+			"recipe",
+			"scenario",
+		],);
+	});
+
+	it("batch --dry-run accepts the flag alternative to required positionals", async () => {
+		// `notebook unload-jupyter (<name> <sessionId>|--all)`: --all replaces both positionals.
+		const { stdout, } = await dss([
+			"batch",
+			"--dry-run",
+			"--project-key",
+			"P",
+			"--data",
+			JSON.stringify([["notebook", "unload-jupyter", "--all",],],),
+		], { env: hermeticEnv, },);
+		expect(JSON.parse(stdout,),).toMatchObject({ steps: [{ runnable: true, },], },);
 	});
 });

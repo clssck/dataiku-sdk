@@ -2,11 +2,11 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest published `0.x` release on npm. Older versions are not maintained.
+Security fixes are provided for the latest published `3.x` release on npm. Older versions are not maintained.
 
 | Version      | Supported          |
 | ------------ | ------------------ |
-| latest `0.x` | :white_check_mark: |
+| latest `3.x` | :white_check_mark: |
 | older        | :x:                |
 
 ## Reporting a vulnerability
@@ -19,7 +19,7 @@ Report privately using GitHub's built-in flow:
 
 Please include:
 
-- affected version(s) and environment (DSS version, Node/Bun version, OS)
+- affected version(s) and environment (DSS version, Bun version, OS)
 - a description of the issue and its impact
 - steps to reproduce
 

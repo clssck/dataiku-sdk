@@ -251,6 +251,25 @@ describe("CLI code-env lifecycle additions", () => {
 		expect(requests,).toEqual(["GET /public/api/admin/code-envs/PYTHON/omp_test_env",],);
 	});
 
+	it("code-env set-definition --dry-run accepts an uppercase --expect-hash of the current definition", async () => {
+		await withCliServer((_req, res,) => {
+			sendJson(res, LOG_DEFINITION,);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"code-env",
+				"set-definition",
+				"PYTHON",
+				"omp_test_env",
+				"--data",
+				JSON.stringify(LOG_DEFINITION,),
+				"--expect-hash",
+				stableHash(LOG_DEFINITION,).toUpperCase(),
+				"--dry-run",
+			], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toMatchObject({ dryRun: true, },);
+		},);
+	});
+
 	it("code-env set-definition --expect-hash refuses a stale definition without PUT", async () => {
 		const requests: string[] = [];
 

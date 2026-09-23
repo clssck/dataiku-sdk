@@ -8,7 +8,7 @@ The SDK and CLI include scenario run management; project, recipe, and dataset me
 
 The [DSS 15 coverage matrix](docs/API-COVERAGE-DSS-15.md) maps documented operations to SDK methods and CLI actions, records documentation discrepancies, and identifies remaining gaps. A [machine-readable matrix](docs/API-COVERAGE-DSS-15.json) is also available. Coverage is not full DSS parity or live compatibility certification: availability depends on DSS version, permissions, licensing, and installed capabilities. One known documentation discrepancy: `plugin git-branches` is served by GET on DSS 15 (the same route rejects POST with 405 `rawMethodPOSTnotsupported`, contrary to the public docs).
 
-Metadata setters replace the complete metadata object: fetch it, edit it, then submit the replacement. Metadata previews expose that replacement under `next`. New mutation previews (`--plan` and `--dry-run`) make no DSS requests; sensitive payloads may be represented by redacted summaries rather than literal request bodies. LLM completions and embeddings are cost-bearing operations, and macros execute plugin code. Review their contracts before execution.
+Metadata setters replace the complete metadata object: fetch it, edit it, then submit the replacement. Metadata previews expose that replacement under `next`. Mutation previews differ: `--plan` builds the request shape offline and makes no DSS requests, with sensitive payloads possibly represented by redacted summaries rather than literal request bodies, while `--dry-run` may read live DSS state per command (`recipe run` resolves its outputs). LLM completions and embeddings are cost-bearing operations, and macros execute plugin code. Review their contracts before execution.
 
 ML training and macro waits bound status requests by the remaining wait deadline, including response bodies and retries. The client `requestTimeoutMs` still caps each request: an overall wait budget can shorten that cap, never extend it. An individual request timeout propagates as an error until the overall wait budget expires. Future and Project Git waits use adaptive polling by default; explicit polling intervals remain fixed. Early CLI usage errors load at most the selected resource definitions, not the full command runtime.
 
@@ -16,7 +16,7 @@ Malformed user/group listings and scenario run histories fail explicitly instead
 
 ## Platform support
 
-The published `dss` CLI requires Bun >= 1.4.0 and supports Linux, macOS, and Windows. The release gate runs Bun 1.4.0 on all three operating systems. The runtime dependency is pure JavaScript, so the same package also runs on every Bun-supported x64 and ARM64 system.
+The published `dss` CLI requires Bun >= 1.4.0 and supports Linux, macOS, and Windows. CI runs the minimum (Bun 1.4.0) and the latest release (1.4.2) on all three operating systems. The runtime dependency is pure JavaScript, so the same package also runs on every Bun-supported x64 and ARM64 system.
 
 Run directly with Bun:
 
@@ -282,7 +282,7 @@ Eligible transient retries honor `Retry-After` delta-seconds and HTTP dates, wai
 Use environment variables for ephemeral runs. For disposable agent tests, set `DSS_CONFIG_DIR` to a temporary directory so saved credentials never touch your real profile.
 Credential precedence is flags first, then `DATAIKU_*` environment variables, then saved credentials in `DSS_CONFIG_DIR` or the platform config directory.
 Set `DATAIKU_DISABLE_ENV=1` when a test must ignore both `.env` files and `DATAIKU_*` environment variables.
-When `.env` loading is enabled, the CLI reads `.env` from the CLI build/root directory and from the command's current working directory; put test-specific `.env` files in the directory where you invoke `dss`.
+When `.env` loading is enabled, the CLI reads `.env` from the CLI build/root directory and from the command's current working directory; put test-specific `.env` files in the directory where you invoke `dss`. Only `DATAIKU_*`, `NODE_TLS_REJECT_UNAUTHORIZED`, and `NODE_EXTRA_CA_CERTS` are read from `.env`; other keys are ignored.
 
 POSIX shell:
 

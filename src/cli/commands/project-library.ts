@@ -2,15 +2,16 @@ import * as fs from "node:fs";
 import type { DataikuClient, } from "../../client.js";
 import {
 	encodeLibraryPath,
-	EXPECT_SHA256_PATTERN,
 	type ProjectLibraryDiffResult,
 	validateLibraryDestinationPath,
 	validateLibraryName,
 	validateLibraryPath,
 } from "../../resources/project-library.js";
+import { SHA256_HEX_PATTERN, } from "../../utils/stable-hash.js";
 import { numFlag, readStdinText, sha256Hex, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, planResult, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -120,7 +121,7 @@ function projectLibraryPlan(
 function expectSha256FromFlags(flags: Record<string, string | boolean>,): string | undefined {
 	const value = flags["expect-sha256"];
 	if (value === undefined || value === false) return undefined;
-	if (typeof value !== "string" || !EXPECT_SHA256_PATTERN.test(value,)) {
+	if (typeof value !== "string" || !SHA256_HEX_PATTERN.test(value,)) {
 		throw new UsageError(
 			"--expect-sha256 must be a 64-character SHA-256 hex digest.",
 			"validation_failed",
@@ -130,26 +131,24 @@ function expectSha256FromFlags(flags: Record<string, string | boolean>,): string
 	return value;
 }
 
-export const projectLibraryCommands: Record<string, CommandMeta> = {
+export const projectLibraryCommands: Record<string, CommandMeta> = withUsage("project-library", {
 	list: {
 		handler: (c, _a, f,) => c.projectLibrary.listContents(f["project-key"] as string | undefined,),
-		usage: "dss project-library list [--project-key KEY]",
 		description: "List the project code library (lib/) contents.",
 		examples: ["dss project-library list",],
 	},
 	get: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss project-library get <path> [--project-key KEY]",);
+			requireArgs(a, 1, commandUsage("project-library", "get",),);
 			validateLibraryPath(a[0],);
 			return c.projectLibrary.getFile(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss project-library get <path> [--project-key KEY]",
 		description: "Print the text content of a project library file.",
 		examples: ["dss project-library get python/mylib/utils.py",],
 	},
 	"get-bytes": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss project-library get-bytes <path> --output PATH [--project-key KEY]",);
+			requireArgs(a, 1, commandUsage("project-library", "get-bytes",),);
 			const out = f["output"] as string | undefined;
 			if (!out) throw new UsageError("--output PATH is required.", "missing_required_flag",);
 			const bytes = await c.projectLibrary.getFileBytes(
@@ -159,7 +158,6 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			const written = await Bun.write(out, bytes, { createPath: false, },);
 			return { path: out, bytes: written, sha256: sha256BytesHex(bytes,), };
 		},
-		usage: "dss project-library get-bytes <path> --output PATH [--project-key KEY]",
 		description: "Download a project library file's raw bytes to a local file.",
 		examples: ["dss project-library get-bytes static/logo.png --output ./logo.png",],
 	},
@@ -168,7 +166,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss project-library create-file <path> [--if-not-exists] [--dry-run] [--project-key KEY]",
+				commandUsage("project-library", "create-file",),
 			);
 			const pk = f["project-key"] as string | undefined;
 			validateLibraryPath(a[0],);
@@ -189,7 +187,6 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			await c.projectLibrary.addFile(a[0], pk,);
 			return { created: a[0], };
 		},
-		usage: "dss project-library create-file <path> [--if-not-exists] [--dry-run] [--project-key KEY]",
 		description:
 			"Create an empty file in the project library; refuses to overwrite an existing item.",
 		examples: ["dss project-library create-file python/mylib/new.py --if-not-exists",],
@@ -199,7 +196,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss project-library create-folder <path> [--if-not-exists] [--dry-run] [--project-key KEY]",
+				commandUsage("project-library", "create-folder",),
 			);
 			const pk = f["project-key"] as string | undefined;
 			validateLibraryPath(a[0],);
@@ -220,8 +217,6 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			await c.projectLibrary.addFolder(a[0], pk,);
 			return { created: a[0], };
 		},
-		usage:
-			"dss project-library create-folder <path> [--if-not-exists] [--dry-run] [--project-key KEY]",
 		description: "Create a folder in the project library; refuses to overwrite an existing item.",
 		examples: ["dss project-library create-folder python/mylib --if-not-exists",],
 	},
@@ -230,7 +225,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss project-library put <path> (--content TEXT|--file PATH|--stdin) [--expect-sha256 SHA256] [--dry-run] [--project-key KEY]",
+				commandUsage("project-library", "put",),
 			);
 			const pk = f["project-key"] as string | undefined;
 			const expectSha256 = expectSha256FromFlags(f,);
@@ -261,8 +256,6 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 				...(result.beforeSha256 !== undefined ? { beforeSha256: result.beforeSha256, } : {}),
 			};
 		},
-		usage:
-			"dss project-library put <path> (--content TEXT|--file PATH|--stdin) [--expect-sha256 SHA256] [--dry-run] [--project-key KEY]",
 		description:
 			"Create or overwrite a project library file with text or binary content; reports the written byte count and sha256.",
 		examples: [
@@ -275,7 +268,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss project-library diff <path> (--content TEXT|--file PATH|--stdin) [--max-lines N] [--project-key KEY]",
+				commandUsage("project-library", "diff",),
 			);
 			const pk = f["project-key"] as string | undefined;
 			validateLibraryPath(a[0],);
@@ -292,8 +285,6 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 				maxLines !== undefined ? { maxLines, } : {},
 			);
 		},
-		usage:
-			"dss project-library diff <path> (--content TEXT|--file PATH|--stdin) [--max-lines N] [--project-key KEY]",
 		description:
 			"Diff a project library file against local content; capped unified text diff, binary files detected instead of dumped.",
 		examples: [
@@ -303,7 +294,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss project-library delete <path> [--dry-run] [--project-key KEY]",);
+			requireArgs(a, 1, commandUsage("project-library", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			validateLibraryPath(a[0],);
 			if (executionMode(f,).dryRun) {
@@ -316,7 +307,6 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			await c.projectLibrary.deleteFile(a[0], pk,);
 			return { deleted: a[0], };
 		},
-		usage: "dss project-library delete <path> [--dry-run] [--project-key KEY]",
 		description: "Delete a project library file or folder.",
 		examples: ["dss project-library delete python/mylib/old.py",],
 	},
@@ -325,7 +315,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss project-library rename <path> <new-name> [--dry-run] [--project-key KEY]",
+				commandUsage("project-library", "rename",),
 			);
 			const pk = f["project-key"] as string | undefined;
 			const validPath = validateLibraryPath(a[0],);
@@ -341,7 +331,6 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			await c.projectLibrary.rename(validPath, validName, pk,);
 			return { renamed: validPath, to: validName, };
 		},
-		usage: "dss project-library rename <path> <new-name> [--dry-run] [--project-key KEY]",
 		description: "Rename a project library file or folder within its parent.",
 		examples: ["dss project-library rename python/mylib/old.py new.py",],
 	},
@@ -350,7 +339,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss project-library move <path> <destination-folder> [--dry-run] [--project-key KEY]",
+				commandUsage("project-library", "move",),
 			);
 			const pk = f["project-key"] as string | undefined;
 			const validPath = validateLibraryPath(a[0],);
@@ -369,10 +358,9 @@ export const projectLibraryCommands: Record<string, CommandMeta> = {
 			await c.projectLibrary.move(validPath, destination, pk,);
 			return { moved: validPath, to: destination, };
 		},
-		usage: "dss project-library move <path> <destination-folder> [--dry-run] [--project-key KEY]",
 		description: "Move a project library file or folder into another folder.",
 		examples: ["dss project-library move python/old.py python/mylib",],
 	},
-};
+},);
 
 export type { ProjectLibraryDiffResult, };

@@ -2,6 +2,15 @@
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
 	"plugins": ["typescript", "import", "unicorn", "oxc"],
 	"ignorePatterns": ["dist/"],
+	"overrides": [
+		{
+			"files": ["tests/**", "scripts/**"],
+			"rules": {
+				"dss/no-chained-type-assertions": "off",
+				"no-restricted-imports": "off"
+			}
+		}
+	],
 	"jsPlugins": [{ "name": "dss", "specifier": "./tools/oxlint/index.ts" }],
 	"categories": {
 		"correctness": "error",
@@ -16,6 +25,17 @@
 		"dss/no-reduce-accumulator-copy": "error",
 		"dss/no-chained-type-assertions": "error",
 		"dss/no-widen-then-assert": "error",
+		"dss/no-uncoded-errors": "error",
+		"dss/no-raw-json-parse-in-resources": "error",
+		"dss/no-usage-literals": "error",
+		"dss/no-direct-process-env": "error",
+		"no-restricted-imports": ["error", {
+			"paths": [{
+				"name": "node:crypto",
+				"importNames": ["createHash"],
+				"message": "Use sha256Hex from src/utils/stable-hash.ts."
+			}]
+		}],
 		"no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
 		"no-var": "error",
 		"prefer-const": "error",

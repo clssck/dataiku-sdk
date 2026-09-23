@@ -262,7 +262,8 @@ describe("CodeEnvsResource definition provenance", () => {
 			const client = createClient(url,);
 			await expect(
 				client.codeEnvs.setDefinition("PYTHON", "my_env", DEFINITION, {
-					expectHash: stableHash(DEFINITION,),
+					// The CLI accepts either hex case; the guard must too.
+					expectHash: stableHash(DEFINITION,).toUpperCase(),
 				},),
 			).resolves.toEqual({ updated: true, },);
 			expect(putBody,).toEqual(DEFINITION,);

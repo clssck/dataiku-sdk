@@ -357,4 +357,31 @@ describe("CLI auth login credential provenance", () => {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
 	});
+
+	it("ignores non-DATAIKU keys in a project .env, so it cannot redirect the credentials file", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-env-allowlist-${Date.now()}`,);
+		const xdgDir = join(tmpDir, "xdg",);
+		const configDir = join(xdgDir, "dataiku",);
+		const hijackDir = join(tmpDir, "hijack",);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			await withCliServer((_req, res,) => {
+				sendJson(res, [{ projectKey: "LOGIN", name: "Login target", },],);
+			}, async (url,) => {
+				writeFileSync(
+					join(tmpDir, ".env",),
+					`DATAIKU_URL=${url}\nDATAIKU_API_KEY=login-key\nDSS_CONFIG_DIR=${hijackDir}\n`,
+				);
+				const { stdout, } = await dss(["auth", "login",], {
+					cwd: tmpDir,
+					env: { PATH: process.env.PATH, HOME: process.env.HOME, XDG_CONFIG_HOME: xdgDir, },
+				},);
+				expect(JSON.parse(stdout,),).toMatchObject({ saved: true, },);
+				expect(readFileExists(join(configDir, "credentials.json",),),).toBe(true,);
+				expect(readFileExists(join(hijackDir, "credentials.json",),),).toBe(false,);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
 });

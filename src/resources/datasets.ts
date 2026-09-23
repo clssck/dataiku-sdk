@@ -635,7 +635,9 @@ function tsvToCsvTransform(
 			} catch (error) {
 				// Byte-limit overflow: destroy the transform so the pipeline
 				// cancels the response and the partial file is removed.
-				callback(error instanceof Error ? error : new Error(String(error,),),);
+				callback(
+					error instanceof Error ? error : new ClientValidationError(String(error,), "internal_error",),
+				);
 				return;
 			}
 			if (done) {
@@ -661,7 +663,9 @@ function tsvToCsvTransform(
 				}
 				flushTsvStream(state, (row,) => handleRow(row, (line,) => queueLine(this, line,),),);
 			} catch (error) {
-				callback(error instanceof Error ? error : new Error(String(error,),),);
+				callback(
+					error instanceof Error ? error : new ClientValidationError(String(error,), "internal_error",),
+				);
 				return;
 			}
 			// Emit the trailing partial batch; without this the last rows of a
@@ -699,7 +703,8 @@ function isMissingUploadedFilesTargetConnection(error: unknown,): error is Datai
 	);
 }
 
-function buildDatasetCreateBody(opts: {
+/** Wire body for POST /datasets/; shared with `dataset create --plan` so the plan matches the request. */
+export function buildDatasetCreateBody(opts: {
 	projectKey: string;
 	datasetName: string;
 	connection?: string;
@@ -849,8 +854,9 @@ export function buildDatasetCloneSettings(
 		&& sourcePath !== undefined
 		&& settingsParams.path === sourcePath
 	) {
-		throw new Error(
+		throw new ClientValidationError(
 			`Refusing to clone managed dataset "${source.name}" with the same storage path. Pass a new path or allowSamePath: true.`,
+			"validation_failed",
 		);
 	}
 	return settings;

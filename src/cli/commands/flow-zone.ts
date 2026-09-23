@@ -26,10 +26,11 @@ import {
 	validateFlowZoneOrganizeObjects,
 } from "../helpers/flow-zone.js";
 import { readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
-export const flowZoneCommands: Record<string, CommandMeta> = {
+export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zone", {
 	list: {
 		handler: async (c, _a, f,) => {
 			const zones = await c.flowZones.list(f["project-key"] as string | undefined,);
@@ -38,7 +39,6 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			const object = objects.length === 1 ? objects[0] : undefined;
 			return zones.map((zone,) => flowZoneSummary(zone, object,));
 		},
-		usage: "dss flow-zone list [--summary] [--object TYPE:ID] [--project-key KEY]",
 		description: "List flow zones in a project, optionally as compact summaries.",
 		examples: ["dss flow-zone list", "dss flow-zone list --summary --object RECIPE:compute_orders",],
 	},
@@ -66,8 +66,6 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 				.filter((zone,) => flowZoneContains(zone, object,))
 				.map((zone,) => flowZoneSummary(zone, object,));
 		},
-		usage:
-			"dss flow-zone find [name-or-id] [--object TYPE:ID | --dataset DS | --recipe R | --folder F] [--project-key KEY]",
 		description: "Find flow zones by name/id or by contained flow object.",
 		examples: [
 			"dss flow-zone find ATH_SNW_MAP_FRG49",
@@ -77,10 +75,9 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 	},
 	get: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss flow-zone get <id>",);
+			requireArgs(a, 1, commandUsage("flow-zone", "get",),);
 			return c.flowZones.get(flowZoneId(a[0],), f["project-key"] as string | undefined,);
 		},
-		usage: "dss flow-zone get <id> [--project-key KEY]",
 		description: "Get a flow zone by id.",
 		examples: ["dss flow-zone get ZONE_ID",],
 	},
@@ -113,8 +110,6 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			const created = await c.flowZones.create(payload,);
 			return { created: created.id, resource: "flow-zone", ...created, };
 		},
-		usage:
-			"dss flow-zone create --name NAME [--color #RRGGBB] [--if-not-exists] [--dry-run] [--project-key KEY]",
 		description: "Create a flow zone.",
 		examples: [
 			"dss flow-zone create --name Exports",
@@ -123,7 +118,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 	},
 	update: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss flow-zone update <id> [--name NAME] [--color #RRGGBB]",);
+			requireArgs(a, 1, commandUsage("flow-zone", "update",),);
 			if (typeof f["name"] !== "string" && typeof f["color"] !== "string") {
 				throw new UsageError("--name and/or --color is required.",);
 			}
@@ -141,14 +136,12 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			}
 			return c.flowZones.update(zoneId, patch,);
 		},
-		usage:
-			"dss flow-zone update <id> [--name NAME] [--color #RRGGBB] [--dry-run] [--project-key KEY]",
 		description: "Update flow zone settings.",
 		examples: ["dss flow-zone update ZONE_ID --name Exports --color '#2ab1ac' --dry-run",],
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss flow-zone delete <id>",);
+			requireArgs(a, 1, commandUsage("flow-zone", "delete",),);
 			const zoneId = flowZoneId(a[0],);
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() =>
@@ -162,7 +155,6 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			await c.flowZones.delete(zoneId, f["project-key"] as string | undefined,);
 			return { deleted: zoneId, resource: "flow-zone", };
 		},
-		usage: "dss flow-zone delete <id> [--if-exists] [--dry-run] [--project-key KEY]",
 		description: "Delete a flow zone. DSS moves zone items back to the default zone.",
 		examples: [
 			"dss flow-zone delete ZONE_ID --dry-run",
@@ -175,7 +167,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			const zoneId = a[0] ? flowZoneId(a[0],) : await resolveFlowZoneIdFromFlags(c, f, pk,);
 			if (!zoneId) {
 				throw new UsageError(
-					"A zone id or --zone/--zone-id is required. Usage: dss flow-zone move <id> [--dataset DS] [--recipe R] [--folder F] [--object TYPE:ID]",
+					`A zone id or --zone/--zone-id is required. Usage: ${commandUsage("flow-zone", "move",)}`,
 				);
 			}
 			const items = flowZoneMoveItems(f,);
@@ -196,8 +188,6 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			}
 			return c.flowZones.moveItems(zoneId, items, pk,);
 		},
-		usage:
-			"dss flow-zone move [id] [--zone ZONE|--zone-id ID] [--dataset DS[,DS2]] [--recipe R] [--folder F] [--object TYPE:ID] [--dry-run] [--project-key KEY]",
 		description:
 			"Move datasets, recipes, managed folders, or other flow objects into a zone by id or --zone name.",
 		examples: [
@@ -216,14 +206,12 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			],);
 			return flowZonePlanFromZones(zones, topologyFingerprint,);
 		},
-		usage: "dss flow-zone plan [--project-key KEY]",
 		description: "Export current visual flow-zone organization as an organize-compatible plan.",
 		examples: ["dss flow-zone plan --project-key MYPROJ",],
 	},
 	organize: {
 		handler: async (c, _a, f,) => {
-			const usage =
-				"dss flow-zone organize (--data JSON|--data-file PATH|--file PATH|--stdin) [--sync] [--validate-objects] [--dry-run] [--project-key KEY]";
+			const usage = commandUsage("flow-zone", "organize",);
 			const pk = f["project-key"] as string | undefined;
 			const plan = readFlowZoneOrganizePlan(f, usage,);
 			const sync = f["sync"] === true;
@@ -348,8 +336,6 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 				pruned,
 			};
 		},
-		usage:
-			"dss flow-zone organize (--data JSON|--data-file PATH|--file PATH|--stdin) [--sync] [--validate-objects] [--dry-run] [--project-key KEY]",
 		description:
 			"Create/update flow zones and move objects from a declarative visual organization plan.",
 		examples: [
@@ -362,8 +348,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = {
 			const id = a[0] === undefined ? undefined : flowZoneId(a[0],);
 			return c.flowZones.graph(id, f["project-key"] as string | undefined,);
 		},
-		usage: "dss flow-zone graph [<id>] [--project-key KEY]",
 		description: "Get the full flow graph or the graph for a single flow zone.",
 		examples: ["dss flow-zone graph", "dss flow-zone graph ZONE_ID",],
 	},
-};
+},);

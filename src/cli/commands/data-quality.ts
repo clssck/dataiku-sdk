@@ -2,6 +2,7 @@ import { deepMerge, } from "../../utils/deep-merge.js";
 import { num, parseBooleanOption, requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 /**
@@ -17,37 +18,34 @@ function resultReportsOk(result: { outcome?: string; status?: string; },): boole
 	return verdicts.length > 0 && verdicts.every((value,) => value === "OK");
 }
 
-export const dataQualityCommands: Record<string, CommandMeta> = {
+export const dataQualityCommands: Record<string, CommandMeta> = withUsage("data-quality", {
 	rules: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss data-quality rules <dataset>",);
+			requireArgs(a, 1, commandUsage("data-quality", "rules",),);
 			return c.dataQuality.listRules(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss data-quality rules <dataset> [--project-key KEY]",
 		description: "List data quality rules for a dataset.",
 		examples: ["dss data-quality rules orders",],
 	},
 	"get-rule": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 2, "dss data-quality get-rule <dataset> <rule-id>",);
+			requireArgs(a, 2, commandUsage("data-quality", "get-rule",),);
 			return c.dataQuality.getRule(a[0], a[1], f["project-key"] as string | undefined,);
 		},
-		usage: "dss data-quality get-rule <dataset> <rule-id> [--project-key KEY]",
 		description: "Get one data quality rule by id.",
 		examples: ["dss data-quality get-rule orders RULE_ID",],
 	},
 	status: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss data-quality status <dataset>",);
+			requireArgs(a, 1, commandUsage("data-quality", "status",),);
 			return c.dataQuality.status(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss data-quality status <dataset> [--project-key KEY]",
 		description: "Get the aggregate data quality status for a dataset.",
 		examples: ["dss data-quality status orders",],
 	},
 	"create-rule": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss data-quality create-rule <dataset> --data JSON",);
+			requireArgs(a, 1, commandUsage("data-quality", "create-rule",),);
 			const config = requiredJsonInput(f, "--data, --data-file, or --stdin is required.",);
 			const pk = f["project-key"] as string | undefined;
 			const identity = typeof config.id === "string"
@@ -92,8 +90,6 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 				...created,
 			};
 		},
-		usage:
-			"dss data-quality create-rule <dataset> (--data JSON|--data-file PATH|--stdin) [--if-not-exists] [--dry-run] [--project-key KEY]",
 		description: "Create a data quality rule from raw rule config.",
 		examples: [
 			'dss data-quality create-rule orders --data \'{"type":"RecordCountInRangeRule","softMinimum":1,"softMinimumEnabled":true,"displayName":"Has rows"}\' --dry-run',
@@ -101,7 +97,7 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 	},
 	"update-rule": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 2, "dss data-quality update-rule <dataset> <rule-id> --data JSON",);
+			requireArgs(a, 2, commandUsage("data-quality", "update-rule",),);
 			const data = requiredJsonInput(f, "--data, --data-file, or --stdin is required.",);
 			if (executionMode(f,).dryRun) {
 				const current = await c.dataQuality.getRule(
@@ -125,8 +121,6 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage:
-			"dss data-quality update-rule <dataset> <rule-id> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description: "Update a data quality rule via GET-before-PUT merge.",
 		examples: [
 			"dss data-quality update-rule orders RULE_ID --data '{\"enabled\":false}' --dry-run",
@@ -134,7 +128,7 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 	},
 	"delete-rule": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 2, "dss data-quality delete-rule <dataset> <rule-id>",);
+			requireArgs(a, 2, commandUsage("data-quality", "delete-rule",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.dataQuality.getRule(a[0], a[1], pk,));
@@ -153,41 +147,35 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 			await c.dataQuality.deleteRule(a[0], a[1], pk,);
 			return { deleted: a[1], dataset: a[0], resource: "data-quality", };
 		},
-		usage:
-			"dss data-quality delete-rule <dataset> <rule-id> [--if-exists] [--dry-run] [--project-key KEY]",
 		description: "Delete a data quality rule.",
 		examples: ["dss data-quality delete-rule orders RULE_ID --dry-run",],
 	},
 	"status-by-partition": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss data-quality status-by-partition <dataset>",);
+			requireArgs(a, 1, commandUsage("data-quality", "status-by-partition",),);
 			return c.dataQuality.statusByPartition(a[0], {
 				includeAllPartitions: f["include-all-partitions"] === true,
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage:
-			"dss data-quality status-by-partition <dataset> [--include-all-partitions] [--project-key KEY]",
 		description: "Get data quality status by dataset partition.",
 		examples: ["dss data-quality status-by-partition orders --include-all-partitions",],
 	},
 	"last-results": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss data-quality last-results <dataset>",);
+			requireArgs(a, 1, commandUsage("data-quality", "last-results",),);
 			return c.dataQuality.lastResults(a[0], {
 				partition: f["partition"] as string | undefined,
 				ruleId: f["rule-id"] as string | undefined,
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage:
-			"dss data-quality last-results <dataset> [--partition P] [--rule-id ID] [--project-key KEY]",
 		description: "Get latest data quality rule results for a dataset.",
 		examples: ["dss data-quality last-results orders",],
 	},
 	"assert-results": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss data-quality assert-results <dataset>",);
+			requireArgs(a, 1, commandUsage("data-quality", "assert-results",),);
 			const ruleId = f["rule-id"] as string | undefined;
 			const pk = f["project-key"] as string | undefined;
 			const results = await c.dataQuality.lastResults(a[0], { ruleId, projectKey: pk, },);
@@ -210,7 +198,6 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 				...(selected.length === 0 ? { reason: "no_results", } : {}),
 			};
 		},
-		usage: "dss data-quality assert-results <dataset> [--rule-id ID] [--project-key KEY]",
 		description:
 			"Assert the latest data quality results: at least one selected rule must exist and every selected result must report OK. Returns { satisfied, checked, failed } with failed rule ids/outcomes only; a failed assertion exits 4 with assertion_failed.",
 		examples: [
@@ -220,7 +207,7 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 	},
 	history: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss data-quality history <dataset>",);
+			requireArgs(a, 1, commandUsage("data-quality", "history",),);
 			return c.dataQuality.history(a[0], {
 				minTimestamp: num(f["min-timestamp"], "--min-timestamp",),
 				maxTimestamp: num(f["max-timestamp"], "--max-timestamp",),
@@ -230,8 +217,6 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage:
-			"dss data-quality history <dataset> [--rule-id ID] [--min-timestamp MS] [--max-timestamp MS] [--results-per-page N] [--page N] [--project-key KEY]",
 		description: "Get data quality rule execution history.",
 		examples: ["dss data-quality history orders --results-per-page 100",],
 	},
@@ -241,7 +226,6 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 				onlyMonitored: parseBooleanOption(f["only-monitored"], "--only-monitored",),
 				projectKey: f["project-key"] as string | undefined,
 			},),
-		usage: "dss data-quality project-status [--only-monitored true|false] [--project-key KEY]",
 		description: "Get project-level data quality status by dataset.",
 		examples: ["dss data-quality project-status --only-monitored false",],
 	},
@@ -252,14 +236,12 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 				maxTimestamp: num(f["max-timestamp"], "--max-timestamp",),
 				projectKey: f["project-key"] as string | undefined,
 			},),
-		usage:
-			"dss data-quality project-timeline [--min-timestamp MS] [--max-timestamp MS] [--project-key KEY]",
 		description: "Get project-level data quality timeline aggregates.",
 		examples: ["dss data-quality project-timeline --min-timestamp 1714521600000",],
 	},
 	compute: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss data-quality compute <dataset>",);
+			requireArgs(a, 1, commandUsage("data-quality", "compute",),);
 			const pk = f["project-key"] as string | undefined;
 			const options = {
 				partition: f["partition"] as string | undefined,
@@ -291,8 +273,6 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 			if (f["wait"] === true) return c.dataQuality.computeRulesAndWait(a[0], options,);
 			return c.dataQuality.computeRules(a[0], options,);
 		},
-		usage:
-			"dss data-quality compute <dataset> [--partition P] [--rule-id ID] [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
 		description:
 			"Start data quality rule computation, optionally waiting on the returned DSS future.",
 		examples: [
@@ -300,4 +280,4 @@ export const dataQualityCommands: Record<string, CommandMeta> = {
 			"dss data-quality compute orders --wait",
 		],
 	},
-};
+},);

@@ -1,7 +1,7 @@
 import { expect, it, } from "bun:test";
-import { mkdtemp, rm, writeFile, } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile, } from "node:fs/promises";
 import { tmpdir, } from "node:os";
-import { basename, join, resolve, } from "node:path";
+import { basename, dirname, join, resolve, } from "node:path";
 
 async function lint(rule: string, cases: Record<string, string>,): Promise<string[]> {
 	const directory = await mkdtemp(join(tmpdir(), "dss-lint-",),);
@@ -16,7 +16,9 @@ async function lint(rule: string, cases: Record<string, string>,): Promise<strin
 			},),
 		);
 		for (const [name, code,] of Object.entries(cases,)) {
-			await writeFile(join(directory, name + ".ts",), code,);
+			const file = join(directory, `${name}.ts`,);
+			await mkdir(dirname(file,), { recursive: true, },);
+			await writeFile(file, code,);
 		}
 		const child = Bun.spawn([
 			process.execPath,
@@ -83,4 +85,46 @@ it("detects repeated accumulator copies but permits mutation and shadowed names"
 			mutate: "export const result = [1].reduce((acc, x) => Object.assign(acc, {x}), {});",
 		},),
 	).toEqual(["assign.ts", "concat.ts", "from.ts", "slice.ts",],);
+});
+
+it("requires coded errors in src, including promise rejections", async () => {
+	expect(
+		await lint("no-uncoded-errors", {
+			"src/thrown": "export function f() { throw new Error('x'); }",
+			"src/typed": "export function f() { throw new TypeError('x'); }",
+			"src/rejected": "export const p = new Promise((_r, reject) => reject(new Error('x')));",
+			"src/coded": "class Coded extends Error {} export function f() { throw new Coded('x'); }",
+			"src/wrapped": "export const e = (x: unknown) => x instanceof Error ? x : new Error(String(x));",
+			"src/promise": "export const p = Promise.reject(new RangeError('x'));",
+			"src/callback": "export function f(cb: (e: Error) => void) { cb(new Error('x')); }",
+			"src/check": "export const isErr = (x: unknown) => x instanceof Error;",
+			"outside": "export function f() { throw new Error('x'); }",
+		},),
+	).toEqual(["callback.ts", "promise.ts", "rejected.ts", "thrown.ts", "typed.ts", "wrapped.ts",],);
+});
+
+it("allows JSON.parse only in the try block of a try/catch in resources", async () => {
+	expect(
+		await lint("no-raw-json-parse-in-resources", {
+			"src/resources/bare": "export const v = JSON.parse('1');",
+			"src/resources/guarded":
+				"export function f() { try { return JSON.parse('1'); } catch { return 0; } }",
+			"src/resources/incatch":
+				"export function f() { try { return 1; } catch { return JSON.parse('1'); } }",
+			"src/resources/finallyonly":
+				"export function f() { try { return JSON.parse('1'); } finally { void 0; } }",
+			"src/cli/elsewhere": "export const v = JSON.parse('1');",
+		},),
+	).toEqual(["bare.ts", "finallyonly.ts", "incatch.ts",],);
+});
+
+it("confines process.env reads to the environment-owning modules", async () => {
+	expect(
+		await lint("no-direct-process-env", {
+			"src/cli/env": "export const v = process.env.DATAIKU_URL;",
+			"src/cli/other": "export const v = process.env.DATAIKU_URL;",
+			"src/cli/disabled":
+				"// oxlint-disable-next-line dss/no-direct-process-env -- reason\nexport const v = process.env.X;",
+		},),
+	).toEqual(["other.ts",],);
 });

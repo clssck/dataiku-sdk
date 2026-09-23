@@ -2,35 +2,35 @@ import { deepMerge, } from "../../utils/deep-merge.js";
 import { jsonInput, textInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
-export const wikiCommands: Record<string, CommandMeta> = {
+export const wikiCommands: Record<string, CommandMeta> = withUsage("wiki", {
 	settings: {
 		handler: (c, _a, f,) => c.wiki.settings(f["project-key"] as string | undefined,),
-		usage: "dss wiki settings [--project-key KEY]",
 		description: "Get project wiki settings and taxonomy.",
 		examples: ["dss wiki settings",],
 	},
 	list: {
 		handler: (c, _a, f,) => c.wiki.list(f["project-key"] as string | undefined,),
-		usage: "dss wiki list [--project-key KEY]",
 		description: "List wiki articles by walking the taxonomy.",
 		examples: ["dss wiki list",],
 	},
 	get: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss wiki get <id-or-name>",);
+			requireArgs(a, 1, commandUsage("wiki", "get",),);
 			return c.wiki.get(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss wiki get <id-or-name> [--project-key KEY]",
 		description: "Get a wiki article including markdown body.",
 		examples: ["dss wiki get ARTICLE_ID",],
 	},
 	create: {
 		handler: async (c, _a, f,) => {
 			const name = f["name"] as string | undefined;
-			if (!name) throw new UsageError("--name is required. Usage: dss wiki create --name NAME",);
+			if (!name) {
+				throw new UsageError(`--name is required. Usage: ${commandUsage("wiki", "create",)}`,);
+			}
 			const content = textInput(f,);
 			const pk = f["project-key"] as string | undefined;
 			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
@@ -61,8 +61,6 @@ export const wikiCommands: Record<string, CommandMeta> = {
 			},);
 			return { created: created.article.id, resource: "wiki", ...created, };
 		},
-		usage:
-			"dss wiki create --name NAME [--parent ID] [--content TEXT|--file PATH] [--if-not-exists] [--dry-run] [--project-key KEY]",
 		description: "Create a wiki article, optionally with markdown content.",
 		examples: [
 			"dss wiki create --name 'Agent notes' --content '# Notes'",
@@ -74,7 +72,7 @@ export const wikiCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss wiki update <id-or-name> [--name NAME] [--content TEXT|--file PATH|--data JSON]",
+				commandUsage("wiki", "update",),
 			);
 			const data = jsonInput(f,);
 			const content = textInput(f,);
@@ -105,14 +103,12 @@ export const wikiCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage:
-			"dss wiki update <id-or-name> (--name NAME | --content TEXT|--file PATH|--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description: "Update wiki article metadata/body via merge.",
 		examples: ["dss wiki update ARTICLE_ID --content '# Updated' --dry-run",],
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss wiki delete <id-or-name>",);
+			requireArgs(a, 1, commandUsage("wiki", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.wiki.get(a[0], pk,));
@@ -124,8 +120,7 @@ export const wikiCommands: Record<string, CommandMeta> = {
 			await c.wiki.delete(a[0], pk,);
 			return { deleted: a[0], resource: "wiki", };
 		},
-		usage: "dss wiki delete <id-or-name> [--if-exists] [--dry-run] [--project-key KEY]",
 		description: "Delete a wiki article.",
 		examples: ["dss wiki delete ARTICLE_ID --dry-run",],
 	},
-};
+},);

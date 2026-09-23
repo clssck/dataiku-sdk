@@ -1,6 +1,7 @@
 import { requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { planResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -10,19 +11,17 @@ function collectionEndpoint(dataCollectionId: string, suffix = "",): string {
 	return `/public/api/data-collections/${encodeURIComponent(dataCollectionId,)}${suffix}`;
 }
 
-export const dataCollectionCommands: Record<string, CommandMeta> = {
+export const dataCollectionCommands: Record<string, CommandMeta> = withUsage("data-collection", {
 	list: {
 		handler: (c,) => c.dataCollections.list(),
-		usage: "dss data-collection list",
 		description: "List data collections on which the API key has READ privilege.",
 		examples: ["dss data-collection list",],
 	},
 	get: {
 		handler: (c, a,) => {
-			requireArgs(a, 1, "dss data-collection get <dataCollectionId>",);
+			requireArgs(a, 1, commandUsage("data-collection", "get",),);
 			return c.dataCollections.get(a[0],);
 		},
-		usage: "dss data-collection get <dataCollectionId>",
 		description: "Get collection settings. Permissions are omitted for non-admins.",
 		examples: ["dss data-collection get OjVsTQ3O",],
 	},
@@ -47,7 +46,6 @@ export const dataCollectionCommands: Record<string, CommandMeta> = {
 				body as Parameters<typeof c.dataCollections.create>[0],
 			);
 		},
-		usage: "dss data-collection create (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description: "Create a collection (creator becomes admin; requires mayCreateDataCollections).",
 		examples: [
 			'dss data-collection create --data \'{"displayName":"My Collection"}\'',
@@ -58,7 +56,7 @@ export const dataCollectionCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss data-collection settings-set <dataCollectionId> (--data JSON|--data-file PATH|--stdin) [--dry-run]",
+				commandUsage("data-collection", "settings-set",),
 			);
 			const settings = requiredJsonInput(
 				f,
@@ -82,8 +80,6 @@ export const dataCollectionCommands: Record<string, CommandMeta> = {
 			);
 			return { updated: a[0], resource: "data-collection", ...updated, };
 		},
-		usage:
-			"dss data-collection settings-set <dataCollectionId> (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description:
 			"Update collection settings; only send settings obtained through get. Admin required.",
 		examples: [
@@ -92,7 +88,7 @@ export const dataCollectionCommands: Record<string, CommandMeta> = {
 	},
 	delete: {
 		validate: (a,) => {
-			const usage = "dss data-collection delete <dataCollectionId> [--dry-run]";
+			const usage = commandUsage("data-collection", "delete",);
 			requireArgs(a, 1, usage,);
 			if (a[0].trim().length === 0) {
 				throw new UsageError(
@@ -115,16 +111,14 @@ export const dataCollectionCommands: Record<string, CommandMeta> = {
 			await c.dataCollections.delete(a[0],);
 			return { deleted: a[0], resource: "data-collection", };
 		},
-		usage: "dss data-collection delete <dataCollectionId> [--dry-run]",
 		description: "Permanently delete a collection. Admin required.",
 		examples: ["dss data-collection delete OjVsTQ3O --dry-run",],
 	},
 	"list-objects": {
 		handler: (c, a,) => {
-			requireArgs(a, 1, "dss data-collection list-objects <dataCollectionId>",);
+			requireArgs(a, 1, commandUsage("data-collection", "list-objects",),);
 			return c.dataCollections.listObjects(a[0],);
 		},
-		usage: "dss data-collection list-objects <dataCollectionId>",
 		description: "List the objects in a collection.",
 		examples: ["dss data-collection list-objects OjVsTQ3O",],
 	},
@@ -138,7 +132,7 @@ export const dataCollectionCommands: Record<string, CommandMeta> = {
 				?? (typeof object.dataCollectionId === "string" ? object.dataCollectionId : undefined);
 			if (!collectionId) {
 				throw new UsageError(
-					"Usage: dss data-collection add-object <dataCollectionId> (--data JSON|--data-file PATH|--stdin)",
+					`Usage: ${commandUsage("data-collection", "add-object",)}`,
 				);
 			}
 			const reference = { ...object, };
@@ -161,8 +155,6 @@ export const dataCollectionCommands: Record<string, CommandMeta> = {
 			);
 			return { added: reference.id, dataCollectionId: collectionId, resource: "data-collection", };
 		},
-		usage:
-			"dss data-collection add-object <dataCollectionId> (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description:
 			"Add an object (e.g. {type:'DATASET',projectKey:'K',id:'name'}) to a collection. Contributor required.",
 		examples: [
@@ -174,7 +166,7 @@ export const dataCollectionCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				3,
-				"dss data-collection remove-dataset <dataCollectionId> <projectKey> <datasetName> [--dry-run]",
+				commandUsage("data-collection", "remove-dataset",),
 			);
 			if (executionMode(f,).dryRun) {
 				return planResult("data-collection", "remove-dataset", {
@@ -196,9 +188,7 @@ export const dataCollectionCommands: Record<string, CommandMeta> = {
 			await c.dataCollections.removeDataset(a[0], a[1], a[2],);
 			return { removed: a[2], projectKey: a[1], dataCollectionId: a[0], resource: "data-collection", };
 		},
-		usage:
-			"dss data-collection remove-dataset <dataCollectionId> <projectKey> <datasetName> [--dry-run]",
 		description: "Remove a dataset from a collection. Contributor required.",
 		examples: ["dss data-collection remove-dataset OjVsTQ3O MYPROJECT DATASET1",],
 	},
-};
+},);

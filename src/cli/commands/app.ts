@@ -33,24 +33,21 @@ import {
 	VISUAL_UI_GATE,
 } from "../helpers/app-successor.js";
 import { CommandResultFailure, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, requireNoArgs, UsageError, } from "../usage.js";
 
-const CREATE_INSTANCE_USAGE =
-	"dss app create-instance <appId> (--data JSON|--data-file PATH|--stdin) [--wait] [--timeout MS] [--poll-interval MS]";
-const MANIFEST_VERSION_USAGE = "dss app manifest-version [--project-key KEY]";
-const SET_MANIFEST_VERSION_USAGE =
-	"dss app set-manifest-version (--manifest-version V|--version-notes NOTES) [--expect-hash SHA256] [--dry-run] [--project-key KEY]";
-const CREATE_SUCCESSOR_USAGE =
-	"dss app create-successor-instance <appId> --from KEY [--to KEY] [--name NAME] [--copy-permissions] [--timeout MS] [--poll-interval MS] [--dry-run] [--record-cleanup PATH]";
-const SUCCESSOR_PREFLIGHT_USAGE =
-	"dss app successor-preflight <appId> --from KEY [--to KEY] [--name NAME] [--copy-permissions]";
-const VERIFY_INSTANCE_USAGE =
-	"dss app verify-instance <appId> --project-key KEY [--expect-version V]";
-const DELETE_INSTANCE_USAGE =
-	"dss app delete-instance --project-key KEY [--future-id ID] [--expect-project-incarnation SHA256] [--unconfirmed-creation] [--timeout MS] [--poll-interval MS]";
+const CREATE_INSTANCE_USAGE = commandUsage("app", "create-instance",);
+const MANIFEST_VERSION_USAGE = commandUsage("app", "manifest-version",);
+const SET_MANIFEST_VERSION_USAGE = commandUsage("app", "set-manifest-version",);
+const CREATE_SUCCESSOR_USAGE = commandUsage("app", "create-successor-instance",);
+const SUCCESSOR_PREFLIGHT_USAGE = commandUsage("app", "successor-preflight",);
+const VERIFY_INSTANCE_USAGE = commandUsage("app", "verify-instance",);
+const DELETE_INSTANCE_USAGE = commandUsage("app", "delete-instance",);
 const CREATE_INSTANCE_INDETERMINATE_REMEDIATION =
-	"DSS may have accepted the creation, but no future ID or project incarnation authorizes cleanup. Inspect `dss app instances <appId>` and DSS task history; delete only after creation is known terminal and the target identity is verified.";
+	`DSS may have accepted the creation, but no future ID or project incarnation authorizes cleanup. Inspect \`${
+		commandUsage("app", "instances",)
+	}\` and DSS task history; delete only after creation is known terminal and the target identity is verified.`;
 const CREATE_INSTANCE_REJECTED_REMEDIATION =
 	"DSS refused the creation request, so no instance project was created: fix the reported problem and retry. If the target key itself is the problem, rerun create-instance with targetProjectKey omitted to generate a fresh random key (the generated key is a new key, never the rejected one).";
 const DELETE_INSTANCE_FUTURE_REMEDIATION =
@@ -139,28 +136,25 @@ function optionalSuccessorTarget(
 	return value.trim();
 }
 
-export const appCommands: Record<string, CommandMeta> = {
+export const appCommands: Record<string, CommandMeta> = withUsage("app", {
 	list: {
 		handler: (c,) => c.applications.listApps(),
-		usage: "dss app list",
 		description: "List all Dataiku App templates.",
 		examples: ["dss app list",],
 	},
 	manifest: {
 		handler: (c, a,) => {
-			requireArgs(a, 1, "dss app manifest <appId>",);
+			requireArgs(a, 1, commandUsage("app", "manifest",),);
 			return c.applications.getAppManifest(a[0],);
 		},
-		usage: "dss app manifest <appId>",
 		description: "Get the manifest of a Dataiku App template.",
 		examples: ["dss app manifest my-app",],
 	},
 	instances: {
 		handler: (c, a,) => {
-			requireArgs(a, 1, "dss app instances <appId>",);
+			requireArgs(a, 1, commandUsage("app", "instances",),);
 			return c.applications.listInstances(a[0],);
 		},
-		usage: "dss app instances <appId>",
 		description: "List instances created from a Dataiku App template.",
 		examples: ["dss app instances my-app",],
 	},
@@ -169,7 +163,6 @@ export const appCommands: Record<string, CommandMeta> = {
 			requireNoArgs(a, MANIFEST_VERSION_USAGE,);
 			return c.applications.getManifestVersion(f["project-key"] as string | undefined,);
 		},
-		usage: MANIFEST_VERSION_USAGE,
 		description:
 			"Read the app-manifest version of a Dataiku App template or app-instance project: the raw persisted string only, never a synthesized default.",
 		examples: ["dss app manifest-version --project-key MYAPP_TEMPLATE",],
@@ -200,7 +193,6 @@ export const appCommands: Record<string, CommandMeta> = {
 				requiredExternalGates: [VISUAL_UI_GATE,],
 			};
 		},
-		usage: VERIFY_INSTANCE_USAGE,
 		description:
 			"Read-only API readiness check for an app instance: project type, registration under the app, authoritative raw manifest version, and manifest reference validation. The visual UI remains an explicit external SSO gate.",
 		examples: [
@@ -475,7 +467,6 @@ export const appCommands: Record<string, CommandMeta> = {
 					: {}),
 			};
 		},
-		usage: CREATE_INSTANCE_USAGE,
 		description:
 			"Create an app instance from a Dataiku App template, optionally waiting for the creation future. Omit targetProjectKey to generate a random APP_ key (the default display name); explicit keys are trimmed and must be absent.",
 		examples: [
@@ -497,7 +488,6 @@ export const appCommands: Record<string, CommandMeta> = {
 				dryRun: true,
 			}, SUCCESSOR_PREFLIGHT_USAGE,);
 		},
-		usage: SUCCESSOR_PREFLIGHT_USAGE,
 		description:
 			"Run every read-only successor gate before changing the template version: validate the template, verify the predecessor, prove an explicit --to target absent, and optionally snapshot the predecessor ACL. Omit --to to preflight generated-key mode, where no target exists yet and nothing is probed or allocated.",
 		examples: [
@@ -521,7 +511,6 @@ export const appCommands: Record<string, CommandMeta> = {
 				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
 			}, CREATE_SUCCESSOR_USAGE,);
 		},
-		usage: CREATE_SUCCESSOR_USAGE,
 		description:
 			"Create a new app instance from the current template version alongside an existing instance. An explicit --to keeps the strict caller-chosen-key contract (proven absent before the single POST); omit --to to generate the successor key once during apply and let the terminal future name it. The predecessor is never modified and is retired separately and deliberately; the creation future is always awaited.",
 		examples: [
@@ -532,10 +521,9 @@ export const appCommands: Record<string, CommandMeta> = {
 	},
 	"instance-manifest": {
 		handler: (c, a, f,) => {
-			requireNoArgs(a, "dss app instance-manifest [--project-key KEY]",);
+			requireNoArgs(a, commandUsage("app", "instance-manifest",),);
 			return c.applications.getInstanceManifest(f["project-key"] as string | undefined,);
 		},
-		usage: "dss app instance-manifest [--project-key KEY]",
 		description: "Get the app manifest of a Dataiku App template or app-instance project.",
 		examples: ["dss app instance-manifest --project-key MYINSTANCE",],
 	},
@@ -543,7 +531,7 @@ export const appCommands: Record<string, CommandMeta> = {
 		handler: (c, a, f,) => {
 			requireNoArgs(
 				a,
-				"dss app save-instance-manifest (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
+				commandUsage("app", "save-instance-manifest",),
 			);
 			const manifest = requiredJsonInput(
 				f,
@@ -551,8 +539,6 @@ export const appCommands: Record<string, CommandMeta> = {
 			);
 			return c.applications.saveInstanceManifest(manifest, f["project-key"] as string | undefined,);
 		},
-		usage:
-			"dss app save-instance-manifest (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
 		description:
 			"Save the app manifest of a Dataiku App template project (homepage sections, use-as-recipe settings). Classic app-instance project manifests are read-only through this endpoint.",
 		examples: [
@@ -631,7 +617,6 @@ export const appCommands: Record<string, CommandMeta> = {
 				uiPublicationVerified: false,
 			};
 		},
-		usage: SET_MANIFEST_VERSION_USAGE,
 		description:
 			"Set the raw app-manifest version and/or version notes of a Dataiku App template through the public app-manifest endpoint. This is not a publish transaction: the persisted string becomes the template version that new instances inherit, and the visual UI remains an external gate.",
 		examples: [
@@ -643,7 +628,7 @@ export const appCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			requireNoArgs(
 				a,
-				"dss app validate-manifest [--data JSON|--data-file PATH|--stdin] [--project-key KEY]",
+				commandUsage("app", "validate-manifest",),
 			);
 			const payload = jsonInput(f,);
 			const manifest = payload ?? await c.applications.getInstanceManifest(
@@ -663,7 +648,6 @@ export const appCommands: Record<string, CommandMeta> = {
 			}
 			return result;
 		},
-		usage: "dss app validate-manifest [--data JSON|--data-file PATH|--stdin] [--project-key KEY]",
 		description:
 			"Validate an app manifest against source-verifiable reference data (scenario IDs, managed-folder IDs, variable names). Without a payload, reads the target project's app manifest.",
 		examples: [
@@ -673,15 +657,14 @@ export const appCommands: Record<string, CommandMeta> = {
 	},
 	"compare-manifest": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss app compare-manifest <appId> --project-key KEY",);
+			requireArgs(a, 1, commandUsage("app", "compare-manifest",),);
 			const projectKey = requiredStringFlag(
 				f,
 				"project-key",
-				"dss app compare-manifest <appId> --project-key KEY",
+				commandUsage("app", "compare-manifest",),
 			);
 			return c.applications.compareAppManifest(a[0], projectKey,);
 		},
-		usage: "dss app compare-manifest <appId> --project-key KEY",
 		description:
 			"Compare a Dataiku App template with the target app instance (normalized hashes and deterministic path-level differences; only project identity fields are omitted).",
 		examples: ["dss app compare-manifest my-app --project-key MYINSTANCE",],
@@ -887,7 +870,6 @@ export const appCommands: Record<string, CommandMeta> = {
 				pollCount: waited.pollCount,
 			};
 		},
-		usage: DELETE_INSTANCE_USAGE,
 		description:
 			"Delete an app-instance project (destructive: removes the instance project). With --future-id, requires the recorded project-incarnation hash, waits without aborting, verifies that the terminal future reports this target, rechecks the incarnation, then deletes.",
 		examples: [
@@ -900,18 +882,16 @@ export const appCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				3,
-				"dss app business-app-instance-permissions <businessAppId> <instanceProjectKey> <userLogin>",
+				commandUsage("app", "business-app-instance-permissions",),
 			);
 			return c.applications.getBusinessAppInstanceUserPermissions(a[0], a[1], a[2],);
 		},
-		usage:
-			"dss app business-app-instance-permissions <businessAppId> <instanceProjectKey> <userLogin>",
 		description: "Get a user's effective permissions on a Business App instance.",
 		examples: ["dss app business-app-instance-permissions my-bapp INSTANCEPROJ alice",],
 	},
 	"permissions-snapshot": {
 		handler: async (c, _a, f,) => {
-			const usage = "dss app permissions-snapshot --output PATH [--project-key KEY]";
+			const usage = commandUsage("app", "permissions-snapshot",);
 			requireNoArgs(_a, usage,);
 			const output = requiredStringFlag(f, "output", usage,);
 			const projectKey = c.resolveProjectKey(f["project-key"] as string | undefined,);
@@ -935,7 +915,6 @@ export const appCommands: Record<string, CommandMeta> = {
 				capturedAt: snapshot.capturedAt,
 			};
 		},
-		usage: "dss app permissions-snapshot --output PATH [--project-key KEY]",
 		description:
 			"Snapshot a project's access-control permissions to a local owner-only JSON file with a canonical integrity hash; commit it only when repository policy permits.",
 		examples: [
@@ -944,7 +923,7 @@ export const appCommands: Record<string, CommandMeta> = {
 	},
 	"permissions-diff": {
 		handler: async (c, _a, f,) => {
-			const usage = "dss app permissions-diff --file PATH [--project-key KEY]";
+			const usage = commandUsage("app", "permissions-diff",);
 			requireNoArgs(_a, usage,);
 			const file = requiredStringFlag(f, "file", usage,);
 			const snapshot = readAppPermissionsSnapshot(file,);
@@ -969,14 +948,13 @@ export const appCommands: Record<string, CommandMeta> = {
 				differences: diff.differences,
 			};
 		},
-		usage: "dss app permissions-diff --file PATH [--project-key KEY]",
 		description:
 			"Compare a permission snapshot file against the live project permissions, returning deterministic path-level differences.",
 		examples: ["dss app permissions-diff --file app-permissions.json --project-key MYINSTANCE",],
 	},
 	"permissions-restore": {
 		handler: async (c, _a, f,) => {
-			const usage = "dss app permissions-restore --file PATH [--project-key KEY] [--dry-run]";
+			const usage = commandUsage("app", "permissions-restore",);
 			requireNoArgs(_a, usage,);
 			const file = requiredStringFlag(f, "file", usage,);
 			const snapshot = readAppPermissionsSnapshot(file,);
@@ -1030,11 +1008,10 @@ export const appCommands: Record<string, CommandMeta> = {
 				applied: true,
 			};
 		},
-		usage: "dss app permissions-restore --file PATH [--project-key KEY] [--dry-run]",
 		description:
 			"Restore a project's permissions from a snapshot file: hash-verifies the file, refuses cross-project restores, reads before writing, only PUTs when changed, and refetches to verify the result.",
 		examples: [
 			"dss app permissions-restore --file app-permissions.json --project-key MYINSTANCE --dry-run",
 		],
 	},
-};
+},);

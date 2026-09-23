@@ -2,6 +2,7 @@ import { normalizeSecretKey, sanitizeSecrets, } from "../../utils/secret-sanitiz
 import { requiredJsonInput, splitCsvFlag, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -87,27 +88,25 @@ function requireLogin(value: string | undefined, usage: string,): string {
 	return trimmed;
 }
 
-export const userCommands: Record<string, CommandMeta> = {
+export const userCommands: Record<string, CommandMeta> = withUsage("user", {
 	list: {
 		handler: (c, _a, f,) => c.users.list(f["connected"] === true ? { connected: true, } : undefined,),
-		usage: "dss user list [--connected]",
 		description:
 			"List DSS users (admin). --connected reports currently connected users via WebSockets, which may under-report when WebSockets are disabled.",
 		examples: ["dss user list", "dss user list --connected",],
 	},
 	get: {
 		handler: (c, a,) => {
-			const usage = "dss user get <login>";
+			const usage = commandUsage("user", "get",);
 			requireArgs(a, 1, usage,);
 			return c.users.get(requireLogin(a[0], usage,),);
 		},
-		usage: "dss user get <login>",
 		description: "Get a DSS user (admin).",
 		examples: ["dss user get admin",],
 	},
 	create: {
 		handler: async (c, _a, f,) => {
-			const usage = "dss user create (--data JSON|--data-file PATH|--stdin)";
+			const usage = commandUsage("user", "create",);
 			const body = requiredUserJson(f, usage,);
 			if (executionMode(f,).dryRun) {
 				return {
@@ -123,7 +122,6 @@ export const userCommands: Record<string, CommandMeta> = {
 			const result = await c.users.create(body as Parameters<typeof c.users.create>[0],);
 			return sanitizeUserSecrets(result, userSecretsFromBody(body,),);
 		},
-		usage: "dss user create (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description:
 			'Create a DSS user (admin). The JSON body follows the DSS User schema, e.g. {"login":"UserA","sourceType":"LOCAL","displayName":"User A","groups":[],"userProfile":"DATA_ANALYST","password":"..."}. Secrets are never echoed in output.',
 		examples: [
@@ -132,7 +130,7 @@ export const userCommands: Record<string, CommandMeta> = {
 	},
 	update: {
 		handler: async (c, a, f,) => {
-			const usage = "dss user update <login> (--data JSON|--data-file PATH|--stdin) [--dry-run]";
+			const usage = commandUsage("user", "update",);
 			requireArgs(a, 1, usage,);
 			const login = requireLogin(a[0], usage,);
 			const body = requiredUserJson(f, usage,);
@@ -152,7 +150,6 @@ export const userCommands: Record<string, CommandMeta> = {
 			const result = await c.users.update(login, body as Parameters<typeof c.users.update>[1],);
 			return sanitizeUserSecrets(result, userSecretsFromBody(body,),);
 		},
-		usage: "dss user update <login> (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description:
 			"Update a DSS user (admin). The body MUST be the User object obtained from `dss user get` (PUT semantics); pass undocumented attributes through unchanged. Use --dry-run to preview the merged result without writing.",
 		examples: [
@@ -161,7 +158,7 @@ export const userCommands: Record<string, CommandMeta> = {
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			const usage = "dss user delete <login> [--if-exists] [--dry-run]";
+			const usage = commandUsage("user", "delete",);
 			requireArgs(a, 1, usage,);
 			const login = requireLogin(a[0], usage,);
 			if (executionMode(f,).dryRun) {
@@ -183,13 +180,12 @@ export const userCommands: Record<string, CommandMeta> = {
 			}
 			return c.users.delete(login,);
 		},
-		usage: "dss user delete <login> [--if-exists] [--dry-run]",
 		description: "Delete a DSS user (admin). Destructive and irreversible.",
 		examples: ["dss user delete UserA", "dss user delete UserA --if-exists",],
 	},
 	resync: {
 		handler: async (c, a, f,) => {
-			const usage = "dss user resync <login>";
+			const usage = commandUsage("user", "resync",);
 			requireArgs(a, 1, usage,);
 			const login = requireLogin(a[0], usage,);
 			if (executionMode(f,).dryRun) {
@@ -204,7 +200,6 @@ export const userCommands: Record<string, CommandMeta> = {
 			}
 			return c.users.resync(login,);
 		},
-		usage: "dss user resync <login> [--dry-run]",
 		description:
 			"Resync one DSS user (admin). Returns a DSS future; poll with `dss future wait <jobId>` when hasResult is false.",
 		examples: ["dss user resync UserA",],
@@ -214,7 +209,7 @@ export const userCommands: Record<string, CommandMeta> = {
 			const logins = splitCsvFlag(f["logins"],);
 			if (logins.length === 0) {
 				throw new UsageError(
-					"--logins is required. Usage: dss user resync-multi --logins user1,user2",
+					`--logins is required. Usage: ${commandUsage("user", "resync-multi",)}`,
 					"missing_required_flag",
 				);
 			}
@@ -231,7 +226,6 @@ export const userCommands: Record<string, CommandMeta> = {
 			}
 			return c.users.resyncMulti(logins,);
 		},
-		usage: "dss user resync-multi --logins CSV [--dry-run]",
 		description: "Resync multiple DSS users (admin). Returns a DSS future.",
 		examples: ["dss user resync-multi --logins user1,user2,user3",],
 	},
@@ -249,7 +243,6 @@ export const userCommands: Record<string, CommandMeta> = {
 			}
 			return c.users.externalUsers();
 		},
-		usage: "dss user external-users [--dry-run]",
 		description:
 			"Fetch externally sourced users and their provisioning status (admin). Returns a DSS future whose result is the external user list when hasResult is true.",
 		examples: ["dss user external-users",],
@@ -268,14 +261,13 @@ export const userCommands: Record<string, CommandMeta> = {
 			}
 			return c.users.externalGroups();
 		},
-		usage: "dss user external-groups [--dry-run]",
 		description:
 			"Fetch externally sourced groups (admin). Returns a DSS future whose result is the external group name list when hasResult is true.",
 		examples: ["dss user external-groups",],
 	},
 	provision: {
 		handler: async (c, _a, f,) => {
-			const usage = "dss user provision (--data JSON|--data-file PATH|--stdin)";
+			const usage = commandUsage("user", "provision",);
 			const body = requiredJsonInput(
 				f,
 				`--data, --data-file, or --stdin is required (provisioning request). Usage: ${usage}`,
@@ -293,7 +285,6 @@ export const userCommands: Record<string, CommandMeta> = {
 			}
 			return c.users.provision(body as Parameters<typeof c.users.provision>[0],);
 		},
-		usage: "dss user provision (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description:
 			"Provision users from an external source (admin). Body is the documented {userSourceType, users[]} request; returns a DSS future with a provisioning summary.",
 		examples: [
@@ -302,18 +293,16 @@ export const userCommands: Record<string, CommandMeta> = {
 	},
 	activity: {
 		handler: (c,) => c.users.activityAll(),
-		usage: "dss user activity",
 		description: "Get last activity timestamps for all DSS users (admin).",
 		examples: ["dss user activity",],
 	},
 	"activity-get": {
 		handler: (c, a,) => {
-			const usage = "dss user activity-get <login>";
+			const usage = commandUsage("user", "activity-get",);
 			requireArgs(a, 1, usage,);
 			return c.users.activity(requireLogin(a[0], usage,),);
 		},
-		usage: "dss user activity-get <login>",
 		description: "Get last activity timestamps for one DSS user (admin).",
 		examples: ["dss user activity-get UserA",],
 	},
-};
+},);

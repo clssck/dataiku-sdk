@@ -1,19 +1,18 @@
 import { ClientValidationError, } from "../../errors.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
-import { stableHash, } from "../../utils/stable-hash.js";
+import { SHA256_HEX_PATTERN, stableHash, } from "../../utils/stable-hash.js";
 import { num, requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
 
-const UPDATE_SETTINGS_USAGE =
-	"dss webapp update-settings <webappId> (--data JSON|--data-file PATH|--stdin) [--expect-hash SHA256] [--dry-run] [--project-key KEY]";
-const RESTART_USAGE =
-	"dss webapp restart-backend <webappId> [--wait] [--timeout MS] [--poll-interval MS] [--project-key KEY]";
+const UPDATE_SETTINGS_USAGE = commandUsage("webapp", "update-settings",);
+const RESTART_USAGE = commandUsage("webapp", "restart-backend",);
 
 function validateExpectHash(value: string | boolean | undefined,): string | undefined {
 	if (value === undefined || value === false) return undefined;
-	if (typeof value !== "string" || !/^[0-9a-fA-F]{64}$/.test(value,)) {
+	if (typeof value !== "string" || !SHA256_HEX_PATTERN.test(value,)) {
 		throw new ClientValidationError(
 			"Expected webapp hash must be a 64-character SHA-256 hex digest.",
 			"validation_failed",
@@ -23,19 +22,17 @@ function validateExpectHash(value: string | boolean | undefined,): string | unde
 	return value;
 }
 
-export const webappCommands: Record<string, CommandMeta> = {
+export const webappCommands: Record<string, CommandMeta> = withUsage("webapp", {
 	list: {
 		handler: (c, _a, f,) => c.webapps.list(f["project-key"] as string | undefined,),
-		usage: "dss webapp list [--project-key KEY]",
 		description: "List webapps in a project.",
 		examples: ["dss webapp list",],
 	},
 	"get-settings": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss webapp get-settings <webappId> [--project-key KEY]",);
+			requireArgs(a, 1, commandUsage("webapp", "get-settings",),);
 			return c.webapps.getSettings(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss webapp get-settings <webappId> [--project-key KEY]",
 		description: "Get a webapp's settings.",
 		examples: ["dss webapp get-settings WEBAPP_ID",],
 	},
@@ -47,7 +44,6 @@ export const webappCommands: Record<string, CommandMeta> = {
 			);
 			return c.webapps.create(body, f["project-key"] as string | undefined,);
 		},
-		usage: "dss webapp create (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
 		description: "Create a webapp from a JSON definition.",
 		examples: ["dss webapp create --data-file webapp.json",],
 	},
@@ -93,7 +89,6 @@ export const webappCommands: Record<string, CommandMeta> = {
 			const updated = await c.webapps.updateSettings(a[0], body, projectKey, { expectHash, },);
 			return { updated: a[0], ...updated, };
 		},
-		usage: UPDATE_SETTINGS_USAGE,
 		description:
 			"Merge supplied fields into a webapp's settings (GET-merge-PUT) and PUT the full object, so fields outside the patch are never dropped. --expect-hash refuses the write when the object changed since it was fetched; --dry-run reports current, next, and both hashes without writing.",
 		examples: [
@@ -103,11 +98,10 @@ export const webappCommands: Record<string, CommandMeta> = {
 	},
 	"stop-backend": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss webapp stop-backend <webappId> [--project-key KEY]",);
+			requireArgs(a, 1, commandUsage("webapp", "stop-backend",),);
 			await c.webapps.stopBackend(a[0], f["project-key"] as string | undefined,);
 			return { stopped: true, };
 		},
-		usage: "dss webapp stop-backend <webappId> [--project-key KEY]",
 		description: "Stop a webapp's backend.",
 		examples: ["dss webapp stop-backend WEBAPP_ID",],
 	},
@@ -124,7 +118,6 @@ export const webappCommands: Record<string, CommandMeta> = {
 			const future = await c.webapps.startOrRestartBackend(a[0], projectKey,);
 			return { restarted: true, future, };
 		},
-		usage: RESTART_USAGE,
 		description:
 			"Start or restart a webapp's backend. The documented endpoint returns a restart future; --wait settles it and returns the FutureWaitResult.",
 		examples: [
@@ -134,11 +127,10 @@ export const webappCommands: Record<string, CommandMeta> = {
 	},
 	"backend-state": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss webapp backend-state <webappId> [--project-key KEY]",);
+			requireArgs(a, 1, commandUsage("webapp", "backend-state",),);
 			return c.webapps.getBackendState(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss webapp backend-state <webappId> [--project-key KEY]",
 		description: "Get a webapp backend's runtime state.",
 		examples: ["dss webapp backend-state WEBAPP_ID",],
 	},
-};
+},);

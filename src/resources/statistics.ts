@@ -1,4 +1,5 @@
 import { UsageError, } from "../cli/usage.js";
+import { ClientValidationError, } from "../errors.js";
 import { BaseResource, } from "./base.js";
 
 export type StatisticsCardSettings = Record<string, unknown>;
@@ -124,7 +125,10 @@ export class StatisticsResource extends BaseResource {
 	): Promise<StatisticsFutureResponse> {
 		const worksheet = await this.getWorksheet(datasetName, worksheetId, projectKey,);
 		if (!isRecord(worksheet.rootCard,)) {
-			throw new Error("statistics.runWorksheet requires worksheet.rootCard",);
+			throw new ClientValidationError(
+				"statistics.runWorksheet requires worksheet.rootCard",
+				"validation_failed",
+			);
 		}
 		return this.runCard(datasetName, worksheetId, worksheet.rootCard, projectKey,);
 	}

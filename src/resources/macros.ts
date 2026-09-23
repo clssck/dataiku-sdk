@@ -13,11 +13,14 @@ import {
 	MacroSummaryArraySchema,
 	MacroWaitResultSchema,
 } from "../schemas.js";
-import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
+import {
+	computeNextPollDelayMs,
+	DEFAULT_POLL_INTERVAL_MS,
+	DEFAULT_TIMEOUT_MS,
+	isRequestDeadlineError,
+} from "../utils/polling.js";
 import { BaseResource, requireNonEmpty, } from "./base.js";
 
-const DEFAULT_POLL_INTERVAL_MS = 2_000;
-const DEFAULT_TIMEOUT_MS = 120_000;
 /** Hard floor for the result download cap; keeps a caller typo from hanging the read. */
 const MIN_RESULT_MAX_BYTES = 1;
 const MAX_RESULT_MAX_BYTES = 2 * 1024 * 1024 * 1024;
@@ -250,8 +253,9 @@ export class MacrosResource extends BaseResource {
 			maxBytes,
 		);
 		if (raw.truncated) {
-			throw new Error(
+			throw new ClientValidationError(
 				`Macro result exceeded ${String(maxBytes,)} bytes; retry with a larger maxBytes.`,
+				"validation_failed",
 			);
 		}
 		const text = raw.text;

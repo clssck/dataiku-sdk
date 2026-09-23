@@ -1,14 +1,14 @@
 import { requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { planResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
 const KB_PLAN_EXIT_CODES = { usage: 1, error: 2, transient: 3, };
 
-const KB_SEARCH_USAGE =
-	"dss knowledge-bank search <knowledgeBankId> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]";
-const KB_CLEAR_USAGE = "dss knowledge-bank clear <knowledgeBankId> [--dry-run] [--project-key KEY]";
+const KB_SEARCH_USAGE = commandUsage("knowledge-bank", "search",);
+const KB_CLEAR_USAGE = commandUsage("knowledge-bank", "clear",);
 
 /**
  * Validate a search body before any execution mode: the same check runs for
@@ -41,7 +41,7 @@ function requireNonEmptyPositional(value: string, usage: string,): string {
 	return value;
 }
 
-export const knowledgeBankCommands: Record<string, CommandMeta> = {
+export const knowledgeBankCommands: Record<string, CommandMeta> = withUsage("knowledge-bank", {
 	search: {
 		handler: async (c, a, f,) => {
 			const knowledgeBankId = requireNonEmptyPositional(a[0]!, KB_SEARCH_USAGE,);
@@ -63,7 +63,6 @@ export const knowledgeBankCommands: Record<string, CommandMeta> = {
 			}
 			return c.knowledgeBanks.search(knowledgeBankId, body as never, projectKey,);
 		},
-		usage: KB_SEARCH_USAGE,
 		description:
 			"Search a knowledge bank for documents matching a query. Runs retrieval against the backing vector store. Body: { query, params?: { maxDocuments, searchType, similarityThreshold, mmrK, mmrDiversity, useAdvancedReranking, rrfRankConstant, rrfRankWindowSize } }.",
 		examples: [
@@ -92,7 +91,6 @@ export const knowledgeBankCommands: Record<string, CommandMeta> = {
 			await c.knowledgeBanks.clear(knowledgeBankId, projectKey,);
 			return { cleared: knowledgeBankId, resource: "knowledge-bank", };
 		},
-		usage: KB_CLEAR_USAGE,
 		description:
 			"DESTRUCTIVE: clear all data from a knowledge bank. The stored content is removed and cannot be recovered from this command.",
 		examples: [
@@ -100,4 +98,4 @@ export const knowledgeBankCommands: Record<string, CommandMeta> = {
 			"dss knowledge-bank clear my-kb",
 		],
 	},
-};
+},);

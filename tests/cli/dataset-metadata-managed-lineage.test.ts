@@ -257,7 +257,7 @@ describe("CLI dataset column-lineage", () => {
 			outputColumn: "mycol2",
 			outputDataset: "myproject1.mydataset2",
 		},];
-		let paths: string[] = [];
+		const paths: string[] = [];
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			expect(req.method,).toBe("GET",);

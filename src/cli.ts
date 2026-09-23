@@ -6,7 +6,7 @@ import { resolve, } from "node:path";
 import { num, unknownJsonInput, } from "./cli/coerce.js";
 import { commands, } from "./cli/commands/index.js";
 import type { CommandRegistryEntry, } from "./cli/contract.js";
-import { dataikuEnvironmentEnabled, loadEnvFile, } from "./cli/env.js";
+import { ambientProjectKey, loadEnvFile, } from "./cli/env.js";
 import {
 	executionMode,
 	FLAG_ALIASES,
@@ -459,31 +459,17 @@ function validateSupportedCommandFlags(
 				: `Remove --dry-run; ${resource} ${action} has no dry-run mode.`,
 		);
 	}
-}
-
-function stripOptionalUsageGroupsForValidation(usage: string,): string {
-	let stripped = "";
-	let optionalDepth = 0;
-	for (const char of usage) {
-		if (char === "[") {
-			optionalDepth++;
-			if (optionalDepth === 1) stripped += " ";
-			continue;
-		}
-		if (char === "]" && optionalDepth > 0) {
-			optionalDepth--;
-			if (optionalDepth === 0) stripped += " ";
-			continue;
-		}
-		if (optionalDepth === 0) stripped += char;
+	// Registry commands reject --plan in buildMutationPlan; meta commands never reach it.
+	if (
+		META_COMMAND_RESOURCES[resource] === true && executionMode(flags,).plan
+		&& !entry.flags.some((flag,) => flag.name === "plan")
+	) {
+		throw new UsageError(
+			`--plan is only supported for mutating commands; ${resource} ${action} has no plan mode.`,
+			"usage_error",
+			`Remove --plan; ${resource} ${action} has no plan mode.`,
+		);
 	}
-	return stripped;
-}
-
-function requiredPositionalCount(usage: string,): number {
-	const requiredUsage = stripOptionalUsageGroupsForValidation(usage,);
-	const positionalTokens = [...requiredUsage.matchAll(/<[^>]+>/g,),];
-	return positionalTokens.length;
 }
 
 function flagIsProvided(
@@ -504,7 +490,7 @@ function validateRequiredCommandInputs(
 	flags: Record<string, string | boolean>,
 	entry: CommandRegistryEntry,
 ): void {
-	const argCount = requiredPositionalCount(entry.usage,);
+	const argCount = entry.positionalArguments.filter((positional,) => positional.required).length;
 	const allowEmptyFlags: Record<string, true> = {};
 	for (const flag of entry.flags) {
 		if (flag.allowEmptyValue === true) allowEmptyFlags[flag.name] = true;
@@ -995,6 +981,7 @@ async function runMetaCommand(
 			throw unknownActionError("doctor", action, ["run",],);
 		}
 		currentCommandContext.action = action ?? "run";
+		validateSupportedCommandFlags("doctor", "run", flags,);
 		const { runDoctor, } = await import("./cli/doctor.js");
 		const { result, exitCode, } = await runDoctor(flags,);
 		return { action: "run", result, exitCode, };
@@ -1015,6 +1002,7 @@ async function runMetaCommand(
 				"auth only supports 'login'. To check credentials/connectivity, run 'dss doctor'.",
 			);
 		}
+		validateSupportedCommandFlags("auth", action, flags,);
 		if (executionMode(flags,).plan) {
 			return { action, result: authLoginPlan(flags,), exitCode: 0, };
 		}
@@ -1026,6 +1014,7 @@ async function runMetaCommand(
 			throw unknownActionError("install-skill", action, ["run",],);
 		}
 		currentCommandContext.action = action ?? "run";
+		validateSupportedCommandFlags("install-skill", "run", flags,);
 		return { action: "run", result: await runInstallSkill(flags,), exitCode: 0, };
 	}
 	if (resource === "agent") {
@@ -1033,6 +1022,7 @@ async function runMetaCommand(
 		if (!action) throw missingActionError("agent", ["contract",], contract.AGENT_CONTRACT_USAGE,);
 		currentCommandContext.action = action;
 		if (action !== "contract") throw unknownActionError("agent", action, ["contract",],);
+		validateSupportedCommandFlags("agent", "contract", flags,);
 		return { action, result: contract.buildAgentContract(), exitCode: 0, };
 	}
 	if (resource === "commands") {
@@ -1088,10 +1078,12 @@ async function runMetaCommand(
 		};
 	}
 	if (resource === "version") {
+		await loadCommandRuntime();
 		if (action !== undefined && action !== "run") {
 			throw unknownActionError("version", action, ["run",],);
 		}
 		currentCommandContext.action = action ?? "run";
+		validateSupportedCommandFlags("version", "run", flags,);
 		return { action: "run", result: cliVersionResult(), exitCode: 0, };
 	}
 	if (resource === "cleanup") {
@@ -1100,6 +1092,10 @@ async function runMetaCommand(
 			throw unknownActionError("cleanup", action, ["run",],);
 		}
 		currentCommandContext.action = action ?? "run";
+		validateSupportedCommandFlags("cleanup", "run", flags,);
+		if (flags["apply"] === true && executionMode(flags,).dryRun) {
+			throw new UsageError("--dry-run and --apply are mutually exclusive.", "usage_error",);
+		}
 		if (executionMode(flags,).plan) {
 			return { action: "run", result: cleanupPlan(flags,), exitCode: 0, };
 		}
@@ -1112,6 +1108,7 @@ async function runMetaCommand(
 			throw unknownActionError("fixtures", action, ["run",],);
 		}
 		currentCommandContext.action = action ?? "run";
+		validateSupportedCommandFlags("fixtures", "run", flags,);
 		const { runFixtures, } = await import("./cli/doctor.js");
 		return { action: "run", result: await runFixtures(flags,), exitCode: 0, };
 	}
@@ -1121,6 +1118,7 @@ async function runMetaCommand(
 			throw unknownActionError("batch", action, ["run",],);
 		}
 		currentCommandContext.action = action ?? "run";
+		validateSupportedCommandFlags("batch", "run", flags,);
 		if (executionMode(flags,).plan) {
 			return { action: "run", result: batchPlan(flags,), exitCode: 0, };
 		}
@@ -1262,9 +1260,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 	if (executionMode(flags,).dryRun) {
 		const batchProjectKey = typeof flags["project-key"] === "string"
 			? flags["project-key"]
-			: dataikuEnvironmentEnabled()
-			? process.env.DATAIKU_PROJECT_KEY
-			: undefined;
+			: ambientProjectKey();
 		const planned = await Promise.all(steps.map(async (argv, index,) => {
 			const context = batchStepCommandContext(argv,);
 			Object.assign(currentCommandContext, { ...context, projectKey: batchProjectKey, },);
@@ -1286,7 +1282,8 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 					runnable: true,
 				};
 			} catch (error) {
-				const envelope = buildErrorReport(error,);
+				// Steps validate concurrently; the shared context may belong to a sibling.
+				const envelope = buildErrorReport(error, { ...context, projectKey: batchProjectKey, },);
 				return {
 					index,
 					args: redactArgv(argv,),
@@ -1307,9 +1304,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 
 	let projectKey = typeof flags["project-key"] === "string"
 		? flags["project-key"]
-		: dataikuEnvironmentEnabled()
-		? process.env.DATAIKU_PROJECT_KEY
-		: undefined;
+		: ambientProjectKey();
 	let client: DataikuClient | undefined;
 	const needsClient = steps.some((argv,) => batchStepNeedsClient(argv,));
 	if (needsClient) {
@@ -1578,8 +1573,7 @@ function commandIsProjectScoped(
 	action: string | undefined,
 ): boolean {
 	if (!resource) return false;
-	const usage = commands[resource]?.[action ?? ""]?.usage ?? "";
-	return inferRequiresProject(resource, action ?? "", usage,);
+	return inferRequiresProject(resource, action ?? "",);
 }
 
 function rawCommandContext(): { resource?: string; action?: string; projectKey?: string; } {
@@ -1588,15 +1582,13 @@ function rawCommandContext(): { resource?: string; action?: string; projectKey?:
 	const resource = currentCommandContext.resource ?? positionals[0];
 	const action = currentCommandContext.action ?? positionals[1];
 	const explicitProjectKey = rawFlagValue(argv, "project-key",) ?? rawFlagValue(argv, "project",);
-	const ambientProjectKey = dataikuEnvironmentEnabled()
-		? process.env.DATAIKU_PROJECT_KEY
-		: undefined;
+	const environmentProjectKey = ambientProjectKey();
 	return {
 		resource,
 		action,
 		projectKey: explicitProjectKey
 			?? (commandIsProjectScoped(resource, action,)
-				? currentCommandContext.projectKey ?? ambientProjectKey
+				? currentCommandContext.projectKey ?? environmentProjectKey
 				: undefined),
 	};
 }
@@ -1697,8 +1689,6 @@ function dssDiagnosticDetails(err: DataikuError,): Record<string, string> {
 	}
 }
 
-const MISSING_PROJECT_KEY_ERROR_PREFIX = "projectKey is required";
-
 function isAmbiguousMutationFailure(
 	err: unknown,
 	context: { resource?: string; action?: string; },
@@ -1738,21 +1728,30 @@ function boundedFailureResult(result: unknown,): Record<string, unknown> {
 
 function errorExitCode(err: unknown,): number {
 	if (err instanceof CommandResultFailure) return err.exitCode;
-	if (err instanceof ClientValidationError && err.code === "assertion_failed") return 4;
-	if (err instanceof ClientValidationError && err.code === "ambiguous_outcome") return 2;
+	if (
+		err instanceof ClientValidationError
+		&& (err.code === "assertion_failed" || err.code === "long_running_failure")
+	) return 4;
+	if (
+		err instanceof ClientValidationError
+		&& (err.code === "ambiguous_outcome" || err.code === "internal_error")
+	) return 2;
 	if (err instanceof UsageError || err instanceof ClientValidationError) return 1;
 	if (isAmbiguousMutationFailure(err, rawCommandContext(),)) return 2;
 	if (err instanceof DataikuError) return err.category === "transient" ? 3 : 2;
-	if (err instanceof Error && err.message.startsWith(MISSING_PROJECT_KEY_ERROR_PREFIX,)) return 1;
 	return 2;
 }
 
-function buildErrorReport(err: unknown,): ErrorReportEnvelope {
-	const context = rawCommandContext();
+function buildErrorReport(
+	err: unknown,
+	contextOverride?: { resource?: string; action?: string; projectKey?: string; },
+): ErrorReportEnvelope {
+	const context = contextOverride ?? rawCommandContext();
 	const exitCode = errorExitCode(err,);
 	if (
 		err instanceof ClientValidationError
-		&& (err.code === "ambiguous_outcome" || err.code === "assertion_failed")
+		&& (err.code === "ambiguous_outcome" || err.code === "assertion_failed"
+			|| err.code === "long_running_failure")
 	) {
 		return {
 			type: "error",
@@ -1775,6 +1774,8 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			code: err.code,
 			category: err.code === "target_absence_unverifiable"
 				? "permission_or_environment"
+				: err.code === "internal_error"
+				? "internal"
 				: "usage",
 			exitCode,
 			...(err.code === "target_absence_unverifiable" ? { retryable: false, } : {}),
@@ -1851,18 +1852,6 @@ function buildErrorReport(err: unknown,): ErrorReportEnvelope {
 			...context,
 		};
 	}
-	if (err instanceof Error && err.message.startsWith(MISSING_PROJECT_KEY_ERROR_PREFIX,)) {
-		return {
-			type: "error",
-			ok: false,
-			error: err.message,
-			code: "missing_required_flag",
-			category: "usage",
-			exitCode,
-			hint: "Pass --project-key or set DATAIKU_PROJECT_KEY.",
-			...context,
-		};
-	}
 	const message = err instanceof Error ? err.message : String(err,);
 	return {
 		type: "error",
@@ -1916,9 +1905,7 @@ async function main(): Promise<void> {
 		action: positional[1],
 		projectKey: typeof flags["project-key"] === "string"
 			? flags["project-key"]
-			: dataikuEnvironmentEnabled()
-			? process.env.DATAIKU_PROJECT_KEY
-			: undefined,
+			: ambientProjectKey(),
 	},);
 
 	const metaCommand = await runMetaCommand(resource, positional[1], flags,);

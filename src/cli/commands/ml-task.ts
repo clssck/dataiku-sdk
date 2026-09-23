@@ -1,5 +1,6 @@
 import { num, requiredJsonInput, requiredStringFlag, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -27,11 +28,10 @@ function taskType(
 	);
 }
 
-export const mlTaskCommands: Record<string, CommandMeta> = {
+export const mlTaskCommands: Record<string, CommandMeta> = withUsage("ml-task", {
 	create: {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss ml-task create <analysisId> --task-type PREDICTION|CLUSTERING [--target COLUMN] [--prediction-type TYPE] [--backend-type TYPE] [--guess-policy POLICY] [--project-key KEY]";
+			const usage = commandUsage("ml-task", "create",);
 			requireArgs(a, 1, usage,);
 			const projectKey = f["project-key"] as string | undefined;
 			const normalizedTaskType = taskType(f, usage,);
@@ -54,8 +54,6 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 			const created = await c.mlTasks.create(options,);
 			return { created: created.mlTaskId, resource: "ml-task", analysisId: a[0], ...created, };
 		},
-		usage:
-			"dss ml-task create <analysisId> --task-type PREDICTION|CLUSTERING [--target COLUMN] [--prediction-type TYPE] [--backend-type TYPE] [--guess-policy POLICY] [--project-key KEY]",
 		description: "Create a prediction or clustering task in an analysis.",
 		examples: [
 			"dss ml-task create ANALYSIS_ID --task-type prediction --target churn --project-key PROJECT",
@@ -63,10 +61,9 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 	},
 	status: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 2, "dss ml-task status <analysisId> <mlTaskId> [--project-key KEY]",);
+			requireArgs(a, 2, commandUsage("ml-task", "status",),);
 			return c.mlTasks.status(a[0], a[1], f["project-key"] as string | undefined,);
 		},
-		usage: "dss ml-task status <analysisId> <mlTaskId> [--project-key KEY]",
 		description: "Get a Visual ML task's current status.",
 		examples: ["dss ml-task status ANALYSIS_ID TASK_ID --project-key PROJECT",],
 	},
@@ -75,18 +72,16 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss ml-task get-settings <analysisId> <mlTaskId> [--project-key KEY]",
+				commandUsage("ml-task", "get-settings",),
 			);
 			return c.mlTasks.getSettings(a[0], a[1], f["project-key"] as string | undefined,);
 		},
-		usage: "dss ml-task get-settings <analysisId> <mlTaskId> [--project-key KEY]",
 		description: "Get a Visual ML task's settings.",
 		examples: ["dss ml-task get-settings ANALYSIS_ID TASK_ID --project-key PROJECT",],
 	},
 	"set-settings": {
 		handler: (c, a, f,) => {
-			const usage =
-				"dss ml-task set-settings <analysisId> <mlTaskId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]";
+			const usage = commandUsage("ml-task", "set-settings",);
 			requireArgs(a, 2, usage,);
 			const settings = requiredJsonInput(
 				f,
@@ -95,8 +90,6 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 			const projectKey = f["project-key"] as string | undefined;
 			return c.mlTasks.saveSettings(a[0], a[1], settings, projectKey,);
 		},
-		usage:
-			"dss ml-task set-settings <analysisId> <mlTaskId> (--data JSON|--data-file PATH|--stdin) [--project-key KEY]",
 		description: "Replace a Visual ML task's settings from JSON input.",
 		examples: [
 			"dss ml-task set-settings ANALYSIS_ID TASK_ID --data-file settings.json --project-key PROJECT",
@@ -104,8 +97,7 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 	},
 	train: {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss ml-task train <analysisId> <mlTaskId> [--session-name NAME] [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]";
+			const usage = commandUsage("ml-task", "train",);
 			requireArgs(a, 2, usage,);
 			const options = {
 				analysisId: a[0],
@@ -126,8 +118,6 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 			}
 			return c.mlTasks.train(options,);
 		},
-		usage:
-			"dss ml-task train <analysisId> <mlTaskId> [--session-name NAME] [--wait] [--timeout MS] [--poll-interval MS] [--dry-run] [--project-key KEY]",
 		description:
 			"Start ML task training, optionally waiting for trained model IDs. --timeout bounds only the wait phase after DSS accepts training; an invalid timeout fails before any request.",
 		examples: [
@@ -140,11 +130,10 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss ml-task list-models <analysisId> <mlTaskId> [--project-key KEY]",
+				commandUsage("ml-task", "list-models",),
 			);
 			return c.mlTasks.listTrainedModels(a[0], a[1], f["project-key"] as string | undefined,);
 		},
-		usage: "dss ml-task list-models <analysisId> <mlTaskId> [--project-key KEY]",
 		description: "List trained models for a Visual ML task.",
 		examples: ["dss ml-task list-models ANALYSIS_ID TASK_ID --project-key PROJECT",],
 	},
@@ -153,7 +142,7 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				3,
-				"dss ml-task model-details <analysisId> <mlTaskId> <modelId> [--project-key KEY]",
+				commandUsage("ml-task", "model-details",),
 			);
 			return c.mlTasks.trainedModelDetails(
 				a[0],
@@ -162,7 +151,6 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 				f["project-key"] as string | undefined,
 			);
 		},
-		usage: "dss ml-task model-details <analysisId> <mlTaskId> <modelId> [--project-key KEY]",
 		description: "Get details for one trained model.",
 		examples: [
 			"dss ml-task model-details ANALYSIS_ID TASK_ID MODEL_ID --project-key PROJECT",
@@ -170,8 +158,7 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 	},
 	deploy: {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss ml-task deploy <analysisId> <mlTaskId> <modelId> --model-name NAME --train-dataset DATASET [--test-dataset DATASET] [--dry-run] [--project-key KEY]";
+			const usage = commandUsage("ml-task", "deploy",);
 			requireArgs(a, 3, usage,);
 			const options = {
 				analysisId: a[0],
@@ -192,8 +179,6 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 			}
 			return c.mlTasks.deployToFlow(options,);
 		},
-		usage:
-			"dss ml-task deploy <analysisId> <mlTaskId> <modelId> --model-name NAME --train-dataset DATASET [--test-dataset DATASET] [--dry-run] [--project-key KEY]",
 		description: "Deploy a trained model to the Flow as a saved model.",
 		examples: [
 			"dss ml-task deploy ANALYSIS_ID TASK_ID MODEL_ID --model-name churn-model --train-dataset train --test-dataset test --project-key PROJECT",
@@ -205,7 +190,7 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss ml-task delete <analysisId> <mlTaskId> [--dry-run] [--project-key KEY]",
+				commandUsage("ml-task", "delete",),
 			);
 			const projectKey = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
@@ -221,11 +206,10 @@ export const mlTaskCommands: Record<string, CommandMeta> = {
 			await c.mlTasks.delete(a[0], a[1], projectKey,);
 			return { deleted: a[1], resource: "ml-task", analysisId: a[0], };
 		},
-		usage: "dss ml-task delete <analysisId> <mlTaskId> [--dry-run] [--project-key KEY]",
 		description: "Delete a Visual ML task.",
 		examples: [
 			"dss ml-task delete ANALYSIS_ID TASK_ID --project-key PROJECT",
 			"dss ml-task delete ANALYSIS_ID TASK_ID --dry-run --project-key PROJECT",
 		],
 	},
-};
+},);

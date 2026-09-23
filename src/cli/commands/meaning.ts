@@ -1,6 +1,7 @@
 import { jsonInput, requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { isNotFoundError, planResult, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
 
@@ -30,19 +31,17 @@ function meaningCreatePayload(
 	};
 }
 
-export const meaningCommands: Record<string, CommandMeta> = {
+export const meaningCommands: Record<string, CommandMeta> = withUsage("meaning", {
 	list: {
 		handler: (c,) => c.meanings.list(),
-		usage: "dss meaning list",
 		description: "List user-defined meanings (column semantic types) on the instance.",
 		examples: ["dss meaning list",],
 	},
 	get: {
 		handler: (c, a,) => {
-			requireArgs(a, 1, "dss meaning get <meaningId>",);
+			requireArgs(a, 1, commandUsage("meaning", "get",),);
 			return c.meanings.get(a[0],);
 		},
-		usage: "dss meaning get <meaningId>",
 		description: "Get a user-defined meaning definition.",
 		examples: ["dss meaning get customer_type",],
 	},
@@ -51,7 +50,7 @@ export const meaningCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				3,
-				"dss meaning create <id> <label> <type> [--data JSON|--data-file PATH|--stdin] [--dry-run]",
+				commandUsage("meaning", "create",),
 			);
 			const body = jsonInput(f,) ?? {};
 			const payload = meaningCreatePayload(a[0], a[1], a[2], body,);
@@ -69,8 +68,6 @@ export const meaningCommands: Record<string, CommandMeta> = {
 			}
 			return c.meanings.create(a[0], a[1], a[2], body,);
 		},
-		usage:
-			"dss meaning create <id> <label> <type> [--data JSON|--data-file PATH|--stdin] [--dry-run]",
 		description: "Create a user-defined meaning (type e.g. VALUES_LIST, VALUES_MAPPING, PATTERN).",
 		examples: ["dss meaning create vip VIP VALUES_LIST --dry-run",],
 	},
@@ -79,7 +76,7 @@ export const meaningCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss meaning update <meaningId> (--data JSON|--data-file PATH|--stdin) [--dry-run]",
+				commandUsage("meaning", "update",),
 			);
 			const body = requiredJsonInput(
 				f,
@@ -99,13 +96,12 @@ export const meaningCommands: Record<string, CommandMeta> = {
 			}
 			return c.meanings.update(a[0], body,);
 		},
-		usage: "dss meaning update <meaningId> (--data JSON|--data-file PATH|--stdin) [--dry-run]",
 		description: "Replace a user-defined meaning definition.",
 		examples: ["dss meaning update vip --data-file meaning.json --dry-run",],
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss meaning delete <meaningId>",);
+			requireArgs(a, 1, commandUsage("meaning", "delete",),);
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await c.meanings.get(a[0],).catch((error,) => {
 					if (
@@ -132,8 +128,7 @@ export const meaningCommands: Record<string, CommandMeta> = {
 			await c.meanings.delete(a[0],);
 			return { deleted: a[0], resource: "meaning", };
 		},
-		usage: "dss meaning delete <meaningId> [--if-exists] [--dry-run]",
 		description: "Delete a user-defined meaning definition.",
 		examples: ["dss meaning delete vip --dry-run",],
 	},
-};
+},);

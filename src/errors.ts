@@ -106,8 +106,9 @@ export class ClientValidationError extends Error {
 		code: StableErrorCode = "validation_failed",
 		hint?: string,
 		details?: Record<string, unknown>,
+		options?: ErrorOptions,
 	) {
-		super(message,);
+		super(message, options,);
 		this.name = "ClientValidationError";
 		this.code = code;
 		this.hint = hint;
@@ -121,6 +122,29 @@ export class ClientValidationError extends Error {
  * taxonomy stay in sync as one contract.
  */
 export const NON_JSON_RESPONSE_MARKER = "Expected JSON response body but got non-JSON content";
+
+/** Body text for a 2xx response that should have been JSON; truncated to keep envelopes bounded. */
+export function nonJsonResponseBody(text: string,): string {
+	return `${NON_JSON_RESPONSE_MARKER}: ${text.length > 300 ? `${text.slice(0, 300,)}…` : text}`;
+}
+
+/** Prefix for a 2xx DSS response that lacks something the API documents (a body, an id, a job id). */
+export const UNEXPECTED_RESPONSE_MARKER = "Unexpected DSS response";
+
+/**
+ * The one representation of a malformed 2xx DSS response: a DataikuError whose
+ * body carries {@link UNEXPECTED_RESPONSE_MARKER}, classified `unexpected_response`.
+ */
+export function unexpectedResponseError(detail: string, status = 200,): DataikuError {
+	return new DataikuError(
+		status,
+		"Unexpected Response",
+		`${UNEXPECTED_RESPONSE_MARKER}: ${detail}`,
+	);
+}
+
+/** Prefix for a SQL query failure reported by DSS on a 2xx finish-streaming response. */
+export const SQL_QUERY_FAILED_MARKER = "SQL query failed in DSS";
 
 const TLS_CERTIFICATE_HINT =
 	"TLS certificate verification failed. Trust the DSS/corporate CA with --ca-cert PATH or NODE_EXTRA_CA_CERTS; use --insecure only for temporary troubleshooting.";
@@ -247,13 +271,26 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 	// own parse-failure marker produces this prefix.
 	if (
 		status >= 200 && status < 300
-		&& lowerBody.startsWith(NON_JSON_RESPONSE_MARKER.toLowerCase(),)
+		&& (lowerBody.startsWith(NON_JSON_RESPONSE_MARKER.toLowerCase(),)
+			|| lowerBody.startsWith(UNEXPECTED_RESPONSE_MARKER.toLowerCase(),))
 	) {
 		return {
 			category: "unexpected_response",
 			retryable: false,
 			retryHint:
 				"DSS returned a non-JSON response to a JSON API request (typically a proxy, gateway, or login page). Verify the DSS URL and that no intermediary serves HTML; do not retry unchanged.",
+		};
+	}
+
+	// finish-streaming answers 2xx with the server-side failure text when the
+	// query itself failed (bad SQL, missing column, permissions on the source).
+	if (
+		status >= 200 && status < 300 && lowerBody.startsWith(SQL_QUERY_FAILED_MARKER.toLowerCase(),)
+	) {
+		return {
+			category: "validation",
+			retryable: false,
+			retryHint: "The SQL query failed in DSS. Fix the query or its inputs; do not retry unchanged.",
 		};
 	}
 

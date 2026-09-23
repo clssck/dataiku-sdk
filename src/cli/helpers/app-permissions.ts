@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { ClientValidationError, } from "../../errors.js";
 import type { ProjectPermissions, } from "../../resources/projects.js";
 import { canonicalDssUrl, } from "../../utils/dss-url.js";
 import { compareStrings, } from "../../utils/stable-hash.js";
@@ -109,7 +110,10 @@ function writeAllSync(fd: number, payload: Buffer,): void {
 	while (offset < payload.length) {
 		const written = fs.writeSync(fd, payload, offset, payload.length - offset, offset,);
 		if (written <= 0) {
-			throw new Error(`Stalled writing app permissions snapshot at byte ${offset}.`,);
+			throw new ClientValidationError(
+				`Stalled writing app permissions snapshot at byte ${offset}.`,
+				"internal_error",
+			);
 		}
 		offset += written;
 	}

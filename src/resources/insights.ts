@@ -1,3 +1,4 @@
+import { ClientValidationError, unexpectedResponseError, } from "../errors.js";
 import type { InsightDetails, InsightSummary, } from "../schemas.js";
 import { InsightDetailsSchema, InsightSummaryArraySchema, } from "../schemas.js";
 import { deepMerge, } from "../utils/deep-merge.js";
@@ -64,7 +65,10 @@ export class InsightsResource extends BaseResource {
 		const pk = this.resolveProjectKey(opts.projectKey,);
 		const prototype = applyInsightFields(opts.data ?? {}, opts,);
 		if (!hasCreateShape(prototype,)) {
-			throw new Error("Insight create requires name and type, either as options or in data.",);
+			throw new ClientValidationError(
+				"Insight create requires name and type, either as options or in data.",
+				"validation_failed",
+			);
 		}
 		if (prototype.projectKey === undefined) prototype.projectKey = pk;
 		const created = await this.client.post<{ id: string; }>(
@@ -76,7 +80,7 @@ export class InsightsResource extends BaseResource {
 			},
 		);
 		if (typeof created.id !== "string" || created.id.length === 0) {
-			throw new Error("Insight create response did not include an id.",);
+			throw unexpectedResponseError("Insight create response did not include an id.",);
 		}
 		return this.get(created.id, pk,);
 	}

@@ -1,0 +1,14524 @@
+{
+	"format": 3,
+	"commands": {
+		"agent.contract": [
+			"dss",
+			"agent",
+			"contract",
+			{
+				"optional": [
+					[
+						{
+							"flag": "fields",
+							"value": "PATHS"
+						}
+					]
+				]
+			}
+		],
+		"analysis.create": [
+			"dss",
+			"analysis",
+			"create",
+			{
+				"flag": "input-dataset",
+				"value": "DS"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"analysis.delete": [
+			"dss",
+			"analysis",
+			"delete",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"analysis.get": [
+			"dss",
+			"analysis",
+			"get",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"analysis.list": [
+			"dss",
+			"analysis",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"api-deployer.create-deployment": [
+			"dss",
+			"api-deployer",
+			"create-deployment",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"api-deployer.create-infra": [
+			"dss",
+			"api-deployer",
+			"create-infra",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"api-deployer.create-service": [
+			"dss",
+			"api-deployer",
+			"create-service",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"api-deployer.delete-deployment": [
+			"dss",
+			"api-deployer",
+			"delete-deployment",
+			{
+				"arg": "deploymentId"
+			}
+		],
+		"api-deployer.delete-infra": [
+			"dss",
+			"api-deployer",
+			"delete-infra",
+			{
+				"arg": "infraId"
+			}
+		],
+		"api-deployer.delete-service": [
+			"dss",
+			"api-deployer",
+			"delete-service",
+			{
+				"arg": "serviceId"
+			}
+		],
+		"api-deployer.delete-version": [
+			"dss",
+			"api-deployer",
+			"delete-version",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"arg": "version"
+			}
+		],
+		"api-deployer.deploy": [
+			"dss",
+			"api-deployer",
+			"deploy",
+			{
+				"arg": "deploymentId"
+			}
+		],
+		"api-deployer.deployment-settings": [
+			"dss",
+			"api-deployer",
+			"deployment-settings",
+			{
+				"arg": "deploymentId"
+			}
+		],
+		"api-deployer.deployment-status": [
+			"dss",
+			"api-deployer",
+			"deployment-status",
+			{
+				"arg": "deploymentId"
+			}
+		],
+		"api-deployer.get-deployment": [
+			"dss",
+			"api-deployer",
+			"get-deployment",
+			{
+				"arg": "deploymentId"
+			}
+		],
+		"api-deployer.get-infra": [
+			"dss",
+			"api-deployer",
+			"get-infra",
+			{
+				"arg": "infraId"
+			}
+		],
+		"api-deployer.get-service": [
+			"dss",
+			"api-deployer",
+			"get-service",
+			{
+				"arg": "serviceId"
+			}
+		],
+		"api-deployer.list-deployments": [
+			"dss",
+			"api-deployer",
+			"list-deployments"
+		],
+		"api-deployer.list-infras": [
+			"dss",
+			"api-deployer",
+			"list-infras"
+		],
+		"api-deployer.list-services": [
+			"dss",
+			"api-deployer",
+			"list-services"
+		],
+		"api-deployer.list-stages": [
+			"dss",
+			"api-deployer",
+			"list-stages"
+		],
+		"api-deployer.publish-version": [
+			"dss",
+			"api-deployer",
+			"publish-version",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"arg": "archive.zip"
+			}
+		],
+		"api-deployer.save-deployment-settings": [
+			"dss",
+			"api-deployer",
+			"save-deployment-settings",
+			{
+				"arg": "deploymentId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"api-service.add-prediction-endpoint": [
+			"dss",
+			"api-service",
+			"add-prediction-endpoint",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"arg": "endpointId"
+			},
+			{
+				"arg": "savedModelId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"api-service.create": [
+			"dss",
+			"api-service",
+			"create",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"api-service.create-package": [
+			"dss",
+			"api-service",
+			"create-package",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"arg": "packageId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "release-notes",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"api-service.delete-package": [
+			"dss",
+			"api-service",
+			"delete-package",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"arg": "packageId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"api-service.download-package": [
+			"dss",
+			"api-service",
+			"download-package",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"arg": "packageId"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"api-service.get-settings": [
+			"dss",
+			"api-service",
+			"get-settings",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"api-service.list": [
+			"dss",
+			"api-service",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"api-service.list-packages": [
+			"dss",
+			"api-service",
+			"list-packages",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"api-service.package-summary": [
+			"dss",
+			"api-service",
+			"package-summary",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"arg": "packageId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"api-service.publish-package": [
+			"dss",
+			"api-service",
+			"publish-package",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"arg": "packageId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "published-service-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"api-service.save-settings": [
+			"dss",
+			"api-service",
+			"save-settings",
+			{
+				"arg": "serviceId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-hash",
+							"value": "SHA256"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"app.business-app-instance-permissions": [
+			"dss",
+			"app",
+			"business-app-instance-permissions",
+			{
+				"arg": "businessAppId"
+			},
+			{
+				"arg": "instanceProjectKey"
+			},
+			{
+				"arg": "userLogin"
+			}
+		],
+		"app.compare-manifest": [
+			"dss",
+			"app",
+			"compare-manifest",
+			{
+				"arg": "appId"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"app.create-instance": [
+			"dss",
+			"app",
+			"create-instance",
+			{
+				"arg": "appId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			}
+		],
+		"app.create-successor-instance": [
+			"dss",
+			"app",
+			"create-successor-instance",
+			{
+				"arg": "appId"
+			},
+			{
+				"flag": "from",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "to",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "copy-permissions"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "record-cleanup",
+							"value": "PATH"
+						}
+					]
+				]
+			}
+		],
+		"app.delete-instance": [
+			"dss",
+			"app",
+			"delete-instance",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "future-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-project-incarnation",
+							"value": "SHA256"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "unconfirmed-creation"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			}
+		],
+		"app.instance-manifest": [
+			"dss",
+			"app",
+			"instance-manifest",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"app.instances": [
+			"dss",
+			"app",
+			"instances",
+			{
+				"arg": "appId"
+			}
+		],
+		"app.list": [
+			"dss",
+			"app",
+			"list"
+		],
+		"app.manifest": [
+			"dss",
+			"app",
+			"manifest",
+			{
+				"arg": "appId"
+			}
+		],
+		"app.manifest-version": [
+			"dss",
+			"app",
+			"manifest-version",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"app.permissions-diff": [
+			"dss",
+			"app",
+			"permissions-diff",
+			{
+				"flag": "file",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"app.permissions-restore": [
+			"dss",
+			"app",
+			"permissions-restore",
+			{
+				"flag": "file",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"app.permissions-snapshot": [
+			"dss",
+			"app",
+			"permissions-snapshot",
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"app.save-instance-manifest": [
+			"dss",
+			"app",
+			"save-instance-manifest",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"app.set-manifest-version": [
+			"dss",
+			"app",
+			"set-manifest-version",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "manifest-version",
+							"value": "V"
+						}
+					],
+					[
+						{
+							"flag": "version-notes",
+							"value": "NOTES"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-hash",
+							"value": "SHA256"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"app.successor-preflight": [
+			"dss",
+			"app",
+			"successor-preflight",
+			{
+				"arg": "appId"
+			},
+			{
+				"flag": "from",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "to",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "copy-permissions"
+						}
+					]
+				]
+			}
+		],
+		"app.validate-manifest": [
+			"dss",
+			"app",
+			"validate-manifest",
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"app.verify-instance": [
+			"dss",
+			"app",
+			"verify-instance",
+			{
+				"arg": "appId"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-version",
+							"value": "V"
+						}
+					]
+				]
+			}
+		],
+		"auth.login": [
+			"dss",
+			"auth",
+			"login",
+			{
+				"flag": "url",
+				"value": "URL"
+			},
+			{
+				"flag": "api-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "insecure"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "ca-cert",
+							"value": "PATH"
+						}
+					]
+				]
+			}
+		],
+		"batch.run": [
+			"dss",
+			"batch",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "continue-on-error"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"bundle.activate": [
+			"dss",
+			"bundle",
+			"activate",
+			{
+				"arg": "bundleId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "scenarios",
+							"value": "JSON"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"bundle.delete-exported": [
+			"dss",
+			"bundle",
+			"delete-exported",
+			{
+				"arg": "bundleId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"bundle.delete-imported": [
+			"dss",
+			"bundle",
+			"delete-imported",
+			{
+				"arg": "bundleId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"bundle.download-exported": [
+			"dss",
+			"bundle",
+			"download-exported",
+			{
+				"arg": "bundleId"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"bundle.export": [
+			"dss",
+			"bundle",
+			"export",
+			{
+				"arg": "bundleId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "release-notes",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "evaluate-standards-checks",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"bundle.import-from-archive": [
+			"dss",
+			"bundle",
+			"import-from-archive",
+			{
+				"arg": "serverArchivePath"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"bundle.import-from-stream": [
+			"dss",
+			"bundle",
+			"import-from-stream",
+			{
+				"arg": "filePath"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"bundle.list-exported": [
+			"dss",
+			"bundle",
+			"list-exported",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"bundle.list-imported": [
+			"dss",
+			"bundle",
+			"list-imported",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"bundle.preload": [
+			"dss",
+			"bundle",
+			"preload",
+			{
+				"arg": "bundleId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"bundle.publish": [
+			"dss",
+			"bundle",
+			"publish",
+			{
+				"arg": "bundleId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "published-project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"business-app.create-instance": [
+			"dss",
+			"business-app",
+			"create-instance",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"business-app.get": [
+			"dss",
+			"business-app",
+			"get",
+			{
+				"arg": "id"
+			}
+		],
+		"business-app.install-from-archive": [
+			"dss",
+			"business-app",
+			"install-from-archive",
+			{
+				"arg": "filePath"
+			}
+		],
+		"business-app.instances": [
+			"dss",
+			"business-app",
+			"instances",
+			{
+				"arg": "id"
+			}
+		],
+		"business-app.list": [
+			"dss",
+			"business-app",
+			"list"
+		],
+		"business-app.save-settings": [
+			"dss",
+			"business-app",
+			"save-settings",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"business-app.settings": [
+			"dss",
+			"business-app",
+			"settings",
+			{
+				"arg": "id"
+			}
+		],
+		"business-app.upgrade-instance": [
+			"dss",
+			"business-app",
+			"upgrade-instance",
+			{
+				"arg": "id"
+			},
+			{
+				"arg": "projectKey"
+			}
+		],
+		"cleanup.run": [
+			"dss",
+			"cleanup",
+			{
+				"flag": "file",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					],
+					[
+						{
+							"flag": "apply"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "continue-on-error"
+						}
+					]
+				]
+			}
+		],
+		"code-env.create": [
+			"dss",
+			"code-env",
+			"create",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "deployment-mode",
+				"value": "MODE"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "params",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "python-interpreter",
+							"value": "PYTHON311"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "no-wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"code-env.delete": [
+			"dss",
+			"code-env",
+			"delete",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "no-wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"code-env.get": [
+			"dss",
+			"code-env",
+			"get",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			}
+		],
+		"code-env.get-definition": [
+			"dss",
+			"code-env",
+			"get-definition",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			}
+		],
+		"code-env.get-log": [
+			"dss",
+			"code-env",
+			"get-log",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			},
+			{
+				"arg": "logName"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-lines",
+							"value": "N"
+						}
+					],
+					[
+						{
+							"flag": "max-log-lines",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-log-bytes",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			}
+		],
+		"code-env.list": [
+			"dss",
+			"code-env",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "lang",
+							"values": [
+								"PYTHON",
+								"R"
+							]
+						}
+					]
+				]
+			}
+		],
+		"code-env.list-logs": [
+			"dss",
+			"code-env",
+			"list-logs",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			}
+		],
+		"code-env.set-definition": [
+			"dss",
+			"code-env",
+			"set-definition",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-hash",
+							"value": "SHA256"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"code-env.set-jupyter": [
+			"dss",
+			"code-env",
+			"set-jupyter",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "active",
+				"values": [
+					"true",
+					"false"
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "no-wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"code-env.set-packages": [
+			"dss",
+			"code-env",
+			"set-packages",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "packages",
+							"value": "PKGS"
+						}
+					],
+					[
+						{
+							"flag": "package",
+							"value": "PKG"
+						}
+					],
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "install-core-packages",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-hash",
+							"value": "SHA256"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"code-env.update-images": [
+			"dss",
+			"code-env",
+			"update-images",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "env-version",
+							"value": "VERSION"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "no-wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"code-env.update-packages": [
+			"dss",
+			"code-env",
+			"update-packages",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "force-rebuild"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "env-version",
+							"value": "VERSION"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "no-wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"code-env.usages": [
+			"dss",
+			"code-env",
+			"usages",
+			{
+				"optional": [
+					[
+						{
+							"arg": "lang"
+						},
+						{
+							"arg": "name"
+						}
+					]
+				]
+			}
+		],
+		"code-env.version": [
+			"dss",
+			"code-env",
+			"version",
+			{
+				"arg": "lang"
+			},
+			{
+				"arg": "name"
+			},
+			{
+				"arg": "projectKey"
+			}
+		],
+		"code.run": [
+			"dss",
+			"code",
+			"run",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "env",
+							"value": "ENV"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS",
+							"note": "(default 120000)"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "keep"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full-log"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-log-bytes",
+							"value": "N",
+							"note": "(default 1048576)"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"commands.run": [
+			"dss",
+			"commands",
+			"run",
+			{
+				"optional": [
+					[
+						{
+							"flag": "fields",
+							"value": "PATHS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			}
+		],
+		"connection.create": [
+			"dss",
+			"connection",
+			"create",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"connection.delete": [
+			"dss",
+			"connection",
+			"delete",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"connection.execute-import": [
+			"dss",
+			"connection",
+			"execute-import",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"connection.get": [
+			"dss",
+			"connection",
+			"get",
+			{
+				"arg": "name"
+			}
+		],
+		"connection.infer": [
+			"dss",
+			"connection",
+			"infer",
+			{
+				"optional": [
+					[
+						{
+							"flag": "mode",
+							"values": [
+								"fast",
+								"rich"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"connection.list": [
+			"dss",
+			"connection",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "type",
+							"value": "TYPE"
+						}
+					]
+				]
+			}
+		],
+		"connection.prepare-import": [
+			"dss",
+			"connection",
+			"prepare-import",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"connection.schemas": [
+			"dss",
+			"connection",
+			"schemas",
+			{
+				"flag": "connection",
+				"value": "CONN"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"connection.tables": [
+			"dss",
+			"connection",
+			"tables",
+			{
+				"flag": "connection",
+				"value": "CONN"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "catalog",
+							"value": "CATALOG"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "schema",
+							"value": "SCHEMA"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"connection.test": [
+			"dss",
+			"connection",
+			"test",
+			{
+				"arg": "name"
+			}
+		],
+		"connection.update": [
+			"dss",
+			"connection",
+			"update",
+			{
+				"arg": "name"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"continuous-activity.list": [
+			"dss",
+			"continuous-activity",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"continuous-activity.start": [
+			"dss",
+			"continuous-activity",
+			"start",
+			{
+				"arg": "recipeId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"continuous-activity.status": [
+			"dss",
+			"continuous-activity",
+			"status",
+			{
+				"arg": "recipeId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"continuous-activity.stop": [
+			"dss",
+			"continuous-activity",
+			"stop",
+			{
+				"arg": "recipeId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dashboard.create": [
+			"dss",
+			"dashboard",
+			"create",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					],
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "listed",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dashboard.delete": [
+			"dss",
+			"dashboard",
+			"delete",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dashboard.export": [
+			"dss",
+			"dashboard",
+			"export",
+			{
+				"arg": "id"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "paper-size",
+							"value": "SIZE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "orientation",
+							"values": [
+								"PORTRAIT",
+								"LANDSCAPE"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "file-type",
+							"value": "PDF"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "slide-index",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dashboard.get": [
+			"dss",
+			"dashboard",
+			"get",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dashboard.list": [
+			"dss",
+			"dashboard",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dashboard.update": [
+			"dss",
+			"dashboard",
+			"update",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					],
+					[
+						{
+							"flag": "listed",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					],
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-collection.add-object": [
+			"dss",
+			"data-collection",
+			"add-object",
+			{
+				"arg": "dataCollectionId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"data-collection.create": [
+			"dss",
+			"data-collection",
+			"create",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"data-collection.delete": [
+			"dss",
+			"data-collection",
+			"delete",
+			{
+				"arg": "dataCollectionId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"data-collection.get": [
+			"dss",
+			"data-collection",
+			"get",
+			{
+				"arg": "dataCollectionId"
+			}
+		],
+		"data-collection.list": [
+			"dss",
+			"data-collection",
+			"list"
+		],
+		"data-collection.list-objects": [
+			"dss",
+			"data-collection",
+			"list-objects",
+			{
+				"arg": "dataCollectionId"
+			}
+		],
+		"data-collection.remove-dataset": [
+			"dss",
+			"data-collection",
+			"remove-dataset",
+			{
+				"arg": "dataCollectionId"
+			},
+			{
+				"arg": "projectKey"
+			},
+			{
+				"arg": "datasetName"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"data-collection.settings-set": [
+			"dss",
+			"data-collection",
+			"settings-set",
+			{
+				"arg": "dataCollectionId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.assert-results": [
+			"dss",
+			"data-quality",
+			"assert-results",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "rule-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.compute": [
+			"dss",
+			"data-quality",
+			"compute",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partition",
+							"value": "P"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "rule-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.create-rule": [
+			"dss",
+			"data-quality",
+			"create-rule",
+			{
+				"arg": "dataset"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.delete-rule": [
+			"dss",
+			"data-quality",
+			"delete-rule",
+			{
+				"arg": "dataset"
+			},
+			{
+				"arg": "rule-id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.get-rule": [
+			"dss",
+			"data-quality",
+			"get-rule",
+			{
+				"arg": "dataset"
+			},
+			{
+				"arg": "rule-id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.history": [
+			"dss",
+			"data-quality",
+			"history",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "rule-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "min-timestamp",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-timestamp",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "results-per-page",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "page",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.last-results": [
+			"dss",
+			"data-quality",
+			"last-results",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partition",
+							"value": "P"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "rule-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.project-status": [
+			"dss",
+			"data-quality",
+			"project-status",
+			{
+				"optional": [
+					[
+						{
+							"flag": "only-monitored",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.project-timeline": [
+			"dss",
+			"data-quality",
+			"project-timeline",
+			{
+				"optional": [
+					[
+						{
+							"flag": "min-timestamp",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-timestamp",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.rules": [
+			"dss",
+			"data-quality",
+			"rules",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.status": [
+			"dss",
+			"data-quality",
+			"status",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.status-by-partition": [
+			"dss",
+			"data-quality",
+			"status-by-partition",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "include-all-partitions"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.update-rule": [
+			"dss",
+			"data-quality",
+			"update-rule",
+			{
+				"arg": "dataset"
+			},
+			{
+				"arg": "rule-id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.assert-count": [
+			"dss",
+			"dataset",
+			"assert-count",
+			{
+				"arg": "dataset"
+			},
+			{
+				"flag": "expected",
+				"value": "N"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.assert-schema": [
+			"dss",
+			"dataset",
+			"assert-schema",
+			{
+				"arg": "dataset"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.clear": [
+			"dss",
+			"dataset",
+			"clear",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partitions",
+							"value": "SPEC"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.clone": [
+			"dss",
+			"dataset",
+			"clone",
+			{
+				"arg": "source"
+			},
+			{
+				"arg": "target"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "path",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "table",
+							"value": "TABLE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "metastore-table",
+							"value": "TABLE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "allow-same-path"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "zone",
+							"value": "ZONE"
+						}
+					],
+					[
+						{
+							"flag": "zone-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.column-lineage": [
+			"dss",
+			"dataset",
+			"column-lineage",
+			{
+				"arg": "name"
+			},
+			{
+				"arg": "column"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-dataset-count",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.create": [
+			"dss",
+			"dataset",
+			"create",
+			{
+				"flag": "name",
+				"value": "NAME"
+			},
+			{
+				"flag": "type",
+				"value": "TYPE"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "connection",
+							"value": "CONN"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "zone",
+							"value": "ZONE"
+						}
+					],
+					[
+						{
+							"flag": "zone-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.create-managed": [
+			"dss",
+			"dataset",
+			"create-managed",
+			{
+				"flag": "name",
+				"value": "NAME"
+			},
+			{
+				"flag": "connection",
+				"value": "CONN"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "type-option-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "format-option-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "copy-partitioning-from",
+							"value": "REF"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partitioning-folder"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.delete": [
+			"dss",
+			"dataset",
+			"delete",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.download": [
+			"dss",
+			"dataset",
+			"download",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "raw-data"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.files": [
+			"dss",
+			"dataset",
+			"files",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.get": [
+			"dss",
+			"dataset",
+			"get",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.info": [
+			"dss",
+			"dataset",
+			"info",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.list": [
+			"dss",
+			"dataset",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.list-partitions": [
+			"dss",
+			"dataset",
+			"list-partitions",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.metadata": [
+			"dss",
+			"dataset",
+			"metadata",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.metadata-set": [
+			"dss",
+			"dataset",
+			"metadata-set",
+			{
+				"arg": "name"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.preview": [
+			"dss",
+			"dataset",
+			"preview",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-rows",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "rows",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			}
+		],
+		"dataset.refresh-schema": [
+			"dss",
+			"dataset",
+			"refresh-schema",
+			{
+				"arg": "name"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.rename": [
+			"dss",
+			"dataset",
+			"rename",
+			{
+				"arg": "oldName"
+			},
+			{
+				"arg": "newName"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.schema": [
+			"dss",
+			"dataset",
+			"schema",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.source": [
+			"dss",
+			"dataset",
+			"source",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.update": [
+			"dss",
+			"dataset",
+			"update",
+			{
+				"arg": "name"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "'{...}'"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.upload-file": [
+			"dss",
+			"dataset",
+			"upload-file",
+			{
+				"arg": "name"
+			},
+			{
+				"arg": "localPath"
+			},
+			{
+				"flag": "file-name",
+				"value": "NAME"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.validate-build": [
+			"dss",
+			"dataset",
+			"validate-build",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"discussion.create": [
+			"dss",
+			"discussion",
+			"create",
+			{
+				"arg": "objectType"
+			},
+			{
+				"arg": "objectId"
+			},
+			{
+				"flag": "topic",
+				"value": "TEXT"
+			},
+			{
+				"flag": "reply",
+				"value": "TEXT"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"discussion.get": [
+			"dss",
+			"discussion",
+			"get",
+			{
+				"arg": "objectType"
+			},
+			{
+				"arg": "objectId"
+			},
+			{
+				"arg": "discussionId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"discussion.list": [
+			"dss",
+			"discussion",
+			"list",
+			{
+				"arg": "objectType"
+			},
+			{
+				"arg": "objectId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"discussion.reply": [
+			"dss",
+			"discussion",
+			"reply",
+			{
+				"arg": "objectType"
+			},
+			{
+				"arg": "objectId"
+			},
+			{
+				"arg": "discussionId"
+			},
+			{
+				"flag": "text",
+				"value": "TEXT"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"doctor.run": [
+			"dss",
+			"doctor",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "capabilities"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "fast"
+						}
+					]
+				]
+			}
+		],
+		"fixtures.run": [
+			"dss",
+			"fixtures",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "allow-types",
+							"value": "CSV"
+						}
+					]
+				]
+			}
+		],
+		"flow-zone.create": [
+			"dss",
+			"flow-zone",
+			"create",
+			{
+				"flag": "name",
+				"value": "NAME"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "color",
+							"value": "#RRGGBB"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"flow-zone.delete": [
+			"dss",
+			"flow-zone",
+			"delete",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"flow-zone.find": [
+			"dss",
+			"flow-zone",
+			"find",
+			{
+				"optional": [
+					[
+						{
+							"arg": "name-or-id",
+							"bare": true
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "object",
+							"value": "TYPE:ID"
+						}
+					],
+					[
+						{
+							"flag": "dataset",
+							"value": "DS"
+						}
+					],
+					[
+						{
+							"flag": "recipe",
+							"value": "R"
+						}
+					],
+					[
+						{
+							"flag": "folder",
+							"value": "F"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"flow-zone.get": [
+			"dss",
+			"flow-zone",
+			"get",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"flow-zone.graph": [
+			"dss",
+			"flow-zone",
+			"graph",
+			{
+				"optional": [
+					[
+						{
+							"arg": "id"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"flow-zone.list": [
+			"dss",
+			"flow-zone",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "summary"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "object",
+							"value": "TYPE:ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"flow-zone.move": [
+			"dss",
+			"flow-zone",
+			"move",
+			{
+				"optional": [
+					[
+						{
+							"arg": "id",
+							"bare": true
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "zone",
+							"value": "ZONE"
+						}
+					],
+					[
+						{
+							"flag": "zone-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dataset",
+							"value": "DS[,DS2]"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "recipe",
+							"value": "R"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "folder",
+							"value": "F"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "object",
+							"value": "TYPE:ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"flow-zone.organize": [
+			"dss",
+			"flow-zone",
+			"organize",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "sync"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "validate-objects"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"flow-zone.plan": [
+			"dss",
+			"flow-zone",
+			"plan",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"flow-zone.update": [
+			"dss",
+			"flow-zone",
+			"update",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "color",
+							"value": "#RRGGBB"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"folder.contents": [
+			"dss",
+			"folder",
+			"contents",
+			{
+				"arg": "name-or-id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "retries",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "request-timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"folder.create": [
+			"dss",
+			"folder",
+			"create",
+			{
+				"flag": "name",
+				"value": "NAME"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "type",
+							"value": "TYPE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "connection",
+							"value": "CONN"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "path",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"folder.delete": [
+			"dss",
+			"folder",
+			"delete",
+			{
+				"arg": "name-or-id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"folder.delete-file": [
+			"dss",
+			"folder",
+			"delete-file",
+			{
+				"arg": "name-or-id"
+			},
+			{
+				"arg": "path"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"folder.download": [
+			"dss",
+			"folder",
+			"download",
+			{
+				"arg": "name-or-id"
+			},
+			{
+				"arg": "remote-path"
+			},
+			{
+				"optional": [
+					[
+						{
+							"arg": "local-path",
+							"bare": true
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"folder.get": [
+			"dss",
+			"folder",
+			"get",
+			{
+				"arg": "name-or-id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"folder.list": [
+			"dss",
+			"folder",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"folder.update": [
+			"dss",
+			"folder",
+			"update",
+			{
+				"arg": "name-or-id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"folder.upload": [
+			"dss",
+			"folder",
+			"upload",
+			{
+				"arg": "name-or-id"
+			},
+			{
+				"arg": "path"
+			},
+			{
+				"arg": "localPath"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"future.abort": [
+			"dss",
+			"future",
+			"abort",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"future.get": [
+			"dss",
+			"future",
+			"get",
+			{
+				"arg": "id"
+			}
+		],
+		"future.peek": [
+			"dss",
+			"future",
+			"peek",
+			{
+				"arg": "id"
+			}
+		],
+		"future.wait": [
+			"dss",
+			"future",
+			"wait",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			}
+		],
+		"group.create": [
+			"dss",
+			"group",
+			"create",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"group.delete": [
+			"dss",
+			"group",
+			"delete",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"group.get": [
+			"dss",
+			"group",
+			"get",
+			{
+				"arg": "name"
+			}
+		],
+		"group.list": [
+			"dss",
+			"group",
+			"list"
+		],
+		"group.update": [
+			"dss",
+			"group",
+			"update",
+			{
+				"arg": "name"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"insight.create": [
+			"dss",
+			"insight",
+			"create",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					],
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						},
+						{
+							"flag": "type",
+							"value": "TYPE"
+						},
+						{
+							"optional": [
+								[
+									{
+										"flag": "params",
+										"value": "JSON"
+									}
+								]
+							]
+						},
+						{
+							"optional": [
+								[
+									{
+										"flag": "listed",
+										"values": [
+											"true",
+											"false"
+										]
+									}
+								]
+							]
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "content",
+							"value": "TEXT"
+						}
+					],
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						},
+						{
+							"flag": "content-type",
+							"value": "MIME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"insight.delete": [
+			"dss",
+			"insight",
+			"delete",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"insight.get": [
+			"dss",
+			"insight",
+			"get",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"insight.list": [
+			"dss",
+			"insight",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"insight.update": [
+			"dss",
+			"insight",
+			"update",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					],
+					[
+						{
+							"flag": "listed",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					],
+					[
+						{
+							"flag": "params",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "content",
+							"value": "TEXT"
+						}
+					],
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "content-type",
+							"value": "MIME"
+						}
+					],
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"install-skill.run": [
+			"dss",
+			"install-skill",
+			{
+				"optional": [
+					[
+						{
+							"flag": "global"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "agent",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "target",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "list-agents"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"job.abort": [
+			"dss",
+			"job",
+			"abort",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"job.build": [
+			"dss",
+			"job",
+			"build",
+			{
+				"arg": "target"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "target-type",
+							"values": [
+								"dataset",
+								"managed-folder"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "type",
+							"values": [
+								"DATASET",
+								"MANAGED_FOLDER"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "build-mode",
+							"value": "MODE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partition",
+							"value": "PARTITION"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"job.build-and-wait": [
+			"dss",
+			"job",
+			"build-and-wait",
+			{
+				"arg": "target"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "target-type",
+							"values": [
+								"dataset",
+								"managed-folder"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "type",
+							"values": [
+								"DATASET",
+								"MANAGED_FOLDER"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "build-mode",
+							"value": "MODE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "include-logs"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "log-filter",
+							"values": [
+								"stdout",
+								"stderr",
+								"user",
+								"errors"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "summary"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-log-lines",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partition",
+							"value": "PARTITION"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"job.get": [
+			"dss",
+			"job",
+			"get",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"job.list": [
+			"dss",
+			"job",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "state",
+							"value": "STATE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "latest"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"job.log": [
+			"dss",
+			"job",
+			"log",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "activity",
+							"value": "ACTIVITY_ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "log-id",
+							"value": "LOG_ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "log-filter",
+							"values": [
+								"stdout",
+								"stderr",
+								"user",
+								"errors"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "errors-only"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-lines",
+							"value": "N"
+						}
+					],
+					[
+						{
+							"flag": "max-log-lines",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"job.log-url": [
+			"dss",
+			"job",
+			"log-url",
+			{
+				"arg": "url"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-lines",
+							"value": "N"
+						}
+					],
+					[
+						{
+							"flag": "max-log-lines",
+							"value": "N"
+						}
+					]
+				]
+			}
+		],
+		"job.monitor": [
+			"dss",
+			"job",
+			"monitor",
+			{
+				"arg": "id..."
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "summary"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "include-logs"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "log-filter",
+							"values": [
+								"stdout",
+								"stderr",
+								"user",
+								"errors"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-log-lines",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "until",
+							"value": "all-done"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"job.summary": [
+			"dss",
+			"job",
+			"summary",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "activity",
+							"value": "ACTIVITY_ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "log-id",
+							"value": "LOG_ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-lines",
+							"value": "N"
+						}
+					],
+					[
+						{
+							"flag": "max-log-lines",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"job.wait": [
+			"dss",
+			"job",
+			"wait",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "include-logs"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "log-filter",
+							"values": [
+								"stdout",
+								"stderr",
+								"user",
+								"errors"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "summary"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-log-lines",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"job.watch": [
+			"dss",
+			"job",
+			"watch",
+			{
+				"arg": "id..."
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "include-logs"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "log-filter",
+							"values": [
+								"stdout",
+								"stderr",
+								"user",
+								"errors"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-log-lines",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "until",
+							"value": "all-done"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"knowledge-bank.clear": [
+			"dss",
+			"knowledge-bank",
+			"clear",
+			{
+				"arg": "knowledgeBankId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"knowledge-bank.search": [
+			"dss",
+			"knowledge-bank",
+			"search",
+			{
+				"arg": "knowledgeBankId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"llm.completions": [
+			"dss",
+			"llm",
+			"completions",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"llm.embeddings": [
+			"dss",
+			"llm",
+			"embeddings",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"llm.list": [
+			"dss",
+			"llm",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "purpose",
+							"values": [
+								"GENERIC_COMPLETION",
+								"TEXT_EMBEDDING_EXTRACTION",
+								"IMAGE_GENERATION",
+								"NAME"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"macro.abort": [
+			"dss",
+			"macro",
+			"abort",
+			{
+				"arg": "macro_id"
+			},
+			{
+				"arg": "run_id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"macro.get": [
+			"dss",
+			"macro",
+			"get",
+			{
+				"arg": "macro_id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"macro.list": [
+			"dss",
+			"macro",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"macro.result": [
+			"dss",
+			"macro",
+			"result",
+			{
+				"arg": "macro_id"
+			},
+			{
+				"arg": "run_id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-bytes",
+							"value": "N",
+							"note": "(default 8388608)"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"macro.run": [
+			"dss",
+			"macro",
+			"run",
+			{
+				"arg": "macro_id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS",
+							"note": "(default 120000)"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"macro.run-and-wait": [
+			"dss",
+			"macro",
+			"run-and-wait",
+			{
+				"arg": "macro_id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS",
+							"note": "(default 120000)"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"macro.state": [
+			"dss",
+			"macro",
+			"state",
+			{
+				"arg": "macro_id"
+			},
+			{
+				"arg": "run_id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"meaning.create": [
+			"dss",
+			"meaning",
+			"create",
+			{
+				"arg": "id"
+			},
+			{
+				"arg": "label"
+			},
+			{
+				"arg": "type"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"meaning.delete": [
+			"dss",
+			"meaning",
+			"delete",
+			{
+				"arg": "meaningId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"meaning.get": [
+			"dss",
+			"meaning",
+			"get",
+			{
+				"arg": "meaningId"
+			}
+		],
+		"meaning.list": [
+			"dss",
+			"meaning",
+			"list"
+		],
+		"meaning.update": [
+			"dss",
+			"meaning",
+			"update",
+			{
+				"arg": "meaningId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"metrics.dataset-compute": [
+			"dss",
+			"metrics",
+			"dataset-compute",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"metrics.dataset-get": [
+			"dss",
+			"metrics",
+			"dataset-get",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"metrics.dataset-history": [
+			"dss",
+			"metrics",
+			"dataset-history",
+			{
+				"arg": "dataset"
+			},
+			{
+				"arg": "metricId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"metrics.folder-get": [
+			"dss",
+			"metrics",
+			"folder-get",
+			{
+				"arg": "folderId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.create": [
+			"dss",
+			"ml-task",
+			"create",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"flag": "task-type",
+				"values": [
+					"PREDICTION",
+					"CLUSTERING"
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "target",
+							"value": "COLUMN"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "prediction-type",
+							"value": "TYPE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "backend-type",
+							"value": "TYPE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "guess-policy",
+							"value": "POLICY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.delete": [
+			"dss",
+			"ml-task",
+			"delete",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.deploy": [
+			"dss",
+			"ml-task",
+			"deploy",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"arg": "modelId"
+			},
+			{
+				"flag": "model-name",
+				"value": "NAME"
+			},
+			{
+				"flag": "train-dataset",
+				"value": "DATASET"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "test-dataset",
+							"value": "DATASET"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.get-settings": [
+			"dss",
+			"ml-task",
+			"get-settings",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.list-models": [
+			"dss",
+			"ml-task",
+			"list-models",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.model-details": [
+			"dss",
+			"ml-task",
+			"model-details",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"arg": "modelId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.set-settings": [
+			"dss",
+			"ml-task",
+			"set-settings",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.status": [
+			"dss",
+			"ml-task",
+			"status",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.train": [
+			"dss",
+			"ml-task",
+			"train",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "session-name",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"model-evaluation-store.create": [
+			"dss",
+			"model-evaluation-store",
+			"create",
+			{
+				"flag": "name",
+				"value": "NAME"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"model-evaluation-store.delete": [
+			"dss",
+			"model-evaluation-store",
+			"delete",
+			{
+				"arg": "storeId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"model-evaluation-store.get": [
+			"dss",
+			"model-evaluation-store",
+			"get",
+			{
+				"arg": "storeId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"model-evaluation-store.list": [
+			"dss",
+			"model-evaluation-store",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"model-evaluation-store.list-evaluations": [
+			"dss",
+			"model-evaluation-store",
+			"list-evaluations",
+			{
+				"arg": "storeId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.clear-jupyter-outputs": [
+			"dss",
+			"notebook",
+			"clear-jupyter-outputs",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.clear-sql-history": [
+			"dss",
+			"notebook",
+			"clear-sql-history",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "cell-id",
+							"value": "CID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "retain",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.delete-jupyter": [
+			"dss",
+			"notebook",
+			"delete-jupyter",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.delete-sql": [
+			"dss",
+			"notebook",
+			"delete-sql",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.get-jupyter": [
+			"dss",
+			"notebook",
+			"get-jupyter",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.get-sql": [
+			"dss",
+			"notebook",
+			"get-sql",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.history-sql": [
+			"dss",
+			"notebook",
+			"history-sql",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.list-jupyter": [
+			"dss",
+			"notebook",
+			"list-jupyter",
+			{
+				"optional": [
+					[
+						{
+							"flag": "active",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.list-sql": [
+			"dss",
+			"notebook",
+			"list-sql",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.save-jupyter": [
+			"dss",
+			"notebook",
+			"save-jupyter",
+			{
+				"arg": "name"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "'{...}'"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-hash",
+							"value": "SHA256"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.save-sql": [
+			"dss",
+			"notebook",
+			"save-sql",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "'{...}'"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-hash",
+							"value": "SHA256"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.sessions-jupyter": [
+			"dss",
+			"notebook",
+			"sessions-jupyter",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"notebook.unload-jupyter": [
+			"dss",
+			"notebook",
+			"unload-jupyter",
+			{
+				"oneOf": [
+					[
+						{
+							"arg": "name"
+						},
+						{
+							"arg": "sessionId"
+						}
+					],
+					[
+						{
+							"flag": "all"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"plugin.code-env-create": [
+			"dss",
+			"plugin",
+			"code-env-create",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "conda"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "python-interpreter",
+							"value": "PY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.code-env-update": [
+			"dss",
+			"plugin",
+			"code-env-update",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.contents-delete": [
+			"dss",
+			"plugin",
+			"contents-delete",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"arg": "path"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.contents-get": [
+			"dss",
+			"plugin",
+			"contents-get",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"arg": "path"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			}
+		],
+		"plugin.contents-list": [
+			"dss",
+			"plugin",
+			"contents-list",
+			{
+				"arg": "pluginId"
+			}
+		],
+		"plugin.contents-put": [
+			"dss",
+			"plugin",
+			"contents-put",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"arg": "path"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "content",
+							"value": "TEXT"
+						}
+					],
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.create-dev": [
+			"dss",
+			"plugin",
+			"create-dev",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"flag": "creation-mode",
+				"values": [
+					"EMPTY",
+					"GIT_CLONE",
+					"GIT_EXPORT"
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "repository",
+							"value": "URL"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "checkout",
+							"value": "REF"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "path-in-repository",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.delete": [
+			"dss",
+			"plugin",
+			"delete",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "force"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.delete-git-remote": [
+			"dss",
+			"plugin",
+			"delete-git-remote",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.details": [
+			"dss",
+			"plugin",
+			"details",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"arg": "path"
+			}
+		],
+		"plugin.download": [
+			"dss",
+			"plugin",
+			"download",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			}
+		],
+		"plugin.fetch": [
+			"dss",
+			"plugin",
+			"fetch",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.folder-add": [
+			"dss",
+			"plugin",
+			"folder-add",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"arg": "path"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.get-git-remote": [
+			"dss",
+			"plugin",
+			"get-git-remote",
+			{
+				"arg": "pluginId"
+			}
+		],
+		"plugin.git-branches": [
+			"dss",
+			"plugin",
+			"git-branches",
+			{
+				"arg": "pluginId"
+			}
+		],
+		"plugin.install-from-git": [
+			"dss",
+			"plugin",
+			"install-from-git",
+			{
+				"flag": "repository",
+				"value": "URL"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "checkout",
+							"value": "REF"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "path-in-repository",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.install-from-store": [
+			"dss",
+			"plugin",
+			"install-from-store",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.install-from-zip": [
+			"dss",
+			"plugin",
+			"install-from-zip",
+			{
+				"flag": "file",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.list": [
+			"dss",
+			"plugin",
+			"list"
+		],
+		"plugin.move": [
+			"dss",
+			"plugin",
+			"move",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"arg": "path"
+			},
+			{
+				"arg": "destination-folder"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.move-to-dev": [
+			"dss",
+			"plugin",
+			"move-to-dev",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.pull": [
+			"dss",
+			"plugin",
+			"pull",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.push": [
+			"dss",
+			"plugin",
+			"push",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.rename": [
+			"dss",
+			"plugin",
+			"rename",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"arg": "path"
+			},
+			{
+				"arg": "new-name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.reset-local": [
+			"dss",
+			"plugin",
+			"reset-local",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.reset-remote": [
+			"dss",
+			"plugin",
+			"reset-remote",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.set-git-remote": [
+			"dss",
+			"plugin",
+			"set-git-remote",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"flag": "repository",
+				"value": "URL"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.settings-get": [
+			"dss",
+			"plugin",
+			"settings-get",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"plugin.settings-set": [
+			"dss",
+			"plugin",
+			"settings-set",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "content",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.update-from-git": [
+			"dss",
+			"plugin",
+			"update-from-git",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"flag": "repository",
+				"value": "URL"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "checkout",
+							"value": "REF"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "path-in-repository",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.update-from-store": [
+			"dss",
+			"plugin",
+			"update-from-store",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.update-from-zip": [
+			"dss",
+			"plugin",
+			"update-from-zip",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"flag": "file",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plan"
+						}
+					]
+				]
+			}
+		],
+		"plugin.usages": [
+			"dss",
+			"plugin",
+			"usages",
+			{
+				"arg": "pluginId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project-deployer.create-deployment": [
+			"dss",
+			"project-deployer",
+			"create-deployment",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"project-deployer.create-infra": [
+			"dss",
+			"project-deployer",
+			"create-infra",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"project-deployer.create-project": [
+			"dss",
+			"project-deployer",
+			"create-project",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"project-deployer.delete-deployment": [
+			"dss",
+			"project-deployer",
+			"delete-deployment",
+			{
+				"arg": "deploymentId"
+			}
+		],
+		"project-deployer.deploy": [
+			"dss",
+			"project-deployer",
+			"deploy",
+			{
+				"arg": "deploymentId"
+			}
+		],
+		"project-deployer.deployment-status": [
+			"dss",
+			"project-deployer",
+			"deployment-status",
+			{
+				"arg": "deploymentId"
+			}
+		],
+		"project-deployer.get-deployment": [
+			"dss",
+			"project-deployer",
+			"get-deployment",
+			{
+				"arg": "deploymentId"
+			}
+		],
+		"project-deployer.list-deployments": [
+			"dss",
+			"project-deployer",
+			"list-deployments"
+		],
+		"project-deployer.list-infras": [
+			"dss",
+			"project-deployer",
+			"list-infras"
+		],
+		"project-deployer.list-projects": [
+			"dss",
+			"project-deployer",
+			"list-projects"
+		],
+		"project-deployer.project-status": [
+			"dss",
+			"project-deployer",
+			"project-status",
+			{
+				"arg": "publishedProjectKey"
+			}
+		],
+		"project-deployer.save-deployment-settings": [
+			"dss",
+			"project-deployer",
+			"save-deployment-settings",
+			{
+				"arg": "deploymentId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"project-deployer.upload-bundle": [
+			"dss",
+			"project-deployer",
+			"upload-bundle",
+			{
+				"arg": "filePath"
+			}
+		],
+		"project-folder.create-child": [
+			"dss",
+			"project-folder",
+			"create-child",
+			{
+				"arg": "parentFolderId"
+			},
+			{
+				"flag": "name",
+				"value": "NAME"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"project-folder.delete": [
+			"dss",
+			"project-folder",
+			"delete",
+			{
+				"arg": "folderId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"project-folder.get": [
+			"dss",
+			"project-folder",
+			"get",
+			{
+				"arg": "folderId"
+			}
+		],
+		"project-folder.move": [
+			"dss",
+			"project-folder",
+			"move",
+			{
+				"arg": "folderId"
+			},
+			{
+				"arg": "destinationFolderId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"project-folder.move-project": [
+			"dss",
+			"project-folder",
+			"move-project",
+			{
+				"arg": "folderId"
+			},
+			{
+				"arg": "projectKey"
+			},
+			{
+				"arg": "destinationFolderId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"project-folder.root": [
+			"dss",
+			"project-folder",
+			"root"
+		],
+		"project-folder.settings-get": [
+			"dss",
+			"project-folder",
+			"settings-get",
+			{
+				"arg": "folderId"
+			}
+		],
+		"project-folder.settings-set": [
+			"dss",
+			"project-folder",
+			"settings-set",
+			{
+				"arg": "folderId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"project-git.add-library": [
+			"dss",
+			"project-git",
+			"add-library",
+			{
+				"arg": "target-path"
+			},
+			{
+				"flag": "repository",
+				"value": "URL"
+			},
+			{
+				"flag": "checkout",
+				"value": "REF"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "path-in-repository",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "login",
+							"value": "LOGIN"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "password-env",
+							"value": "ENV_NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "no-add-to-python-path"
+						}
+					]
+				]
+			}
+		],
+		"project-git.branches": [
+			"dss",
+			"project-git",
+			"branches",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "remote"
+						}
+					]
+				]
+			}
+		],
+		"project-git.commit": [
+			"dss",
+			"project-git",
+			"commit",
+			{
+				"flag": "message",
+				"value": "MESSAGE"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.create-branch": [
+			"dss",
+			"project-git",
+			"create-branch",
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "commit",
+							"value": "COMMIT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "duplicate-project"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "target-project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "target-project-folder-id",
+							"value": "ID"
+						}
+					]
+				]
+			}
+		],
+		"project-git.create-tag": [
+			"dss",
+			"project-git",
+			"create-tag",
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "reference",
+							"value": "REF"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "message",
+							"value": "MESSAGE"
+						}
+					]
+				]
+			}
+		],
+		"project-git.current-branch": [
+			"dss",
+			"project-git",
+			"current-branch",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.delete-branch": [
+			"dss",
+			"project-git",
+			"delete-branch",
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "remote"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "delete-remotely"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "force-delete"
+						}
+					]
+				]
+			}
+		],
+		"project-git.delete-tag": [
+			"dss",
+			"project-git",
+			"delete-tag",
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.diff": [
+			"dss",
+			"project-git",
+			"diff",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "from",
+							"value": "COMMIT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "to",
+							"value": "COMMIT"
+						}
+					]
+				]
+			}
+		],
+		"project-git.drop-and-rebuild": [
+			"dss",
+			"project-git",
+			"drop-and-rebuild",
+			{
+				"flag": "i-know-what-i-am-doing"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.fetch": [
+			"dss",
+			"project-git",
+			"fetch",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.future-abort": [
+			"dss",
+			"project-git",
+			"future-abort",
+			{
+				"arg": "job-id"
+			}
+		],
+		"project-git.future-status": [
+			"dss",
+			"project-git",
+			"future-status",
+			{
+				"arg": "job-id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "peek"
+						}
+					]
+				]
+			}
+		],
+		"project-git.future-wait": [
+			"dss",
+			"project-git",
+			"future-wait",
+			{
+				"arg": "job-id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			}
+		],
+		"project-git.get-remote": [
+			"dss",
+			"project-git",
+			"get-remote",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					]
+				]
+			}
+		],
+		"project-git.list-libraries": [
+			"dss",
+			"project-git",
+			"list-libraries",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.log": [
+			"dss",
+			"project-git",
+			"log",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "path",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "start-commit",
+							"value": "COMMIT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "count",
+							"value": "N"
+						}
+					]
+				]
+			}
+		],
+		"project-git.pull": [
+			"dss",
+			"project-git",
+			"pull",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "branch",
+							"value": "NAME"
+						}
+					]
+				]
+			}
+		],
+		"project-git.push": [
+			"dss",
+			"project-git",
+			"push",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "branch",
+							"value": "NAME"
+						}
+					]
+				]
+			}
+		],
+		"project-git.push-all-libraries": [
+			"dss",
+			"project-git",
+			"push-all-libraries",
+			{
+				"flag": "message",
+				"value": "MESSAGE"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.push-library": [
+			"dss",
+			"project-git",
+			"push-library",
+			{
+				"arg": "target-path"
+			},
+			{
+				"flag": "message",
+				"value": "MESSAGE"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.remove-library": [
+			"dss",
+			"project-git",
+			"remove-library",
+			{
+				"arg": "target-path"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "delete-directory"
+						}
+					]
+				]
+			}
+		],
+		"project-git.remove-remote": [
+			"dss",
+			"project-git",
+			"remove-remote",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					]
+				]
+			}
+		],
+		"project-git.reset-all-libraries": [
+			"dss",
+			"project-git",
+			"reset-all-libraries",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.reset-library": [
+			"dss",
+			"project-git",
+			"reset-library",
+			{
+				"arg": "target-path"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.reset-to-head": [
+			"dss",
+			"project-git",
+			"reset-to-head",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.reset-to-upstream": [
+			"dss",
+			"project-git",
+			"reset-to-upstream",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.revert-commit": [
+			"dss",
+			"project-git",
+			"revert-commit",
+			{
+				"arg": "commit"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.revert-to-revision": [
+			"dss",
+			"project-git",
+			"revert-to-revision",
+			{
+				"arg": "commit"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.set-library": [
+			"dss",
+			"project-git",
+			"set-library",
+			{
+				"arg": "target-path"
+			},
+			{
+				"flag": "repository",
+				"value": "URL"
+			},
+			{
+				"flag": "checkout",
+				"value": "REF"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "path-in-repository",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "login",
+							"value": "LOGIN"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "password-env",
+							"value": "ENV_NAME"
+						}
+					]
+				]
+			}
+		],
+		"project-git.set-remote": [
+			"dss",
+			"project-git",
+			"set-remote",
+			{
+				"flag": "repository",
+				"value": "URL"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					]
+				]
+			}
+		],
+		"project-git.status": [
+			"dss",
+			"project-git",
+			"status",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.switch": [
+			"dss",
+			"project-git",
+			"switch",
+			{
+				"arg": "branch"
+			},
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-git.tags": [
+			"dss",
+			"project-git",
+			"tags",
+			{
+				"flag": "project-key",
+				"value": "KEY"
+			}
+		],
+		"project-library.create-file": [
+			"dss",
+			"project-library",
+			"create-file",
+			{
+				"arg": "path"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project-library.create-folder": [
+			"dss",
+			"project-library",
+			"create-folder",
+			{
+				"arg": "path"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project-library.delete": [
+			"dss",
+			"project-library",
+			"delete",
+			{
+				"arg": "path"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project-library.diff": [
+			"dss",
+			"project-library",
+			"diff",
+			{
+				"arg": "path"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "content",
+							"value": "TEXT"
+						}
+					],
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-lines",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project-library.get": [
+			"dss",
+			"project-library",
+			"get",
+			{
+				"arg": "path"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project-library.get-bytes": [
+			"dss",
+			"project-library",
+			"get-bytes",
+			{
+				"arg": "path"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project-library.list": [
+			"dss",
+			"project-library",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project-library.move": [
+			"dss",
+			"project-library",
+			"move",
+			{
+				"arg": "path"
+			},
+			{
+				"arg": "destination-folder"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project-library.put": [
+			"dss",
+			"project-library",
+			"put",
+			{
+				"arg": "path"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "content",
+							"value": "TEXT"
+						}
+					],
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-sha256",
+							"value": "SHA256"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project-library.rename": [
+			"dss",
+			"project-library",
+			"rename",
+			{
+				"arg": "path"
+			},
+			{
+				"arg": "new-name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.create": [
+			"dss",
+			"project",
+			"create",
+			{
+				"arg": "projectKey"
+			},
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "owner",
+				"value": "LOGIN"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"project.delete": [
+			"dss",
+			"project",
+			"delete",
+			{
+				"arg": "projectKey"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "drop-data"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-project-incarnation",
+							"value": "HASH"
+						}
+					]
+				]
+			}
+		],
+		"project.duplicate": [
+			"dss",
+			"project",
+			"duplicate",
+			{
+				"arg": "sourceKey"
+			},
+			{
+				"arg": "targetKey"
+			},
+			{
+				"arg": "targetName"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"project.export": [
+			"dss",
+			"project",
+			"export",
+			{
+				"arg": "projectKey"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"project.flow": [
+			"dss",
+			"project",
+			"flow",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.get": [
+			"dss",
+			"project",
+			"get",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.import": [
+			"dss",
+			"project",
+			"import",
+			{
+				"arg": "filePath"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "target-project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"project.inspect-archive": [
+			"dss",
+			"project",
+			"inspect-archive",
+			{
+				"arg": "file"
+			}
+		],
+		"project.list": [
+			"dss",
+			"project",
+			"list"
+		],
+		"project.map": [
+			"dss",
+			"project",
+			"map",
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-nodes",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-edges",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "include-raw"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "render",
+							"values": [
+								"ascii",
+								"mermaid"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.metadata": [
+			"dss",
+			"project",
+			"metadata",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.metadata-set": [
+			"dss",
+			"project",
+			"metadata-set",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.permissions-get": [
+			"dss",
+			"project",
+			"permissions-get",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.permissions-set": [
+			"dss",
+			"project",
+			"permissions-set",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.settings-get": [
+			"dss",
+			"project",
+			"settings-get",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.settings-set": [
+			"dss",
+			"project",
+			"settings-set",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.tags-get": [
+			"dss",
+			"project",
+			"tags-get",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.tags-set": [
+			"dss",
+			"project",
+			"tags-set",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.add-input": [
+			"dss",
+			"recipe",
+			"add-input",
+			{
+				"arg": "recipe"
+			},
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "role",
+							"value": "ROLE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.assert-unchanged": [
+			"dss",
+			"recipe",
+			"assert-unchanged",
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "since",
+				"value": "BACKUP"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.cat": [
+			"dss",
+			"recipe",
+			"cat",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.clone": [
+			"dss",
+			"recipe",
+			"clone",
+			{
+				"oneOf": [
+					[
+						{
+							"arg": "source",
+							"bare": true
+						}
+					],
+					[
+						{
+							"flag": "from",
+							"value": "SOURCE"
+						}
+					]
+				]
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					],
+					[
+						{
+							"flag": "to",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "replace-input",
+							"value": "FROM=TO"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "replace-output",
+							"value": "FROM=TO"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "replace-payload-text",
+							"value": "FROM=TO"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "DATASET"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "copy-output-settings"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "path",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "metastore-table",
+							"value": "TABLE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "zone",
+							"value": "ZONE"
+						}
+					],
+					[
+						{
+							"flag": "zone-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.create": [
+			"dss",
+			"recipe",
+			"create",
+			{
+				"flag": "type",
+				"value": "TYPE"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "input",
+							"value": "DS[,DS2]"
+						}
+					]
+				]
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "output",
+							"value": "DS"
+						}
+					],
+					[
+						{
+							"flag": "output-folder",
+							"value": "FOLDER_ID"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output-connection",
+							"value": "CONN"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "zone",
+							"value": "ZONE"
+						}
+					],
+					[
+						{
+							"flag": "zone-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "join-on",
+							"value": "COL|LEFT=RIGHT[,...]"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "join-type",
+							"values": [
+								"LEFT",
+								"INNER",
+								"RIGHT",
+								"FULL"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "fuzzy-on",
+							"value": "COL|LEFT=RIGHT[,...]"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "fuzzy-distance",
+							"values": [
+								"DAMERAU_LEVENSHTEIN",
+								"HAMMING",
+								"JACCARD",
+								"COSINE",
+								"EUCLIDEAN"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "fuzzy-threshold",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "normalize"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.delete": [
+			"dss",
+			"recipe",
+			"delete",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.diff": [
+			"dss",
+			"recipe",
+			"diff",
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "file",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.download": [
+			"dss",
+			"recipe",
+			"download",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.download-code": [
+			"dss",
+			"recipe",
+			"download-code",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.get": [
+			"dss",
+			"recipe",
+			"get",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "include-payload"
+						}
+					],
+					[
+						{
+							"flag": "no-payload"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.get-payload": [
+			"dss",
+			"recipe",
+			"get-payload",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.list": [
+			"dss",
+			"recipe",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.metadata": [
+			"dss",
+			"recipe",
+			"metadata",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.metadata-set": [
+			"dss",
+			"recipe",
+			"metadata-set",
+			{
+				"arg": "name"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.remove-input": [
+			"dss",
+			"recipe",
+			"remove-input",
+			{
+				"arg": "recipe"
+			},
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "role",
+							"value": "ROLE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.restore": [
+			"dss",
+			"recipe",
+			"restore",
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "backup",
+				"value": "FILE"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "payload-only"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.run": [
+			"dss",
+			"recipe",
+			"run",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					],
+					[
+						{
+							"flag": "no-wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "build-mode",
+							"value": "MODE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "include-logs"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "log-filter",
+							"values": [
+								"stdout",
+								"stderr",
+								"user",
+								"errors"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "summary"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-log-lines",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partition",
+							"value": "PARTITION"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.set-payload": [
+			"dss",
+			"recipe",
+			"set-payload",
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "file",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "backup-dir",
+							"value": "DIR"
+						}
+					],
+					[
+						{
+							"flag": "no-backup"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.update": [
+			"dss",
+			"recipe",
+			"update",
+			{
+				"arg": "name"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "'{...}'"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.validate-graph": [
+			"dss",
+			"recipe",
+			"validate-graph",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.create-external": [
+			"dss",
+			"saved-model",
+			"create-external",
+			{
+				"arg": "name"
+			},
+			{
+				"flag": "type",
+				"values": [
+					"MLFLOW_PYFUNC",
+					"PROXY_MODEL"
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "prediction-type",
+							"value": "TYPE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "configuration",
+							"value": "JSON"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.delete": [
+			"dss",
+			"saved-model",
+			"delete",
+			{
+				"arg": "modelId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.delete-versions": [
+			"dss",
+			"saved-model",
+			"delete-versions",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionsCSV"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "remove-intermediate",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.download-scoring-jar": [
+			"dss",
+			"saved-model",
+			"download-scoring-jar",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full-class-name",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "include-libs",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.download-scoring-pmml": [
+			"dss",
+			"saved-model",
+			"download-scoring-pmml",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.evaluate-version": [
+			"dss",
+			"saved-model",
+			"evaluate-version",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"flag": "dataset",
+				"value": "REF"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "container-exec-config",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "sampling",
+							"value": "JSON"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "use-optimal-threshold",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "skip-expensive-reports",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.external-metadata-get": [
+			"dss",
+			"saved-model",
+			"external-metadata-get",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.external-metadata-put": [
+			"dss",
+			"saved-model",
+			"external-metadata-put",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "container-exec-config",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.get": [
+			"dss",
+			"saved-model",
+			"get",
+			{
+				"arg": "modelId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.import-mlflow-version": [
+			"dss",
+			"saved-model",
+			"import-mlflow-version",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"flag": "archive",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "code-env",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "container-exec-config",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "set-active",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "binary-classification-threshold",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.import-mlflow-version-from-folder": [
+			"dss",
+			"saved-model",
+			"import-mlflow-version-from-folder",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"flag": "folder",
+				"value": "PROJECT.FOLDER_ID"
+			},
+			{
+				"flag": "path",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "code-env",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "container-exec-config",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "set-active",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "binary-classification-threshold",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.list": [
+			"dss",
+			"saved-model",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.list-versions": [
+			"dss",
+			"saved-model",
+			"list-versions",
+			{
+				"arg": "modelId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.set-active": [
+			"dss",
+			"saved-model",
+			"set-active",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.set-user-meta": [
+			"dss",
+			"saved-model",
+			"set-user-meta",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.update-settings": [
+			"dss",
+			"saved-model",
+			"update-settings",
+			{
+				"arg": "modelId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.version-details": [
+			"dss",
+			"saved-model",
+			"version-details",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.version-snippet": [
+			"dss",
+			"saved-model",
+			"version-snippet",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.abort": [
+			"dss",
+			"scenario",
+			"abort",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.active-set": [
+			"dss",
+			"scenario",
+			"active-set",
+			{
+				"arg": "id"
+			},
+			{
+				"arg": "true|false"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.create": [
+			"dss",
+			"scenario",
+			"create",
+			{
+				"arg": "id"
+			},
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "type",
+							"values": [
+								"step_based",
+								"custom_python"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.delete": [
+			"dss",
+			"scenario",
+			"delete",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.get": [
+			"dss",
+			"scenario",
+			"get",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.get-run": [
+			"dss",
+			"scenario",
+			"get-run",
+			{
+				"arg": "id"
+			},
+			{
+				"arg": "runId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.last-runs": [
+			"dss",
+			"scenario",
+			"last-runs",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.list": [
+			"dss",
+			"scenario",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.log": [
+			"dss",
+			"scenario",
+			"log",
+			{
+				"arg": "id"
+			},
+			{
+				"arg": "runId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "step-id",
+							"value": "STEP_ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-log-bytes",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.payload-get": [
+			"dss",
+			"scenario",
+			"payload-get",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.payload-set": [
+			"dss",
+			"scenario",
+			"payload-set",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "'{...}'"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.run": [
+			"dss",
+			"scenario",
+			"run",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.run-and-wait": [
+			"dss",
+			"scenario",
+			"run-and-wait",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.status": [
+			"dss",
+			"scenario",
+			"status",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.update": [
+			"dss",
+			"scenario",
+			"update",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "'{...}'"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"sql.query": [
+			"dss",
+			"sql",
+			"query",
+			{
+				"oneOf": [
+					[
+						{
+							"arg": "SQL",
+							"bare": true
+						}
+					],
+					[
+						{
+							"flag": "sql",
+							"value": "QUERY"
+						}
+					],
+					[
+						{
+							"flag": "sql-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "sql",
+							"value": "-"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "connection",
+							"value": "CONN"
+						}
+					],
+					[
+						{
+							"flag": "dataset",
+							"value": "FULL_NAME"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "database",
+							"value": "DB"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "output-file",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "preview",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "start-retries",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "request-timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"statistics.create-worksheet": [
+			"dss",
+			"statistics",
+			"create-worksheet",
+			{
+				"arg": "dataset"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"statistics.delete-worksheet": [
+			"dss",
+			"statistics",
+			"delete-worksheet",
+			{
+				"arg": "dataset"
+			},
+			{
+				"arg": "worksheetId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"statistics.get-worksheet": [
+			"dss",
+			"statistics",
+			"get-worksheet",
+			{
+				"arg": "dataset"
+			},
+			{
+				"arg": "worksheetId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"statistics.list-worksheets": [
+			"dss",
+			"statistics",
+			"list-worksheets",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"statistics.run-card": [
+			"dss",
+			"statistics",
+			"run-card",
+			{
+				"arg": "dataset"
+			},
+			{
+				"arg": "worksheetId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"statistics.run-computation": [
+			"dss",
+			"statistics",
+			"run-computation",
+			{
+				"arg": "dataset"
+			},
+			{
+				"arg": "worksheetId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"statistics.run-worksheet": [
+			"dss",
+			"statistics",
+			"run-worksheet",
+			{
+				"arg": "dataset"
+			},
+			{
+				"arg": "worksheetId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"statistics.update-worksheet": [
+			"dss",
+			"statistics",
+			"update-worksheet",
+			{
+				"arg": "dataset"
+			},
+			{
+				"arg": "worksheetId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"streaming-endpoint.create": [
+			"dss",
+			"streaming-endpoint",
+			"create",
+			{
+				"arg": "id"
+			},
+			{
+				"arg": "type"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"streaming-endpoint.delete": [
+			"dss",
+			"streaming-endpoint",
+			"delete",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"streaming-endpoint.get": [
+			"dss",
+			"streaming-endpoint",
+			"get",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"streaming-endpoint.list": [
+			"dss",
+			"streaming-endpoint",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"streaming-endpoint.update-settings": [
+			"dss",
+			"streaming-endpoint",
+			"update-settings",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"user.activity": [
+			"dss",
+			"user",
+			"activity"
+		],
+		"user.activity-get": [
+			"dss",
+			"user",
+			"activity-get",
+			{
+				"arg": "login"
+			}
+		],
+		"user.create": [
+			"dss",
+			"user",
+			"create",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"user.delete": [
+			"dss",
+			"user",
+			"delete",
+			{
+				"arg": "login"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"user.external-groups": [
+			"dss",
+			"user",
+			"external-groups",
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"user.external-users": [
+			"dss",
+			"user",
+			"external-users",
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"user.get": [
+			"dss",
+			"user",
+			"get",
+			{
+				"arg": "login"
+			}
+		],
+		"user.list": [
+			"dss",
+			"user",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "connected"
+						}
+					]
+				]
+			}
+		],
+		"user.provision": [
+			"dss",
+			"user",
+			"provision",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"user.resync": [
+			"dss",
+			"user",
+			"resync",
+			{
+				"arg": "login"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"user.resync-multi": [
+			"dss",
+			"user",
+			"resync-multi",
+			{
+				"flag": "logins",
+				"value": "CSV"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"user.update": [
+			"dss",
+			"user",
+			"update",
+			{
+				"arg": "login"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"variable.get": [
+			"dss",
+			"variable",
+			"get",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"variable.set": [
+			"dss",
+			"variable",
+			"set",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "standard",
+							"value": "'{\"k\":\"v\"}'"
+						}
+					],
+					[
+						{
+							"flag": "local",
+							"value": "'{\"k\":\"v\"}'"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "replace"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"version.run": [
+			"dss",
+			"version"
+		],
+		"webapp.backend-state": [
+			"dss",
+			"webapp",
+			"backend-state",
+			{
+				"arg": "webappId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"webapp.create": [
+			"dss",
+			"webapp",
+			"create",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"webapp.get-settings": [
+			"dss",
+			"webapp",
+			"get-settings",
+			{
+				"arg": "webappId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"webapp.list": [
+			"dss",
+			"webapp",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"webapp.restart-backend": [
+			"dss",
+			"webapp",
+			"restart-backend",
+			{
+				"arg": "webappId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"webapp.stop-backend": [
+			"dss",
+			"webapp",
+			"stop-backend",
+			{
+				"arg": "webappId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"webapp.update-settings": [
+			"dss",
+			"webapp",
+			"update-settings",
+			{
+				"arg": "webappId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-hash",
+							"value": "SHA256"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"wiki.create": [
+			"dss",
+			"wiki",
+			"create",
+			{
+				"flag": "name",
+				"value": "NAME"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "parent",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "content",
+							"value": "TEXT"
+						}
+					],
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-not-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"wiki.delete": [
+			"dss",
+			"wiki",
+			"delete",
+			{
+				"arg": "id-or-name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"wiki.get": [
+			"dss",
+			"wiki",
+			"get",
+			{
+				"arg": "id-or-name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"wiki.list": [
+			"dss",
+			"wiki",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"wiki.settings": [
+			"dss",
+			"wiki",
+			"settings",
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"wiki.update": [
+			"dss",
+			"wiki",
+			"update",
+			{
+				"arg": "id-or-name"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					],
+					[
+						{
+							"flag": "content",
+							"value": "TEXT"
+						}
+					],
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"workspace.add-object": [
+			"dss",
+			"workspace",
+			"add-object",
+			{
+				"arg": "workspaceKey"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"workspace.create": [
+			"dss",
+			"workspace",
+			"create",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"workspace.delete": [
+			"dss",
+			"workspace",
+			"delete",
+			{
+				"arg": "workspaceKey"
+			}
+		],
+		"workspace.get": [
+			"dss",
+			"workspace",
+			"get",
+			{
+				"arg": "workspaceKey"
+			}
+		],
+		"workspace.list": [
+			"dss",
+			"workspace",
+			"list"
+		],
+		"workspace.list-objects": [
+			"dss",
+			"workspace",
+			"list-objects",
+			{
+				"arg": "workspaceKey"
+			}
+		],
+		"workspace.update-settings": [
+			"dss",
+			"workspace",
+			"update-settings",
+			{
+				"arg": "workspaceKey"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		]
+	}
+}

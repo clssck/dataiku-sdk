@@ -36,6 +36,8 @@ export type CliExecOptions = { cwd?: string; env?: NodeJS.ProcessEnv; };
 export type CliFailure = { code: number | null; stdout: string; stderr: string; };
 
 const CLI_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+// Hermetic default: never let the checkout's .env supply live credentials.
+const DEFAULT_CLI_ENV: NodeJS.ProcessEnv = { ...process.env, DATAIKU_DISABLE_ENV: "1", };
 
 export async function dss(
 	args: string[],
@@ -43,7 +45,7 @@ export async function dss(
 ): Promise<{ stdout: string; stderr: string; }> {
 	return exec(BUN, ["--no-env-file", "run", CLI_PATH, ...args,], {
 		cwd: opts.cwd ?? SDK_ROOT,
-		env: opts.env ?? process.env,
+		env: opts.env ?? DEFAULT_CLI_ENV,
 		maxBuffer: CLI_MAX_BUFFER_BYTES,
 	},);
 }
@@ -56,7 +58,7 @@ export async function dssWithInput(
 	return new Promise((resolvePromise, rejectPromise,) => {
 		const child = spawn(BUN, ["--no-env-file", "run", CLI_PATH, ...args,], {
 			cwd: opts.cwd ?? SDK_ROOT,
-			env: opts.env ?? process.env,
+			env: opts.env ?? DEFAULT_CLI_ENV,
 		},);
 		let stdout = "";
 		let stderr = "";

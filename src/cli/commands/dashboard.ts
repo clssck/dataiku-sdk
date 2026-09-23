@@ -4,22 +4,21 @@ import { deepMerge, } from "../../utils/deep-merge.js";
 import { jsonInput, parseBooleanOption, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
-export const dashboardCommands: Record<string, CommandMeta> = {
+export const dashboardCommands: Record<string, CommandMeta> = withUsage("dashboard", {
 	list: {
 		handler: (c, _a, f,) => c.dashboards.list(f["project-key"] as string | undefined,),
-		usage: "dss dashboard list [--project-key KEY]",
 		description: "List project dashboards.",
 		examples: ["dss dashboard list",],
 	},
 	get: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss dashboard get <id>",);
+			requireArgs(a, 1, commandUsage("dashboard", "get",),);
 			return c.dashboards.get(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss dashboard get <id> [--project-key KEY]",
 		description: "Get dashboard definition.",
 		examples: ["dss dashboard get DASHBOARD_ID",],
 	},
@@ -28,7 +27,7 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss dashboard export <id> --output PATH [--paper-size SIZE] [--orientation PORTRAIT|LANDSCAPE] [--file-type PDF] [--slide-index N] [--project-key KEY]",
+				commandUsage("dashboard", "export",),
 			);
 			const outputPath = f["output"];
 			if (typeof outputPath !== "string" || !outputPath.trim()) {
@@ -102,8 +101,6 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 				slideIndex,
 			};
 		},
-		usage:
-			"dss dashboard export <id> --output PATH [--paper-size SIZE] [--orientation PORTRAIT|LANDSCAPE] [--file-type PDF] [--slide-index N] [--project-key KEY]",
 		description: "Render a dashboard page as PDF. Requires DSS graphics export to be configured.",
 		examples: [
 			"dss dashboard export DASHBOARD_ID --output dashboard.pdf",
@@ -119,7 +116,9 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 			const listed = parseBooleanOption(f["listed"], "--listed",);
 			if (!name) {
 				throw new UsageError(
-					"--name or dashboard settings containing a string name are required. Usage: dss dashboard create --name NAME",
+					`--name or dashboard settings containing a string name are required. Usage: ${
+						commandUsage("dashboard", "create",)
+					}`,
 				);
 			}
 			const payload: Record<string, unknown> = { ...(settings ?? { pages: [], }), name, };
@@ -149,8 +148,6 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 			},);
 			return { created: created.id, resource: "dashboard", ...created, };
 		},
-		usage:
-			"dss dashboard create (--name NAME|--data JSON|--data-file PATH|--stdin) [--listed true|false] [--if-not-exists] [--dry-run] [--project-key KEY]",
 		description:
 			"Create a dashboard from raw settings or minimal name/listed fields. Defaults to an empty pages array.",
 		examples: [
@@ -163,7 +160,7 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss dashboard update <id> [--name NAME|--listed true|false|--data JSON]",
+				commandUsage("dashboard", "update",),
 			);
 			const name = f["name"] as string | undefined;
 			const listed = parseBooleanOption(f["listed"], "--listed",);
@@ -185,14 +182,12 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage:
-			"dss dashboard update <id> (--name NAME|--listed true|false|--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description: "Update dashboard settings via merge.",
 		examples: ["dss dashboard update DASHBOARD_ID --listed true --dry-run",],
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss dashboard delete <id>",);
+			requireArgs(a, 1, commandUsage("dashboard", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.dashboards.get(a[0], pk,));
@@ -204,8 +199,7 @@ export const dashboardCommands: Record<string, CommandMeta> = {
 			await c.dashboards.delete(a[0], pk,);
 			return { deleted: a[0], resource: "dashboard", };
 		},
-		usage: "dss dashboard delete <id> [--if-exists] [--dry-run] [--project-key KEY]",
 		description: "Delete a dashboard.",
 		examples: ["dss dashboard delete DASHBOARD_ID --dry-run",],
 	},
-};
+},);

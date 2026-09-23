@@ -1,10 +1,10 @@
 # Authentication and runtime
 
-Source checkout: `bun --no-env-file src/cli.ts ...`. Installed package: `bun --no-env-file "$ROOT/bin/dss.js" ...`. Resolve the root once; use absolute paths outside it.
+Invoke the installed `dss` command; do not call package scripts through Bun directly.
 
-- `--no-env-file` disables only Bun preloading, not CLI `.env` handling.
 - Credentials: flags → `DATAIKU_*` variables → saved credentials. `DATAIKU_DISABLE_ENV=1` ignores both `.env` and `DATAIKU_*`.
-- `.env` lookup: invocation directory, then checkout root (source) or package `dist/` (built). Nonempty environment wins, then invocation values. Prefer invocation-local `.env`.
+- `.env` lookup: invocation directory, then checkout root (source) or package `dist/` (built). Only `DATAIKU_*`, `NODE_TLS_REJECT_UNAUTHORIZED`, and `NODE_EXTRA_CA_CERTS` are read; other keys are ignored. Nonempty environment wins, then invocation values. Prefer invocation-local `.env`.
+- If the invocation `.env` supplies the URL or TLS settings, the API key must come from it too; mixing with `--api-key` or another source fails with `conflicting_input_sources`.
 - For disposable tests, set `DSS_CONFIG_DIR` to a temporary directory to isolate saved credentials.
 
 Prefer injected environment variables; never type real keys into shell history. Placeholder examples:

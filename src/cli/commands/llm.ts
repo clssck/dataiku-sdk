@@ -1,17 +1,14 @@
 import { requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { planResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { UsageError, } from "../usage.js";
 
 const LLM_PLAN_EXIT_CODES = { usage: 1, error: 2, transient: 3, };
 
-const LLM_LIST_USAGE =
-	"dss llm list [--purpose GENERIC_COMPLETION|TEXT_EMBEDDING_EXTRACTION|IMAGE_GENERATION|NAME] [--project-key KEY]";
-const LLM_COMPLETIONS_USAGE =
-	"dss llm completions (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]";
-const LLM_EMBEDDINGS_USAGE =
-	"dss llm embeddings (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]";
+const LLM_COMPLETIONS_USAGE = commandUsage("llm", "completions",);
+const LLM_EMBEDDINGS_USAGE = commandUsage("llm", "embeddings",);
 
 /**
  * Validate a completions/embeddings payload before any execution mode: the
@@ -43,7 +40,7 @@ function requireLlmInferenceBody(
 	return body;
 }
 
-export const llmCommands: Record<string, CommandMeta> = {
+export const llmCommands: Record<string, CommandMeta> = withUsage("llm", {
 	list: {
 		handler: (c, _a, f,) => {
 			const purpose = f["purpose"] as string | undefined;
@@ -52,7 +49,6 @@ export const llmCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: LLM_LIST_USAGE,
 		description:
 			"List LLMs available in a project (includes Retrieval-Augmented Generation ones). Does not invoke any LLM.",
 		examples: ["dss llm list", "dss llm list --purpose TEXT_EMBEDDING_EXTRACTION",],
@@ -79,7 +75,6 @@ export const llmCommands: Record<string, CommandMeta> = {
 			}
 			return c.llms.completions(body as never, projectKey,);
 		},
-		usage: LLM_COMPLETIONS_USAGE,
 		description:
 			"Perform completions on an LLM. COST-BEARING: invokes the LLM provider and may incur charges. Body: { llmId, queries: [{ messages: [...] }], settings?: {...} }.",
 		examples: [
@@ -109,7 +104,6 @@ export const llmCommands: Record<string, CommandMeta> = {
 			}
 			return c.llms.embeddings(body as never, projectKey,);
 		},
-		usage: LLM_EMBEDDINGS_USAGE,
 		description:
 			'Perform embeddings on an LLM. COST-BEARING: invokes the LLM provider and may incur charges. Body: { llmId, queries: [{ text: "..." }] }.',
 		examples: [
@@ -117,4 +111,4 @@ export const llmCommands: Record<string, CommandMeta> = {
 			'dss llm embeddings --data \'{"llmId":"x","queries":[{"text":"y"}]}\' --dry-run',
 		],
 	},
-};
+},);

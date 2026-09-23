@@ -5,11 +5,11 @@ import type {
 } from "../../resources/scenarios.js";
 import { num, readStdinText, stripUtf8Bom, } from "../coerce.js";
 import { enqueueCliWarning, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { UsageError, } from "../usage.js";
 
-const CODE_RUN_USAGE =
-	"dss code run (--file PATH | --stdin) [--env ENV] [--timeout MS (default 120000)] [--keep] [--full-log] [--max-log-bytes N (default 1048576)] [--project-key KEY]";
+const CODE_RUN_USAGE = commandUsage("code", "run",);
 
 export interface CodeInputSource {
 	kind: "file" | "stdin";
@@ -137,7 +137,7 @@ function unwrapCodeRunError(error: unknown,): unknown {
 	return error;
 }
 
-export const codeCommands: Record<string, CommandMeta> = {
+export const codeCommands: Record<string, CommandMeta> = withUsage("code", {
 	run: {
 		handler: async (c, a, f,) => {
 			const timeoutMs = parseCodeRunIntegerFlag(f["timeout"], "--timeout",);
@@ -175,7 +175,6 @@ export const codeCommands: Record<string, CommandMeta> = {
 			}
 			return result;
 		},
-		usage: CODE_RUN_USAGE,
 		description:
 			"Run Python through a throwaway custom-python scenario and return captured output plus outcome. --timeout caps waiting; --max-log-bytes caps logs; --full-log returns the capped raw log. Exits 4 unless outcome is SUCCESS.",
 		examples: [
@@ -185,4 +184,4 @@ export const codeCommands: Record<string, CommandMeta> = {
 			"dss code run --file inspect.py --full-log",
 		],
 	},
-};
+},);

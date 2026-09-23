@@ -1,4 +1,5 @@
 import * as nodePath from "node:path";
+import { unexpectedResponseError, } from "../errors.js";
 import type { FolderCreateOptions, FolderDetails, FolderItem, FolderSummary, } from "../schemas.js";
 import {
 	FolderDetailsSchema,
@@ -113,7 +114,9 @@ export class FoldersResource extends BaseResource {
 		const res = await this.client.stream(
 			`/public/api/projects/${this.enc(opts?.projectKey,)}/managedfolders/${fEnc}/contents/${pEnc}`,
 		);
-		if (!res.body) throw new Error("folders.download response did not include a body",);
+		if (!res.body) {
+			throw unexpectedResponseError("folders.download response did not include a body",);
+		}
 		const dest = opts?.localPath
 			?? nodePath.resolve(process.cwd(), inferDownloadFileName(normalizedPath,),);
 		await writeResponseToFile(dest, res,);

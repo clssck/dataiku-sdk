@@ -1,6 +1,7 @@
 import { readFileSync, } from "node:fs";
 import { writeFile, } from "node:fs/promises";
 import { join, } from "node:path";
+import { ClientValidationError, } from "../../errors.js";
 import type { BuildMode, } from "../../schemas.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import {
@@ -32,6 +33,7 @@ import {
 	writeRecipeBackup,
 } from "../helpers/recipe.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -105,28 +107,90 @@ function formatLineDiff(
 	return lines.join("\n",);
 }
 
-export const recipeCommands: Record<string, CommandMeta> = {
+/** Maps `recipe create` flags to SDK options; shared by the handler and `--plan`. */
+export function recipeCreateOptionsFromFlags(f: Record<string, string | boolean>,) {
+	const type = f["type"] as string;
+	if (!type) {
+		throw new UsageError(
+			`--type is required. Usage: ${commandUsage("recipe", "create",)}`,
+		);
+	}
+	const outputDataset = f["output"] as string | undefined;
+	const outputFolder = f["output-folder"] as string | undefined;
+	if (outputDataset && outputFolder) {
+		throw new UsageError("--output and --output-folder are mutually exclusive.",);
+	}
+	if (!outputDataset && !outputFolder) {
+		throw new UsageError(
+			`--output or --output-folder is required. Usage: ${commandUsage("recipe", "create",)}`,
+		);
+	}
+	if (outputFolder && !f["output-connection"]) {
+		throw new UsageError("--output-connection is required when using --output-folder.",);
+	}
+	const name = f["name"] as string | undefined;
+	const pk = f["project-key"] as string | undefined;
+	const inputDatasets = recipeInputDatasetsFromFlags(f,);
+	const joinColumns = splitCsvFlag(f["join-on"],);
+	const fuzzyColumns = splitCsvFlag(f["fuzzy-on"],);
+	const rawFuzzyDistance = f["fuzzy-distance"];
+	let fuzzyDistance: string | undefined;
+	if (typeof rawFuzzyDistance === "string") {
+		const normalized = rawFuzzyDistance.trim().toUpperCase();
+		if (
+			![
+				"DAMERAU_LEVENSHTEIN",
+				"HAMMING",
+				"JACCARD",
+				"COSINE",
+				"EUCLIDEAN",
+			].includes(normalized,)
+		) {
+			throw new UsageError(
+				"--fuzzy-distance must be one of DAMERAU_LEVENSHTEIN, HAMMING, JACCARD, COSINE, or EUCLIDEAN.",
+				"invalid_enum",
+			);
+		}
+		fuzzyDistance = normalized;
+	}
+	const fuzzyThreshold = num(f["fuzzy-threshold"], "--fuzzy-threshold",);
+	const payload = {
+		type,
+		name,
+		inputDatasets,
+		outputDataset,
+		outputFolder,
+		outputConnection: f["output-connection"] as string | undefined,
+		...(joinColumns.length > 0 ? { joinOn: joinColumns, } : {}),
+		...(typeof f["join-type"] === "string" ? { joinType: f["join-type"], } : {}),
+		...(fuzzyColumns.length > 0 ? { fuzzyOn: fuzzyColumns, } : {}),
+		...(fuzzyDistance ? { fuzzyDistance, } : {}),
+		...(fuzzyThreshold !== undefined ? { fuzzyThreshold, } : {}),
+		fuzzyNormalize: f["normalize"] === true,
+		projectKey: pk,
+	};
+	return payload;
+}
+
+export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 	list: {
 		handler: (c, _a, f,) => c.recipes.list(f["project-key"] as string | undefined,),
-		usage: "dss recipe list [--project-key KEY]",
 		description: "List all recipes in a project.",
 		examples: ["dss recipe list",],
 	},
 	metadata: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe metadata <name>",);
+			requireArgs(a, 1, commandUsage("recipe", "metadata",),);
 			return c.recipes.metadata(a[0], {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss recipe metadata <name> [--project-key KEY]",
 		description: "Get recipe metadata (label, description, tags, custom fields).",
 		examples: ["dss recipe metadata compute_orders",],
 	},
 	"metadata-set": {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss recipe metadata-set <name> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]";
+			const usage = commandUsage("recipe", "metadata-set",);
 			requireArgs(a, 1, usage,);
 			const metadata = requiredJsonInput(
 				f,
@@ -145,8 +209,6 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			await c.recipes.setMetadata(a[0], metadata, { projectKey: pk, },);
 			return { updated: a[0], resource: "recipe", };
 		},
-		usage:
-			"dss recipe metadata-set <name> (--data JSON|--data-file PATH|--stdin) [--dry-run] [--project-key KEY]",
 		description:
 			"Replace recipe metadata with a full object obtained from a previous metadata GET. Fields absent from the payload are removed.",
 		examples: [
@@ -155,13 +217,12 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	},
 	get: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe get <name>",);
+			requireArgs(a, 1, commandUsage("recipe", "get",),);
 			return c.recipes.get(a[0], {
 				includePayload: f["include-payload"] === true && f["no-payload"] !== true,
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss recipe get <name> [--include-payload|--no-payload] [--project-key KEY]",
 		description: "Get compact recipe settings unless --include-payload is set.",
 		examples: [
 			"dss recipe get compute_orders",
@@ -171,18 +232,17 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	},
 	"validate-graph": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe validate-graph <name>",);
+			requireArgs(a, 1, commandUsage("recipe", "validate-graph",),);
 			return c.recipes.validateGraph(a[0], {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss recipe validate-graph <name> [--project-key KEY]",
 		description: "Validate declared recipe input/output graph references before building.",
 		examples: ["dss recipe validate-graph compute_orders",],
 	},
 	run: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe run <name>",);
+			requireArgs(a, 1, commandUsage("recipe", "run",),);
 			const pk = f["project-key"] as string | undefined;
 			const wait = recipeRunShouldWait(f,);
 			const options = {
@@ -215,8 +275,6 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			}
 			return c.recipes.run(a[0], options,);
 		},
-		usage:
-			"dss recipe run <name> [--wait|--no-wait] [--build-mode MODE] [--include-logs] [--log-filter stdout|stderr|user|errors] [--summary] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--partition PARTITION] [--dry-run] [--project-key KEY]",
 		description:
 			"Run a recipe by resolving its outputs and submitting the correct dataset or managed-folder build job. --timeout defaults to 120000 ms and --poll-interval to 2000 ms.",
 		examples: [
@@ -227,7 +285,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	},
 	delete: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe delete <name>",);
+			requireArgs(a, 1, commandUsage("recipe", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() =>
@@ -241,19 +299,17 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			await c.recipes.delete(a[0], pk,);
 			return { deleted: a[0], resource: "recipe", };
 		},
-		usage: "dss recipe delete <name> [--if-exists] [--dry-run] [--project-key KEY]",
 		description: "Delete a recipe.",
 		examples: ["dss recipe delete compute_orders", "dss recipe delete compute_orders --if-exists",],
 	},
 	download: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe download <name>",);
+			requireArgs(a, 1, commandUsage("recipe", "download",),);
 			return c.recipes.download(a[0], {
 				outputPath: f["output"] as string | undefined,
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss recipe download <name> [--output PATH] [--project-key KEY]",
 		description: "Download recipe definition as JSON.",
 		examples: [
 			"dss recipe download compute_orders",
@@ -262,13 +318,12 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	},
 	"download-code": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe download-code <name>",);
+			requireArgs(a, 1, commandUsage("recipe", "download-code",),);
 			return c.recipes.downloadCode(a[0], {
 				outputPath: f["output"] as string | undefined,
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss recipe download-code <name> [--output PATH] [--project-key KEY]",
 		description: "Download the code payload of a recipe.",
 		examples: [
 			"dss recipe download-code compute_orders",
@@ -277,66 +332,9 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	},
 	create: {
 		handler: async (c, _a, f,) => {
-			const type = f["type"] as string;
-			if (!type) {
-				throw new UsageError(
-					"--type is required. Usage: dss recipe create --type TYPE [--input DS] (--output DS | --output-folder FOLDER_ID)",
-				);
-			}
-			const outputDataset = f["output"] as string | undefined;
-			const outputFolder = f["output-folder"] as string | undefined;
-			if (outputDataset && outputFolder) {
-				throw new UsageError("--output and --output-folder are mutually exclusive.",);
-			}
-			if (!outputDataset && !outputFolder) {
-				throw new UsageError(
-					"--output or --output-folder is required. Usage: dss recipe create --type TYPE [--input DS] (--output DS | --output-folder FOLDER_ID)",
-				);
-			}
-			if (outputFolder && !f["output-connection"]) {
-				throw new UsageError("--output-connection is required when using --output-folder.",);
-			}
-			const name = f["name"] as string | undefined;
-			const pk = f["project-key"] as string | undefined;
-			const inputDatasets = recipeInputDatasetsFromFlags(f,);
-			const joinColumns = splitCsvFlag(f["join-on"],);
-			const fuzzyColumns = splitCsvFlag(f["fuzzy-on"],);
-			const rawFuzzyDistance = f["fuzzy-distance"];
-			let fuzzyDistance: string | undefined;
-			if (typeof rawFuzzyDistance === "string") {
-				const normalized = rawFuzzyDistance.trim().toUpperCase();
-				if (
-					![
-						"DAMERAU_LEVENSHTEIN",
-						"HAMMING",
-						"JACCARD",
-						"COSINE",
-						"EUCLIDEAN",
-					].includes(normalized,)
-				) {
-					throw new UsageError(
-						"--fuzzy-distance must be one of DAMERAU_LEVENSHTEIN, HAMMING, JACCARD, COSINE, or EUCLIDEAN.",
-						"invalid_enum",
-					);
-				}
-				fuzzyDistance = normalized;
-			}
-			const fuzzyThreshold = num(f["fuzzy-threshold"], "--fuzzy-threshold",);
-			const payload = {
-				type,
-				name,
-				inputDatasets,
-				outputDataset,
-				outputFolder,
-				outputConnection: f["output-connection"] as string | undefined,
-				...(joinColumns.length > 0 ? { joinOn: joinColumns, } : {}),
-				...(typeof f["join-type"] === "string" ? { joinType: f["join-type"], } : {}),
-				...(fuzzyColumns.length > 0 ? { fuzzyOn: fuzzyColumns, } : {}),
-				...(fuzzyDistance ? { fuzzyDistance, } : {}),
-				...(fuzzyThreshold !== undefined ? { fuzzyThreshold, } : {}),
-				fuzzyNormalize: f["normalize"] === true,
-				projectKey: pk,
-			};
+			const payload = recipeCreateOptionsFromFlags(f,);
+			const name = payload.name;
+			const pk = payload.projectKey;
 			const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
 			const zoneMove = zoneId && name
 				? [{ objectId: name, objectType: "RECIPE" as const, },]
@@ -376,8 +374,6 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			},], pk,);
 			return { created: createdName, resource: "recipe", ...created, ...moved, };
 		},
-		usage:
-			"dss recipe create --type TYPE [--input DS[,DS2]] (--output DS | --output-folder FOLDER_ID) [--name NAME] [--output-connection CONN] [--zone ZONE|--zone-id ID] [--if-not-exists] [--dry-run] [--join-on COL|LEFT=RIGHT[,...]] [--join-type LEFT|INNER|RIGHT|FULL] [--fuzzy-on COL|LEFT=RIGHT[,...]] [--fuzzy-distance DAMERAU_LEVENSHTEIN|HAMMING|JACCARD|COSINE|EUCLIDEAN] [--fuzzy-threshold N] [--normalize] [--project-key KEY]",
 		description: "Create a recipe with optional inputs and a dataset or managed-folder output.",
 		examples: [
 			"dss recipe create --type python --input raw_orders,lookup --output orders_clean",
@@ -387,8 +383,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	},
 	clone: {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss recipe clone (source|--from SOURCE) (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--replace-payload-text FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]";
+			const usage = commandUsage("recipe", "clone",);
 			const fromFlag = typeof f["from"] === "string" ? f["from"].trim() : "";
 			const sourceName = a[0] ?? fromFlag;
 			if (!sourceName) {
@@ -479,8 +474,6 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			);
 			return { ...cloned, resource: "recipe", ...moved, };
 		},
-		usage:
-			"dss recipe clone (source|--from SOURCE) (--name NAME|--to NAME) [--replace-input FROM=TO] [--replace-output FROM=TO] [--replace-payload-text FROM=TO] [--output DATASET] [--copy-output-settings] [--path PATH] [--metastore-table TABLE] [--zone ZONE|--zone-id ID] [--dry-run] [--project-key KEY]",
 		description: "Clone a recipe graph/settings/payload into a separate experiment recipe.",
 		examples: [
 			"dss recipe clone compute_orders --name compute_orders_opt --output orders_opt --copy-output-settings --dry-run",
@@ -489,10 +482,10 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	},
 	diff: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe diff <name> --file PATH",);
+			requireArgs(a, 1, commandUsage("recipe", "diff",),);
 			const filePath = f["file"] as string | undefined;
 			if (!filePath) {
-				throw new UsageError("--file is required. Usage: dss recipe diff <name> --file PATH",);
+				throw new UsageError(`--file is required. Usage: ${commandUsage("recipe", "diff",)}`,);
 			}
 			// Read and validate the local file before any DSS request.
 			const localContent = readRecipeFile(filePath, "--file",);
@@ -501,22 +494,24 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 			if (!result.payload) {
-				throw new Error(`Recipe "${a[0]}" has no code payload to diff.`,);
+				throw new ClientValidationError(
+					`Recipe "${a[0]}" has no code payload to diff.`,
+					"validation_failed",
+				);
 			}
 			return formatLineDiff(a[0], filePath, result.payload, localContent,);
 		},
-		usage: "dss recipe diff <name> --file PATH [--project-key KEY]",
 		description: "Show differences between local file and remote recipe code.",
 		examples: ["dss recipe diff compute_orders --file code.py",],
 	},
 
 	update: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin]",);
+			requireArgs(a, 1, commandUsage("recipe", "update",),);
 			const data = jsonInput(f,);
 			if (!data) {
 				throw new UsageError(
-					"--data, --data-file, or --stdin is required. Usage: dss recipe update <name> [--data '{...}' | --data-file PATH | --stdin]",
+					`--data, --data-file, or --stdin is required. Usage: ${commandUsage("recipe", "update",)}`,
 				);
 			}
 			const pk = f["project-key"] as string | undefined;
@@ -538,8 +533,6 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			await c.recipes.update(a[0], data, pk,);
 			return { updated: a[0], resource: "recipe", };
 		},
-		usage:
-			"dss recipe update <name> (--data '{...}' | --data-file PATH | --stdin) [--dry-run] [--project-key KEY]",
 		description:
 			"Update recipe settings via JSON merge. Recipe definition fields must be nested under a top-level recipe key.",
 		examples: [
@@ -553,7 +546,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss recipe add-input <recipe> <dataset> [--role ROLE] [--if-not-exists] [--dry-run] [--project-key KEY]",
+				commandUsage("recipe", "add-input",),
 			);
 			const role = (f["role"] as string | undefined) ?? "main";
 			const pk = f["project-key"] as string | undefined;
@@ -589,8 +582,6 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			);
 			return { updated: a[0], resource: "recipe", action: "add-input", role, dataset: a[1], inputs, };
 		},
-		usage:
-			"dss recipe add-input <recipe> <dataset> [--role ROLE] [--if-not-exists] [--dry-run] [--project-key KEY]",
 		description:
 			"Add a dataset as a recipe input by appending one item to the current inputs (no need to resend the whole list).",
 		examples: [
@@ -603,7 +594,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				2,
-				"dss recipe remove-input <recipe> <dataset> [--role ROLE] [--if-exists] [--dry-run] [--project-key KEY]",
+				commandUsage("recipe", "remove-input",),
 			);
 			const role = (f["role"] as string | undefined) ?? "main";
 			const pk = f["project-key"] as string | undefined;
@@ -646,8 +637,6 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				inputs,
 			};
 		},
-		usage:
-			"dss recipe remove-input <recipe> <dataset> [--role ROLE] [--if-exists] [--dry-run] [--project-key KEY]",
 		description:
 			"Remove a dataset from a recipe's inputs by dropping one item from the current inputs.",
 		examples: [
@@ -657,7 +646,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	},
 	"get-payload": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe get-payload <name>",);
+			requireArgs(a, 1, commandUsage("recipe", "get-payload",),);
 			const payload = await c.recipes.getPayload(a[0], {
 				projectKey: f["project-key"] as string | undefined,
 			},);
@@ -667,7 +656,6 @@ export const recipeCommands: Record<string, CommandMeta> = {
 			}
 			return payload;
 		},
-		usage: "dss recipe get-payload <name> [--output PATH] [--project-key KEY]",
 		description:
 			"Print the recipe code payload as a JSON string, or write it to a file with --output.",
 		examples: [
@@ -677,18 +665,17 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	},
 	cat: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe cat <name>",);
+			requireArgs(a, 1, commandUsage("recipe", "cat",),);
 			return c.recipes.getPayload(a[0], {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage: "dss recipe cat <name> [--project-key KEY]",
 		description: "Print the recipe code payload as a JSON string.",
 		examples: ["dss recipe cat compute_orders",],
 	},
 	"set-payload": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss recipe set-payload <name> --file PATH",);
+			requireArgs(a, 1, commandUsage("recipe", "set-payload",),);
 			const filePath = f["file"] as string;
 			if (!filePath) throw new UsageError("--file is required.",);
 			const content = readRecipeFile(filePath, "--file",);
@@ -730,8 +717,6 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				...(backupPath ? { backupPath, } : {}),
 			};
 		},
-		usage:
-			"dss recipe set-payload <name> --file PATH [--backup-dir DIR|--no-backup] [--dry-run] [--project-key KEY]",
 		description:
 			"Upload recipe code from a local file, backing up payload, graph, settings, and version metadata by default.",
 		examples: [
@@ -742,8 +727,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	},
 	restore: {
 		handler: async (c, a, f,) => {
-			const usage =
-				"dss recipe restore <name> --backup FILE [--payload-only] [--dry-run] [--project-key KEY]";
+			const usage = commandUsage("recipe", "restore",);
 			requireArgs(a, 1, usage,);
 			const backupPath = requiredStringFlag(f, "backup", usage,);
 			const backup = readRecipeBackupFile(backupPath,);
@@ -779,7 +763,6 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				payloadOnly: f["payload-only"] === true,
 			};
 		},
-		usage: "dss recipe restore <name> --backup FILE [--payload-only] [--dry-run] [--project-key KEY]",
 		description: "Restore a recipe from a set-payload backup.",
 		examples: [
 			"dss recipe restore compute_orders --backup .dss-backups/recipes/backup.recipe-backup.json --dry-run",
@@ -787,7 +770,7 @@ export const recipeCommands: Record<string, CommandMeta> = {
 	},
 	"assert-unchanged": {
 		handler: async (c, a, f,) => {
-			const usage = "dss recipe assert-unchanged <name> --since BACKUP [--project-key KEY]";
+			const usage = commandUsage("recipe", "assert-unchanged",);
 			requireArgs(a, 1, usage,);
 			const backupPath = requiredStringFlag(f, "since", usage,);
 			const backup = readRecipeBackupFile(backupPath,);
@@ -841,10 +824,9 @@ export const recipeCommands: Record<string, CommandMeta> = {
 				failures,
 			};
 		},
-		usage: "dss recipe assert-unchanged <name> --since BACKUP [--project-key KEY]",
 		description: "Compare current recipe payload, graph, and code env against a backup.",
 		examples: [
 			"dss recipe assert-unchanged compute_orders --since .dss-backups/recipes/backup.recipe-backup.json",
 		],
 	},
-};
+},);

@@ -166,11 +166,162 @@ const accumulatorCopy = defineRule({
 	},
 },);
 
+function sourcePath(context: Context,): string {
+	return context.filename.replaceAll("\\", "/",);
+}
+
+const BUILTIN_ERRORS: Record<string, true> = {
+	Error: true,
+	TypeError: true,
+	RangeError: true,
+	SyntaxError: true,
+};
+
+function isBuiltinErrorConstruction(node: ESTree.Expression | null | undefined,): boolean {
+	return !!node && node.type === "NewExpression" && node.callee.type === "Identifier"
+		&& BUILTIN_ERRORS[node.callee.name] === true;
+}
+
+/**
+ * Every error the SDK or CLI raises carries a stable code: an uncoded built-in
+ * error reaches agents as `internal_error` with no way to tell cause from bug.
+ * Throw DataikuError (DSS responses), ClientValidationError, or UsageError.
+ */
+const uncodedErrors = defineRule({
+	meta: { type: "problem", schema: [], },
+	create(context,) {
+		if (!sourcePath(context,).includes("/src/",)) return {};
+		const report = (node: ESTree.Node,) =>
+			context.report({
+				node,
+				message:
+					"Raise a coded error (DataikuError, ClientValidationError with a StableErrorCode, or UsageError), not a built-in Error.",
+			},);
+		return {
+			// Any built-in error construction is an uncoded error, however it
+			// leaves (throw, reject, Promise.reject, callbacks, stream.destroy).
+			NewExpression(node,) {
+				if (isBuiltinErrorConstruction(node,)) report(node,);
+			},
+		};
+	},
+},);
+
+/** Response bodies go through the client's parser, which classifies non-JSON (proxy/login pages) as unexpected_response. */
+const rawJsonParseInResources = defineRule({
+	meta: { type: "problem", schema: [], },
+	create(context,) {
+		if (!sourcePath(context,).includes("/src/resources/",)) return {};
+		return {
+			CallExpression(node,) {
+				const callee = node.callee;
+				if (
+					callee.type !== "MemberExpression" || callee.object.type !== "Identifier"
+					|| callee.object.name !== "JSON" || memberName(callee,) !== "parse"
+				) return;
+				// Only the `try` block of a try/catch handles a parse failure; a parse in
+				// `catch`/`finally`, or under try/finally alone, still leaks SyntaxError.
+				const ancestors = context.sourceCode.getAncestors(node,);
+				const guarded = ancestors.some((ancestor, index,) =>
+					Reflect.get(ancestor, "type",) === "TryStatement"
+					&& Boolean(Reflect.get(ancestor, "handler",),)
+					&& Reflect.get(ancestor, "block",) === ancestors[index + 1]
+				);
+				if (!guarded) {
+					context.report({
+						node,
+						message:
+							"Guard JSON.parse of DSS bodies so a non-JSON body becomes a classified error, not a SyntaxError.",
+					},);
+				}
+			},
+		};
+	},
+},);
+const USAGE_PREFIX = /^dss [a-z][a-z-]* [a-z]/;
+const USAGE_MESSAGE = /Usage: dss /;
+
+/** Whether a literal sits where a usage line belongs: a requireArgs/requireNoArgs argument or a `usage`/`*_USAGE` binding. */
+function inUsagePosition(node: ESTree.Node,): boolean {
+	const parent: unknown = Reflect.get(node, "parent",);
+	if (!parent || typeof parent !== "object") return false;
+	const type = Reflect.get(parent, "type",);
+	if (type === "CallExpression") {
+		const callee: unknown = Reflect.get(parent, "callee",);
+		const name = callee && typeof callee === "object" ? Reflect.get(callee, "name",) : undefined;
+		return name === "requireArgs" || name === "requireNoArgs";
+	}
+	if (type === "VariableDeclarator") {
+		const id: unknown = Reflect.get(parent, "id",);
+		const name = id && typeof id === "object" ? Reflect.get(id, "name",) : undefined;
+		return typeof name === "string" && /^usage$|_USAGE$/.test(name,);
+	}
+	return false;
+}
+
+/** Usage lines are rendered from src/cli/command-syntax.json; hand-written copies drift. */
+const usageLiterals = defineRule({
+	meta: { type: "problem", schema: [], },
+	create(context,) {
+		if (!sourcePath(context,).includes("/src/",)) return {};
+		const report = (node: ESTree.Node,) =>
+			context.report({
+				node,
+				message: "Render usage with commandUsage(resource, action) instead of writing it by hand.",
+			},);
+		return {
+			Literal(node,) {
+				if (typeof node.value !== "string") return;
+				if (
+					USAGE_MESSAGE.test(node.value,) || (USAGE_PREFIX.test(node.value,) && inUsagePosition(node,))
+				) {
+					report(node,);
+				}
+			},
+			TemplateElement(node,) {
+				if (USAGE_MESSAGE.test(node.value.cooked ?? node.value.raw,)) report(node,);
+			},
+		};
+	},
+},);
+
+/** Environment reads live in the modules that own .env loading, provenance, and credentials. */
+const ENV_OWNERS = [
+	"/src/cli/env.ts", // .env loading, provenance, DATAIKU_DISABLE_ENV
+	"/src/cli/runtime.ts", // CLI credential and TLS resolution
+	"/src/config.ts", // saved-credential location
+];
+const directProcessEnv = defineRule({
+	meta: { type: "problem", schema: [], },
+	create(context,) {
+		const path = sourcePath(context,);
+		if (!path.includes("/src/",) || ENV_OWNERS.some((owner,) => path.endsWith(owner,))) return {};
+		return {
+			MemberExpression(node,) {
+				if (
+					node.object.type === "Identifier" && node.object.name === "process"
+					&& memberName(node,) === "env"
+				) {
+					context.report({
+						node,
+						message:
+							"Read environment variables through the env/runtime/config modules, not process.env directly.",
+					},);
+				}
+			},
+		};
+	},
+},);
+
 export default definePlugin({
 	meta: { name: "dss", },
 	rules: {
 		"no-chained-type-assertions": chainedAssertions,
 		"no-widen-then-assert": widenThenAssert,
 		"no-reduce-accumulator-copy": accumulatorCopy,
+		"no-uncoded-errors": uncodedErrors,
+		"no-raw-json-parse-in-resources": rawJsonParseInResources,
+		"no-usage-literals": usageLiterals,
+		"no-direct-process-env": directProcessEnv,
 	},
 },);

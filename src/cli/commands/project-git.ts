@@ -3,6 +3,7 @@ import { validateGitReferencePath, } from "../../utils/git-reference.js";
 import { sanitizeErrorSecrets, sanitizeSecrets, } from "../../utils/secret-sanitize.js";
 import { num, parseBooleanOption, requiredStringFlag, } from "../coerce.js";
 import { CommandResultFailure, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, requireNoArgs, UsageError, } from "../usage.js";
 
@@ -96,6 +97,7 @@ function libraryPassword(flags: Record<string, string | boolean>,): string | und
 		);
 	}
 	const name = raw.trim();
+	// oxlint-disable-next-line dss/no-direct-process-env -- --password-env names the variable to read; must work under DATAIKU_DISABLE_ENV
 	const value = process.env[name];
 	if (value === undefined || value === "") {
 		throw new UsageError(
@@ -108,54 +110,42 @@ function libraryPassword(flags: Record<string, string | boolean>,): string | und
 	return value;
 }
 
-const STATUS_USAGE = "dss project-git status --project-key KEY";
-const GET_REMOTE_USAGE = "dss project-git get-remote --project-key KEY [--name NAME]";
-const SET_REMOTE_USAGE =
-	"dss project-git set-remote --repository URL --project-key KEY [--name NAME]";
-const REMOVE_REMOTE_USAGE = "dss project-git remove-remote --project-key KEY [--name NAME]";
-const BRANCHES_USAGE = "dss project-git branches --project-key KEY [--remote]";
-const CREATE_BRANCH_USAGE =
-	"dss project-git create-branch <name> --project-key KEY [--commit COMMIT] [--duplicate-project] [--target-project-key KEY] [--target-project-folder-id ID]";
-const DELETE_BRANCH_USAGE =
-	"dss project-git delete-branch <name> --project-key KEY [--remote] [--delete-remotely] [--force-delete]";
-const CURRENT_BRANCH_USAGE = "dss project-git current-branch --project-key KEY";
-const TAGS_USAGE = "dss project-git tags --project-key KEY";
-const CREATE_TAG_USAGE =
-	"dss project-git create-tag <name> --project-key KEY [--reference REF] [--message MESSAGE]";
-const DELETE_TAG_USAGE = "dss project-git delete-tag <name> --project-key KEY";
-const SWITCH_USAGE = "dss project-git switch <branch> --project-key KEY";
-const FETCH_USAGE = "dss project-git fetch --project-key KEY";
-const PULL_USAGE = "dss project-git pull --project-key KEY [--branch NAME]";
-const PUSH_USAGE = "dss project-git push --project-key KEY [--branch NAME]";
-const LOG_USAGE =
-	"dss project-git log --project-key KEY [--path PATH] [--start-commit COMMIT] [--count N]";
-const DIFF_USAGE = "dss project-git diff --project-key KEY [--from COMMIT] [--to COMMIT]";
-const COMMIT_USAGE = "dss project-git commit --message MESSAGE --project-key KEY";
-const REVERT_TO_REVISION_USAGE = "dss project-git revert-to-revision <commit> --project-key KEY";
-const REVERT_COMMIT_USAGE = "dss project-git revert-commit <commit> --project-key KEY";
-const RESET_TO_HEAD_USAGE = "dss project-git reset-to-head --project-key KEY";
-const RESET_TO_UPSTREAM_USAGE = "dss project-git reset-to-upstream --project-key KEY";
-const DROP_AND_REBUILD_USAGE =
-	"dss project-git drop-and-rebuild --i-know-what-i-am-doing --project-key KEY";
-const LIST_LIBRARIES_USAGE = "dss project-git list-libraries --project-key KEY";
-const ADD_LIBRARY_USAGE =
-	"dss project-git add-library <target-path> --repository URL --checkout REF --project-key KEY [--path-in-repository PATH] [--login LOGIN] [--password-env ENV_NAME] [--no-add-to-python-path]";
-const SET_LIBRARY_USAGE =
-	"dss project-git set-library <target-path> --repository URL --checkout REF --project-key KEY [--path-in-repository PATH] [--login LOGIN] [--password-env ENV_NAME]";
-const REMOVE_LIBRARY_USAGE =
-	"dss project-git remove-library <target-path> --project-key KEY [--delete-directory]";
-const RESET_LIBRARY_USAGE = "dss project-git reset-library <target-path> --project-key KEY";
-const PUSH_LIBRARY_USAGE =
-	"dss project-git push-library <target-path> --message MESSAGE --project-key KEY";
-const PUSH_ALL_LIBRARIES_USAGE =
-	"dss project-git push-all-libraries --message MESSAGE --project-key KEY";
-const RESET_ALL_LIBRARIES_USAGE = "dss project-git reset-all-libraries --project-key KEY";
-const FUTURE_STATUS_USAGE = "dss project-git future-status <job-id> [--peek]";
-const FUTURE_WAIT_USAGE =
-	"dss project-git future-wait <job-id> [--timeout MS] [--poll-interval MS]";
-const FUTURE_ABORT_USAGE = "dss project-git future-abort <job-id>";
+const STATUS_USAGE = commandUsage("project-git", "status",);
+const GET_REMOTE_USAGE = commandUsage("project-git", "get-remote",);
+const SET_REMOTE_USAGE = commandUsage("project-git", "set-remote",);
+const REMOVE_REMOTE_USAGE = commandUsage("project-git", "remove-remote",);
+const BRANCHES_USAGE = commandUsage("project-git", "branches",);
+const CREATE_BRANCH_USAGE = commandUsage("project-git", "create-branch",);
+const DELETE_BRANCH_USAGE = commandUsage("project-git", "delete-branch",);
+const CURRENT_BRANCH_USAGE = commandUsage("project-git", "current-branch",);
+const TAGS_USAGE = commandUsage("project-git", "tags",);
+const CREATE_TAG_USAGE = commandUsage("project-git", "create-tag",);
+const DELETE_TAG_USAGE = commandUsage("project-git", "delete-tag",);
+const SWITCH_USAGE = commandUsage("project-git", "switch",);
+const FETCH_USAGE = commandUsage("project-git", "fetch",);
+const PULL_USAGE = commandUsage("project-git", "pull",);
+const PUSH_USAGE = commandUsage("project-git", "push",);
+const LOG_USAGE = commandUsage("project-git", "log",);
+const DIFF_USAGE = commandUsage("project-git", "diff",);
+const COMMIT_USAGE = commandUsage("project-git", "commit",);
+const REVERT_TO_REVISION_USAGE = commandUsage("project-git", "revert-to-revision",);
+const REVERT_COMMIT_USAGE = commandUsage("project-git", "revert-commit",);
+const RESET_TO_HEAD_USAGE = commandUsage("project-git", "reset-to-head",);
+const RESET_TO_UPSTREAM_USAGE = commandUsage("project-git", "reset-to-upstream",);
+const DROP_AND_REBUILD_USAGE = commandUsage("project-git", "drop-and-rebuild",);
+const LIST_LIBRARIES_USAGE = commandUsage("project-git", "list-libraries",);
+const ADD_LIBRARY_USAGE = commandUsage("project-git", "add-library",);
+const SET_LIBRARY_USAGE = commandUsage("project-git", "set-library",);
+const REMOVE_LIBRARY_USAGE = commandUsage("project-git", "remove-library",);
+const RESET_LIBRARY_USAGE = commandUsage("project-git", "reset-library",);
+const PUSH_LIBRARY_USAGE = commandUsage("project-git", "push-library",);
+const PUSH_ALL_LIBRARIES_USAGE = commandUsage("project-git", "push-all-libraries",);
+const RESET_ALL_LIBRARIES_USAGE = commandUsage("project-git", "reset-all-libraries",);
+const FUTURE_STATUS_USAGE = commandUsage("project-git", "future-status",);
+const FUTURE_WAIT_USAGE = commandUsage("project-git", "future-wait",);
+const FUTURE_ABORT_USAGE = commandUsage("project-git", "future-abort",);
 
-export const projectGitCommands: Record<string, CommandMeta> = {
+export const projectGitCommands: Record<string, CommandMeta> = withUsage("project-git", {
 	status: {
 		handler: async (c, a, f,) => {
 			requireNoArgs(a, STATUS_USAGE,);
@@ -163,7 +153,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				await c.projectGit.status(requiredStringFlag(f, "project-key", STATUS_USAGE,),),
 			);
 		},
-		usage: STATUS_USAGE,
 		description:
 			"Get the project's Git working-copy status: current branch, remotes, tracking counts, and pending changes.",
 		examples: ["dss project-git status --project-key MYPROJECT",],
@@ -178,7 +167,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				),
 			);
 		},
-		usage: GET_REMOTE_USAGE,
 		description:
 			"Read one configured Git remote, origin by default. DSS answers an empty object when the remote is not configured.",
 		examples: ["dss project-git get-remote --project-key MYPROJECT",],
@@ -195,7 +183,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "set-remote",);
 		},
-		usage: SET_REMOTE_USAGE,
 		description:
 			"Create or replace a Git remote. HTTP(S) URLs must not embed credentials; use an SSH remote or DSS-managed Git credentials instead.",
 		examples: [
@@ -212,7 +199,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return { removed: name, resource: "project-git-remote", };
 		},
-		usage: REMOVE_REMOTE_USAGE,
 		description: "Delete a Git remote from the project, origin by default.",
 		examples: ["dss project-git remove-remote --name upstream --project-key MYPROJECT",],
 	},
@@ -226,7 +212,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				),
 			);
 		},
-		usage: BRANCHES_USAGE,
 		description: "List local branch names, or remote-tracking branches with --remote.",
 		examples: [
 			"dss project-git branches --project-key MYPROJECT",
@@ -248,7 +233,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "create-branch",);
 		},
-		usage: CREATE_BRANCH_USAGE,
 		description:
 			"Create a branch, optionally from a specific commit. With --duplicate-project DSS copies the project onto the new branch instead of switching this one.",
 		examples: [
@@ -270,7 +254,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "delete-branch",);
 		},
-		usage: DELETE_BRANCH_USAGE,
 		description:
 			"Delete a branch. --remote targets a remote-tracking branch, --delete-remotely also deletes it on the remote, and --force-delete drops unmerged commits.",
 		examples: ["dss project-git delete-branch feature/pricing --project-key MYPROJECT",],
@@ -283,7 +266,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return { branch, };
 		},
-		usage: CURRENT_BRANCH_USAGE,
 		description: "Get the project's current branch name, or null when DSS reports none.",
 		examples: ["dss project-git current-branch --project-key MYPROJECT",],
 	},
@@ -294,7 +276,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				await c.projectGit.listTags(requiredStringFlag(f, "project-key", TAGS_USAGE,),),
 			);
 		},
-		usage: TAGS_USAGE,
 		description: "List the project's Git tags.",
 		examples: ["dss project-git tags --project-key MYPROJECT",],
 	},
@@ -311,7 +292,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "create-tag",);
 		},
-		usage: CREATE_TAG_USAGE,
 		description:
 			"Create a Git tag. --reference defaults to HEAD; passing --message creates an annotated tag.",
 		examples: [
@@ -327,7 +307,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "delete-tag",);
 		},
-		usage: DELETE_TAG_USAGE,
 		description: "Delete a Git tag from the project.",
 		examples: ["dss project-git delete-tag v1.2.0 --project-key MYPROJECT",],
 	},
@@ -340,7 +319,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "switch",);
 		},
-		usage: SWITCH_USAGE,
 		description:
 			"Switch the project to another branch. DSS rewrites the project's working copy in place.",
 		examples: ["dss project-git switch main --project-key MYPROJECT",],
@@ -351,7 +329,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			const result = await c.projectGit.fetch(requiredStringFlag(f, "project-key", FETCH_USAGE,),);
 			return assertGitActionSucceeded(result, "fetch",);
 		},
-		usage: FETCH_USAGE,
 		description: "Fetch from the project's Git remote without changing the working copy.",
 		examples: ["dss project-git fetch --project-key MYPROJECT",],
 	},
@@ -364,7 +341,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "pull",);
 		},
-		usage: PULL_USAGE,
 		description: "Pull with rebase. DSS exposes no merge variant of pull.",
 		examples: ["dss project-git pull --project-key MYPROJECT",],
 	},
@@ -377,7 +353,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "push",);
 		},
-		usage: PUSH_USAGE,
 		description: "Push the project's committed changes to its Git remote.",
 		examples: ["dss project-git push --project-key MYPROJECT",],
 	},
@@ -392,7 +367,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				},),
 			);
 		},
-		usage: LOG_USAGE,
 		description:
 			"Read a page of the project's commit log. Paginate by passing the previous response's nextCommit as --start-commit.",
 		examples: ["dss project-git log --count 20 --project-key MYPROJECT",],
@@ -407,7 +381,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				},),
 			);
 		},
-		usage: DIFF_USAGE,
 		description:
 			"Diff the project between two commits. Omitting both bounds diffs the working copy against HEAD.",
 		examples: ["dss project-git diff --from 4f1c2ab --to 9de77c1 --project-key MYPROJECT",],
@@ -421,7 +394,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "commit",);
 		},
-		usage: COMMIT_USAGE,
 		description: "Commit the project. DSS stages untracked files before committing.",
 		examples: [
 			'dss project-git commit --message "Update pricing recipe" --project-key MYPROJECT',
@@ -436,7 +408,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "revert-to-revision",);
 		},
-		usage: REVERT_TO_REVISION_USAGE,
 		description:
 			"Restore the whole project to the state of a past commit, discarding everything after it in the working copy.",
 		examples: ["dss project-git revert-to-revision 4f1c2ab --project-key MYPROJECT",],
@@ -450,7 +421,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "revert-commit",);
 		},
-		usage: REVERT_COMMIT_USAGE,
 		description: "Revert a single commit while keeping the commits that follow it.",
 		examples: ["dss project-git revert-commit 4f1c2ab --project-key MYPROJECT",],
 	},
@@ -462,7 +432,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "reset-to-head",);
 		},
-		usage: RESET_TO_HEAD_USAGE,
 		description: "Hard reset the project to local HEAD, discarding uncommitted changes.",
 		examples: ["dss project-git reset-to-head --project-key MYPROJECT",],
 	},
@@ -474,7 +443,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return assertGitActionSucceeded(result, "reset-to-upstream",);
 		},
-		usage: RESET_TO_UPSTREAM_USAGE,
 		description: "Hard reset the project to its tracked upstream branch, discarding local commits.",
 		examples: ["dss project-git reset-to-upstream --project-key MYPROJECT",],
 	},
@@ -495,7 +463,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			const result = await c.projectGit.dropAndRebuild(projectKey, { confirmed: true, },);
 			return assertGitActionSucceeded(result, "drop-and-rebuild",);
 		},
-		usage: DROP_AND_REBUILD_USAGE,
 		description:
 			"Wipe the project's entire Git history and rebuild a fresh repository. Irreversible, so it requires --i-know-what-i-am-doing.",
 		examples: [
@@ -511,7 +478,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				),
 			);
 		},
-		usage: LIST_LIBRARIES_USAGE,
 		description: "List the external Git libraries attached to the project's code library.",
 		examples: ["dss project-git list-libraries --project-key MYPROJECT",],
 	},
@@ -539,7 +505,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				password === undefined ? [] : [password,],
 			);
 		},
-		usage: ADD_LIBRARY_USAGE,
 		description:
 			"Attach an external Git repository to the project's code library and return the DSS future that clones it. The password is read only from the environment variable named by --password-env.",
 		examples: [
@@ -566,7 +531,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				password === undefined ? [] : [password,],
 			);
 		},
-		usage: SET_LIBRARY_USAGE,
 		description:
 			"Update an attached library's repository, sub-path, or checkout. The password is read only from the environment variable named by --password-env.",
 		examples: [
@@ -586,7 +550,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			);
 			return { removed: targetPath, resource: "project-git-library", deleteDirectory, };
 		},
-		usage: REMOVE_LIBRARY_USAGE,
 		description:
 			"Detach an external Git library. --delete-directory also removes its local directory from the project library.",
 		examples: ["dss project-git remove-library shared-utils --project-key MYPROJECT",],
@@ -599,7 +562,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				validateGitReferencePath(a[0],),
 			);
 		},
-		usage: RESET_LIBRARY_USAGE,
 		description:
 			"Reset one attached library to its remote state, discarding local edits. Returns the DSS future that performs the reset.",
 		examples: ["dss project-git reset-library shared-utils --project-key MYPROJECT",],
@@ -613,7 +575,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				requiredStringFlag(f, "message", PUSH_LIBRARY_USAGE,),
 			);
 		},
-		usage: PUSH_LIBRARY_USAGE,
 		description:
 			"Commit and push one attached library. Returns the DSS future that performs the push.",
 		examples: [
@@ -628,7 +589,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				requiredStringFlag(f, "message", PUSH_ALL_LIBRARIES_USAGE,),
 			);
 		},
-		usage: PUSH_ALL_LIBRARIES_USAGE,
 		description:
 			"Commit and push every attached library. Returns the DSS future that performs the pushes.",
 		examples: [
@@ -642,7 +602,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				requiredStringFlag(f, "project-key", RESET_ALL_LIBRARIES_USAGE,),
 			);
 		},
-		usage: RESET_ALL_LIBRARIES_USAGE,
 		description:
 			"Reset every attached library to its remote state. Returns the DSS future that performs the resets.",
 		examples: ["dss project-git reset-all-libraries --project-key MYPROJECT",],
@@ -656,7 +615,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				},),
 			);
 		},
-		usage: FUTURE_STATUS_USAGE,
 		description:
 			"Get the state of a Git library future by job id. --peek leaves the result queued for a later read.",
 		examples: ["dss project-git future-status FUTURE_ID --peek",],
@@ -681,7 +639,6 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 				throw sanitizeProjectGitError(error,);
 			}
 		},
-		usage: FUTURE_WAIT_USAGE,
 		description: "Wait for a Git library future to finish and return its result.",
 		examples: ["dss project-git future-wait FUTURE_ID --timeout 300000",],
 	},
@@ -691,8 +648,7 @@ export const projectGitCommands: Record<string, CommandMeta> = {
 			await c.projectGit.abortFuture(a[0],);
 			return { aborted: a[0], resource: "project-git-future", };
 		},
-		usage: FUTURE_ABORT_USAGE,
 		description: "Abort a running Git library future by job id.",
 		examples: ["dss project-git future-abort FUTURE_ID",],
 	},
-};
+},);

@@ -5,4 +5,4 @@
 - Python: `code run --file`. Inspect/diff/backup recipes before `recipe run --dry-run`.
 - Notebook saves return hashes; guard with `--expect-hash`. Clear outputs via DSS DELETE; `unload-jupyter --all` composes session deletes.
 - Inspect code-env definitions/logs before updates; guard webapp/API settings with `--expect-hash`. `exact:false`: live state not guessed; use command `--dry-run`.
-- No public APIs for plugin authoring, notebook execute/checkpoints, or webapp/API delete. Use project Git, code/recipes, or DSS UI.
+- Plugin authoring: `dss plugin` create-dev, move-to-dev, contents-put, push/pull. No notebook execute/checkpoints or webapp/API delete; use the DSS UI.

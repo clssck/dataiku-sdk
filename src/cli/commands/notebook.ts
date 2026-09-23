@@ -1,16 +1,16 @@
 import { jsonInput, num, parseBooleanOption, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, requireNoArgs, UsageError, } from "../usage.js";
 
-export const notebookCommands: Record<string, CommandMeta> = {
+export const notebookCommands: Record<string, CommandMeta> = withUsage("notebook", {
 	"list-jupyter": {
 		handler: (c, _a, f,) =>
 			c.notebooks.listJupyter(f["project-key"] as string | undefined, {
 				active: parseBooleanOption(f["active"], "--active",),
 			},),
-		usage: "dss notebook list-jupyter [--active true|false] [--project-key KEY]",
 		description:
 			"List Jupyter notebooks. Pass --active to use the official ?active= filter: true lists currently running notebooks, false lists non-running ones.",
 		examples: [
@@ -20,16 +20,15 @@ export const notebookCommands: Record<string, CommandMeta> = {
 	},
 	"get-jupyter": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss notebook get-jupyter <name>",);
+			requireArgs(a, 1, commandUsage("notebook", "get-jupyter",),);
 			return c.notebooks.getJupyter(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss notebook get-jupyter <name> [--project-key KEY]",
 		description: "Get a Jupyter notebook.",
 		examples: ["dss notebook get-jupyter my_notebook",],
 	},
 	"delete-jupyter": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss notebook delete-jupyter <name>",);
+			requireArgs(a, 1, commandUsage("notebook", "delete-jupyter",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.notebooks.getJupyter(a[0], pk,));
@@ -41,13 +40,12 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			await c.notebooks.deleteJupyter(a[0], pk,);
 			return { deleted: a[0], resource: "jupyter-notebook", };
 		},
-		usage: "dss notebook delete-jupyter <name> [--if-exists] [--dry-run] [--project-key KEY]",
 		description: "Delete a Jupyter notebook.",
 		examples: ["dss notebook delete-jupyter my_notebook --dry-run",],
 	},
 	"clear-jupyter-outputs": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss notebook clear-jupyter-outputs <name>",);
+			requireArgs(a, 1, commandUsage("notebook", "clear-jupyter-outputs",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
 				// The real mutation is a single server-side DELETE of the
@@ -72,16 +70,14 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			await c.notebooks.clearJupyterOutputs(a[0], pk,);
 			return { cleared: a[0], resource: "jupyter-notebook", };
 		},
-		usage: "dss notebook clear-jupyter-outputs <name> [--dry-run] [--project-key KEY]",
 		description: "Clear all cell outputs from a Jupyter notebook.",
 		examples: ["dss notebook clear-jupyter-outputs my_notebook --dry-run",],
 	},
 	"sessions-jupyter": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss notebook sessions-jupyter <name>",);
+			requireArgs(a, 1, commandUsage("notebook", "sessions-jupyter",),);
 			return c.notebooks.listJupyterSessions(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss notebook sessions-jupyter <name> [--project-key KEY]",
 		description: "List active kernel sessions for a Jupyter notebook.",
 		examples: ["dss notebook sessions-jupyter my_notebook",],
 	},
@@ -89,7 +85,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 		handler: async (c, a, f,) => {
 			const pk = f["project-key"] as string | undefined;
 			if (f["all"] === true) {
-				requireNoArgs(a, "dss notebook unload-jupyter --all [--dry-run] [--project-key KEY]",);
+				requireNoArgs(a, commandUsage("notebook", "unload-jupyter",),);
 				if (executionMode(f,).dryRun) {
 					const planned = [];
 					for (const notebook of await c.notebooks.listJupyter(pk, { active: true, },)) {
@@ -119,7 +115,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 				const unloaded = await c.notebooks.unloadJupyterAll(pk,);
 				return { unloaded, resource: "jupyter-notebook", all: true, };
 			}
-			requireArgs(a, 2, "dss notebook unload-jupyter <name> <sessionId>",);
+			requireArgs(a, 2, commandUsage("notebook", "unload-jupyter",),);
 			if (executionMode(f,).dryRun) {
 				const sessions = await c.notebooks.listJupyterSessions(a[0], pk,);
 				const current = sessions.find((session,) => session.sessionId === a[1]);
@@ -141,7 +137,6 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			await c.notebooks.unloadJupyter(a[0], a[1], pk,);
 			return { unloaded: a[0], sessionId: a[1], resource: "jupyter-notebook", };
 		},
-		usage: "dss notebook unload-jupyter (<name> <sessionId>|--all) [--dry-run] [--project-key KEY]",
 		description:
 			"Unload a Jupyter notebook kernel session, or every session of every running notebook with --all.",
 		examples: [
@@ -151,22 +146,20 @@ export const notebookCommands: Record<string, CommandMeta> = {
 	},
 	"list-sql": {
 		handler: (c, _a, f,) => c.notebooks.listSql(f["project-key"] as string | undefined,),
-		usage: "dss notebook list-sql [--project-key KEY]",
 		description: "List SQL notebooks.",
 		examples: ["dss notebook list-sql",],
 	},
 	"get-sql": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss notebook get-sql <id>",);
+			requireArgs(a, 1, commandUsage("notebook", "get-sql",),);
 			return c.notebooks.getSql(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss notebook get-sql <id> [--project-key KEY]",
 		description: "Get a SQL notebook.",
 		examples: ["dss notebook get-sql my_sql_notebook",],
 	},
 	"delete-sql": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss notebook delete-sql <id>",);
+			requireArgs(a, 1, commandUsage("notebook", "delete-sql",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() => c.notebooks.getSql(a[0], pk,));
@@ -178,16 +171,14 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			await c.notebooks.deleteSql(a[0], pk,);
 			return { deleted: a[0], resource: "sql-notebook", };
 		},
-		usage: "dss notebook delete-sql <id> [--if-exists] [--dry-run] [--project-key KEY]",
 		description: "Delete a SQL notebook.",
 		examples: ["dss notebook delete-sql my_sql_notebook --dry-run",],
 	},
 	"history-sql": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss notebook history-sql <id>",);
+			requireArgs(a, 1, commandUsage("notebook", "history-sql",),);
 			return c.notebooks.getSqlHistory(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss notebook history-sql <id> [--project-key KEY]",
 		description: "Get query history for a SQL notebook.",
 		examples: ["dss notebook history-sql my_sql_notebook",],
 	},
@@ -196,7 +187,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			requireArgs(
 				a,
 				1,
-				"dss notebook save-jupyter <name> [--data '{...}' | --data-file PATH | --stdin]",
+				commandUsage("notebook", "save-jupyter",),
 			);
 			const data = jsonInput(f,);
 			if (!data) {
@@ -226,8 +217,6 @@ export const notebookCommands: Record<string, CommandMeta> = {
 				hash: result.hash,
 			};
 		},
-		usage:
-			"dss notebook save-jupyter <name> (--data '{...}' | --data-file PATH | --stdin) [--expect-hash SHA256] [--dry-run] [--project-key KEY]",
 		description:
 			"Save content to a Jupyter notebook, creating it if missing. Reports created versus updated and the persisted content hash; --expect-hash aborts with a stale-read error when the stored content hash changed.",
 		examples: [
@@ -237,7 +226,7 @@ export const notebookCommands: Record<string, CommandMeta> = {
 	},
 	"save-sql": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss notebook save-sql <id> [--data '{...}' | --data-file PATH | --stdin]",);
+			requireArgs(a, 1, commandUsage("notebook", "save-sql",),);
 			const data = jsonInput(f,);
 			if (!data) {
 				throw new UsageError(
@@ -270,15 +259,13 @@ export const notebookCommands: Record<string, CommandMeta> = {
 				hash: result.hash,
 			};
 		},
-		usage:
-			"dss notebook save-sql <id> (--data '{...}' | --data-file PATH | --stdin) [--expect-hash SHA256] [--dry-run] [--project-key KEY]",
 		description:
 			"Save content to a SQL notebook, creating it if missing. On create DSS allocates the notebook id: `saved` is the persisted id to use for every later read/update/delete, and `requested` echoes the handle, which becomes the display name. Reports created versus updated and the persisted content hash; --expect-hash rejects a stale read before writing and refuses a missing notebook.",
 		examples: ["dss notebook save-sql my_sql_notebook --data-file content.json --dry-run",],
 	},
 	"clear-sql-history": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss notebook clear-sql-history <id>",);
+			requireArgs(a, 1, commandUsage("notebook", "clear-sql-history",),);
 			const pk = f["project-key"] as string | undefined;
 			const options = {
 				cellId: f["cell-id"] as string | undefined,
@@ -305,12 +292,10 @@ export const notebookCommands: Record<string, CommandMeta> = {
 			await c.notebooks.clearSqlHistory(a[0], options,);
 			return { cleared: a[0], resource: "sql-notebook", };
 		},
-		usage:
-			"dss notebook clear-sql-history <id> [--cell-id CID] [--retain N] [--dry-run] [--project-key KEY]",
 		description: "Clear query history for a SQL notebook.",
 		examples: [
 			"dss notebook clear-sql-history my_sql_notebook --dry-run",
 			"dss notebook clear-sql-history my_sql_notebook --cell-id CELL1 --retain 5",
 		],
 	},
-};
+},);

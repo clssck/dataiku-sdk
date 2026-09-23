@@ -15,7 +15,7 @@ import {
 	SqlNotebookHistorySchema,
 	SqlNotebookSummaryArraySchema,
 } from "../schemas.js";
-import { stableHash, } from "../utils/stable-hash.js";
+import { SHA256_HEX_PATTERN, stableHash, } from "../utils/stable-hash.js";
 import { BaseResource, } from "./base.js";
 
 /** Result of a save that lands through POST (create) or PUT (update). */
@@ -45,8 +45,6 @@ export interface JupyterUnloadAllResult {
 	name: string;
 	unloadedSessionIds: string[];
 }
-
-const EXPECT_HASH_PATTERN = /^[0-9a-fA-F]{64}$/;
 
 export class NotebooksResource extends BaseResource {
 	// ── Jupyter Notebooks ──────────────────────────────────────────────
@@ -415,7 +413,7 @@ export class NotebooksResource extends BaseResource {
 		resourceLabel: string,
 		id: string,
 	): string {
-		if (!EXPECT_HASH_PATTERN.test(expectHash,)) {
+		if (!SHA256_HEX_PATTERN.test(expectHash,)) {
 			throw new ClientValidationError(
 				`Expected ${resourceLabel} hash must be a 64-character SHA-256 hex digest.`,
 				"validation_failed",

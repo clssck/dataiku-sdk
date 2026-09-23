@@ -431,4 +431,25 @@ describe("SqlResource bounded bodies", () => {
 			expect((failure as Error).message,).toContain("exceeded the 512-byte response limit",);
 		},);
 	});
+
+	it("streamResults classifies a non-JSON 200 body as unexpected_response", async () => {
+		await withSqlDataikuServer((_req, res,) => {
+			res.end("<html>login</html>",);
+		}, async (sql,) => {
+			const failure = await sql.streamResults("q-html",).catch((error: unknown,) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as DataikuError).category,).toBe("unexpected_response",);
+		},);
+	});
+
+	it("finishStreaming reports a server-side query failure as a DSS validation error", async () => {
+		await withSqlDataikuServer((_req, res,) => {
+			res.end("syntax error",);
+		}, async (sql,) => {
+			const failure = await sql.finishStreaming("q-bad",).catch((error: unknown,) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as DataikuError).category,).toBe("validation",);
+			expect((failure as DataikuError).status,).toBe(200,);
+		},);
+	});
 });

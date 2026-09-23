@@ -453,10 +453,10 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 			// Merge semantics: the graph survives a tag-only patch.
 			expect(outputRefs(settings,),).toEqual([SYNCED,],);
 
-			// Definition fields outside the recipe key are rejected before any write.
+			// Definition fields outside the recipe key are a caller error, rejected before any write.
 			await run(
 				["recipe", "update", SYNC_RECIPE, "--data", JSON.stringify({ outputs: {}, },),],
-				2,
+				1,
 			);
 
 			const metadata = await run<Record<string, unknown>>(["recipe", "metadata", SYNC_RECIPE,],);

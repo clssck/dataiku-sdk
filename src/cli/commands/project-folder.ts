@@ -1,6 +1,7 @@
 import { requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { isNotFoundError, planResult, skipResult, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -32,21 +33,17 @@ function nonEmptyPositionals(
 	},);
 }
 
-const GET_USAGE = "dss project-folder get <folderId>";
-const SETTINGS_GET_USAGE = "dss project-folder settings-get <folderId>";
-const SETTINGS_SET_USAGE =
-	"dss project-folder settings-set <folderId> (--data JSON|--data-file PATH|--stdin) [--dry-run]";
-const MOVE_USAGE = "dss project-folder move <folderId> <destinationFolderId> [--dry-run]";
-const DELETE_USAGE = "dss project-folder delete <folderId> [--if-exists] [--dry-run]";
-const CREATE_CHILD_USAGE =
-	"dss project-folder create-child <parentFolderId> --name NAME [--dry-run]";
-const MOVE_PROJECT_USAGE =
-	"dss project-folder move-project <folderId> <projectKey> <destinationFolderId> [--dry-run]";
+const GET_USAGE = commandUsage("project-folder", "get",);
+const SETTINGS_GET_USAGE = commandUsage("project-folder", "settings-get",);
+const SETTINGS_SET_USAGE = commandUsage("project-folder", "settings-set",);
+const MOVE_USAGE = commandUsage("project-folder", "move",);
+const DELETE_USAGE = commandUsage("project-folder", "delete",);
+const CREATE_CHILD_USAGE = commandUsage("project-folder", "create-child",);
+const MOVE_PROJECT_USAGE = commandUsage("project-folder", "move-project",);
 
-export const projectFolderCommands: Record<string, CommandMeta> = {
+export const projectFolderCommands: Record<string, CommandMeta> = withUsage("project-folder", {
 	root: {
 		handler: (c,) => c.projectFolders.root(),
-		usage: "dss project-folder root",
 		description: "Get the root project folder definition (visible children and projects).",
 		examples: ["dss project-folder root",],
 	},
@@ -56,7 +53,6 @@ export const projectFolderCommands: Record<string, CommandMeta> = {
 			nonEmptyPositionals(a, ["folderId",], GET_USAGE,);
 		},
 		handler: (c, a,) => c.projectFolders.get(a[0],),
-		usage: GET_USAGE,
 		description: "Get a project folder definition (children and project keys).",
 		examples: ["dss project-folder get KdLmPU6",],
 	},
@@ -66,7 +62,6 @@ export const projectFolderCommands: Record<string, CommandMeta> = {
 			nonEmptyPositionals(a, ["folderId",], SETTINGS_GET_USAGE,);
 		},
 		handler: (c, a,) => c.projectFolders.getSettings(a[0],),
-		usage: SETTINGS_GET_USAGE,
 		description: "Get project folder settings (name, owner, permissions). Admin required.",
 		examples: ["dss project-folder settings-get KdLmPU6",],
 	},
@@ -98,7 +93,6 @@ export const projectFolderCommands: Record<string, CommandMeta> = {
 			);
 			return { updated: a[0], resource: "project-folder", };
 		},
-		usage: SETTINGS_SET_USAGE,
 		description: "Replace project folder settings (name, owner, permissions). Admin required.",
 		examples: [
 			"dss project-folder settings-set KdLmPU6 --data-file settings.json --dry-run",
@@ -124,7 +118,6 @@ export const projectFolderCommands: Record<string, CommandMeta> = {
 			await c.projectFolders.move(a[0], a[1],);
 			return { moved: a[0], destination: a[1], resource: "project-folder", };
 		},
-		usage: MOVE_USAGE,
 		description:
 			"Move a project folder (and its content) into another project folder. Cannot move into a sub-folder of itself.",
 		examples: ["dss project-folder move KdLmPU6 dgKywsx",],
@@ -158,7 +151,6 @@ export const projectFolderCommands: Record<string, CommandMeta> = {
 			await c.projectFolders.delete(a[0],);
 			return { deleted: a[0], resource: "project-folder", };
 		},
-		usage: DELETE_USAGE,
 		description: "Delete an empty project folder (no sub-folders, no projects). Admin required.",
 		examples: ["dss project-folder delete KdLmPU6 --dry-run",],
 	},
@@ -190,7 +182,6 @@ export const projectFolderCommands: Record<string, CommandMeta> = {
 			const created = await c.projectFolders.createChild(a[0], name,);
 			return { created: created.id ?? name, resource: "project-folder", ...created, };
 		},
-		usage: CREATE_CHILD_USAGE,
 		description: "Create a sub-project folder. WRITE_CONTENTS required on the parent.",
 		examples: ["dss project-folder create-child KdLmPU6 --name my_sub_folder",],
 	},
@@ -220,9 +211,8 @@ export const projectFolderCommands: Record<string, CommandMeta> = {
 			await c.projectFolders.moveProject(a[0], a[1], a[2],);
 			return { moved: a[1], destination: a[2], resource: "project-folder", };
 		},
-		usage: MOVE_PROJECT_USAGE,
 		description:
 			"Move a project from its project folder to another project folder. WRITE_CONTENTS on destination and project admin required.",
 		examples: ["dss project-folder move-project KdLmPU6 MYPROJECT dgKywsx",],
 	},
-};
+},);

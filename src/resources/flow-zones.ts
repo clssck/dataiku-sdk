@@ -1,4 +1,5 @@
 import type { DataikuGetOptions, } from "../client.js";
+import { ClientValidationError, } from "../errors.js";
 import type {
 	FlowZone,
 	FlowZoneCreateOptions,
@@ -86,7 +87,12 @@ export class FlowZonesResource extends BaseResource {
 		items: FlowZoneItemInput[],
 		projectKey?: string,
 	): Promise<FlowZone> {
-		if (items.length === 0) throw new Error("flowZones.moveItems requires at least one item",);
+		if (items.length === 0) {
+			throw new ClientValidationError(
+				"flowZones.moveItems requires at least one item",
+				"validation_failed",
+			);
+		}
 		const raw = await this.client.post<unknown>(
 			`/public/api/projects/${this.enc(projectKey,)}/flow/zones/${
 				encodeURIComponent(zoneId,)

@@ -11,6 +11,7 @@ import {
 } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, } from "../output.js";
+import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
@@ -227,37 +228,32 @@ async function jobInspectionSummary(
 	};
 }
 
-export const jobCommands: Record<string, CommandMeta> = {
+export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 	list: {
 		handler: async (c, _a, f,) =>
 			filteredJobList(await c.jobs.list(f["project-key"] as string | undefined,), f,),
-		usage:
-			"dss job list [--state STATE] [--contains TEXT] [--output ID] [--latest] [--limit N] [--project-key KEY]",
 		description: "List recent jobs, optionally filtered for automation.",
 		examples: ["dss job list --state DONE --latest", "dss job list --contains WLM225S --limit 10",],
 	},
 	get: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss job get <id>",);
+			requireArgs(a, 1, commandUsage("job", "get",),);
 			return c.jobs.get(a[0], f["project-key"] as string | undefined,);
 		},
-		usage: "dss job get <id> [--project-key KEY]",
 		description: "Get job details.",
 		examples: ["dss job get JOB_ID",],
 	},
 	summary: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss job summary <id>",);
+			requireArgs(a, 1, commandUsage("job", "summary",),);
 			return jobInspectionSummary(c, a[0], f,);
 		},
-		usage:
-			"dss job summary <id> [--activity ACTIVITY_ID] [--log-id LOG_ID] [--max-lines N|--max-log-lines N] [--project-key KEY]",
 		description: "Summarize job state, outputs, warnings, progress, and useful terminal log lines.",
 		examples: ["dss job summary JOB_ID --max-log-lines 200",],
 	},
 	log: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss job log <id>",);
+			requireArgs(a, 1, commandUsage("job", "log",),);
 			const logFilter = f["errors-only"] === true
 				? "errors"
 				: jobLogFilterFromFlag(f["log-filter"],);
@@ -276,8 +272,6 @@ export const jobCommands: Record<string, CommandMeta> = {
 			await writeFile(outputPath, log.endsWith("\n",) ? log : `${log}\n`, "utf-8",);
 			return outputPath;
 		},
-		usage:
-			"dss job log <id> [--activity ACTIVITY_ID] [--log-id LOG_ID] [--log-filter stdout|stderr|user|errors] [--errors-only] [--max-lines N|--max-log-lines N] [--output PATH] [--project-key KEY]",
 		description:
 			"Get public API job log output. Use --errors-only (or --log-filter errors) to surface just error/traceback lines, and --output PATH to write the log to a file (stdout returns the path). --log-id is accepted for UI parity but DSS API-key auth cannot select browser-only cat-activity-log files.",
 		examples: [
@@ -287,7 +281,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 	},
 	"log-url": {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss job log-url <url>",);
+			requireArgs(a, 1, commandUsage("job", "log-url",),);
 			let parsed: URL;
 			try {
 				parsed = new URL(a[0], "http://dss.local",);
@@ -304,7 +298,6 @@ export const jobCommands: Record<string, CommandMeta> = {
 			}
 			return c.jobs.logFromUrl(a[0], { maxLogLines: maxLogLinesFromFlags(f,), },);
 		},
-		usage: "dss job log-url <url> [--max-lines N|--max-log-lines N]",
 		description: "Fetch a DSS cat-activity-log URL pasted from the UI.",
 		examples: [
 			'dss job log-url "https://dss/dip/api/flow/jobs/cat-activity-log?projectKey=TEST&jobId=JOB&activityId=A&logId=L"',
@@ -312,7 +305,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 	},
 	build: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss job build <target>",);
+			requireArgs(a, 1, commandUsage("job", "build",),);
 			const pk = f["project-key"] as string | undefined;
 			const options = {
 				buildMode: f["build-mode"] as BuildMode | undefined,
@@ -337,8 +330,6 @@ export const jobCommands: Record<string, CommandMeta> = {
 			}
 			return c.jobs.build(a[0], { ...options, projectKey: pk, },);
 		},
-		usage:
-			"dss job build <target> [--target-type dataset|managed-folder] [--type DATASET|MANAGED_FOLDER] [--build-mode MODE] [--wait] [--timeout MS] [--poll-interval MS] [--partition PARTITION] [--dry-run] [--project-key KEY]",
 		description: "Start a dataset or managed-folder build, optionally waiting for completion.",
 		examples: [
 			"dss job build orders",
@@ -348,7 +339,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 	},
 	"build-and-wait": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss job build-and-wait <target>",);
+			requireArgs(a, 1, commandUsage("job", "build-and-wait",),);
 			const pk = f["project-key"] as string | undefined;
 			const options = {
 				buildMode: f["build-mode"] as BuildMode | undefined,
@@ -374,8 +365,6 @@ export const jobCommands: Record<string, CommandMeta> = {
 			}
 			return c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },);
 		},
-		usage:
-			"dss job build-and-wait <target> [--target-type dataset|managed-folder] [--type DATASET|MANAGED_FOLDER] [--build-mode MODE] [--include-logs] [--log-filter stdout|stderr|user|errors] [--summary] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--partition PARTITION] [--dry-run] [--project-key KEY]",
 		description: "Build a dataset or managed folder and wait for completion.",
 		examples: [
 			"dss job build-and-wait orders",
@@ -386,7 +375,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 	},
 	wait: {
 		handler: (c, a, f,) => {
-			requireArgs(a, 1, "dss job wait <id>",);
+			requireArgs(a, 1, commandUsage("job", "wait",),);
 			return c.jobs.wait(a[0], {
 				includeLogs: f["include-logs"] === true,
 				logFilter: jobLogFilterFromFlag(f["log-filter"],),
@@ -397,8 +386,6 @@ export const jobCommands: Record<string, CommandMeta> = {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		usage:
-			"dss job wait <id> [--include-logs] [--log-filter stdout|stderr|user|errors] [--summary] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--project-key KEY]",
 		description: "Wait for an existing job to complete.",
 		examples: [
 			"dss job wait JOB_ID",
@@ -407,7 +394,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 	},
 	monitor: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss job monitor <id...>",);
+			requireArgs(a, 1, commandUsage("job", "monitor",),);
 			const options = {
 				includeLogs: f["include-logs"] === true,
 				logFilter: jobLogFilterFromFlag(f["log-filter"],),
@@ -420,14 +407,12 @@ export const jobCommands: Record<string, CommandMeta> = {
 			const jobs = await Promise.all(a.map((jobId,) => c.jobs.wait(jobId, options,)),);
 			return aggregateJobWaitResults(jobs, String(f["until"] ?? "all-done",),);
 		},
-		usage:
-			"dss job monitor <id...> [--summary] [--include-logs] [--log-filter stdout|stderr|user|errors] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--until all-done] [--project-key KEY]",
 		description: "Monitor one or more existing jobs and summarize progress counters from logs.",
 		examples: ["dss job monitor JOB_ID --summary", "dss job monitor JOB1 JOB2 --until all-done",],
 	},
 	watch: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss job watch <id...>",);
+			requireArgs(a, 1, commandUsage("job", "watch",),);
 			const options = {
 				includeLogs: f["include-logs"] === true,
 				logFilter: jobLogFilterFromFlag(f["log-filter"],),
@@ -440,14 +425,12 @@ export const jobCommands: Record<string, CommandMeta> = {
 			const jobs = await Promise.all(a.map((jobId,) => c.jobs.wait(jobId, options,)),);
 			return aggregateJobWaitResults(jobs, String(f["until"] ?? "all-done",),);
 		},
-		usage:
-			"dss job watch <id...> [--include-logs] [--log-filter stdout|stderr|user|errors] [--max-log-lines N] [--timeout MS] [--poll-interval MS] [--until all-done] [--project-key KEY]",
 		description: "Watch one or more existing jobs with progress extraction enabled.",
 		examples: ["dss job watch JOB_ID", "dss job watch JOB1 JOB2 --until all-done",],
 	},
 	abort: {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 1, "dss job abort <id>",);
+			requireArgs(a, 1, commandUsage("job", "abort",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
 				return {
@@ -462,8 +445,7 @@ export const jobCommands: Record<string, CommandMeta> = {
 			await c.jobs.abort(a[0], pk,);
 			return { aborted: a[0], resource: "job", };
 		},
-		usage: "dss job abort <id> [--dry-run] [--project-key KEY]",
 		description: "Abort a running job.",
 		examples: ["dss job abort JOB_ID", "dss job abort JOB_ID --dry-run",],
 	},
-};
+},);

@@ -168,10 +168,11 @@ describe("CLI agent-readiness mutation contracts", () => {
 				method: "POST",
 				endpoint: "/public/api/projects/TEST/datasets/",
 				payload: {
-					datasetName: "planned_orders",
-					connection: "filesystem",
-					dsType: "Filesystem",
 					projectKey: "TEST",
+					name: "planned_orders",
+					type: "Filesystem",
+					params: { connection: "filesystem", path: "/dataiku/TEST/planned_orders", },
+					managed: true,
 				},
 			},);
 
@@ -337,8 +338,10 @@ describe("CLI agent-readiness mutation contracts", () => {
 			resource: "dataset",
 			action: "create",
 			payload: {
-				datasetName: "uploads",
-				dsType: "UploadedFiles",
+				projectKey: "TEST",
+				name: "uploads",
+				type: "UploadedFiles",
+				params: {},
 			},
 		},);
 	});
