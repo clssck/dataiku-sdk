@@ -18,7 +18,7 @@
 		"bin/dss.js"
 	],
 	"engines": {
-		"bun": ">=1.4.0"
+		"bun": ">=1.4.2"
 	},
 	"scripts": {
 		"build": "bun scripts/generate-action-output-schemas.mjs && tsc && bun scripts/generate-build-metadata.mjs",

@@ -30,13 +30,14 @@ function launchWithBun(version: string,): { exitCode: number | null; stdout: str
 it.skipIf(!node || process.platform === "win32",)(
 	"the Node-launched bin checks the Bun version before spawning it",
 	() => {
-		const old = launchWithBun("1.3.9",);
+		const old = launchWithBun("1.4.1",);
 		expect(old.exitCode,).toBe(2,);
 		expect(JSON.parse(old.stdout,),).toMatchObject({ code: "internal_error", exitCode: 2, },);
-		expect(old.stdout,).toContain("1.3.9 is older than",);
+		expect(JSON.parse(old.stdout,).error,).toContain("1.4.1 is older than the required 1.4.2",);
+		expect(JSON.parse(old.stdout,).hint,).toContain("bun upgrade",);
 
 		// Pre-release and build suffixes compare by their release part.
 		expect(launchWithBun("1.4.3-canary.12+abc",).stdout.trim(),).toBe("LAUNCHED",);
-		expect(launchWithBun("1.4.0",).stdout.trim(),).toBe("LAUNCHED",);
+		expect(launchWithBun("1.4.2",).stdout.trim(),).toBe("LAUNCHED",);
 	},
 );

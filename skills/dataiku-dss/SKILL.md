@@ -6,7 +6,7 @@ description: >-
   Discover syntax: dss commands run --fields RESOURCE.ACTION.
 license: LicenseRef-Dataiku-SDK-Limited-Use-1.0
 compatibility: >-
-  Requires Bun >= 1.4.0, the CLI, DSS network access, and credentials.
+  Requires Bun >= 1.4.2, the CLI, DSS network access, and credentials.
 ---
 
 # Dataiku DSS

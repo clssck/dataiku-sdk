@@ -32,9 +32,8 @@ jobs:
           - ubuntu-latest
           - macos-latest
           - windows-latest
-        # The advertised minimum (package.json engines) and the latest release.
+        # The supported Bun (package.json engines).
         bun:
-          - 1.4.0
           - 1.4.2
 
     steps:

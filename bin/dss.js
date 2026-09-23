@@ -47,7 +47,11 @@ if (!runningUnderBun) {
 			["--no-env-file", fileURLToPath(import.meta.url,), ...process.argv.slice(2,),],
 			{ stdio: "inherit", env: process.env, },
 		)
-		: { error: new Error(found ? `Bun ${found} is older than ${MINIMUM_BUN}.` : "bun not found",), };
+		: {
+			error: new Error(
+				found ? `Bun ${found} is older than the required ${MINIMUM_BUN}.` : "bun not found",
+			),
+		};
 	if (result.error) {
 		process.stdout.write(`${
 			JSON.stringify({
@@ -57,7 +61,9 @@ if (!runningUnderBun) {
 				code: "internal_error",
 				category: "internal",
 				exitCode: 2,
-				hint: `Install Bun >= ${MINIMUM_BUN} and ensure \`bun\` is on PATH.`,
+				hint: found
+					? `Update Bun to ${MINIMUM_BUN} or newer: run \`bun upgrade\`.`
+					: `Install Bun ${MINIMUM_BUN} or newer (https://bun.sh) and ensure \`bun\` is on PATH.`,
 			},)
 		}\n`,);
 		process.exitCode = 2;
@@ -75,7 +81,7 @@ if (!runningUnderBun) {
 			code: "internal_error",
 			category: "internal",
 			exitCode: 2,
-			hint: `Upgrade Bun to >= ${MINIMUM_BUN} (bun upgrade).`,
+			hint: `Update Bun to ${MINIMUM_BUN} or newer: run \`bun upgrade\`.`,
 		},)
 	}\n`,);
 	process.exitCode = 2;

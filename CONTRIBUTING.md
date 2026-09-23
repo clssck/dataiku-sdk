@@ -4,7 +4,7 @@ Thanks for your interest in improving the Dataiku DSS SDK & CLI. This guide cove
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) >= 1.4.0 — primary package manager, source runtime, and test runner
+- [Bun](https://bun.sh) >= 1.4.2 — primary package manager, source runtime, and test runner
 - [Node.js](https://nodejs.org) 24 with npm — release tooling only; the SDK and CLI run under Bun
 - Git
 

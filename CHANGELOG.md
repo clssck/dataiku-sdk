@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bun 1.4.2 is now the minimum supported version (`engines.bun >=1.4.2`); CI tests 1.4.2 only. On an older Bun, `dss` exits 2 with a JSON error that tells you to run `bun upgrade`.
+
 ## 3.6.1
 
 - Fix: the Node-launched `dss` checks the Bun version (release part only, so canary builds pass) before spawning Bun, so an old Bun gets the JSON error instead of its own argument-parsing failure.
