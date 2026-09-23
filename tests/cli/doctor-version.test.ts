@@ -542,7 +542,7 @@ describe("bin/dss.js build revision forwarding", () => {
 	async function runLauncher(
 		metadata: string | null,
 		inherited: string | undefined,
-	): Promise<{ revision: string | null; source: string | null; }> {
+	): Promise<{ revision: string | null; }> {
 		const root = mkdtempSync(join(tmpdir(), "dss-bin-",),);
 		try {
 			mkdirSync(join(root, "bin",), { recursive: true, },);
@@ -557,7 +557,7 @@ describe("bin/dss.js build revision forwarding", () => {
 			);
 			writeFileSync(
 				join(root, "dist", "src", "cli.js",),
-				"process.stdout.write(JSON.stringify({revision: process.env.DSS_BUILD_REVISION ?? null, source: process.env.DSS_LOAD_SOURCE ?? null}));",
+				"process.stdout.write(JSON.stringify({revision: process.env.DSS_BUILD_REVISION ?? null}));",
 			);
 			if (metadata !== null) {
 				writeFileSync(join(root, "dist", "build-metadata.json",), metadata,);
@@ -573,7 +573,7 @@ describe("bin/dss.js build revision forwarding", () => {
 					env,
 				},
 			);
-			return JSON.parse(stdout,) as { revision: string | null; source: string | null; };
+			return JSON.parse(stdout,) as { revision: string | null; };
 		} finally {
 			rmSync(root, { recursive: true, force: true, },);
 		}
@@ -584,7 +584,6 @@ describe("bin/dss.js build revision forwarding", () => {
 			JSON.stringify({ buildRevision: FORTY_A, },),
 			"inherited-garbage",
 		);
-		expect(child.source,).toBe("dist",);
 		expect(child.revision,).toBe(FORTY_A,);
 	});
 
@@ -593,13 +592,11 @@ describe("bin/dss.js build revision forwarding", () => {
 			JSON.stringify({ buildRevision: "a".repeat(41,), },),
 			"inherited-garbage",
 		);
-		expect(child.source,).toBe("dist",);
 		expect(child.revision,).toBeNull();
 	});
 
 	it("clears inherited revisions when dist metadata is absent", async () => {
 		const child = await runLauncher(null, "inherited-garbage",);
-		expect(child.source,).toBe("dist",);
 		expect(child.revision,).toBeNull();
 	});
 
@@ -620,7 +617,7 @@ describe("bin/dss.js build revision forwarding", () => {
 			writeFileSync(join(root, "dist", "src", "cli.js",), "process.stdout.write('dist');",);
 			writeFileSync(
 				join(root, "src", "cli.ts",),
-				"process.stdout.write(JSON.stringify({ ran: 'source', load: process.env.DSS_LOAD_SOURCE ?? null }));",
+				"process.stdout.write(JSON.stringify({ ran: 'source' }));",
 			);
 			const { stdout, } = await exec(
 				BUN,
@@ -630,7 +627,7 @@ describe("bin/dss.js build revision forwarding", () => {
 					env: { ...process.env, DSS_LOAD_SOURCE: "dist", },
 				},
 			);
-			expect(JSON.parse(stdout,),).toEqual({ ran: "source", load: null, },);
+			expect(JSON.parse(stdout,),).toEqual({ ran: "source", },);
 		} finally {
 			rmSync(root, { recursive: true, force: true, },);
 		}

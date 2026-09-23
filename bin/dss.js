@@ -25,18 +25,35 @@ const MINIMUM_BUN = JSON.parse(
 	readFileSync(fileURLToPath(new URL("../package.json", import.meta.url,),), "utf-8",),
 ).engines.bun.replace(/^>=/, "",);
 
+/** Whether dotted version `actual` is >= `minimum` (numeric per part). */
+function versionAtLeast(actual, minimum,) {
+	// Compare the release part only: canary builds print e.g. 1.4.3-canary.12+abc.
+	const a = actual.split(/[-+]/,)[0].split(".",).map(Number,);
+	const m = minimum.split(".",).map(Number,);
+	for (let i = 0; i < m.length; i++) {
+		if ((a[i] ?? 0) !== m[i]) return (a[i] ?? 0) > m[i];
+	}
+	return true;
+}
+
 if (!runningUnderBun) {
-	const result = spawnSync(
-		"bun",
-		["--no-env-file", fileURLToPath(import.meta.url,), ...process.argv.slice(2,),],
-		{ stdio: "inherit", env: process.env, },
-	);
+	// Check before spawning: an old Bun may reject --no-env-file during argument
+	// parsing, before any launcher code could report a JSON error.
+	const probe = spawnSync("bun", ["--version",], { encoding: "utf-8", },);
+	const found = probe.error ? undefined : probe.stdout.trim();
+	const result = found !== undefined && versionAtLeast(found, MINIMUM_BUN,)
+		? spawnSync(
+			"bun",
+			["--no-env-file", fileURLToPath(import.meta.url,), ...process.argv.slice(2,),],
+			{ stdio: "inherit", env: process.env, },
+		)
+		: { error: new Error(found ? `Bun ${found} is older than ${MINIMUM_BUN}.` : "bun not found",), };
 	if (result.error) {
 		process.stdout.write(`${
 			JSON.stringify({
 				type: "error",
 				ok: false,
-				error: "Unable to start the required Bun runtime.",
+				error: `Unable to start the required Bun runtime: ${result.error.message}`,
 				code: "internal_error",
 				category: "internal",
 				exitCode: 2,
@@ -91,7 +108,6 @@ if (!runningUnderBun) {
 	// build revision; only a full lowercase hexadecimal revision is accepted, so an
 	// inherited or corrupt variable never stands in for packaged metadata.
 	if (usesDistCli) {
-		process.env.DSS_LOAD_SOURCE = "dist";
 		delete process.env.DSS_BUILD_REVISION;
 		try {
 			const metadata = await Bun.file(path.resolve(here, "../dist/build-metadata.json",),).json();
@@ -103,8 +119,7 @@ if (!runningUnderBun) {
 			// Dist without build metadata: provenance still reports dist source.
 		}
 	} else {
-		// Provenance is the launcher's to assert; never trust inherited values.
-		delete process.env.DSS_LOAD_SOURCE;
+		// Only a dist run may carry a build revision; never trust an inherited one.
 		delete process.env.DSS_BUILD_REVISION;
 	}
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix: the Node-launched `dss` checks the Bun version (release part only, so canary builds pass) before spawning Bun, so an old Bun gets the JSON error instead of its own argument-parsing failure.
+- `batch --dry-run` has a regression test proving it applies the same meta-command flag checks as a direct run.
+- Remove the unused `DSS_LOAD_SOURCE` launcher variable; load source comes only from where the CLI module actually lives.
+
 ## 3.6.0
 
 - Fix: a non-2xx response whose body misses the request deadline keeps its real HTTP status instead of becoming a bare network timeout.

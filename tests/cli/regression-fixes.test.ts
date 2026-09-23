@@ -1329,4 +1329,26 @@ describe("meta command flag validation", () => {
 		], { env: hermeticEnv, },);
 		expect(JSON.parse(stdout,),).toMatchObject({ steps: [{ runnable: true, },], },);
 	});
+
+	it("batch --dry-run applies the same meta-command flag checks as a direct run", async () => {
+		const failure = await dssFailure([
+			"batch",
+			"--dry-run",
+			"--data",
+			JSON.stringify([["version", "--drop-data",], [
+				"cleanup",
+				"--file",
+				"x",
+				"--dry-run",
+				"--apply",
+			],],),
+		], { env: hermeticEnv, },);
+		const report = JSON.parse(failure.stdout,) as {
+			steps: Array<{ runnable: boolean; error?: { code?: string; }; }>;
+		};
+		expect(report.steps.map((step,) => [step.runnable, step.error?.code,]),).toEqual([
+			[false, "unknown_flag",],
+			[false, "usage_error",],
+		],);
+	});
 });
