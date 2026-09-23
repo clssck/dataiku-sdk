@@ -7,7 +7,7 @@ import {
 } from "../../src/cli/commands/connection.js";
 import { commands, } from "../../src/cli/commands/index.js";
 import { sanitizeUserSecrets, } from "../../src/cli/commands/user.js";
-import { buildMutationPlan, } from "../../src/cli/contract.js";
+import { buildMutationPlan, } from "../../src/cli/plans.js";
 import { DataikuClient, } from "../../src/client.js";
 
 const USER = commands["user"]!;

@@ -393,6 +393,46 @@ describe("DatasetsResource.download CSV batching", () => {
 		}
 	});
 
+	it("stops reading the response once the row limit is reached", async () => {
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+		try {
+			// A server that ignores the requested limit and never ends the body:
+			// the export must cancel the response instead of draining it forever.
+			let closed: () => void;
+			const connectionClosed = new Promise<void>((resolve,) => {
+				closed = resolve;
+			},);
+			await withTestServer((_req, res,) => {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+				res.write("name\tcity\n",);
+				// Refill whenever the socket drains, until the client hangs up.
+				const pump = () => {
+					while (!res.destroyed && res.write("Alice\tParis\n".repeat(100,),));
+				};
+				res.on("drain", pump,);
+				res.on("close", () => {
+					res.off("drain", pump,);
+					closed();
+				},);
+				pump();
+			}, async (url,) => {
+				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+				const result = await client.datasets.download("sample", {
+					outputPath: path.join(tempDir, "out.csv",),
+					limit: 3,
+				},);
+				expect(result,).toMatchObject({ rows: 3, truncated: true, },);
+				expect(fs.readFileSync(result.path, "utf8",),).toBe(
+					"name,city\nAlice,Paris\nAlice,Paris\nAlice,Paris\n",
+				);
+				await connectionClosed;
+			},);
+		} finally {
+			fs.rmSync(tempDir, { recursive: true, force: true, },);
+		}
+	}, 5_000,);
+
 	it("flushes an unterminated final row queued below the batch budget", async () => {
 		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
 		try {

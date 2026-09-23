@@ -74,6 +74,13 @@ function loadCommandRuntime(): Promise<void> {
 	},);
 }
 
+// Plan builders (and the command helpers they share with live handlers) load
+// only for --plan; flag validation needs just the registry.
+let planBuildersLoad: Promise<typeof import("./cli/plans.js")> | undefined;
+function loadPlanBuilders(): Promise<typeof import("./cli/plans.js")> {
+	return planBuildersLoad ??= import("./cli/plans.js");
+}
+
 // ---------------------------------------------------------------------------
 // Arg parsing
 // ---------------------------------------------------------------------------
@@ -1265,7 +1272,13 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 				if (!meta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
 				validateSupportedCommandFlags(resource, action, stepFlags,);
 				if (executionMode(stepFlags,).plan) {
-					result = contract.buildMutationPlan(resource, action, meta, positional.slice(2,), stepFlags,);
+					result = (await loadPlanBuilders()).buildMutationPlan(
+						resource,
+						action,
+						meta,
+						positional.slice(2,),
+						stepFlags,
+					);
 				} else {
 					if (!client) {
 						throw new UsageError(
@@ -1808,7 +1821,13 @@ async function main(): Promise<void> {
 	// bad identifier is a usage error before any plan is built or request made.
 	actionMeta.validate?.(args, flags,);
 	if (executionMode(flags,).plan) {
-		const plan = contract.buildMutationPlan(resource, action, actionMeta, args, flags,);
+		const plan = (await loadPlanBuilders()).buildMutationPlan(
+			resource,
+			action,
+			actionMeta,
+			args,
+			flags,
+		);
 		writeCommandResult(plan,);
 		return;
 	}

@@ -1,4 +1,3 @@
-import { randomUUID, } from "node:crypto";
 import type { DataikuClient, } from "../../client.js";
 import { DataikuError, } from "../../errors.js";
 import type { AppManifestValidationResult, } from "../../resources/applications.js";
@@ -34,7 +33,7 @@ export const VISUAL_UI_GATE = {
  * probed for absence and is never retried under an alternate key.
  */
 export function generatedInstanceKey(): string {
-	return `APP_${randomUUID().replace(/-/g, "",).toUpperCase()}`;
+	return `APP_${crypto.randomUUID().replace(/-/g, "",).toUpperCase()}`;
 }
 
 export type AppInstanceCheckName =

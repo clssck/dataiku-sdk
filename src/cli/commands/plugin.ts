@@ -6,7 +6,8 @@ import {
 	validatePluginName,
 	validatePluginPath,
 } from "../../resources/plugins.js";
-import { num, readStdinText, } from "../coerce.js";
+import { writeResponseToFile, } from "../../utils/response-file.js";
+import { num, readStdinText, sha256Hex, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { planResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
@@ -228,7 +229,7 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 			}
 			const pluginId = validatePluginId(a[0],);
 			const res = await c.plugins.download(pluginId,);
-			const bytes = await writeResponseToFileForPlugin(out, res,);
+			const bytes = await writeResponseToFile(out, res,);
 			return { path: out, bytes, };
 		},
 		description: "Download a development plugin as a zip archive to a local file.",
@@ -651,7 +652,7 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 			const out = f["output"];
 			if (typeof out === "string" && out.trim() !== "") {
 				const res = await c.plugins.downloadFile(pluginId, path,);
-				const bytes = await writeResponseToFileForPlugin(out, res,);
+				const bytes = await writeResponseToFile(out, res,);
 				return { path: out, bytes, };
 			}
 			return { data: await c.plugins.getFile(pluginId, path,), };
@@ -688,10 +689,7 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 				: await readStdinText();
 			await c.plugins.putFile(pluginId, path, content,);
 			const bytes = typeof content === "string" ? Buffer.byteLength(content, "utf8",) : content.length;
-			const hasher = new Bun.CryptoHasher("sha256",);
-			hasher.update(typeof content === "string" ? content : new Uint8Array(content,),);
-			const sha256 = hasher.digest("hex",);
-			return { written: path, pluginId, bytes, sha256, };
+			return { written: path, pluginId, bytes, sha256: sha256Hex(content,), };
 		},
 		description:
 			"Create or replace a development plugin file with text or binary content; reports the written byte count and sha256.",
@@ -828,9 +826,4 @@ function readSettingsInput(flags: Record<string, string | boolean>,): SettingsPa
 		throw new UsageError("Plugin settings must be a JSON object.", "validation_failed",);
 	}
 	return parsed as SettingsPayload;
-}
-
-async function writeResponseToFileForPlugin(path: string, res: Response,): Promise<number> {
-	const { writeResponseToFile, } = await import("../../utils/response-file.js");
-	return writeResponseToFile(path, res,);
 }

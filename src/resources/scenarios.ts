@@ -1,4 +1,3 @@
-import { randomUUID, } from "node:crypto";
 import { ClientValidationError, DataikuError, } from "../errors.js";
 import type {
 	ScenarioDetails,
@@ -658,7 +657,7 @@ export class ScenariosResource extends BaseResource {
 	): Promise<ScenarioScriptRunResult> {
 		const pk = this.resolveProjectKey(opts?.projectKey,);
 		const pkEnc = this.enc(opts?.projectKey,);
-		const scenarioId = `dss_cli_code_run_${Date.now()}_${randomUUID().replace(/-/g, "",)}`;
+		const scenarioId = `dss_cli_code_run_${Date.now()}_${crypto.randomUUID().replace(/-/g, "",)}`;
 		const base = `/public/api/projects/${pkEnc}/scenarios/${encodeURIComponent(scenarioId,)}`;
 		const envSelection = opts?.envName
 			? { envMode: "EXPLICIT_ENV", envName: opts.envName, }

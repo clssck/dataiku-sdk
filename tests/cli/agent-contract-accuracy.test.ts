@@ -1,10 +1,7 @@
 import { describe, expect, it, } from "bun:test";
 import { commands, } from "../../src/cli/commands/index.js";
-import {
-	buildAgentContract,
-	buildCommandRegistry,
-	buildMutationPlan,
-} from "../../src/cli/contract.js";
+import { buildAgentContract, buildCommandRegistry, } from "../../src/cli/contract.js";
+import { buildMutationPlan, } from "../../src/cli/plans.js";
 import { RESOURCE_NAMES, } from "../../src/cli/usage.js";
 import {
 	dss,

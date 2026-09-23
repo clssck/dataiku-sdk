@@ -14,49 +14,49 @@ import {
 	nonJsonResponseBody,
 } from "./errors.js";
 
-import { AnalysesResource, } from "./resources/analyses.js";
-import { ApiDeployerResource, } from "./resources/api-deployer.js";
-import { ApiServicesResource, } from "./resources/api-services.js";
-import { ApplicationsResource, } from "./resources/applications.js";
-import { BundlesResource, ProjectDeployerResource, } from "./resources/bundles.js";
-import { CodeEnvsResource, } from "./resources/code-envs.js";
-import { ConnectionsResource, } from "./resources/connections.js";
-import { ContinuousActivitiesResource, } from "./resources/continuous-activities.js";
-import { DashboardsResource, } from "./resources/dashboards.js";
-import { DataCollectionsResource, } from "./resources/data-collections.js";
-import { DataQualityResource, } from "./resources/data-quality.js";
-import { DatasetsResource, } from "./resources/datasets.js";
-import { DiscussionsResource, } from "./resources/discussions.js";
-import { FlowZonesResource, } from "./resources/flow-zones.js";
-import { FoldersResource, } from "./resources/folders.js";
-import { FuturesResource, } from "./resources/futures.js";
-import { GroupsResource, } from "./resources/groups.js";
-import { InsightsResource, } from "./resources/insights.js";
-import { JobsResource, } from "./resources/jobs.js";
-import { KnowledgeBanksResource, } from "./resources/knowledge-banks.js";
-import { LlmsResource, } from "./resources/llms.js";
-import { MacrosResource, } from "./resources/macros.js";
-import { MeaningsResource, } from "./resources/meanings.js";
-import { MetricsResource, } from "./resources/metrics.js";
-import { MlTasksResource, } from "./resources/ml-tasks.js";
-import { ModelEvaluationStoresResource, } from "./resources/model-evaluation-stores.js";
-import { NotebooksResource, } from "./resources/notebooks.js";
-import { PluginsResource, } from "./resources/plugins.js";
-import { ProjectFoldersResource, } from "./resources/project-folders.js";
-import { ProjectGitResource, } from "./resources/project-git.js";
-import { ProjectLibraryResource, } from "./resources/project-library.js";
-import { ProjectsResource, } from "./resources/projects.js";
-import { RecipesResource, } from "./resources/recipes.js";
-import { SavedModelsResource, } from "./resources/saved-models.js";
-import { ScenariosResource, } from "./resources/scenarios.js";
-import { SqlResource, } from "./resources/sql.js";
-import { StatisticsResource, } from "./resources/statistics.js";
-import { StreamingEndpointsResource, } from "./resources/streaming-endpoints.js";
-import { UsersResource, } from "./resources/users.js";
-import { VariablesResource, } from "./resources/variables.js";
-import { WebappsResource, } from "./resources/webapps.js";
-import { WikiResource, } from "./resources/wiki.js";
-import { WorkspacesResource, } from "./resources/workspaces.js";
+import type { AnalysesResource, } from "./resources/analyses.js";
+import type { ApiDeployerResource, } from "./resources/api-deployer.js";
+import type { ApiServicesResource, } from "./resources/api-services.js";
+import type { ApplicationsResource, } from "./resources/applications.js";
+import type { BundlesResource, ProjectDeployerResource, } from "./resources/bundles.js";
+import type { CodeEnvsResource, } from "./resources/code-envs.js";
+import type { ConnectionsResource, } from "./resources/connections.js";
+import type { ContinuousActivitiesResource, } from "./resources/continuous-activities.js";
+import type { DashboardsResource, } from "./resources/dashboards.js";
+import type { DataCollectionsResource, } from "./resources/data-collections.js";
+import type { DataQualityResource, } from "./resources/data-quality.js";
+import type { DatasetsResource, } from "./resources/datasets.js";
+import type { DiscussionsResource, } from "./resources/discussions.js";
+import type { FlowZonesResource, } from "./resources/flow-zones.js";
+import type { FoldersResource, } from "./resources/folders.js";
+import type { FuturesResource, } from "./resources/futures.js";
+import type { GroupsResource, } from "./resources/groups.js";
+import type { InsightsResource, } from "./resources/insights.js";
+import type { JobsResource, } from "./resources/jobs.js";
+import type { KnowledgeBanksResource, } from "./resources/knowledge-banks.js";
+import type { LlmsResource, } from "./resources/llms.js";
+import type { MacrosResource, } from "./resources/macros.js";
+import type { MeaningsResource, } from "./resources/meanings.js";
+import type { MetricsResource, } from "./resources/metrics.js";
+import type { MlTasksResource, } from "./resources/ml-tasks.js";
+import type { ModelEvaluationStoresResource, } from "./resources/model-evaluation-stores.js";
+import type { NotebooksResource, } from "./resources/notebooks.js";
+import type { PluginsResource, } from "./resources/plugins.js";
+import type { ProjectFoldersResource, } from "./resources/project-folders.js";
+import type { ProjectGitResource, } from "./resources/project-git.js";
+import type { ProjectLibraryResource, } from "./resources/project-library.js";
+import type { ProjectsResource, } from "./resources/projects.js";
+import type { RecipesResource, } from "./resources/recipes.js";
+import type { SavedModelsResource, } from "./resources/saved-models.js";
+import type { ScenariosResource, } from "./resources/scenarios.js";
+import type { SqlResource, } from "./resources/sql.js";
+import type { StatisticsResource, } from "./resources/statistics.js";
+import type { StreamingEndpointsResource, } from "./resources/streaming-endpoints.js";
+import type { UsersResource, } from "./resources/users.js";
+import type { VariablesResource, } from "./resources/variables.js";
+import type { WebappsResource, } from "./resources/webapps.js";
+import type { WikiResource, } from "./resources/wiki.js";
+import type { WorkspacesResource, } from "./resources/workspaces.js";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -445,137 +445,234 @@ export class DataikuClient {
 	private usersResource?: UsersResource;
 	private groupsResource?: GroupsResource;
 
+	// Resource modules load on first access (like commands/index.ts): a command
+	// that touches one resource does not parse the other forty-odd.
 	get projects(): ProjectsResource {
-		return (this.projectsResource ??= new ProjectsResource(this,));
+		return (this.projectsResource ??=
+			new (require("./resources/projects.js",) as typeof import("./resources/projects.js"))
+				.ProjectsResource(this,));
 	}
 	get datasets(): DatasetsResource {
-		return (this.datasetsResource ??= new DatasetsResource(this,));
+		return (this.datasetsResource ??=
+			new (require("./resources/datasets.js",) as typeof import("./resources/datasets.js"))
+				.DatasetsResource(this,));
 	}
 	get dashboards(): DashboardsResource {
-		return (this.dashboardsResource ??= new DashboardsResource(this,));
+		return (this.dashboardsResource ??=
+			new (require("./resources/dashboards.js",) as typeof import("./resources/dashboards.js"))
+				.DashboardsResource(this,));
 	}
 	get dataQuality(): DataQualityResource {
-		return (this.dataQualityResource ??= new DataQualityResource(this,));
+		return (this.dataQualityResource ??=
+			new (require("./resources/data-quality.js",) as typeof import("./resources/data-quality.js"))
+				.DataQualityResource(this,));
 	}
 	get recipes(): RecipesResource {
-		return (this.recipesResource ??= new RecipesResource(this,));
+		return (this.recipesResource ??=
+			new (require("./resources/recipes.js",) as typeof import("./resources/recipes.js"))
+				.RecipesResource(this,));
 	}
 	get jobs(): JobsResource {
-		return (this.jobsResource ??= new JobsResource(this,));
+		return (this.jobsResource ??=
+			new (require("./resources/jobs.js",) as typeof import("./resources/jobs.js")).JobsResource(
+				this,
+			));
 	}
 	get futures(): FuturesResource {
-		return (this.futuresResource ??= new FuturesResource(this,));
+		return (this.futuresResource ??=
+			new (require("./resources/futures.js",) as typeof import("./resources/futures.js"))
+				.FuturesResource(this,));
 	}
 	get scenarios(): ScenariosResource {
-		return (this.scenariosResource ??= new ScenariosResource(this,));
+		return (this.scenariosResource ??=
+			new (require("./resources/scenarios.js",) as typeof import("./resources/scenarios.js"))
+				.ScenariosResource(this,));
 	}
 	get folders(): FoldersResource {
-		return (this.foldersResource ??= new FoldersResource(this,));
+		return (this.foldersResource ??=
+			new (require("./resources/folders.js",) as typeof import("./resources/folders.js"))
+				.FoldersResource(this,));
 	}
 	get flowZones(): FlowZonesResource {
-		return (this.flowZonesResource ??= new FlowZonesResource(this,));
+		return (this.flowZonesResource ??=
+			new (require("./resources/flow-zones.js",) as typeof import("./resources/flow-zones.js"))
+				.FlowZonesResource(this,));
 	}
 	get variables(): VariablesResource {
-		return (this.variablesResource ??= new VariablesResource(this,));
+		return (this.variablesResource ??=
+			new (require("./resources/variables.js",) as typeof import("./resources/variables.js"))
+				.VariablesResource(this,));
 	}
 	get connections(): ConnectionsResource {
-		return (this.connectionsResource ??= new ConnectionsResource(this,));
+		return (this.connectionsResource ??=
+			new (require("./resources/connections.js",) as typeof import("./resources/connections.js"))
+				.ConnectionsResource(this,));
 	}
 	get codeEnvs(): CodeEnvsResource {
-		return (this.codeEnvsResource ??= new CodeEnvsResource(this,));
+		return (this.codeEnvsResource ??=
+			new (require("./resources/code-envs.js",) as typeof import("./resources/code-envs.js"))
+				.CodeEnvsResource(this,));
 	}
 	get insights(): InsightsResource {
-		return (this.insightsResource ??= new InsightsResource(this,));
+		return (this.insightsResource ??=
+			new (require("./resources/insights.js",) as typeof import("./resources/insights.js"))
+				.InsightsResource(this,));
 	}
 	get sql(): SqlResource {
-		return (this.sqlResource ??= new SqlResource(this,));
+		return (this.sqlResource ??=
+			new (require("./resources/sql.js",) as typeof import("./resources/sql.js")).SqlResource(this,));
 	}
 	get notebooks(): NotebooksResource {
-		return (this.notebooksResource ??= new NotebooksResource(this,));
+		return (this.notebooksResource ??=
+			new (require("./resources/notebooks.js",) as typeof import("./resources/notebooks.js"))
+				.NotebooksResource(this,));
 	}
 	get wiki(): WikiResource {
-		return (this.wikiResource ??= new WikiResource(this,));
+		return (this.wikiResource ??=
+			new (require("./resources/wiki.js",) as typeof import("./resources/wiki.js")).WikiResource(
+				this,
+			));
 	}
 	get applications(): ApplicationsResource {
-		return (this.applicationsResource ??= new ApplicationsResource(this,));
+		return (this.applicationsResource ??=
+			new (require("./resources/applications.js",) as typeof import("./resources/applications.js"))
+				.ApplicationsResource(this,));
 	}
 	get webapps(): WebappsResource {
-		return (this.webappsResource ??= new WebappsResource(this,));
+		return (this.webappsResource ??=
+			new (require("./resources/webapps.js",) as typeof import("./resources/webapps.js"))
+				.WebappsResource(this,));
 	}
 	get apiServices(): ApiServicesResource {
-		return (this.apiServicesResource ??= new ApiServicesResource(this,));
+		return (this.apiServicesResource ??=
+			new (require("./resources/api-services.js",) as typeof import("./resources/api-services.js"))
+				.ApiServicesResource(this,));
 	}
 	get apiDeployer(): ApiDeployerResource {
-		return (this.apiDeployerResource ??= new ApiDeployerResource(this,));
+		return (this.apiDeployerResource ??=
+			new (require("./resources/api-deployer.js",) as typeof import("./resources/api-deployer.js"))
+				.ApiDeployerResource(this,));
 	}
 	get bundles(): BundlesResource {
-		return (this.bundlesResource ??= new BundlesResource(this,));
+		return (this.bundlesResource ??=
+			new (require("./resources/bundles.js",) as typeof import("./resources/bundles.js"))
+				.BundlesResource(this,));
 	}
 	get projectDeployer(): ProjectDeployerResource {
-		return (this.projectDeployerResource ??= new ProjectDeployerResource(this,));
+		return (this.projectDeployerResource ??=
+			new (require("./resources/bundles.js",) as typeof import("./resources/bundles.js"))
+				.ProjectDeployerResource(this,));
 	}
 	get projectLibrary(): ProjectLibraryResource {
-		return (this.projectLibraryResource ??= new ProjectLibraryResource(this,));
+		return (this.projectLibraryResource ??= new (require(
+			"./resources/project-library.js",
+		) as typeof import("./resources/project-library.js")).ProjectLibraryResource(this,));
 	}
 	get projectGit(): ProjectGitResource {
-		return (this.projectGitResource ??= new ProjectGitResource(this,));
+		return (this.projectGitResource ??=
+			new (require("./resources/project-git.js",) as typeof import("./resources/project-git.js"))
+				.ProjectGitResource(this,));
 	}
 	get streamingEndpoints(): StreamingEndpointsResource {
-		return (this.streamingEndpointsResource ??= new StreamingEndpointsResource(this,));
+		return (this.streamingEndpointsResource ??= new (require(
+			"./resources/streaming-endpoints.js",
+		) as typeof import("./resources/streaming-endpoints.js")).StreamingEndpointsResource(this,));
 	}
 	get continuousActivities(): ContinuousActivitiesResource {
-		return (this.continuousActivitiesResource ??= new ContinuousActivitiesResource(this,));
+		return (this.continuousActivitiesResource ??= new (require(
+			"./resources/continuous-activities.js",
+		) as typeof import("./resources/continuous-activities.js")).ContinuousActivitiesResource(this,));
 	}
 	get statistics(): StatisticsResource {
-		return (this.statisticsResource ??= new StatisticsResource(this,));
+		return (this.statisticsResource ??=
+			new (require("./resources/statistics.js",) as typeof import("./resources/statistics.js"))
+				.StatisticsResource(this,));
 	}
 	get discussions(): DiscussionsResource {
-		return (this.discussionsResource ??= new DiscussionsResource(this,));
+		return (this.discussionsResource ??=
+			new (require("./resources/discussions.js",) as typeof import("./resources/discussions.js"))
+				.DiscussionsResource(this,));
 	}
 	get workspaces(): WorkspacesResource {
-		return (this.workspacesResource ??= new WorkspacesResource(this,));
+		return (this.workspacesResource ??=
+			new (require("./resources/workspaces.js",) as typeof import("./resources/workspaces.js"))
+				.WorkspacesResource(this,));
 	}
 	get metrics(): MetricsResource {
-		return (this.metricsResource ??= new MetricsResource(this,));
+		return (this.metricsResource ??=
+			new (require("./resources/metrics.js",) as typeof import("./resources/metrics.js"))
+				.MetricsResource(this,));
 	}
 	get meanings(): MeaningsResource {
-		return (this.meaningsResource ??= new MeaningsResource(this,));
+		return (this.meaningsResource ??=
+			new (require("./resources/meanings.js",) as typeof import("./resources/meanings.js"))
+				.MeaningsResource(this,));
 	}
 	get analyses(): AnalysesResource {
-		return (this.analysesResource ??= new AnalysesResource(this,));
+		return (this.analysesResource ??=
+			new (require("./resources/analyses.js",) as typeof import("./resources/analyses.js"))
+				.AnalysesResource(this,));
 	}
 	get mlTasks(): MlTasksResource {
-		return (this.mlTasksResource ??= new MlTasksResource(this,));
+		return (this.mlTasksResource ??=
+			new (require("./resources/ml-tasks.js",) as typeof import("./resources/ml-tasks.js"))
+				.MlTasksResource(this,));
 	}
 	get savedModels(): SavedModelsResource {
-		return (this.savedModelsResource ??= new SavedModelsResource(this,));
+		return (this.savedModelsResource ??=
+			new (require("./resources/saved-models.js",) as typeof import("./resources/saved-models.js"))
+				.SavedModelsResource(this,));
 	}
 	get modelEvaluationStores(): ModelEvaluationStoresResource {
-		return (this.modelEvaluationStoresResource ??= new ModelEvaluationStoresResource(this,));
+		return (this.modelEvaluationStoresResource ??= new (require(
+			"./resources/model-evaluation-stores.js",
+		) as typeof import("./resources/model-evaluation-stores.js")).ModelEvaluationStoresResource(
+			this,
+		));
 	}
 	get projectFolders(): ProjectFoldersResource {
-		return (this.projectFoldersResource ??= new ProjectFoldersResource(this,));
+		return (this.projectFoldersResource ??= new (require(
+			"./resources/project-folders.js",
+		) as typeof import("./resources/project-folders.js")).ProjectFoldersResource(this,));
 	}
 	get dataCollections(): DataCollectionsResource {
-		return (this.dataCollectionsResource ??= new DataCollectionsResource(this,));
+		return (this.dataCollectionsResource ??= new (require(
+			"./resources/data-collections.js",
+		) as typeof import("./resources/data-collections.js")).DataCollectionsResource(this,));
 	}
 	get llms(): LlmsResource {
-		return (this.llmsResource ??= new LlmsResource(this,));
+		return (this.llmsResource ??=
+			new (require("./resources/llms.js",) as typeof import("./resources/llms.js")).LlmsResource(
+				this,
+			));
 	}
 	get knowledgeBanks(): KnowledgeBanksResource {
-		return (this.knowledgeBanksResource ??= new KnowledgeBanksResource(this,));
+		return (this.knowledgeBanksResource ??= new (require(
+			"./resources/knowledge-banks.js",
+		) as typeof import("./resources/knowledge-banks.js")).KnowledgeBanksResource(this,));
 	}
 	get macros(): MacrosResource {
-		return (this.macrosResource ??= new MacrosResource(this,));
+		return (this.macrosResource ??=
+			new (require("./resources/macros.js",) as typeof import("./resources/macros.js")).MacrosResource(
+				this,
+			));
 	}
 	get plugins(): PluginsResource {
-		return (this.pluginsResource ??= new PluginsResource(this,));
+		return (this.pluginsResource ??=
+			new (require("./resources/plugins.js",) as typeof import("./resources/plugins.js"))
+				.PluginsResource(this,));
 	}
 	get users(): UsersResource {
-		return (this.usersResource ??= new UsersResource(this,));
+		return (this.usersResource ??=
+			new (require("./resources/users.js",) as typeof import("./resources/users.js")).UsersResource(
+				this,
+			));
 	}
 	get groups(): GroupsResource {
-		return (this.groupsResource ??= new GroupsResource(this,));
+		return (this.groupsResource ??=
+			new (require("./resources/groups.js",) as typeof import("./resources/groups.js")).GroupsResource(
+				this,
+			));
 	}
 
 	constructor(config?: DataikuClientConfig,) {

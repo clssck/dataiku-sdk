@@ -18,10 +18,6 @@ import { requireArgs, UsageError, } from "../usage.js";
 const PROJECT_LIBRARY_EXIT_CODES: Record<string, number> = { usage: 1, error: 2, transient: 3, };
 const PUT_FLAG_ERROR_HINT = "Pass a 64-character SHA-256 hex digest (lowercase or uppercase).";
 
-function sha256BytesHex(bytes: Uint8Array,): string {
-	return new Bun.CryptoHasher("sha256",).update(bytes,).digest("hex",);
-}
-
 function projectLibraryContentsEndpoint(
 	client: DataikuClient,
 	projectKey: string | undefined,
@@ -92,7 +88,7 @@ export function projectLibraryPutPayload(
 			contentSource: "file",
 			file: flags["file"] as string,
 			bytes: bytes.length,
-			sha256: sha256BytesHex(bytes,),
+			sha256: sha256Hex(bytes,),
 			...(expectSha256 ? { expectSha256, } : {}),
 		};
 	}
@@ -156,7 +152,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = withUsage("pr
 				f["project-key"] as string | undefined,
 			);
 			const written = await Bun.write(out, bytes, { createPath: false, },);
-			return { path: out, bytes: written, sha256: sha256BytesHex(bytes,), };
+			return { path: out, bytes: written, sha256: sha256Hex(bytes,), };
 		},
 		description: "Download a project library file's raw bytes to a local file.",
 		examples: ["dss project-library get-bytes static/logo.png --output ./logo.png",],

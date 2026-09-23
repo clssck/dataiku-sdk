@@ -1,9 +1,6 @@
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
-import { Readable, Transform, } from "node:stream";
-import { pipeline, } from "node:stream/promises";
 import { StringDecoder, } from "node:string_decoder";
-import { createGzip, } from "node:zlib";
 import { ClientValidationError, DataikuError, } from "../errors.js";
 import {
 	DatasetDetailsSchema,
@@ -14,6 +11,7 @@ import { deepMerge, } from "../utils/deep-merge.js";
 import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
 import { resolveAdminManagedStorageConnection, } from "./connections.js";
+import { buildDatasetCreateBody, } from "./dataset-create.js";
 
 import type {
 	DatasetCreateOptions,
@@ -573,27 +571,29 @@ function tsvToCsvTransform(
 	stats: { rows: number; truncated: boolean; },
 	onHeader?: (headerRow: string[],) => void,
 	spreadsheetSafe = true,
-): Transform {
+): TransformStream<Uint8Array, Uint8Array<ArrayBuffer>> {
+	type Target = TransformStreamDefaultController<Uint8Array<ArrayBuffer>>;
 	const state = createTsvStreamState();
 	const decoder = new StringDecoder("utf-8",);
+	const encoder = new TextEncoder();
 	const maxRows = Math.max(1, maxDataRows,);
 	let headerSeen = false;
 	let done = false;
 
 	// Bounded CSV output batching: emitted rows accumulate here and are joined
-	// into a single push once the batch reaches CSV_BATCH_BYTES, so memory stays
-	// bounded by the batch budget plus one escaped row (the join briefly holds a
-	// second copy of the batch) while per-row push/callback overhead disappears.
+	// into a single enqueue once the batch reaches CSV_BATCH_BYTES, so memory
+	// stays bounded by the batch budget plus one escaped row (the join briefly
+	// holds a second copy of the batch) while per-row chunk overhead disappears.
 	let batchLines: string[] = [];
 	let batchBytes = 0;
-	const flushBatch = (target: Transform,): void => {
+	const flushBatch = (target: Target,): void => {
 		if (batchLines.length === 0) return;
 		const csv = batchLines.join("",);
 		batchLines = [];
 		batchBytes = 0;
-		target.push(csv,);
+		target.enqueue(encoder.encode(csv,),);
 	};
-	const queueLine = (target: Transform, line: string,): void => {
+	const queueLine = (target: Target, line: string,): void => {
 		batchLines.push(line,);
 		batchBytes += Buffer.byteLength(line,);
 		if (batchBytes >= CSV_BATCH_BYTES) flushBatch(target,);
@@ -620,58 +620,35 @@ function tsvToCsvTransform(
 		stats.rows += 1;
 	};
 
-	return new Transform({
-		transform(chunk: Buffer, _encoding, callback,) {
+	// A byte-limit overflow throws out of transform/flush: the stream errors,
+	// which cancels the response and makes download() remove the partial file.
+	return new TransformStream<Uint8Array, Uint8Array<ArrayBuffer>>({
+		transform(chunk, controller,) {
+			consumeTsvChunk(
+				decoder.write(chunk,),
+				state,
+				(row,) => handleRow(row, (line,) => queueLine(controller, line,),),
+			);
 			if (done) {
-				callback();
-				return;
+				// Truncation reached: emit the batch queued so far, end the output,
+				// and cancel the rest of the response.
+				flushBatch(controller,);
+				controller.terminate();
 			}
-			try {
-				consumeTsvChunk(
-					decoder.write(chunk,),
-					state,
-					(row,) => handleRow(row, (line,) => queueLine(this, line,),),
-				);
-			} catch (error) {
-				// Byte-limit overflow: destroy the transform so the pipeline
-				// cancels the response and the partial file is removed.
-				callback(
-					error instanceof Error ? error : new ClientValidationError(String(error,), "internal_error",),
-				);
-				return;
-			}
-			if (done) {
-				// Truncation reached: emit the batch queued so far before EOF.
-				flushBatch(this,);
-				this.push(null,);
-			}
-			callback();
 		},
-		flush(callback,) {
-			if (done) {
-				callback();
-				return;
-			}
-			try {
-				const tail = decoder.end();
-				if (tail !== "") {
-					consumeTsvChunk(
-						tail,
-						state,
-						(row,) => handleRow(row, (line,) => queueLine(this, line,),),
-					);
-				}
-				flushTsvStream(state, (row,) => handleRow(row, (line,) => queueLine(this, line,),),);
-			} catch (error) {
-				callback(
-					error instanceof Error ? error : new ClientValidationError(String(error,), "internal_error",),
+		flush(controller,) {
+			const tail = decoder.end();
+			if (tail !== "") {
+				consumeTsvChunk(
+					tail,
+					state,
+					(row,) => handleRow(row, (line,) => queueLine(controller, line,),),
 				);
-				return;
 			}
+			flushTsvStream(state, (row,) => handleRow(row, (line,) => queueLine(controller, line,),),);
 			// Emit the trailing partial batch; without this the last rows of a
 			// download (below the batch budget) would be silently dropped.
-			flushBatch(this,);
-			callback();
+			flushBatch(controller,);
 		},
 	},);
 }
@@ -701,72 +678,6 @@ function isMissingUploadedFilesTargetConnection(error: unknown,): error is Datai
 		detail.includes("without a target connection",)
 		|| detail.includes("target connection is required",)
 	);
-}
-
-/** Wire body for POST /datasets/; shared with `dataset create --plan` so the plan matches the request. */
-export function buildDatasetCreateBody(opts: {
-	projectKey: string;
-	datasetName: string;
-	connection?: string;
-	dsType: string;
-	table?: string;
-	dbSchema?: string;
-	catalog?: string;
-	formatType?: string;
-	formatParams?: Record<string, unknown>;
-	managed?: boolean;
-},): Record<string, unknown> {
-	if (opts.dsType.toLowerCase() === "uploadedfiles") {
-		return {
-			projectKey: opts.projectKey,
-			name: opts.datasetName,
-			type: opts.dsType,
-			params: opts.connection ? { uploadConnection: opts.connection, } : {},
-		};
-	}
-	if (!opts.connection) {
-		throw new ClientValidationError("connection is required unless dsType is UploadedFiles.",);
-	}
-	if (opts.table) {
-		const params: Record<string, unknown> = {
-			connection: opts.connection,
-			mode: "table",
-			table: opts.table,
-		};
-		if (opts.dbSchema) params.schema = opts.dbSchema;
-		if (opts.catalog) params.catalog = opts.catalog;
-
-		return {
-			projectKey: opts.projectKey,
-			name: opts.datasetName,
-			type: opts.dsType,
-			params,
-			managed: opts.managed ?? false,
-		};
-	}
-
-	return {
-		projectKey: opts.projectKey,
-		name: opts.datasetName,
-		type: opts.dsType,
-		params: {
-			connection: opts.connection,
-			path: `/dataiku/${opts.projectKey}/${opts.datasetName}`,
-		},
-		formatType: opts.formatType ?? "csv",
-		formatParams: opts.formatParams ?? {
-			style: "excel",
-			charset: "utf8",
-			separator: "\t",
-			quoteChar: '"',
-			escapeChar: "\\",
-			dateSerializationFormat: "ISO",
-			arrayMapFormat: "json",
-			parseHeaderRow: true,
-			compress: "gz",
-		},
-		managed: opts.managed ?? true,
-	};
 }
 
 const DATASET_CLONE_PARAM_KEYS = [
@@ -1218,18 +1129,15 @@ export class DatasetsResource extends BaseResource {
 
 		const shouldGzip = filePath.endsWith(".gz",);
 		const stats = { rows: 0, truncated: false, };
-		const nodeStream = Readable.from(res.body!, { objectMode: false, },);
-		const csvTransform = tsvToCsvTransform(limit, stats, onHeader, opts?.rawData !== true,);
+		let csv = res.body!.pipeThrough(
+			tsvToCsvTransform(limit, stats, onHeader, opts?.rawData !== true,),
+		);
+		if (shouldGzip) csv = csv.pipeThrough(new CompressionStream("gzip",),);
 		fs.mkdirSync(nodePath.dirname(filePath,), { recursive: true, },);
-		const fileOut = fs.createWriteStream(filePath,);
 
 		try {
-			if (shouldGzip) {
-				const gzip = createGzip();
-				await pipeline(nodeStream, csvTransform, gzip, fileOut,);
-			} else {
-				await pipeline(nodeStream, csvTransform, fileOut,);
-			}
+			// Native streaming write with backpressure; no Node stream layer.
+			await Bun.write(filePath, new Response(csv,),);
 		} catch (error) {
 			// A failed export (byte-limit overflow, network error) must never
 			// leave a partial file that looks like a complete download.

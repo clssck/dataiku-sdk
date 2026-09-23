@@ -1,9 +1,6 @@
-import { randomUUID, } from "node:crypto";
-import { createWriteStream, } from "node:fs";
+import { closeSync, openSync, } from "node:fs";
 import { chmod, rename, rm, stat, } from "node:fs/promises";
 import { basename, dirname, join, } from "node:path";
-import { Readable, } from "node:stream";
-import { pipeline, } from "node:stream/promises";
 
 /** Stream with backpressure; publish only a complete download, preserving existing output on failure. */
 export async function writeResponseToFile(
@@ -20,15 +17,27 @@ export async function writeResponseToFile(
 			mode = 0o666 & ~process.umask();
 		}
 	}
-	const input = Readable.from(response.body!, { objectMode: false, },);
-	const temporaryPath = join(dirname(path,), `.${basename(path,)}.tmp-${randomUUID()}`,);
-	const output = createWriteStream(temporaryPath, { flags: "wx", mode: 0o600, },);
+	const temporaryPath = join(dirname(path,), `.${basename(path,)}.tmp-${crypto.randomUUID()}`,);
+	// Exclusive, private temp file; Bun.write streams the body into it natively.
+	let fd: number;
 	try {
-		await pipeline(input, output,);
+		fd = openSync(temporaryPath, "wx", 0o600,);
+	} catch (error) {
+		// Nothing will read the body; release the connection before surfacing the error.
+		await response.body?.cancel().catch(() => {},);
+		throw error;
+	}
+	try {
+		let bytes: number;
+		try {
+			bytes = await Bun.write(Bun.file(fd,), response,);
+		} finally {
+			closeSync(fd,);
+		}
 		// Keep partial contents private; restore publication permissions only after completion.
 		if (mode !== undefined) await chmod(temporaryPath, mode,);
 		await rename(temporaryPath, path,);
-		return output.bytesWritten;
+		return bytes;
 	} finally {
 		await rm(temporaryPath, { force: true, },);
 	}

@@ -8,7 +8,7 @@ import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
 /**
- * Mutating actions accept --plan (buildMutationPlan in contract.ts owns the
+ * Mutating actions accept --plan (buildMutationPlan in plans.ts owns the
  * --plan path centrally); the handlers below keep --dry-run support with a
  * zero-request planned payload, mirroring set-active/delete.
  */
