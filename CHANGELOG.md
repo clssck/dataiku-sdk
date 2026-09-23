@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 3.6.0
+
 - Fix: a non-2xx response whose body misses the request deadline keeps its real HTTP status instead of becoming a bare network timeout.
 - Fix: `target_absence_unverifiable` (a masked `403` on an explicit target key) exits 2 like other permission/environment failures; exit 1 is reserved for usage errors.
 - Fix: an environment variable set to `""` counts as set everywhere, so `.env` can no longer fill it (`DATAIKU_URL=""` clears a `.env` value).
