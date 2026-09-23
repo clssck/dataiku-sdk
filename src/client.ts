@@ -1,6 +1,5 @@
 import { readFileSync, } from "node:fs";
 import { basename, } from "node:path";
-import { getCACertificates, } from "node:tls";
 
 import { type Static, type TSchema, } from "@sinclair/typebox";
 import { Value, } from "@sinclair/typebox/value";
@@ -334,6 +333,8 @@ function buildFetchTlsOptions(config: DataikuClientConfig,): FetchTlsOptions | u
 
 	if (caCertPath) {
 		try {
+			// node:tls costs ~12 ms to load; only a custom CA bundle needs it.
+			const { getCACertificates, } = require("node:tls",) as typeof import("node:tls");
 			tls.ca = [...getCACertificates("default",), readFileSync(caCertPath, "utf-8",),];
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error,);
@@ -448,231 +449,400 @@ export class DataikuClient {
 	// Resource modules load on first access (like commands/index.ts): a command
 	// that touches one resource does not parse the other forty-odd.
 	get projects(): ProjectsResource {
-		return (this.projectsResource ??=
-			new (require("./resources/projects.js",) as typeof import("./resources/projects.js"))
-				.ProjectsResource(this,));
+		if (!this.projectsResource) {
+			const { ProjectsResource: Resource, } = require(
+				"./resources/projects.js",
+			) as typeof import("./resources/projects.js");
+			this.projectsResource = new Resource(this,);
+		}
+		return this.projectsResource;
 	}
 	get datasets(): DatasetsResource {
-		return (this.datasetsResource ??=
-			new (require("./resources/datasets.js",) as typeof import("./resources/datasets.js"))
-				.DatasetsResource(this,));
+		if (!this.datasetsResource) {
+			const { DatasetsResource: Resource, } = require(
+				"./resources/datasets.js",
+			) as typeof import("./resources/datasets.js");
+			this.datasetsResource = new Resource(this,);
+		}
+		return this.datasetsResource;
 	}
 	get dashboards(): DashboardsResource {
-		return (this.dashboardsResource ??=
-			new (require("./resources/dashboards.js",) as typeof import("./resources/dashboards.js"))
-				.DashboardsResource(this,));
+		if (!this.dashboardsResource) {
+			const { DashboardsResource: Resource, } = require(
+				"./resources/dashboards.js",
+			) as typeof import("./resources/dashboards.js");
+			this.dashboardsResource = new Resource(this,);
+		}
+		return this.dashboardsResource;
 	}
 	get dataQuality(): DataQualityResource {
-		return (this.dataQualityResource ??=
-			new (require("./resources/data-quality.js",) as typeof import("./resources/data-quality.js"))
-				.DataQualityResource(this,));
+		if (!this.dataQualityResource) {
+			const { DataQualityResource: Resource, } = require(
+				"./resources/data-quality.js",
+			) as typeof import("./resources/data-quality.js");
+			this.dataQualityResource = new Resource(this,);
+		}
+		return this.dataQualityResource;
 	}
 	get recipes(): RecipesResource {
-		return (this.recipesResource ??=
-			new (require("./resources/recipes.js",) as typeof import("./resources/recipes.js"))
-				.RecipesResource(this,));
+		if (!this.recipesResource) {
+			const { RecipesResource: Resource, } = require(
+				"./resources/recipes.js",
+			) as typeof import("./resources/recipes.js");
+			this.recipesResource = new Resource(this,);
+		}
+		return this.recipesResource;
 	}
 	get jobs(): JobsResource {
-		return (this.jobsResource ??=
-			new (require("./resources/jobs.js",) as typeof import("./resources/jobs.js")).JobsResource(
-				this,
-			));
+		if (!this.jobsResource) {
+			const { JobsResource: Resource, } = require(
+				"./resources/jobs.js",
+			) as typeof import("./resources/jobs.js");
+			this.jobsResource = new Resource(this,);
+		}
+		return this.jobsResource;
 	}
 	get futures(): FuturesResource {
-		return (this.futuresResource ??=
-			new (require("./resources/futures.js",) as typeof import("./resources/futures.js"))
-				.FuturesResource(this,));
+		if (!this.futuresResource) {
+			const { FuturesResource: Resource, } = require(
+				"./resources/futures.js",
+			) as typeof import("./resources/futures.js");
+			this.futuresResource = new Resource(this,);
+		}
+		return this.futuresResource;
 	}
 	get scenarios(): ScenariosResource {
-		return (this.scenariosResource ??=
-			new (require("./resources/scenarios.js",) as typeof import("./resources/scenarios.js"))
-				.ScenariosResource(this,));
+		if (!this.scenariosResource) {
+			const { ScenariosResource: Resource, } = require(
+				"./resources/scenarios.js",
+			) as typeof import("./resources/scenarios.js");
+			this.scenariosResource = new Resource(this,);
+		}
+		return this.scenariosResource;
 	}
 	get folders(): FoldersResource {
-		return (this.foldersResource ??=
-			new (require("./resources/folders.js",) as typeof import("./resources/folders.js"))
-				.FoldersResource(this,));
+		if (!this.foldersResource) {
+			const { FoldersResource: Resource, } = require(
+				"./resources/folders.js",
+			) as typeof import("./resources/folders.js");
+			this.foldersResource = new Resource(this,);
+		}
+		return this.foldersResource;
 	}
 	get flowZones(): FlowZonesResource {
-		return (this.flowZonesResource ??=
-			new (require("./resources/flow-zones.js",) as typeof import("./resources/flow-zones.js"))
-				.FlowZonesResource(this,));
+		if (!this.flowZonesResource) {
+			const { FlowZonesResource: Resource, } = require(
+				"./resources/flow-zones.js",
+			) as typeof import("./resources/flow-zones.js");
+			this.flowZonesResource = new Resource(this,);
+		}
+		return this.flowZonesResource;
 	}
 	get variables(): VariablesResource {
-		return (this.variablesResource ??=
-			new (require("./resources/variables.js",) as typeof import("./resources/variables.js"))
-				.VariablesResource(this,));
+		if (!this.variablesResource) {
+			const { VariablesResource: Resource, } = require(
+				"./resources/variables.js",
+			) as typeof import("./resources/variables.js");
+			this.variablesResource = new Resource(this,);
+		}
+		return this.variablesResource;
 	}
 	get connections(): ConnectionsResource {
-		return (this.connectionsResource ??=
-			new (require("./resources/connections.js",) as typeof import("./resources/connections.js"))
-				.ConnectionsResource(this,));
+		if (!this.connectionsResource) {
+			const { ConnectionsResource: Resource, } = require(
+				"./resources/connections.js",
+			) as typeof import("./resources/connections.js");
+			this.connectionsResource = new Resource(this,);
+		}
+		return this.connectionsResource;
 	}
 	get codeEnvs(): CodeEnvsResource {
-		return (this.codeEnvsResource ??=
-			new (require("./resources/code-envs.js",) as typeof import("./resources/code-envs.js"))
-				.CodeEnvsResource(this,));
+		if (!this.codeEnvsResource) {
+			const { CodeEnvsResource: Resource, } = require(
+				"./resources/code-envs.js",
+			) as typeof import("./resources/code-envs.js");
+			this.codeEnvsResource = new Resource(this,);
+		}
+		return this.codeEnvsResource;
 	}
 	get insights(): InsightsResource {
-		return (this.insightsResource ??=
-			new (require("./resources/insights.js",) as typeof import("./resources/insights.js"))
-				.InsightsResource(this,));
+		if (!this.insightsResource) {
+			const { InsightsResource: Resource, } = require(
+				"./resources/insights.js",
+			) as typeof import("./resources/insights.js");
+			this.insightsResource = new Resource(this,);
+		}
+		return this.insightsResource;
 	}
 	get sql(): SqlResource {
-		return (this.sqlResource ??=
-			new (require("./resources/sql.js",) as typeof import("./resources/sql.js")).SqlResource(this,));
+		if (!this.sqlResource) {
+			const { SqlResource: Resource, } = require(
+				"./resources/sql.js",
+			) as typeof import("./resources/sql.js");
+			this.sqlResource = new Resource(this,);
+		}
+		return this.sqlResource;
 	}
 	get notebooks(): NotebooksResource {
-		return (this.notebooksResource ??=
-			new (require("./resources/notebooks.js",) as typeof import("./resources/notebooks.js"))
-				.NotebooksResource(this,));
+		if (!this.notebooksResource) {
+			const { NotebooksResource: Resource, } = require(
+				"./resources/notebooks.js",
+			) as typeof import("./resources/notebooks.js");
+			this.notebooksResource = new Resource(this,);
+		}
+		return this.notebooksResource;
 	}
 	get wiki(): WikiResource {
-		return (this.wikiResource ??=
-			new (require("./resources/wiki.js",) as typeof import("./resources/wiki.js")).WikiResource(
-				this,
-			));
+		if (!this.wikiResource) {
+			const { WikiResource: Resource, } = require(
+				"./resources/wiki.js",
+			) as typeof import("./resources/wiki.js");
+			this.wikiResource = new Resource(this,);
+		}
+		return this.wikiResource;
 	}
 	get applications(): ApplicationsResource {
-		return (this.applicationsResource ??=
-			new (require("./resources/applications.js",) as typeof import("./resources/applications.js"))
-				.ApplicationsResource(this,));
+		if (!this.applicationsResource) {
+			const { ApplicationsResource: Resource, } = require(
+				"./resources/applications.js",
+			) as typeof import("./resources/applications.js");
+			this.applicationsResource = new Resource(this,);
+		}
+		return this.applicationsResource;
 	}
 	get webapps(): WebappsResource {
-		return (this.webappsResource ??=
-			new (require("./resources/webapps.js",) as typeof import("./resources/webapps.js"))
-				.WebappsResource(this,));
+		if (!this.webappsResource) {
+			const { WebappsResource: Resource, } = require(
+				"./resources/webapps.js",
+			) as typeof import("./resources/webapps.js");
+			this.webappsResource = new Resource(this,);
+		}
+		return this.webappsResource;
 	}
 	get apiServices(): ApiServicesResource {
-		return (this.apiServicesResource ??=
-			new (require("./resources/api-services.js",) as typeof import("./resources/api-services.js"))
-				.ApiServicesResource(this,));
+		if (!this.apiServicesResource) {
+			const { ApiServicesResource: Resource, } = require(
+				"./resources/api-services.js",
+			) as typeof import("./resources/api-services.js");
+			this.apiServicesResource = new Resource(this,);
+		}
+		return this.apiServicesResource;
 	}
 	get apiDeployer(): ApiDeployerResource {
-		return (this.apiDeployerResource ??=
-			new (require("./resources/api-deployer.js",) as typeof import("./resources/api-deployer.js"))
-				.ApiDeployerResource(this,));
+		if (!this.apiDeployerResource) {
+			const { ApiDeployerResource: Resource, } = require(
+				"./resources/api-deployer.js",
+			) as typeof import("./resources/api-deployer.js");
+			this.apiDeployerResource = new Resource(this,);
+		}
+		return this.apiDeployerResource;
 	}
 	get bundles(): BundlesResource {
-		return (this.bundlesResource ??=
-			new (require("./resources/bundles.js",) as typeof import("./resources/bundles.js"))
-				.BundlesResource(this,));
+		if (!this.bundlesResource) {
+			const { BundlesResource: Resource, } = require(
+				"./resources/bundles.js",
+			) as typeof import("./resources/bundles.js");
+			this.bundlesResource = new Resource(this,);
+		}
+		return this.bundlesResource;
 	}
 	get projectDeployer(): ProjectDeployerResource {
-		return (this.projectDeployerResource ??=
-			new (require("./resources/bundles.js",) as typeof import("./resources/bundles.js"))
-				.ProjectDeployerResource(this,));
+		if (!this.projectDeployerResource) {
+			const { ProjectDeployerResource: Resource, } = require(
+				"./resources/bundles.js",
+			) as typeof import("./resources/bundles.js");
+			this.projectDeployerResource = new Resource(this,);
+		}
+		return this.projectDeployerResource;
 	}
 	get projectLibrary(): ProjectLibraryResource {
-		return (this.projectLibraryResource ??= new (require(
-			"./resources/project-library.js",
-		) as typeof import("./resources/project-library.js")).ProjectLibraryResource(this,));
+		if (!this.projectLibraryResource) {
+			const { ProjectLibraryResource: Resource, } = require(
+				"./resources/project-library.js",
+			) as typeof import("./resources/project-library.js");
+			this.projectLibraryResource = new Resource(this,);
+		}
+		return this.projectLibraryResource;
 	}
 	get projectGit(): ProjectGitResource {
-		return (this.projectGitResource ??=
-			new (require("./resources/project-git.js",) as typeof import("./resources/project-git.js"))
-				.ProjectGitResource(this,));
+		if (!this.projectGitResource) {
+			const { ProjectGitResource: Resource, } = require(
+				"./resources/project-git.js",
+			) as typeof import("./resources/project-git.js");
+			this.projectGitResource = new Resource(this,);
+		}
+		return this.projectGitResource;
 	}
 	get streamingEndpoints(): StreamingEndpointsResource {
-		return (this.streamingEndpointsResource ??= new (require(
-			"./resources/streaming-endpoints.js",
-		) as typeof import("./resources/streaming-endpoints.js")).StreamingEndpointsResource(this,));
+		if (!this.streamingEndpointsResource) {
+			const { StreamingEndpointsResource: Resource, } = require(
+				"./resources/streaming-endpoints.js",
+			) as typeof import("./resources/streaming-endpoints.js");
+			this.streamingEndpointsResource = new Resource(this,);
+		}
+		return this.streamingEndpointsResource;
 	}
 	get continuousActivities(): ContinuousActivitiesResource {
-		return (this.continuousActivitiesResource ??= new (require(
-			"./resources/continuous-activities.js",
-		) as typeof import("./resources/continuous-activities.js")).ContinuousActivitiesResource(this,));
+		if (!this.continuousActivitiesResource) {
+			const { ContinuousActivitiesResource: Resource, } = require(
+				"./resources/continuous-activities.js",
+			) as typeof import("./resources/continuous-activities.js");
+			this.continuousActivitiesResource = new Resource(this,);
+		}
+		return this.continuousActivitiesResource;
 	}
 	get statistics(): StatisticsResource {
-		return (this.statisticsResource ??=
-			new (require("./resources/statistics.js",) as typeof import("./resources/statistics.js"))
-				.StatisticsResource(this,));
+		if (!this.statisticsResource) {
+			const { StatisticsResource: Resource, } = require(
+				"./resources/statistics.js",
+			) as typeof import("./resources/statistics.js");
+			this.statisticsResource = new Resource(this,);
+		}
+		return this.statisticsResource;
 	}
 	get discussions(): DiscussionsResource {
-		return (this.discussionsResource ??=
-			new (require("./resources/discussions.js",) as typeof import("./resources/discussions.js"))
-				.DiscussionsResource(this,));
+		if (!this.discussionsResource) {
+			const { DiscussionsResource: Resource, } = require(
+				"./resources/discussions.js",
+			) as typeof import("./resources/discussions.js");
+			this.discussionsResource = new Resource(this,);
+		}
+		return this.discussionsResource;
 	}
 	get workspaces(): WorkspacesResource {
-		return (this.workspacesResource ??=
-			new (require("./resources/workspaces.js",) as typeof import("./resources/workspaces.js"))
-				.WorkspacesResource(this,));
+		if (!this.workspacesResource) {
+			const { WorkspacesResource: Resource, } = require(
+				"./resources/workspaces.js",
+			) as typeof import("./resources/workspaces.js");
+			this.workspacesResource = new Resource(this,);
+		}
+		return this.workspacesResource;
 	}
 	get metrics(): MetricsResource {
-		return (this.metricsResource ??=
-			new (require("./resources/metrics.js",) as typeof import("./resources/metrics.js"))
-				.MetricsResource(this,));
+		if (!this.metricsResource) {
+			const { MetricsResource: Resource, } = require(
+				"./resources/metrics.js",
+			) as typeof import("./resources/metrics.js");
+			this.metricsResource = new Resource(this,);
+		}
+		return this.metricsResource;
 	}
 	get meanings(): MeaningsResource {
-		return (this.meaningsResource ??=
-			new (require("./resources/meanings.js",) as typeof import("./resources/meanings.js"))
-				.MeaningsResource(this,));
+		if (!this.meaningsResource) {
+			const { MeaningsResource: Resource, } = require(
+				"./resources/meanings.js",
+			) as typeof import("./resources/meanings.js");
+			this.meaningsResource = new Resource(this,);
+		}
+		return this.meaningsResource;
 	}
 	get analyses(): AnalysesResource {
-		return (this.analysesResource ??=
-			new (require("./resources/analyses.js",) as typeof import("./resources/analyses.js"))
-				.AnalysesResource(this,));
+		if (!this.analysesResource) {
+			const { AnalysesResource: Resource, } = require(
+				"./resources/analyses.js",
+			) as typeof import("./resources/analyses.js");
+			this.analysesResource = new Resource(this,);
+		}
+		return this.analysesResource;
 	}
 	get mlTasks(): MlTasksResource {
-		return (this.mlTasksResource ??=
-			new (require("./resources/ml-tasks.js",) as typeof import("./resources/ml-tasks.js"))
-				.MlTasksResource(this,));
+		if (!this.mlTasksResource) {
+			const { MlTasksResource: Resource, } = require(
+				"./resources/ml-tasks.js",
+			) as typeof import("./resources/ml-tasks.js");
+			this.mlTasksResource = new Resource(this,);
+		}
+		return this.mlTasksResource;
 	}
 	get savedModels(): SavedModelsResource {
-		return (this.savedModelsResource ??=
-			new (require("./resources/saved-models.js",) as typeof import("./resources/saved-models.js"))
-				.SavedModelsResource(this,));
+		if (!this.savedModelsResource) {
+			const { SavedModelsResource: Resource, } = require(
+				"./resources/saved-models.js",
+			) as typeof import("./resources/saved-models.js");
+			this.savedModelsResource = new Resource(this,);
+		}
+		return this.savedModelsResource;
 	}
 	get modelEvaluationStores(): ModelEvaluationStoresResource {
-		return (this.modelEvaluationStoresResource ??= new (require(
-			"./resources/model-evaluation-stores.js",
-		) as typeof import("./resources/model-evaluation-stores.js")).ModelEvaluationStoresResource(
-			this,
-		));
+		if (!this.modelEvaluationStoresResource) {
+			const { ModelEvaluationStoresResource: Resource, } = require(
+				"./resources/model-evaluation-stores.js",
+			) as typeof import("./resources/model-evaluation-stores.js");
+			this.modelEvaluationStoresResource = new Resource(this,);
+		}
+		return this.modelEvaluationStoresResource;
 	}
 	get projectFolders(): ProjectFoldersResource {
-		return (this.projectFoldersResource ??= new (require(
-			"./resources/project-folders.js",
-		) as typeof import("./resources/project-folders.js")).ProjectFoldersResource(this,));
+		if (!this.projectFoldersResource) {
+			const { ProjectFoldersResource: Resource, } = require(
+				"./resources/project-folders.js",
+			) as typeof import("./resources/project-folders.js");
+			this.projectFoldersResource = new Resource(this,);
+		}
+		return this.projectFoldersResource;
 	}
 	get dataCollections(): DataCollectionsResource {
-		return (this.dataCollectionsResource ??= new (require(
-			"./resources/data-collections.js",
-		) as typeof import("./resources/data-collections.js")).DataCollectionsResource(this,));
+		if (!this.dataCollectionsResource) {
+			const { DataCollectionsResource: Resource, } = require(
+				"./resources/data-collections.js",
+			) as typeof import("./resources/data-collections.js");
+			this.dataCollectionsResource = new Resource(this,);
+		}
+		return this.dataCollectionsResource;
 	}
 	get llms(): LlmsResource {
-		return (this.llmsResource ??=
-			new (require("./resources/llms.js",) as typeof import("./resources/llms.js")).LlmsResource(
-				this,
-			));
+		if (!this.llmsResource) {
+			const { LlmsResource: Resource, } = require(
+				"./resources/llms.js",
+			) as typeof import("./resources/llms.js");
+			this.llmsResource = new Resource(this,);
+		}
+		return this.llmsResource;
 	}
 	get knowledgeBanks(): KnowledgeBanksResource {
-		return (this.knowledgeBanksResource ??= new (require(
-			"./resources/knowledge-banks.js",
-		) as typeof import("./resources/knowledge-banks.js")).KnowledgeBanksResource(this,));
+		if (!this.knowledgeBanksResource) {
+			const { KnowledgeBanksResource: Resource, } = require(
+				"./resources/knowledge-banks.js",
+			) as typeof import("./resources/knowledge-banks.js");
+			this.knowledgeBanksResource = new Resource(this,);
+		}
+		return this.knowledgeBanksResource;
 	}
 	get macros(): MacrosResource {
-		return (this.macrosResource ??=
-			new (require("./resources/macros.js",) as typeof import("./resources/macros.js")).MacrosResource(
-				this,
-			));
+		if (!this.macrosResource) {
+			const { MacrosResource: Resource, } = require(
+				"./resources/macros.js",
+			) as typeof import("./resources/macros.js");
+			this.macrosResource = new Resource(this,);
+		}
+		return this.macrosResource;
 	}
 	get plugins(): PluginsResource {
-		return (this.pluginsResource ??=
-			new (require("./resources/plugins.js",) as typeof import("./resources/plugins.js"))
-				.PluginsResource(this,));
+		if (!this.pluginsResource) {
+			const { PluginsResource: Resource, } = require(
+				"./resources/plugins.js",
+			) as typeof import("./resources/plugins.js");
+			this.pluginsResource = new Resource(this,);
+		}
+		return this.pluginsResource;
 	}
 	get users(): UsersResource {
-		return (this.usersResource ??=
-			new (require("./resources/users.js",) as typeof import("./resources/users.js")).UsersResource(
-				this,
-			));
+		if (!this.usersResource) {
+			const { UsersResource: Resource, } = require(
+				"./resources/users.js",
+			) as typeof import("./resources/users.js");
+			this.usersResource = new Resource(this,);
+		}
+		return this.usersResource;
 	}
 	get groups(): GroupsResource {
-		return (this.groupsResource ??=
-			new (require("./resources/groups.js",) as typeof import("./resources/groups.js")).GroupsResource(
-				this,
-			));
+		if (!this.groupsResource) {
+			const { GroupsResource: Resource, } = require(
+				"./resources/groups.js",
+			) as typeof import("./resources/groups.js");
+			this.groupsResource = new Resource(this,);
+		}
+		return this.groupsResource;
 	}
 
 	constructor(config?: DataikuClientConfig,) {

@@ -113,6 +113,52 @@ try {
 		assert(fs.existsSync(file.path,), "bundled skill file is missing: " + file.path,);
 	}
 
+	// A real API command exercises the compiled DataikuClient resource path,
+	// which `version` never loads. Async spawn: spawnSync would block the server.
+	const server = Bun.serve({
+		port: 0,
+		hostname: "127.0.0.1",
+		fetch: (req,) =>
+			new URL(req.url,).pathname === "/public/api/projects/SMOKE/datasets/"
+				? Response.json([{ name: "orders", type: "Filesystem", },],)
+				: new Response("unexpected path", { status: 404, },),
+	},);
+	try {
+		const listing = Bun.spawn([
+			process.execPath,
+			"--no-env-file",
+			cli,
+			"dataset",
+			"list",
+			"--url",
+			`http://127.0.0.1:${server.port}`,
+			"--api-key",
+			"smoke",
+			"--project-key",
+			"SMOKE",
+		], {
+			cwd: installDir,
+			env: { ...process.env, DATAIKU_DISABLE_ENV: "1", },
+			stdout: "pipe",
+			stderr: "pipe",
+		},);
+		const [listingOut, listingErr, listingCode,] = await Promise.all([
+			new Response(listing.stdout,).text(),
+			new Response(listing.stderr,).text(),
+			listing.exited,
+		],);
+		assert(
+			listingCode === 0,
+			`packaged dataset list failed (${listingCode}): ${listingOut}${listingErr}`,
+		);
+		assert(
+			JSON.stringify(JSON.parse(listingOut,),).includes('"orders"',),
+			"packaged dataset list output is invalid",
+		);
+	} finally {
+		server.stop(true,);
+	}
+
 	const failure = Bun.spawnSync([process.execPath, "--no-env-file", cli, "not-a-resource",], {
 		cwd: installDir,
 		stdout: "pipe",
