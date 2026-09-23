@@ -2,6 +2,7 @@ import { expect, it, } from "bun:test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync, } from "node:fs";
 import { tmpdir, } from "node:os";
 import { delimiter, join, } from "node:path";
+import { versionAtLeast, } from "../../bin/bun-version.js";
 import { SDK_ROOT, } from "./_harness.js";
 
 const node = Bun.which("node",);
@@ -41,3 +42,12 @@ it.skipIf(!node || process.platform === "win32",)(
 		expect(launchWithBun("1.4.2",).stdout.trim(),).toBe("LAUNCHED",);
 	},
 );
+
+it("accepts canary and newer builds and rejects older releases (both launcher branches)", () => {
+	for (const version of ["1.4.2", "1.4.3-canary.12+abc", "1.4.2-canary.1", "1.5.0", "2.0.0",]) {
+		expect(versionAtLeast(version, "1.4.2",), version,).toBe(true,);
+	}
+	for (const version of ["1.4.1", "1.3.9", "1.4.1-canary.99", "0.9.9",]) {
+		expect(versionAtLeast(version, "1.4.2",), version,).toBe(false,);
+	}
+});

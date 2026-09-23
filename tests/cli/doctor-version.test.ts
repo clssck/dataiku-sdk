@@ -556,6 +556,10 @@ describe("bin/dss.js build revision forwarding", () => {
 				readFileSync(join(SDK_ROOT, "package.json",), "utf-8",),
 			);
 			writeFileSync(
+				join(root, "bin", "bun-version.js",),
+				readFileSync(join(SDK_ROOT, "bin", "bun-version.js",), "utf-8",),
+			);
+			writeFileSync(
 				join(root, "dist", "src", "cli.js",),
 				"process.stdout.write(JSON.stringify({revision: process.env.DSS_BUILD_REVISION ?? null}));",
 			);
@@ -613,6 +617,10 @@ describe("bin/dss.js build revision forwarding", () => {
 			writeFileSync(
 				join(root, "package.json",),
 				readFileSync(join(SDK_ROOT, "package.json",), "utf-8",),
+			);
+			writeFileSync(
+				join(root, "bin", "bun-version.js",),
+				readFileSync(join(SDK_ROOT, "bin", "bun-version.js",), "utf-8",),
 			);
 			writeFileSync(join(root, "dist", "src", "cli.js",), "process.stdout.write('dist');",);
 			writeFileSync(

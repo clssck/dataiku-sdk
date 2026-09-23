@@ -7,6 +7,7 @@ import { spawnSync, } from "node:child_process";
 import { readFileSync, } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL, } from "node:url";
+import { versionAtLeast, } from "./bun-version.js";
 
 const runningUnderBun = typeof process.versions.bun === "string";
 const bunNodeCompatibilityMode = runningUnderBun
@@ -24,17 +25,6 @@ const envFileAutoloadDisabled = process.execArgv.includes("--no-env-file",)
 const MINIMUM_BUN = JSON.parse(
 	readFileSync(fileURLToPath(new URL("../package.json", import.meta.url,),), "utf-8",),
 ).engines.bun.replace(/^>=/, "",);
-
-/** Whether dotted version `actual` is >= `minimum` (numeric per part). */
-function versionAtLeast(actual, minimum,) {
-	// Compare the release part only: canary builds print e.g. 1.4.3-canary.12+abc.
-	const a = actual.split(/[-+]/,)[0].split(".",).map(Number,);
-	const m = minimum.split(".",).map(Number,);
-	for (let i = 0; i < m.length; i++) {
-		if ((a[i] ?? 0) !== m[i]) return (a[i] ?? 0) > m[i];
-	}
-	return true;
-}
 
 if (!runningUnderBun) {
 	// Check before spawning: an old Bun may reject --no-env-file during argument
@@ -72,7 +62,7 @@ if (!runningUnderBun) {
 	} else {
 		process.exitCode = result.status ?? 1;
 	}
-} else if (!Bun.semver.satisfies(Bun.version, `>=${MINIMUM_BUN}`,)) {
+} else if (!versionAtLeast(Bun.version, MINIMUM_BUN,)) {
 	process.stdout.write(`${
 		JSON.stringify({
 			type: "error",

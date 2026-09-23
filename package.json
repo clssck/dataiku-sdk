@@ -15,7 +15,8 @@
 		"dist/",
 		"plugin.json",
 		"skills/",
-		"bin/dss.js"
+		"bin/dss.js",
+		"bin/bun-version.js"
 	],
 	"engines": {
 		"bun": ">=1.4.2"
