@@ -11,18 +11,17 @@ body:
     attributes:
       label: dataiku-sdk version
       description: Output of `dss version`, or the version from your installed package.
-      placeholder: "0.11.0"
+      placeholder: "3.4.0"
     validations:
       required: true
   - type: textarea
     id: environment
     attributes:
       label: Environment
-      description: DSS version, Node version, Bun version when developing from source, and OS.
+      description: DSS version, Bun version, and OS.
       placeholder: |
         DSS: 14.x
-        Node: 22.15.x
-        Bun: 1.4.0 (source/test workflows only)
+        Bun: 1.4.2
         OS: Windows 11, macOS 15, or Linux distribution/version
     validations:
       required: true
