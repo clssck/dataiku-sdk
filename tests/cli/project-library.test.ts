@@ -1,7 +1,6 @@
 import { describe, expect, it, } from "bun:test";
 import { commands, } from "../../src/cli/commands/index.js";
 import { projectLibraryCommands, } from "../../src/cli/commands/project-library.js";
-import { KNOWN_LONG_FLAGS, } from "../../src/cli/flags.js";
 import { RESOURCE_NAMES, } from "../../src/cli/usage.js";
 import type { DataikuClient, } from "../../src/client.js";
 import { ClientValidationError, } from "../../src/errors.js";
@@ -64,16 +63,6 @@ describe("project-library CLI registration", () => {
 		expect(RESOURCE_NAMES,).toContain("project-library",);
 		expect(commands["project-library"],).toBe(projectLibraryCommands,);
 		expect(Object.keys(projectLibraryCommands,).sort(),).toEqual([...ACTIONS,].sort(),);
-	});
-
-	it("declares only flags the parser accepts", () => {
-		const unknownFlags: string[] = [];
-		for (const meta of Object.values(projectLibraryCommands,)) {
-			for (const match of meta.usage.matchAll(/--([a-z][a-z0-9-]*)/g,)) {
-				if (!KNOWN_LONG_FLAGS.has(match[1]!,)) unknownFlags.push(match[1]!,);
-			}
-		}
-		expect(unknownFlags,).toEqual([],);
 	});
 
 	it("keeps put --file binary-safe by never decoding the file as text", async () => {

@@ -20,6 +20,7 @@ import {
 	CodeEnvUsageArraySchema,
 	CodeEnvVersionForProjectSchema,
 } from "../schemas.js";
+import { isRecord, } from "../utils/records.js";
 import { stableHash, } from "../utils/stable-hash.js";
 import { BaseResource, } from "./base.js";
 
@@ -329,8 +330,4 @@ function splitPackageList(raw: string | undefined,): string[] {
 function normalizePackageList(packages: CodeEnvPackageList,): string {
 	const lines = Array.isArray(packages,) ? packages : packages.split(/\r?\n/,);
 	return lines.map((line,) => line.trim()).filter((line,) => line.length > 0).join("\n",);
-}
-
-function isRecord(value: unknown,): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value,);
 }

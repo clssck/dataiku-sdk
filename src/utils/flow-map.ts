@@ -1,3 +1,4 @@
+import { asRecord, } from "./records.js";
 export type FlowNodeKind = "dataset" | "recipe" | "folder" | "other";
 export type FlowEdgeRelation = "reads" | "writes" | "depends_on" | "unknown";
 
@@ -47,13 +48,6 @@ interface InternalNode {
 	connection?: string;
 	predecessors: string[];
 	successors: string[];
-}
-
-function asRecord(value: unknown,): Record<string, unknown> | undefined {
-	if (value && typeof value === "object" && !Array.isArray(value,)) {
-		return value as Record<string, unknown>;
-	}
-	return undefined;
 }
 
 function asString(value: unknown,): string | undefined {

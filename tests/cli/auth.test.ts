@@ -384,4 +384,27 @@ describe("CLI auth login credential provenance", () => {
 			rmSync(tmpDir, { recursive: true, force: true, },);
 		}
 	});
+
+	it("treats an environment variable set to empty as set, so .env cannot fill it", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-empty-env-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		try {
+			writeFileSync(join(tmpDir, ".env",), "DATAIKU_URL=http://127.0.0.1:1\nDATAIKU_API_KEY=k\n",);
+			const failure = await dssFailure(["auth", "login",], {
+				cwd: tmpDir,
+				env: {
+					PATH: process.env.PATH,
+					HOME: process.env.HOME,
+					DSS_CONFIG_DIR: tmpDir,
+					DATAIKU_URL: "",
+				},
+			},);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				code: "missing_required_flag",
+				exitCode: 1,
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
 });

@@ -30,4 +30,3 @@ dss sql query --connection analytics --sql "select 1" --project-key MYPROJ
 dss batch --data-file steps.json
 ```
 
-Fake DSS fixtures: `/public/api/projects/` returns an array, e.g. `[{"projectKey":"MYPROJ","name":"My Project"}]`. `/public/api/projects/<PROJECT>/recipes/<NAME>?includePayload=true` returns `{"recipe":{"name":"<NAME>","type":"python"},"payload":"..."}` for recipe payload commands.

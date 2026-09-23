@@ -4,6 +4,7 @@
 // disabled; `bunx --bun` enters Bun's Node-compatibility mode, which disables
 // that loading before this module runs.
 import { spawnSync, } from "node:child_process";
+import { readFileSync, } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL, } from "node:url";
 
@@ -19,6 +20,10 @@ const bunNodeCompatibilityMode = runningUnderBun
 	);
 const envFileAutoloadDisabled = process.execArgv.includes("--no-env-file",)
 	|| bunNodeCompatibilityMode;
+// The one source of the minimum is package.json engines.bun (">=X.Y.Z").
+const MINIMUM_BUN = JSON.parse(
+	readFileSync(fileURLToPath(new URL("../package.json", import.meta.url,),), "utf-8",),
+).engines.bun.replace(/^>=/, "",);
 
 if (!runningUnderBun) {
 	const result = spawnSync(
@@ -35,7 +40,7 @@ if (!runningUnderBun) {
 				code: "internal_error",
 				category: "internal",
 				exitCode: 2,
-				hint: "Install Bun >= 1.4.0 and ensure `bun` is on PATH.",
+				hint: `Install Bun >= ${MINIMUM_BUN} and ensure \`bun\` is on PATH.`,
 			},)
 		}\n`,);
 		process.exitCode = 2;
@@ -44,6 +49,19 @@ if (!runningUnderBun) {
 	} else {
 		process.exitCode = result.status ?? 1;
 	}
+} else if (!Bun.semver.satisfies(Bun.version, `>=${MINIMUM_BUN}`,)) {
+	process.stdout.write(`${
+		JSON.stringify({
+			type: "error",
+			ok: false,
+			error: `Bun ${Bun.version} is older than the required ${MINIMUM_BUN}.`,
+			code: "internal_error",
+			category: "internal",
+			exitCode: 2,
+			hint: `Upgrade Bun to >= ${MINIMUM_BUN} (bun upgrade).`,
+		},)
+	}\n`,);
+	process.exitCode = 2;
 } else if (!envFileAutoloadDisabled) {
 	process.stdout.write(`${
 		JSON.stringify({
@@ -61,7 +79,11 @@ if (!runningUnderBun) {
 	const here = import.meta.dir;
 	const distCliPath = path.resolve(here, "../dist/src/cli.js",);
 	const sourceCliPath = path.resolve(here, "../src/cli.ts",);
-	const usesDistCli = await Bun.file(distCliPath,).exists();
+	// A source checkout always runs its source, like bin/dss; a leftover dist/
+	// would otherwise silently shadow every edit. The published package ships
+	// no src/, so installs run dist.
+	const usesDistCli = !(await Bun.file(sourceCliPath,).exists())
+		&& await Bun.file(distCliPath,).exists();
 	const cliPath = usesDistCli ? distCliPath : sourceCliPath;
 
 	// Published dist carries dist/build-metadata.json with the revision it was
@@ -80,6 +102,10 @@ if (!runningUnderBun) {
 		} catch {
 			// Dist without build metadata: provenance still reports dist source.
 		}
+	} else {
+		// Provenance is the launcher's to assert; never trust inherited values.
+		delete process.env.DSS_LOAD_SOURCE;
+		delete process.env.DSS_BUILD_REVISION;
 	}
 
 	// Same process, same argv: the CLI sees process.argv.slice(2) exactly as before.

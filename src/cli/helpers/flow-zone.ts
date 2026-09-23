@@ -2,13 +2,13 @@ import { readFileSync, } from "node:fs";
 import type { DataikuClient, } from "../../client.js";
 import type { FlowZoneItemInput, } from "../../resources/flow-zones.js";
 import type { FlowZone, FlowZoneObjectType, FlowZonePosition, } from "../../schemas.js";
+import { asRecord, } from "../../utils/records.js";
 import { compareStrings, } from "../../utils/stable-hash.js";
 import {
 	finiteNumberField,
 	jsonInput,
 	optionalStringField,
 	parseJsonObject,
-	plainRecord,
 	requiredStringArray,
 	splitCsvFlag,
 } from "../coerce.js";
@@ -180,7 +180,7 @@ export function flowZonePlanPosition(
 	source: string,
 ): FlowZonePosition | undefined {
 	if (value === undefined) return undefined;
-	const record = plainRecord(value,);
+	const record = asRecord(value,);
 	if (!record) {
 		throw new UsageError(`${source} must be an object with x and y.`, "validation_failed",);
 	}
@@ -191,7 +191,7 @@ export function flowZonePlanPosition(
 }
 
 export function flowZoneCurrentPosition(zone: FlowZone,): FlowZonePosition | undefined {
-	const position = plainRecord(zone.position,);
+	const position = asRecord(zone.position,);
 	if (!position) return undefined;
 	const x = position.x;
 	const y = position.y;
@@ -210,7 +210,7 @@ export function flowZoneSamePosition(
 
 export function parseFlowZonePlanItem(value: unknown, source: string,): FlowZoneItemInput {
 	if (typeof value === "string") return parseFlowZoneObject(value,);
-	const record = plainRecord(value,);
+	const record = asRecord(value,);
 	if (!record) {
 		throw new UsageError(`${source} must be TYPE:ID or an object.`, "validation_failed",);
 	}
@@ -310,7 +310,7 @@ export function parseFlowZoneOrganizePlan(input: Record<string, unknown>,): Flow
 		...(topologyFingerprint ? { topologyFingerprint, } : {}),
 		zones: zones.map((value, index,) => {
 			const source = `zones[${index}]`;
-			const record = plainRecord(value,);
+			const record = asRecord(value,);
 			if (!record) throw new UsageError(`${source} must be an object.`, "validation_failed",);
 			const id = optionalStringField(record, ["id", "zoneId",],);
 			const name = optionalStringField(record, ["name",],);

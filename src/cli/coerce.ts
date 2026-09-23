@@ -133,12 +133,6 @@ export function rewritePairsFromFlags(
 	return rewrites;
 }
 
-export function plainRecord(value: unknown,): Record<string, unknown> | undefined {
-	return value && typeof value === "object" && !Array.isArray(value,)
-		? value as Record<string, unknown>
-		: undefined;
-}
-
 export function requiredStringFlag(
 	flags: Record<string, string | boolean>,
 	name: string,

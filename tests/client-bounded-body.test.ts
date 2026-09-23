@@ -155,6 +155,17 @@ describe("DataikuClient bounded response bodies", () => {
 		}, { requestTimeoutMs: 80, },);
 	});
 
+	it("reports the real status when an error body stalls past the deadline", async () => {
+		await withDataikuServer((_req, res,) => {
+			res.writeHead(503,);
+			res.write("partial error",);
+		}, async (client,) => {
+			const failure = await client.post("/stalled-mutation", {},).catch((error: unknown,) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as DataikuError).status,).toBe(503,);
+		}, { requestTimeoutMs: 80, },);
+	});
+
 	it("getText rejects a body exceeding maxResponseBodyBytes", async () => {
 		await withDataikuServer(async (_req, res,) => {
 			res.statusCode = 200;

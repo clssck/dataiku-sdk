@@ -1,7 +1,4 @@
-function isPlainObject(value: unknown,): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value,);
-}
-
+import { isRecord, } from "./records.js";
 export function deepMerge<T extends object,>(
 	base: T,
 	patch: Record<string, unknown>,
@@ -10,7 +7,7 @@ export function deepMerge<T extends object,>(
 
 	for (const [key, patchValue,] of Object.entries(patch,)) {
 		const baseValue = out[key];
-		if (isPlainObject(baseValue,) && isPlainObject(patchValue,)) {
+		if (isRecord(baseValue,) && isRecord(patchValue,)) {
 			out[key] = deepMerge(baseValue, patchValue,);
 			continue;
 		}

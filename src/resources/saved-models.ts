@@ -1,7 +1,7 @@
 import { basename, } from "node:path";
 import type { UploadFormPart, } from "../client.js";
 import { ClientValidationError, } from "../errors.js";
-import { BaseResource, requireNonEmpty, } from "./base.js";
+import { BaseResource, requireNonEmpty, requireNonEmptyArray, requireObject, } from "./base.js";
 
 export interface SavedModelListItem extends Record<string, unknown> {
 	id?: string;
@@ -82,20 +82,6 @@ export interface ExternalModelVersionEvaluateOptions extends Record<string, unkn
 export interface SavedModelScoringJarOptions extends Record<string, unknown> {
 	fullClassName?: string;
 	includeLibs?: boolean;
-}
-
-function requireObject(value: unknown, name: string,): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value,)) {
-		throw new ClientValidationError(`${name} must be a JSON object.`, "validation_failed",);
-	}
-	return value as Record<string, unknown>;
-}
-
-function requireNonEmptyArray(value: string[], name: string,): string[] {
-	if (!Array.isArray(value,) || value.length === 0) {
-		throw new ClientValidationError(`${name} must be a non-empty array.`, "validation_failed",);
-	}
-	return value;
 }
 
 function boolQuery(value: boolean | undefined,): string {

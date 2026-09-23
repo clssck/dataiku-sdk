@@ -1450,7 +1450,7 @@ describe("app create-successor-instance", () => {
 				],
 				{ env: cliEnv(url,), },
 			);
-			expect(failure.code,).toBe(1,);
+			expect(failure.code,).toBe(2,);
 			expect(failure.stderr,).toBe("",);
 			const report = JSON.parse(failure.stdout,) as {
 				code: string;
@@ -3427,7 +3427,7 @@ describe("app create-successor-instance", () => {
 					],
 					{ env: cliEnv(url,), },
 				);
-				expect(failure.code,).toBe(1,);
+				expect(failure.code,).toBe(2,);
 				expect(failure.stderr,).toBe("",);
 
 				expect(errorReport(failure,),).toMatchObject({
@@ -3487,7 +3487,7 @@ describe("app create-successor-instance", () => {
 					],
 					{ env: cliEnv(url,), },
 				);
-				expect(failure.code,).toBe(1,);
+				expect(failure.code,).toBe(2,);
 				expect(failure.stderr,).toBe("",);
 
 				expect(errorReport(failure,),).toMatchObject({

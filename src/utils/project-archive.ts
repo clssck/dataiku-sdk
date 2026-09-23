@@ -2,6 +2,7 @@ import StreamZip from "node-stream-zip";
 import { stat, } from "node:fs/promises";
 import type { Readable, } from "node:stream";
 import { ClientValidationError, unexpectedResponseError, } from "../errors.js";
+import { asRecord, } from "./records.js";
 
 const MANIFEST_MEMBER = "export-manifest.json";
 const DATASETS_ROOT = "project_config/datasets";
@@ -124,12 +125,6 @@ interface StreamedMember {
 	 * immediately and its partial data is neither CRC- nor size-verifiable.
 	 */
 	aborted: false | "member" | "aggregate";
-}
-
-function plainRecord(value: unknown,): Record<string, unknown> | undefined {
-	return typeof value === "object" && value !== null && !Array.isArray(value,)
-		? value as Record<string, unknown>
-		: undefined;
 }
 
 function stringField(record: Record<string, unknown>, key: string,): string | undefined {
@@ -319,19 +314,19 @@ function checkRecipeReferences(
 	issues: ProjectArchiveIssue[],
 ): void {
 	for (const recipeName of [...recipes.keys(),].sort()) {
-		const recipe = plainRecord(recipes.get(recipeName,),);
+		const recipe = asRecord(recipes.get(recipeName,),);
 		if (!recipe) continue;
 		for (const direction of ["inputs", "outputs",]) {
-			const channels = plainRecord(recipe[direction],);
+			const channels = asRecord(recipe[direction],);
 			if (!channels) continue;
 			for (const [channelName, channelValue,] of Object.entries(channels,)) {
-				const channel = plainRecord(channelValue,);
+				const channel = asRecord(channelValue,);
 				if (!channel) continue;
 				const items = channel["items"];
 				if (!Array.isArray(items,)) continue;
 				const channelType = stringField(channel, "type",);
 				for (const itemValue of items) {
-					const item = plainRecord(itemValue,) ?? {};
+					const item = asRecord(itemValue,) ?? {};
 					const ref = stringField(item, "ref",);
 					if (!ref) continue;
 					// Project-qualified refs point at the source project's own
@@ -796,7 +791,7 @@ export async function inspectProjectArchive(
 		let sourceProjectKey: string | undefined;
 		let manifestDatasetNames: Set<string> | undefined;
 		const manifestMember = manifestJson.get(MANIFEST_MEMBER,);
-		const manifest = plainRecord(manifestMember,);
+		const manifest = asRecord(manifestMember,);
 		if (manifestMember === undefined) {
 			issues.push({
 				severity: "error",
@@ -820,12 +815,12 @@ export async function inspectProjectArchive(
 					member: MANIFEST_MEMBER,
 				},);
 			}
-			const actualContent = plainRecord(manifest["actualContent"],);
+			const actualContent = asRecord(manifest["actualContent"],);
 			const included = actualContent?.["includedDatasets"];
 			if (Array.isArray(included,)) {
 				const names = new Set<string>();
 				for (const itemValue of included) {
-					const item = plainRecord(itemValue,);
+					const item = asRecord(itemValue,);
 					const name = stringField(item ?? {}, "name",);
 					if (name) names.add(name,);
 				}

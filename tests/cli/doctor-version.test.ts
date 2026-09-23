@@ -523,47 +523,13 @@ describe("dss version provenance", () => {
 		expect(serialized,).not.toContain("file://",);
 	});
 
-	it("retains the dist build revision and flags a stale dist", async () => {
-		const fakeBuild = "f".repeat(40,);
-		const { stdout, } = await dss(["version",], {
-			env: {
-				...process.env,
-				DSS_LOAD_SOURCE: "dist",
-				DSS_BUILD_REVISION: fakeBuild,
-			},
-		},);
-		const payload = JSON.parse(stdout,) as Record<string, string | boolean | null>;
-		expect(payload.source,).toBe("dist",);
-		expect(payload.buildRevision,).toBe(fakeBuild,);
-		expect(payload.staleBuild,).toBe(true,);
-	});
-});
-/* ------------------------------------------------------------------ */
-/*  dss version provenance: corrupt or inherited build revisions       */
-/* ------------------------------------------------------------------ */
-
-describe("dss version provenance rejects corrupt revisions", () => {
-	it("never claims a corrupt or inherited revision as build provenance", async () => {
-		const metadataRevision = buildMetadataRevision(SDK_ROOT,) ?? null;
-		const checkoutRevision = gitFullRevision(SDK_ROOT,);
-		const metadataIsStale = sourceTreeNewerThanBuild(SDK_ROOT,)
-			|| (
-				metadataRevision !== null
-				&& checkoutRevision !== undefined
-				&& metadataRevision !== checkoutRevision
-			);
-		for (const corrupt of ["garbage", "A".repeat(40,), "a".repeat(41,), "0".repeat(39,),]) {
+	it("ignores an inherited dist load source and build revision on a source run", async () => {
+		for (const revision of ["f".repeat(40,), "garbage", "A".repeat(40,),]) {
 			const { stdout, } = await dss(["version",], {
-				env: {
-					...process.env,
-					DSS_LOAD_SOURCE: "dist",
-					DSS_BUILD_REVISION: corrupt,
-				},
+				env: { ...process.env, DSS_LOAD_SOURCE: "dist", DSS_BUILD_REVISION: revision, },
 			},);
 			const payload = JSON.parse(stdout,) as Record<string, string | boolean | null>;
-			expect(payload.source,).toBe("dist",);
-			expect(payload.buildRevision,).toBe(metadataRevision,);
-			expect(payload.staleBuild,).toBe(metadataIsStale,);
+			expect(payload,).toMatchObject({ source: "source", buildRevision: null, staleBuild: false, },);
 		}
 	});
 });
@@ -584,6 +550,10 @@ describe("bin/dss.js build revision forwarding", () => {
 			writeFileSync(
 				join(root, "bin", "dss.js",),
 				readFileSync(join(SDK_ROOT, "bin", "dss.js",), "utf-8",),
+			);
+			writeFileSync(
+				join(root, "package.json",),
+				readFileSync(join(SDK_ROOT, "package.json",), "utf-8",),
 			);
 			writeFileSync(
 				join(root, "dist", "src", "cli.js",),
@@ -631,5 +601,38 @@ describe("bin/dss.js build revision forwarding", () => {
 		const child = await runLauncher(null, "inherited-garbage",);
 		expect(child.source,).toBe("dist",);
 		expect(child.revision,).toBeNull();
+	});
+
+	it("runs source, not a leftover dist, in a source checkout", async () => {
+		const root = mkdtempSync(join(tmpdir(), "dss-bin-",),);
+		try {
+			mkdirSync(join(root, "bin",), { recursive: true, },);
+			mkdirSync(join(root, "dist", "src",), { recursive: true, },);
+			mkdirSync(join(root, "src",), { recursive: true, },);
+			writeFileSync(
+				join(root, "bin", "dss.js",),
+				readFileSync(join(SDK_ROOT, "bin", "dss.js",), "utf-8",),
+			);
+			writeFileSync(
+				join(root, "package.json",),
+				readFileSync(join(SDK_ROOT, "package.json",), "utf-8",),
+			);
+			writeFileSync(join(root, "dist", "src", "cli.js",), "process.stdout.write('dist');",);
+			writeFileSync(
+				join(root, "src", "cli.ts",),
+				"process.stdout.write(JSON.stringify({ ran: 'source', load: process.env.DSS_LOAD_SOURCE ?? null }));",
+			);
+			const { stdout, } = await exec(
+				BUN,
+				["--no-env-file", join(root, "bin", "dss.js",), "version",],
+				{
+					cwd: root,
+					env: { ...process.env, DSS_LOAD_SOURCE: "dist", },
+				},
+			);
+			expect(JSON.parse(stdout,),).toEqual({ ran: "source", load: null, },);
+		} finally {
+			rmSync(root, { recursive: true, force: true, },);
+		}
 	});
 });

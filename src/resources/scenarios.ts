@@ -14,6 +14,7 @@ import {
 } from "../schemas.js";
 import { deepMerge, } from "../utils/deep-merge.js";
 import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
+import { isRecord, } from "../utils/records.js";
 import { BaseResource, requireArrayResponse, requireNonEmpty, } from "./base.js";
 
 export const SCENARIO_CANONICAL_EDITABLE_FIELDS = [
@@ -296,10 +297,6 @@ function extractCodeRunOutput(log: string,): string | undefined {
 	// Drop only the single trailing separator the harness writes before the end marker.
 	if (body.length > 0 && body[body.length - 1] === "") body.pop();
 	return body.join("\n",);
-}
-
-function isRecord(value: unknown,): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value,);
 }
 
 function scenarioStepWarningSummary(stepResult: Record<string, unknown> | undefined,): {

@@ -161,7 +161,7 @@ export interface DataikuClientConfig {
 	projectKey?: string;
 	/** Request/header timeout and buffered-body budget; idle timeout per raw stream read (default 30 000 ms). */
 	requestTimeoutMs?: number;
-	/** Max retry attempts for idempotent requests (default 4, capped at 10) */
+	/** Maximum total attempts, initial request included, for idempotent requests (default 4, capped at 10; 1 = no retry) */
 	retryMaxAttempts?: number;
 	/**
 	 * Maximum bytes retained from a single response body by text/JSON consumers
@@ -654,7 +654,7 @@ export class DataikuClient {
 		const deadlineAt = resolveGetDeadlineAt(options,);
 		const res = await this.fetchWithRetry(
 			`${this.baseUrl}${path}`,
-			{ method: "GET", headers: this.getHeaders(), },
+			{ method: "GET", headers: this.getHeaders(false,), },
 			options?.noRetry === true ? 1 : undefined,
 			deadlineAt,
 		);
@@ -670,7 +670,7 @@ export class DataikuClient {
 	): Promise<{ data: T; meta: DataikuClientResponseMeta; }> {
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "GET",
-			headers: this.getHeaders(),
+			headers: this.getHeaders(false,),
 		},);
 		const data = await this.parseJsonResponse<T>(res,);
 		return { data, meta: this.responseMeta(res.headers,), };
@@ -747,7 +747,7 @@ export class DataikuClient {
 		}
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "POST",
-			headers: this.getHeaders(),
+			headers: this.getHeaders(body !== undefined,),
 			body: body !== undefined ? JSON.stringify(body,) : undefined,
 		}, retryMaxAttempts,);
 		return this.parseJsonResponse<T>(res,);
@@ -760,7 +760,7 @@ export class DataikuClient {
 	async postText(path: string, body?: unknown,): Promise<string> {
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "POST",
-			headers: this.getHeaders(),
+			headers: this.getHeaders(body !== undefined,),
 			body: body !== undefined ? JSON.stringify(body,) : undefined,
 		},);
 		const { text, truncated, } = await this.readBoundedBodyText(res, this.maxResponseBodyBytes,);
@@ -819,7 +819,7 @@ export class DataikuClient {
 	async put<T = unknown,>(path: string, body: unknown,): Promise<T> {
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "PUT",
-			headers: this.getHeaders(),
+			headers: this.getHeaders(true,),
 			body: JSON.stringify(body,),
 		},);
 		return this.parseJsonResponse<T>(res,);
@@ -828,14 +828,14 @@ export class DataikuClient {
 	async del(path: string,): Promise<void> {
 		await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "DELETE",
-			headers: this.getHeaders(),
+			headers: this.getHeaders(false,),
 		},);
 	}
 
 	async putVoid(path: string, body: unknown,): Promise<void> {
 		await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "PUT",
-			headers: this.getHeaders(),
+			headers: this.getHeaders(true,),
 			body: JSON.stringify(body,),
 		},);
 	}
@@ -848,7 +848,7 @@ export class DataikuClient {
 	async putVoidNoBody(path: string,): Promise<void> {
 		await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "PUT",
-			headers: this.getHeaders(),
+			headers: this.getHeaders(false,),
 		},);
 	}
 
@@ -967,11 +967,12 @@ export class DataikuClient {
 
 	/* ---- private: headers ---- */
 
-	private getHeaders(): Record<string, string> {
+	/** JSON request headers; Content-Type only when a body is sent. */
+	private getHeaders(withBody: boolean,): Record<string, string> {
 		return {
 			Authorization: `Bearer ${this.apiKey}`,
 			Accept: "application/json",
-			"Content-Type": "application/json",
+			...(withBody ? { "Content-Type": "application/json", } : {}),
 		};
 	}
 
@@ -1318,11 +1319,22 @@ export class DataikuClient {
 					elapsedMs: Date.now() - startedAt,
 				},);
 				if (!res.ok) {
-					const { text, truncated, } = await this.readBoundedBodyText(
-						res,
-						this.maxResponseBodyBytes,
-						startedAt + attemptTimeoutMs,
-					);
+					// The status is already known; a body that misses the deadline must not
+					// turn a real 5xx/4xx into a bare transport timeout.
+					let text = "";
+					let truncated = false;
+					try {
+						({ text, truncated, } = await this.readBoundedBodyText(
+							res,
+							this.maxResponseBodyBytes,
+							startedAt + attemptTimeoutMs,
+						));
+					} catch (bodyError) {
+						// Oversized bodies keep their own classified error; any other read
+						// failure (deadline abort, dropped connection) keeps the known status.
+						if (bodyError instanceof DataikuError && bodyError.status !== 0) throw bodyError;
+						text = `(response body not received within ${attemptTimeoutMs}ms)`;
+					}
 					const canRetry = retryEnabled && attempt < maxAttempts && isTransientError(res.status, text,);
 					const serverDelayMs = canRetry ? retryAfterDelayMs(res.headers.get("retry-after",),) : 0;
 					// A longer server wait declines automatic retry; never clamp it into an early request.

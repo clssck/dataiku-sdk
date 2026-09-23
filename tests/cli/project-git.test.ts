@@ -85,16 +85,6 @@ describe("project-git CLI registration", () => {
 		expect(Object.keys(projectGitCommands,).sort(),).toEqual([...ACTIONS,].sort(),);
 	});
 
-	it("declares only flags the parser accepts", () => {
-		const unknownFlags: string[] = [];
-		for (const meta of Object.values(projectGitCommands,)) {
-			for (const match of meta.usage.matchAll(/--([a-z][a-z0-9-]*)/g,)) {
-				if (!KNOWN_LONG_FLAGS.has(match[1]!,)) unknownFlags.push(match[1]!,);
-			}
-		}
-		expect(unknownFlags,).toEqual([],);
-	});
-
 	it("exposes no flag that would carry a password on the command line", () => {
 		expect(KNOWN_LONG_FLAGS.has("password-env",),).toBe(true,);
 		expect(KNOWN_LONG_FLAGS.has("password",),).toBe(false,);

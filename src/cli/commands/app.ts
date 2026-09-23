@@ -2,11 +2,11 @@ import type { DataikuClient, } from "../../client.js";
 import { ClientValidationError, DataikuError, } from "../../errors.js";
 import type { FutureWaitResult, } from "../../schemas.js";
 import { projectIncarnationHash, } from "../../utils/project-incarnation.js";
+import { asRecord, } from "../../utils/records.js";
 import {
 	jsonInput,
 	num,
 	parseBooleanOption,
-	plainRecord,
 	requiredJsonInput,
 	requiredStringFlag,
 	stringField,
@@ -265,7 +265,7 @@ export const appCommands: Record<string, CommandMeta> = withUsage("app", {
 					...safeErrorSummary(error,),
 				};
 			}
-			const instance = plainRecord(created,);
+			const instance = asRecord(created,);
 			if (!instance) {
 				return {
 					success: false,

@@ -5,6 +5,7 @@ import {
 	SQL_QUERY_FAILED_MARKER,
 } from "../errors.js";
 import type { SqlQueryResponse, SqlQueryResult, } from "../schemas.js";
+import { asRecord, } from "../utils/records.js";
 import { BaseResource, } from "./base.js";
 
 const UNSUPPORTED_SQL_DATASET_CONNECTION_DETAIL = "neither of sql nor hdfs type";
@@ -42,11 +43,6 @@ function buildUnsupportedSqlDatasetConnectionMessage(datasetFullName?: string,):
 		? `Dataset "${datasetFullName}" uses a connection that DSS does not support for direct SQL queries.`
 		: "This query uses a connection that DSS does not support for direct SQL queries.";
 	return `${subject} Use --connection with a SQL-compatible connection instead.`;
-}
-
-function asRecord(value: unknown,): Record<string, unknown> | undefined {
-	if (!value || typeof value !== "object" || Array.isArray(value,)) return undefined;
-	return value as Record<string, unknown>;
 }
 
 function asString(value: unknown,): string | undefined {

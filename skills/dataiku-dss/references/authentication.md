@@ -3,8 +3,8 @@
 Invoke the installed `dss` command; do not call package scripts through Bun directly.
 
 - Credentials: flags → `DATAIKU_*` variables → saved credentials. `DATAIKU_DISABLE_ENV=1` ignores both `.env` and `DATAIKU_*`.
-- `.env` lookup: invocation directory, then checkout root (source) or package `dist/` (built). Only `DATAIKU_*`, `NODE_TLS_REJECT_UNAUTHORIZED`, and `NODE_EXTRA_CA_CERTS` are read; other keys are ignored. Nonempty environment wins, then invocation values. Prefer invocation-local `.env`.
-- If the invocation `.env` supplies the URL or TLS settings, the API key must come from it too; mixing with `--api-key` or another source fails with `conflicting_input_sources`.
+- `.env`: invocation directory, then checkout root or package `dist/`; only `DATAIKU_*` and the two `NODE_*` TLS keys are read. Any already-set variable wins, even `""`.
+- A URL/TLS from the invocation `.env` requires its API key from the same `.env` (else `conflicting_input_sources`).
 - For disposable tests, set `DSS_CONFIG_DIR` to a temporary directory to isolate saved credentials.
 
 Prefer injected environment variables; never type real keys into shell history. Placeholder examples:

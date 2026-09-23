@@ -2,12 +2,12 @@ import { mkdir, writeFile, } from "node:fs/promises";
 import { dirname, resolve, } from "node:path";
 import type { DataikuClient, } from "../../client.js";
 import type { BuildMode, JobSummary, } from "../../schemas.js";
+import { asRecord, } from "../../utils/records.js";
 import {
 	jobBuildTargetTypeFromFlags,
 	jobLogFilterFromFlag,
 	maxLogLinesFromFlags,
 	num,
-	plainRecord,
 } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, } from "../output.js";
@@ -22,7 +22,7 @@ import { requireArgs, UsageError, } from "../usage.js";
 function nestedValue(value: unknown, path: string[],): unknown {
 	let current: unknown = value;
 	for (const key of path) {
-		const record = plainRecord(current,);
+		const record = asRecord(current,);
 		if (!record) return undefined;
 		current = record[key];
 	}
@@ -123,7 +123,7 @@ function collectWarningCounts(
 		for (const item of value) collectWarningCounts(item, inActivity, counts,);
 		return;
 	}
-	const record = plainRecord(value,);
+	const record = asRecord(value,);
 	if (!record) return;
 	for (const [key, item,] of Object.entries(record,)) {
 		const lower = key.toLowerCase();

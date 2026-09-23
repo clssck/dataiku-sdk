@@ -200,11 +200,6 @@ export interface CliVersionPayload {
 	staleBuild: boolean;
 }
 
-/** Bun is the only supported runtime; the field is retained for payload stability. */
-export function detectRuntime(): CliRuntime {
-	return "bun";
-}
-
 export function buildVersionPayload(input: {
 	packageVersion: string;
 	checkoutRevision: string | undefined;
@@ -244,10 +239,11 @@ export const AGENT_CONTRACT_SCHEMA_ID =
 	"https://clssck.github.io/dataiku-sdk/schemas/agent-contract-v2.json";
 
 export function cliVersionResult(): CliVersionPayload {
-	/* oxlint-disable dss/no-direct-process-env -- launcher-injected load source and build revision */
-	const loadSource = process.env["DSS_LOAD_SOURCE"] ?? detectLoadSource();
-	const envBuildRevision = process.env["DSS_BUILD_REVISION"];
-	/* oxlint-enable dss/no-direct-process-env */
+	// Only code actually loaded from dist/ may report dist provenance; an
+	// inherited DSS_LOAD_SOURCE on a source run is ignored.
+	const loadSource = detectLoadSource();
+	/* oxlint-disable-next-line dss/no-direct-process-env -- launcher-injected build revision */
+	const envBuildRevision = loadSource === "dist" ? process.env["DSS_BUILD_REVISION"] : undefined;
 	return buildVersionPayload({
 		packageVersion: CLI_VERSION,
 		checkoutRevision: CLI_GIT_REVISION,
@@ -259,6 +255,6 @@ export function cliVersionResult(): CliVersionPayload {
 		sourceNewerThanBuild: loadSource === "dist"
 			? sourceTreeNewerThanBuild(PACKAGE_ROOT,)
 			: false,
-		runtime: detectRuntime(),
+		runtime: "bun",
 	},);
 }

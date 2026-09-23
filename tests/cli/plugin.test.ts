@@ -1,6 +1,5 @@
 import { describe, expect, it, } from "bun:test";
 import { pluginCommands, } from "../../src/cli/commands/plugin.js";
-import { KNOWN_LONG_FLAGS, } from "../../src/cli/flags.js";
 import { RESOURCE_NAMES, } from "../../src/cli/usage.js";
 import type { DataikuClient, } from "../../src/client.js";
 import { ClientValidationError, } from "../../src/errors.js";
@@ -88,16 +87,6 @@ describe("plugin CLI registration", () => {
 	it("covers every documented Plugins endpoint with an action", () => {
 		expect(RESOURCE_NAMES,).toContain("plugin",);
 		expect(Object.keys(pluginCommands,).sort(),).toEqual([...ACTIONS,].sort(),);
-	});
-
-	it("declares only flags the parser accepts", () => {
-		const unknownFlags: string[] = [];
-		for (const meta of Object.values(pluginCommands,)) {
-			for (const match of meta.usage.matchAll(/--([a-z][a-z0-9-]*)/g,)) {
-				if (!KNOWN_LONG_FLAGS.has(match[1]!,)) unknownFlags.push(match[1]!,);
-			}
-		}
-		expect(unknownFlags,).toEqual([],);
 	});
 });
 

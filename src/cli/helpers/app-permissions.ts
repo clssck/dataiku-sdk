@@ -2,8 +2,9 @@ import * as fs from "node:fs";
 import { ClientValidationError, } from "../../errors.js";
 import type { ProjectPermissions, } from "../../resources/projects.js";
 import { canonicalDssUrl, } from "../../utils/dss-url.js";
+import { asRecord, } from "../../utils/records.js";
 import { compareStrings, } from "../../utils/stable-hash.js";
-import { parseJsonObject, plainRecord, stableHash, stableJson, } from "../coerce.js";
+import { parseJsonObject, stableHash, stableJson, } from "../coerce.js";
 import { UsageError, } from "../usage.js";
 
 /**
@@ -198,7 +199,7 @@ export function parseAppPermissionsSnapshot(text: string, source: string,): AppP
 	const capturedAt = requiredSnapshotString(record, "capturedAt", source,);
 	const hash = requiredSnapshotString(record, "hash", source,);
 	const permissionsHash = requiredSnapshotString(record, "permissionsHash", source,);
-	const permissions = plainRecord(record["permissions"],);
+	const permissions = asRecord(record["permissions"],);
 	if (!permissions) {
 		throw new UsageError(
 			`${source} is not an app permissions snapshot: "permissions" must be a JSON object.`,
@@ -332,8 +333,8 @@ function collectDifferences(
 	out: AppPermissionsDifference[],
 ): void {
 	if (stableJson(backup,) === stableJson(current,)) return;
-	const backupRecord = plainRecord(backup,);
-	const currentRecord = plainRecord(current,);
+	const backupRecord = asRecord(backup,);
+	const currentRecord = asRecord(current,);
 	if (backupRecord && currentRecord) {
 		const keys = [...new Set([...Object.keys(backupRecord,), ...Object.keys(currentRecord,),],),]
 			.sort(compareStrings,);

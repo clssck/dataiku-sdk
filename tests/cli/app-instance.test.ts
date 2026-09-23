@@ -514,7 +514,8 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					],
 					{ env: cliEnv(url,), },
 				);
-				expect(failure.code,).toBe(1,);
+				// Unverifiable absence is environmental (exit 2); a proven collision is usage (exit 1).
+				expect(failure.code,).toBe(mode === "masked" ? 2 : 1,);
 				expect(failure.stderr,).toBe("",);
 				const report = JSON.parse(failure.stdout,) as {
 					code: string;
@@ -613,7 +614,7 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				],
 				{ env: cliEnv(url,), },
 			);
-			expect(failure.code,).toBe(1,);
+			expect(failure.code,).toBe(2,);
 			expect(failure.stderr,).toBe("",);
 			const report = JSON.parse(failure.stdout,) as {
 				code: string;
@@ -706,11 +707,12 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				hint?: string;
 				details: Record<string, unknown>;
 			};
-			expect(failure.code,).toBe(1,);
+			expect(failure.code,).toBe(2,);
 			expect(failure.stderr,).toBe("",);
 			expect(report,).toMatchObject({
 				code: "target_absence_unverifiable",
 				category: "permission_or_environment",
+				exitCode: 2,
 				retryable: false,
 			},);
 			expect(report.details,).toMatchObject({

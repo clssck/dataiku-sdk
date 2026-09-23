@@ -11,10 +11,7 @@
 		"resolveJsonModule": true,
 		"forceConsistentCasingInFileNames": true,
 		"declaration": true,
-		"types": ["bun-types"],
-		"paths": {
-			"@dataiku/types": ["./packages/types/src/index.ts"]
-		}
+		"types": ["bun-types"]
 	},
 	"include": ["src/**/*", "packages/types/src/**/*"]
 }

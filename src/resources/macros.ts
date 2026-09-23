@@ -19,6 +19,7 @@ import {
 	DEFAULT_TIMEOUT_MS,
 	isRequestDeadlineError,
 } from "../utils/polling.js";
+import { isRecord, } from "../utils/records.js";
 import { BaseResource, requireNonEmpty, } from "./base.js";
 
 /** Hard floor for the result download cap; keeps a caller typo from hanging the read. */
@@ -77,10 +78,6 @@ export function macroResultMaxBytes(maxBytes: number | undefined,): number {
 		);
 	}
 	return Math.min(raw, MAX_RESULT_MAX_BYTES,);
-}
-
-function isRecord(value: unknown,): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value,);
 }
 
 /**

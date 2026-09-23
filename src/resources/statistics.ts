@@ -1,5 +1,6 @@
 import { UsageError, } from "../cli/usage.js";
 import { ClientValidationError, } from "../errors.js";
+import { isRecord, } from "../utils/records.js";
 import { BaseResource, } from "./base.js";
 
 export type StatisticsCardSettings = Record<string, unknown>;
@@ -42,10 +43,6 @@ export interface StatisticsWorksheet {
 export interface StatisticsFutureResponse {
 	jobId?: string | null;
 	[key: string]: unknown;
-}
-
-function isRecord(value: unknown,): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value,);
 }
 
 function validateWorksheetCreateRequest(body: StatisticsWorksheetCreateRequest,): void {

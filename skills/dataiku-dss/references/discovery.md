@@ -5,7 +5,7 @@
 - Stdout: exactly one compact JSON value; void success: `{ok:true}`. No prompts, help screens, tables, banners, or prose.
 - Dispatch/runtime failure: stdout error object (`type:"error"`, `ok:false`, `error`, `code`, `category`, `exitCode`), nonzero exit. `doctor`/`batch`/`cleanup` failures instead return direct result objects; inspect exit code and fields.
 - Stderr: JSONL diagnostics only; `type:"warning"` / `type:"trace"` for warnings / `--verbose` HTTP traces, flushed before success or failure output.
-- Exits: 0 success, 1 usage/configuration, 2 DSS/internal, 3 transient/retryable DSS error, 4 failed long-running result/assertion.
+- Exits: 0 success, 1 usage/configuration, 2 DSS/internal/permission-or-environment, 3 transient/retryable DSS error, 4 failed long-running result/assertion.
 - Recipe payload stdout: JSON string. With `--output PATH`: exact bytes to file, JSON string equal to `PATH` on stdout.
 - General `--fields a,b,c`: object projection, element-wise for object arrays. Dotted paths traverse nested objects; missing fields become `null`; strings/scalars pass through.
 

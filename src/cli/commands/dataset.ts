@@ -1,4 +1,5 @@
 import { deepMerge, } from "../../utils/deep-merge.js";
+import { isRecord, } from "../../utils/records.js";
 import { compareStrings, stableHash, } from "../../utils/stable-hash.js";
 import { jsonInput, num, schemaColumnsInput, unknownJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
@@ -34,10 +35,6 @@ export interface DatasetSchemaComparison {
 
 const MAX_SCHEMA_DIFFERENCES = 50;
 
-function isPlainObject(value: unknown,): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value,);
-}
-
 function appendSchemaPath(parent: string, key: string,): string {
 	return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key,)
 		? (parent ? `${parent}.${key}` : key)
@@ -54,7 +51,7 @@ function collectSchemaDifferences(
 	// subtrees (any key order) match exactly and are never descended into.
 	if (stableHash(expected,) === stableHash(actual,)) return;
 
-	if (isPlainObject(expected,) && isPlainObject(actual,)) {
+	if (isRecord(expected,) && isRecord(actual,)) {
 		const keys = [...new Set([...Object.keys(expected,), ...Object.keys(actual,),],),].sort(
 			compareStrings,
 		);

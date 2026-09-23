@@ -15,18 +15,17 @@
 		"dist/",
 		"plugin.json",
 		"skills/",
-		"bin/dss.js",
-		"packages/types/dist/"
+		"bin/dss.js"
 	],
 	"engines": {
 		"bun": ">=1.4.0"
 	},
 	"scripts": {
-		"build": "bun scripts/generate-action-output-schemas.mjs && tsc && bun scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
-		"prepack": "bun scripts/sync-plugin-version.mjs --check && bun scripts/generate-action-output-schemas.mjs --check && tsc && bun scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
-		"prepublishOnly": "bun scripts/sync-plugin-version.mjs --check && bun scripts/generate-action-output-schemas.mjs --check && tsc && bun scripts/generate-build-metadata.mjs && tsc -p packages/types/tsconfig.json",
-		"check": "tsc --noEmit && tsc -p tools/oxlint/tsconfig.json && bun run check:live && bun scripts/generate-action-output-schemas.mjs --check && bun scripts/sync-plugin-version.mjs --check",
-		"version": "bun scripts/sync-plugin-version.mjs && git add plugin.json",
+		"build": "bun scripts/generate-action-output-schemas.mjs && tsc && bun scripts/generate-build-metadata.mjs",
+		"prepack": "bun scripts/sync-plugin-version.mjs --check && bun scripts/generate-action-output-schemas.mjs --check && tsc && bun scripts/generate-build-metadata.mjs",
+		"prepublishOnly": "bun run prepack",
+		"check": "tsc --noEmit && tsc -p tools/oxlint/tsconfig.json && bun run check:live && bun scripts/generate-action-output-schemas.mjs --check && bun scripts/sync-plugin-version.mjs --check && bun scripts/cut-changelog.mjs --check",
+		"version": "bun scripts/sync-plugin-version.mjs && bun scripts/cut-changelog.mjs && git add plugin.json CHANGELOG.md",
 		"lint": "oxlint src/ tools/oxlint/ scripts/ tests/",
 		"lint:fix": "oxlint --fix src/ tools/oxlint/ scripts/ tests/",
 		"format": "dprint fmt",
@@ -56,9 +55,6 @@
 		"@sinclair/typebox": "^0.34.52",
 		"node-stream-zip": "^1.16.0"
 	},
-	"bundledDependencies": [
-		"@sinclair/typebox"
-	],
 	"license": "SEE LICENSE IN LICENSE",
 	"repository": {
 		"type": "git",

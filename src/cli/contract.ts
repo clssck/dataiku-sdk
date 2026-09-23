@@ -948,7 +948,7 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	// LLM Mesh completions/embeddings invoke the LLM provider (cost-bearing,
 	// arbitrary-prompt execution); the verb shapes match no mutating pattern
 	// and would fall through to read, wrongly rejecting --plan. Knowledge-bank
-	// search stays a READ per Main's preservation directive.
+	// search stays read: it only queries an existing index.
 	if (resource === "llm" && (action === "completions" || action === "embeddings")) {
 		return "write";
 	}

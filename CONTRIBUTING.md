@@ -19,7 +19,7 @@ bun install --frozen-lockfile
 ## Project layout
 
 - `src/` — the SDK client and resources (`src/resources/*`) plus the CLI (`src/cli/*`, entry `bin/dss.js`)
-- `packages/types/` — TypeBox schemas and their derived TypeScript types (`@dataiku/types`), re-exported through `src/schemas.ts`
+- `packages/types/` — TypeBox schemas and their derived TypeScript types, compiled into the root build and re-exported through `src/schemas.ts`
 - `src/cli/command-syntax.json` — the hand-maintained syntax tree of every CLI command (`src/cli/syntax.ts` defines the node types). It is the single source for each command's `usage` line, which is rendered from it and never written by hand, and for the usage-level agent contract derived from it: flags, required flags and required choices, value hints and enums, positionals, stdin/data inputs, dry-run, local-file output, and aliases. Command modules export their definitions through `withUsage(resource, {...})`, which fails at load for a command without an entry. To add or change a command, edit its entry, then review the rendered `dss commands run --fields RESOURCE.ACTION` output: the entry is what agents may pass.
 - `src/generated/` — generator-owned `action-output-schemas.json` (discovery output schemas), from `bun scripts/generate-action-output-schemas.mjs`; `bun run check` fails when it is stale
 - `tests/` — unit and (gated) integration tests, run with `bun test`

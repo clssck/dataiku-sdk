@@ -2,19 +2,13 @@ import { parseBooleanOption, } from "./coerce.js";
 import { unsupportedHelpFlag, UsageError, } from "./usage.js";
 
 /** Planning wins dispatch; dryRun remains set for combined plan metadata. */
-const EXECUTION_MODES = [
-	Object.freeze({ plan: false, dryRun: false, },),
-	Object.freeze({ plan: false, dryRun: true, },),
-	Object.freeze({ plan: true, dryRun: false, },),
-	Object.freeze({ plan: true, dryRun: true, },),
-] as const;
-
 export function executionMode(
 	flags: Record<string, string | boolean>,
 ): { readonly plan: boolean; readonly dryRun: boolean; } {
-	const plan = parseBooleanOption(flags["plan"], "--plan",) ?? false;
-	const dryRun = parseBooleanOption(flags["dry-run"], "--dry-run",) ?? false;
-	return EXECUTION_MODES[(plan ? 2 : 0) + (dryRun ? 1 : 0)]!;
+	return {
+		plan: parseBooleanOption(flags["plan"], "--plan",) ?? false,
+		dryRun: parseBooleanOption(flags["dry-run"], "--dry-run",) ?? false,
+	};
 }
 
 export const BOOLEAN_FLAGS = new Set([

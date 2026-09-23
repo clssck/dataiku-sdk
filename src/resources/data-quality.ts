@@ -70,7 +70,7 @@ export interface DataQualityProjectTimelineOptions extends DataQualityProjectOpt
 	maxTimestamp?: number;
 }
 
-function datasetPath(projectKey: string, datasetName: string,): string {
+function dataQualityPath(projectKey: string, datasetName: string,): string {
 	return `/public/api/projects/${encodeURIComponent(projectKey,)}/datasets/${
 		encodeURIComponent(datasetName,)
 	}/data-quality`;
@@ -100,7 +100,7 @@ function projectPath(projectKey: string,): string {
 export class DataQualityResource extends BaseResource {
 	async rules(datasetName: string, projectKey?: string,): Promise<DataQualityRules> {
 		const pk = this.resolveProjectKey(projectKey,);
-		const raw = await this.client.get<unknown>(`${datasetPath(pk, datasetName,)}/rules`,);
+		const raw = await this.client.get<unknown>(`${dataQualityPath(pk, datasetName,)}/rules`,);
 		return this.client.safeParse(DataQualityRulesSchema, raw, "dataQuality.rules",);
 	}
 
@@ -115,7 +115,7 @@ export class DataQualityResource extends BaseResource {
 	): Promise<DataQualityRule> {
 		const pk = this.resolveProjectKey(opts.projectKey,);
 		const raw = await this.client.post<unknown>(
-			`${datasetPath(pk, datasetName,)}/rules`,
+			`${dataQualityPath(pk, datasetName,)}/rules`,
 			opts.config,
 		);
 		return this.client.safeParse(DataQualityRuleSchema, raw, "dataQuality.createRule",);
@@ -133,7 +133,7 @@ export class DataQualityResource extends BaseResource {
 		);
 		const pk = this.resolveProjectKey(opts.projectKey,);
 		await this.client.putVoid(
-			`${datasetPath(pk, datasetName,)}/rules/${encodeURIComponent(ruleId,)}`,
+			`${dataQualityPath(pk, datasetName,)}/rules/${encodeURIComponent(ruleId,)}`,
 			next,
 		);
 		return this.client.safeParse(DataQualityRuleSchema, next, "dataQuality.updateRule",);
@@ -144,7 +144,9 @@ export class DataQualityResource extends BaseResource {
 		const params = new URLSearchParams();
 		params.set("ruleId", ruleId,);
 		await this.client.del(
-			`${datasetPath(pk, datasetName,)}/rules/${encodeURIComponent(ruleId,)}${queryString(params,)}`,
+			`${dataQualityPath(pk, datasetName,)}/rules/${encodeURIComponent(ruleId,)}${
+				queryString(params,)
+			}`,
 		);
 	}
 
@@ -168,7 +170,7 @@ export class DataQualityResource extends BaseResource {
 	async status(datasetName: string, projectKey?: string,): Promise<DataQualityStatus> {
 		const pk = this.resolveProjectKey(projectKey,);
 		const raw = await this.client.get<unknown>(
-			`${datasetPath(pk, datasetName,)}/status-by-partition`,
+			`${dataQualityPath(pk, datasetName,)}/status-by-partition`,
 		);
 		return this.client.safeParse(DataQualityStatusSchema, raw, "dataQuality.status",);
 	}
@@ -181,7 +183,7 @@ export class DataQualityResource extends BaseResource {
 		const params = new URLSearchParams();
 		addQuery(params, "includeAllPartitions", opts.includeAllPartitions,);
 		const raw = await this.client.get<unknown>(
-			`${datasetPath(pk, datasetName,)}/status-by-partition${queryString(params,)}`,
+			`${dataQualityPath(pk, datasetName,)}/status-by-partition${queryString(params,)}`,
 		);
 		return this.client.safeParse(
 			DataQualityStatusByPartitionSchema,
@@ -199,7 +201,7 @@ export class DataQualityResource extends BaseResource {
 		addQuery(params, "partition", partitionValue(opts.partition,),);
 		addQuery(params, "ruleId", opts.ruleId,);
 		const raw = await this.client.get<unknown>(
-			`${datasetPath(pk, datasetName,)}/last-rules-result${queryString(params,)}`,
+			`${dataQualityPath(pk, datasetName,)}/last-rules-result${queryString(params,)}`,
 		);
 		return this.client.safeParse(DataQualityRuleResultArraySchema, raw, "dataQuality.lastResults",);
 	}
@@ -216,7 +218,7 @@ export class DataQualityResource extends BaseResource {
 		addQuery(params, "page", opts.page,);
 		addQuery(params, "ruleId", opts.ruleId,);
 		const raw = await this.client.get<unknown>(
-			`${datasetPath(pk, datasetName,)}/rules-history${queryString(params,)}`,
+			`${dataQualityPath(pk, datasetName,)}/rules-history${queryString(params,)}`,
 		);
 		return this.client.safeParse(DataQualityRuleResultArraySchema, raw, "dataQuality.history",);
 	}
@@ -230,7 +232,7 @@ export class DataQualityResource extends BaseResource {
 		addQuery(params, "partition", partitionValue(opts.partition,),);
 		addQuery(params, "ruleId", opts.ruleId,);
 		const raw = await this.client.post<unknown>(
-			`${datasetPath(pk, datasetName,)}/actions/compute-rules${queryString(params,)}`,
+			`${dataQualityPath(pk, datasetName,)}/actions/compute-rules${queryString(params,)}`,
 		);
 		return this.client.safeParse(DataQualityComputeResultSchema, raw, "dataQuality.computeRules",);
 	}

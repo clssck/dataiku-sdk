@@ -60,7 +60,8 @@ export function loadEnvFile(): void {
 				if (eq === -1) continue;
 				const key = trimmed.slice(0, eq,).trim();
 				const val = trimmed.slice(eq + 1,).trim().replace(/^['"]|['"]$/g, "",);
-				if (isAllowedEnvKey(key,) && !process.env[key]) {
+				// A variable set in the environment, even to "", wins over .env ("" clears it).
+				if (isAllowedEnvKey(key,) && process.env[key] === undefined) {
 					process.env[key] = val;
 					(index === 0 ? projectEnvVars : installEnvVars).add(key,);
 				}

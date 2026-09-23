@@ -16,6 +16,7 @@ import type {
 	RecipeSummary,
 } from "../schemas.js";
 import { deepMerge, } from "../utils/deep-merge.js";
+import { asRecord, } from "../utils/records.js";
 import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
 import type { JobBuildTarget, JobBuildTargetType, JobLogFilter, JobLogSummary, } from "./jobs.js";
@@ -32,11 +33,6 @@ function asStringArray(value: unknown,): string[] | undefined {
 	if (!Array.isArray(value,)) return undefined;
 	const out = value.filter((v,): v is string => typeof v === "string" && v.length > 0);
 	return out.length > 0 ? out : undefined;
-}
-
-function asRecord(value: unknown,): Record<string, unknown> | undefined {
-	if (!value || typeof value !== "object" || Array.isArray(value,)) return undefined;
-	return value as Record<string, unknown>;
 }
 
 type JoinType = "LEFT" | "INNER" | "RIGHT" | "FULL";

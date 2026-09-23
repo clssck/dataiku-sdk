@@ -7,3 +7,9 @@ observations.md
 plan.md
 bugs.md
 .live-tests/
+# dss install-skill project targets
+.claude/skills/dataiku-dss/
+.codex/skills/dataiku-dss/
+.cursor/skills/dataiku-dss/
+.pi/skills/dataiku-dss/
+.omp/skills/dataiku-dss/

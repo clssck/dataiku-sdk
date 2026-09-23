@@ -31,6 +31,7 @@ import {
 	resolveCredentials,
 	resolveLoginCredentials,
 } from "./cli/runtime.js";
+import { commandUsage, } from "./cli/syntax.js";
 import {
 	COMMANDS_RUN_HINT,
 	inferRequiresProject,
@@ -241,29 +242,6 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 				|| !commands[resource]?.[action]
 			) {
 				throw new UsageError(`Invalid cleanup argv: ${entry.cleanup.argv.join(" ",)}`,);
-			}
-			if (
-				resource === "project"
-				&& action === "delete"
-				&& typeof parsed.flags["expect-project-incarnation"] !== "string"
-			) {
-				throw new UsageError(
-					"Project cleanup entry is not bound to a project incarnation. Refusing deletion after possible project-key reuse.",
-					"validation_failed",
-					"Capture a new cleanup entry from the current CLI. Legacy entries cannot safely delete projects.",
-				);
-			}
-			if (
-				resource === "app"
-				&& action === "delete-instance"
-				&& parsed.flags["unconfirmed-creation"] !== true
-				&& typeof parsed.flags["expect-project-incarnation"] !== "string"
-			) {
-				throw new UsageError(
-					"App cleanup entry is not bound to a project incarnation. Refusing deletion after possible project-key reuse.",
-					"validation_failed",
-					"Capture a new cleanup entry from the current CLI. Legacy entries cannot safely delete app projects.",
-				);
 			}
 			const result = await commands[resource][action].handler(client, args, parsed.flags,);
 			if (isFailedWaitResult(result,)) {
@@ -588,22 +566,23 @@ async function validateDryRunHandlerPreconditions(
 	}
 }
 
+/**
+ * The one validator for meta commands, shared by direct runs and batch
+ * --dry-run: action, supported flags (incl. --plan/--dry-run), flag conflicts,
+ * and required inputs. Returns the canonical action, or undefined for a
+ * non-meta resource.
+ */
 async function validateMetaCommandInputs(
 	resource: string,
 	action: string | undefined,
 	flags: Record<string, string | boolean>,
 ): Promise<string | undefined> {
-	if (resource === "doctor") {
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("doctor", action, ["run",],);
-		}
-		return "run";
-	}
+	if (META_COMMAND_RESOURCES[resource] !== true) return undefined;
+	await loadCommandRuntime();
+	let resolved: string;
 	if (resource === "auth") {
 		const validActions = Object.keys(contract.AUTH_ACTIONS,);
-		if (!action) {
-			throw missingActionError("auth", validActions, "dss auth login --url URL --api-key KEY",);
-		}
+		if (!action) throw missingActionError("auth", validActions, commandUsage("auth", "login",),);
 		if (!contract.AUTH_ACTIONS[action]) {
 			throw unknownActionError(
 				"auth",
@@ -612,12 +591,29 @@ async function validateMetaCommandInputs(
 				"auth only supports 'login'. To check credentials/connectivity, run 'dss doctor'.",
 			);
 		}
-		return action;
+		resolved = action;
+	} else if (resource === "agent" || resource === "commands") {
+		const only = resource === "agent" ? "contract" : "run";
+		const usage = resource === "agent" ? contract.AGENT_CONTRACT_USAGE : contract.COMMANDS_USAGE;
+		if (!action) throw missingActionError(resource, [only,], usage,);
+		if (action !== only) throw unknownActionError(resource, action, [only,],);
+		resolved = action;
+	} else {
+		if (action !== undefined && action !== "run") {
+			throw unknownActionError(resource, action, ["run",],);
+		}
+		resolved = "run";
+	}
+	validateSupportedCommandFlags(resource, resolved, flags,);
+	if (resource === "commands") commandRegistrySelectors(flags,);
+	if (resource === "cleanup" || resource === "batch") {
+		const entry = cachedCommandRegistry(resource,)?.run;
+		if (entry) validateRequiredCommandInputs(resource, "run", [], flags, entry,);
+	}
+	if (resource === "cleanup" && flags["apply"] === true && executionMode(flags,).dryRun) {
+		throw new UsageError("--dry-run and --apply are mutually exclusive.", "usage_error",);
 	}
 	if (resource === "install-skill") {
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("install-skill", action, ["run",],);
-		}
 		const { AGENTS, } = await import("./skill.js");
 		const agentFilter = typeof flags["agent"] === "string" ? flags["agent"] : undefined;
 		if (agentFilter && !AGENTS[agentFilter]) {
@@ -628,49 +624,8 @@ async function validateMetaCommandInputs(
 				{ agent: agentFilter, validAgents: Object.keys(AGENTS,), },
 			);
 		}
-		return "run";
 	}
-	if (resource === "agent") {
-		if (!action) throw missingActionError("agent", ["contract",], contract.AGENT_CONTRACT_USAGE,);
-		if (action !== "contract") throw unknownActionError("agent", action, ["contract",],);
-		return action;
-	}
-	if (resource === "commands") {
-		if (!action) throw missingActionError("commands", ["run",], contract.COMMANDS_USAGE,);
-		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
-		validateSupportedCommandFlags("commands", "run", flags,);
-		commandRegistrySelectors(flags,);
-		return action;
-	}
-	if (resource === "version") {
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("version", action, ["run",],);
-		}
-		return "run";
-	}
-	if (resource === "cleanup") {
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("cleanup", action, ["run",],);
-		}
-		const entry = cachedCommandRegistry("cleanup",)?.run;
-		if (entry) validateRequiredCommandInputs("cleanup", "run", [], flags, entry,);
-		return "run";
-	}
-	if (resource === "fixtures") {
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("fixtures", action, ["run",],);
-		}
-		return "run";
-	}
-	if (resource === "batch") {
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("batch", action, ["run",],);
-		}
-		const entry = cachedCommandRegistry("batch",)?.run;
-		if (entry) validateRequiredCommandInputs("batch", "run", [], flags, entry,);
-		return "run";
-	}
-	return undefined;
+	return resolved;
 }
 
 async function validateBatchStep(
@@ -715,27 +670,8 @@ function batchStepNeedsClient(argv: string[],): boolean {
 }
 
 function batchStepCommandContext(argv: string[],): { resource?: string; action?: string; } {
-	const positionals: string[] = [];
-	for (let index = 0; index < argv.length; index++) {
-		const arg = argv[index];
-		if (arg === "--") {
-			positionals.push(...argv.slice(index + 1,),);
-			break;
-		}
-		if (arg.startsWith("--",)) {
-			const name = arg.slice(2,).split("=",)[0] ?? "";
-			const canonical = FLAG_ALIASES[name] ?? name;
-			if (!arg.includes("=",) && VALUE_FLAGS.has(canonical,)) index++;
-			continue;
-		}
-		if (arg.length === 2 && arg[0] === "-" && arg[1] !== "-") {
-			const long = SHORT_FLAGS[arg[1]!];
-			if (long && VALUE_FLAGS.has(long,)) index++;
-			continue;
-		}
-		positionals.push(arg,);
-	}
-	return { resource: positionals[0], action: positionals[1], };
+	const [resource, action,] = rawPositionals(argv,);
+	return { resource, action, };
 }
 
 const SENSITIVE_ARGV_VALUE_FLAGS: Record<string, true> = {
@@ -972,160 +908,89 @@ function batchPlan(flags: Record<string, string | boolean>,): Record<string, unk
 
 async function runMetaCommand(
 	resource: string,
-	action: string | undefined,
+	rawAction: string | undefined,
 	flags: Record<string, string | boolean>,
 ): Promise<{ action: string; result: unknown; exitCode: number; } | undefined> {
-	if (resource === "doctor") {
-		await loadCommandRuntime();
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("doctor", action, ["run",],);
+	const action = await validateMetaCommandInputs(resource, rawAction, flags,);
+	if (action === undefined) return undefined;
+	currentCommandContext.action = action;
+	const plan = executionMode(flags,).plan;
+	switch (resource) {
+		case "doctor": {
+			const { runDoctor, } = await import("./cli/doctor.js");
+			const { result, exitCode, } = await runDoctor(flags,);
+			return { action, result, exitCode, };
 		}
-		currentCommandContext.action = action ?? "run";
-		validateSupportedCommandFlags("doctor", "run", flags,);
-		const { runDoctor, } = await import("./cli/doctor.js");
-		const { result, exitCode, } = await runDoctor(flags,);
-		return { action: "run", result, exitCode, };
+		case "auth":
+			if (plan) return { action, result: authLoginPlan(flags,), exitCode: 0, };
+			return { action, result: await contract.AUTH_ACTIONS[action]!.handler(flags,), exitCode: 0, };
+		case "install-skill":
+			return { action, result: await runInstallSkill(flags,), exitCode: 0, };
+		case "agent":
+			return { action, result: contract.buildAgentContract(), exitCode: 0, };
+		case "version":
+			return { action, result: cliVersionResult(), exitCode: 0, };
+		case "fixtures": {
+			const { runFixtures, } = await import("./cli/doctor.js");
+			return { action, result: await runFixtures(flags,), exitCode: 0, };
+		}
+		case "cleanup": {
+			if (plan) return { action, result: cleanupPlan(flags,), exitCode: 0, };
+			const { result, exitCode, } = await runCleanup(flags,);
+			return { action, result, exitCode, };
+		}
+		case "batch": {
+			if (plan) return { action, result: batchPlan(flags,), exitCode: 0, };
+			const { result, exitCode, } = await runBatch(flags,);
+			return { action, result, exitCode, };
+		}
+		default:
+			return { action, result: await commandsRunResult(flags,), exitCode: 0, };
 	}
-	if (resource === "auth") {
-		await loadCommandRuntime();
-		const validActions = Object.keys(contract.AUTH_ACTIONS,);
-		if (!action) {
-			throw missingActionError("auth", validActions, "dss auth login --url URL --api-key KEY",);
+}
+
+async function commandsRunResult(flags: Record<string, string | boolean>,): Promise<unknown> {
+	const selectors = commandRegistrySelectors(flags,);
+	const outputPath = flags["output"];
+	if (selectors.length === 0 && typeof outputPath !== "string") {
+		return contract.commandActionSummary();
+	}
+	const registry: CommandRegistry = selectors.length === 0 ? contract.buildCommandRegistry() : {};
+	for (const selector of selectors) {
+		const selectorParts = selector.split(".",);
+		if (selectorParts.some((part,) => part.length === 0)) {
+			throw new UsageError(
+				`Invalid --fields selector: ${selector}. Expected RESOURCE or RESOURCE.ACTION[.FIELD...].`,
+				"usage_error",
+				contract.COMMANDS_USAGE,
+				{ selector, },
+			);
 		}
-		currentCommandContext.action = action;
-		const authMeta = contract.AUTH_ACTIONS[action];
-		if (!authMeta) {
+		const [selectedResource, selectedAction,] = selectorParts;
+		const resourceActions = cachedCommandRegistry(selectedResource,);
+		if (!resourceActions) throw unknownResourceError(selectedResource,);
+		registry[selectedResource] = resourceActions;
+		if (selectedAction && !resourceActions[selectedAction]) {
 			throw unknownActionError(
-				"auth",
-				action,
-				validActions,
-				"auth only supports 'login'. To check credentials/connectivity, run 'dss doctor'.",
+				selectedResource,
+				selectedAction,
+				Object.keys(resourceActions,),
 			);
 		}
-		validateSupportedCommandFlags("auth", action, flags,);
-		if (executionMode(flags,).plan) {
-			return { action, result: authLoginPlan(flags,), exitCode: 0, };
-		}
-		return { action, result: await authMeta.handler(flags,), exitCode: 0, };
 	}
-	if (resource === "install-skill") {
-		await loadCommandRuntime();
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("install-skill", action, ["run",],);
-		}
-		currentCommandContext.action = action ?? "run";
-		validateSupportedCommandFlags("install-skill", "run", flags,);
-		return { action: "run", result: await runInstallSkill(flags,), exitCode: 0, };
+	const selectedRegistry = selectors.length === 0
+		? registry
+		: projectResultFields(
+			registry,
+			selectors,
+			() => Object.keys(contract.commandActionSummary(),).sort(),
+		);
+	if (typeof outputPath === "string") {
+		const exported = selectedRegistry;
+		await fs.writeFile(outputPath, `${JSON.stringify(exported,)}\n`, "utf-8",);
+		return { path: outputPath, };
 	}
-	if (resource === "agent") {
-		await loadCommandRuntime();
-		if (!action) throw missingActionError("agent", ["contract",], contract.AGENT_CONTRACT_USAGE,);
-		currentCommandContext.action = action;
-		if (action !== "contract") throw unknownActionError("agent", action, ["contract",],);
-		validateSupportedCommandFlags("agent", "contract", flags,);
-		return { action, result: contract.buildAgentContract(), exitCode: 0, };
-	}
-	if (resource === "commands") {
-		await loadCommandRuntime();
-		if (!action) throw missingActionError("commands", ["run",], contract.COMMANDS_USAGE,);
-		currentCommandContext.action = action;
-		if (action !== "run") throw unknownActionError("commands", action, ["run",],);
-		validateSupportedCommandFlags("commands", "run", flags,);
-		const selectors = commandRegistrySelectors(flags,);
-		const outputPath = flags["output"];
-		if (selectors.length === 0 && typeof outputPath !== "string") {
-			return { action, result: contract.commandActionSummary(), exitCode: 0, };
-		}
-		const registry: CommandRegistry = selectors.length === 0 ? contract.buildCommandRegistry() : {};
-		for (const selector of selectors) {
-			const selectorParts = selector.split(".",);
-			if (selectorParts.some((part,) => part.length === 0)) {
-				throw new UsageError(
-					`Invalid --fields selector: ${selector}. Expected RESOURCE or RESOURCE.ACTION[.FIELD...].`,
-					"usage_error",
-					contract.COMMANDS_USAGE,
-					{ selector, },
-				);
-			}
-			const [selectedResource, selectedAction,] = selectorParts;
-			const resourceActions = cachedCommandRegistry(selectedResource,);
-			if (!resourceActions) throw unknownResourceError(selectedResource,);
-			registry[selectedResource] = resourceActions;
-			if (selectedAction && !resourceActions[selectedAction]) {
-				throw unknownActionError(
-					selectedResource,
-					selectedAction,
-					Object.keys(resourceActions,),
-				);
-			}
-		}
-		const selectedRegistry = selectors.length === 0
-			? registry
-			: projectResultFields(
-				registry,
-				selectors,
-				() => Object.keys(contract.commandActionSummary(),).sort(),
-			);
-		if (typeof outputPath === "string") {
-			const exported = selectedRegistry;
-			await fs.writeFile(outputPath, `${JSON.stringify(exported,)}\n`, "utf-8",);
-			return { action, result: { path: outputPath, }, exitCode: 0, };
-		}
-		return {
-			action,
-			result: selectedRegistry,
-			exitCode: 0,
-		};
-	}
-	if (resource === "version") {
-		await loadCommandRuntime();
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("version", action, ["run",],);
-		}
-		currentCommandContext.action = action ?? "run";
-		validateSupportedCommandFlags("version", "run", flags,);
-		return { action: "run", result: cliVersionResult(), exitCode: 0, };
-	}
-	if (resource === "cleanup") {
-		await loadCommandRuntime();
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("cleanup", action, ["run",],);
-		}
-		currentCommandContext.action = action ?? "run";
-		validateSupportedCommandFlags("cleanup", "run", flags,);
-		if (flags["apply"] === true && executionMode(flags,).dryRun) {
-			throw new UsageError("--dry-run and --apply are mutually exclusive.", "usage_error",);
-		}
-		if (executionMode(flags,).plan) {
-			return { action: "run", result: cleanupPlan(flags,), exitCode: 0, };
-		}
-		const { result, exitCode, } = await runCleanup(flags,);
-		return { action: "run", result, exitCode, };
-	}
-	if (resource === "fixtures") {
-		await loadCommandRuntime();
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("fixtures", action, ["run",],);
-		}
-		currentCommandContext.action = action ?? "run";
-		validateSupportedCommandFlags("fixtures", "run", flags,);
-		const { runFixtures, } = await import("./cli/doctor.js");
-		return { action: "run", result: await runFixtures(flags,), exitCode: 0, };
-	}
-	if (resource === "batch") {
-		await loadCommandRuntime();
-		if (action !== undefined && action !== "run") {
-			throw unknownActionError("batch", action, ["run",],);
-		}
-		currentCommandContext.action = action ?? "run";
-		validateSupportedCommandFlags("batch", "run", flags,);
-		if (executionMode(flags,).plan) {
-			return { action: "run", result: batchPlan(flags,), exitCode: 0, };
-		}
-		const { result, exitCode, } = await runBatch(flags,);
-		return { action: "run", result, exitCode, };
-	}
-	return undefined;
+	return selectedRegistry;
 }
 
 /**
@@ -1735,6 +1600,11 @@ function errorExitCode(err: unknown,): number {
 	if (
 		err instanceof ClientValidationError
 		&& (err.code === "ambiguous_outcome" || err.code === "internal_error")
+	) return 2;
+	// A permission/environment refusal is not a usage error (exit 1 is usage only).
+	if (
+		(err instanceof UsageError || err instanceof ClientValidationError)
+		&& err.code === "target_absence_unverifiable"
 	) return 2;
 	if (err instanceof UsageError || err instanceof ClientValidationError) return 1;
 	if (isAmbiguousMutationFailure(err, rawCommandContext(),)) return 2;
