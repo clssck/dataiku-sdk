@@ -1,3 +1,4 @@
+import { assertDatasetTypeCreatable, } from "../../resources/dataset-create.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { isRecord, } from "../../utils/records.js";
 import { compareStrings, stableHash, } from "../../utils/stable-hash.js";
@@ -408,6 +409,7 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 					`--name and --type are required. Usage: ${commandUsage("dataset", "create",)}`,
 				);
 			}
+			assertDatasetTypeCreatable(dsType,);
 			if (!connection && dsType.toLowerCase() !== "uploadedfiles") {
 				throw new UsageError("--connection is required unless --type is UploadedFiles.",);
 			}

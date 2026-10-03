@@ -1,7 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { APP_MANIFEST_CONCURRENCY_CONTROL, } from "../resources/applications.js";
-import { buildDatasetCreateBody, } from "../resources/dataset-create.js";
+import {
+	assertDatasetTypeCreatable,
+	buildDatasetCreateBody,
+} from "../resources/dataset-create.js";
 import { validatePluginDestinationPath, validatePluginPath, } from "../resources/plugins.js";
 import {
 	encodeLibraryPath,
@@ -694,6 +697,7 @@ export function commandPlanShape(
 			const name = requiredPlanFlag(flags, "name", entry.usage,);
 			const connection = flags["connection"] as string | undefined;
 			const dsType = requiredPlanFlag(flags, "type", entry.usage,);
+			assertDatasetTypeCreatable(dsType,);
 			if (!connection && dsType.toLowerCase() !== "uploadedfiles") {
 				throw new UsageError("--connection is required unless --type is UploadedFiles.",);
 			}
