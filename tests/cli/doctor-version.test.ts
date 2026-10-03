@@ -89,9 +89,13 @@ describe("DataikuClient.getWithMetadata", () => {
 /*  Doctor environment: documented header provenance                   */
 /* ------------------------------------------------------------------ */
 
-async function runDoctorCapabilities(headers: Record<string, string> | undefined,): Promise<{
+async function runDoctorCapabilities(
+	headers: Record<string, string> | undefined,
+	authInfoAnswered = true,
+): Promise<{
 	requestedUrls: string[];
 	environment: Record<string, unknown> | undefined;
+	result: Record<string, unknown>;
 }> {
 	const requestedUrls: string[] = [];
 	let parsed: Record<string, unknown> = {};
@@ -114,6 +118,18 @@ async function runDoctorCapabilities(headers: Record<string, string> | undefined
 			res.end("[]",);
 			return;
 		}
+		if (url.pathname === "/public/api/auth/info" && authInfoAnswered) {
+			res.end(JSON.stringify({
+				authSource: "PERSONAL_API_KEY",
+				via: [],
+				authIdentifier: "user@example.com",
+				groups: ["full_designers",],
+				userProfile: "FULL_DESIGNER",
+				associatedDSSUser: "user@example.com",
+				userForImpersonation: "user@example.com",
+			},),);
+			return;
+		}
 		if (url.pathname === "/public/api/connections/get-names/") {
 			res.end("[]",);
 			return;
@@ -122,7 +138,8 @@ async function runDoctorCapabilities(headers: Record<string, string> | undefined
 		res.end(`unexpected request ${url.pathname}`,);
 	}, async (url,) => {
 		// Without a project key the doctor request surface stays minimal:
-		// projects (connectivity) and connections (canMutateConnection probe).
+		// projects (connectivity), auth/info (identity), and connections
+		// (canMutateConnection probe).
 		const env = cliEnv(url,);
 		delete env.DATAIKU_PROJECT_KEY;
 		const { stdout, stderr, } = await dss(["doctor", "--capabilities", "--fast",], { env, },);
@@ -132,12 +149,13 @@ async function runDoctorCapabilities(headers: Record<string, string> | undefined
 	return {
 		requestedUrls,
 		environment: parsed.environment as Record<string, unknown> | undefined,
+		result: parsed,
 	};
 }
 
 describe("doctor environment version provenance", () => {
 	it("populates environment from documented headers on the project-list call", async () => {
-		const { requestedUrls, environment, } = await runDoctorCapabilities({
+		const { requestedUrls, environment, result, } = await runDoctorCapabilities({
 			"DSS-Version": "12.4.3",
 			"DSS-API-Version": "14.7.3",
 			Date: DATE_HEADER,
@@ -147,8 +165,22 @@ describe("doctor environment version provenance", () => {
 		expect(environment?.instanceTime,).toBe(DATE_HEADER,);
 		expect(requestedUrls,).toEqual([
 			"/public/api/projects/",
+			"/public/api/auth/info",
 			"/public/api/connections/get-names/",
 		],);
+		// The identity the key acts as, without impersonation/association details.
+		expect(result.identity,).toEqual({
+			authSource: "PERSONAL_API_KEY",
+			authIdentifier: "user@example.com",
+			groups: ["full_designers",],
+			userProfile: "FULL_DESIGNER",
+		},);
+	});
+
+	it("stays green without identity when DSS does not answer /auth/info", async () => {
+		const { result, } = await runDoctorCapabilities(undefined, false,);
+		expect(result.ok,).toBe(true,);
+		expect(result,).not.toHaveProperty("identity",);
 	});
 
 	it("reads the documented headers case-insensitively", async () => {

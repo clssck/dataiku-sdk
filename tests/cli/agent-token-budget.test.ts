@@ -63,10 +63,10 @@ function expectWithinBudget(name: string, text: string, budget: TokenBudget,): n
 describe("agent-facing token budgets", () => {
 	it("bounds every on-demand skill reference", () => {
 		// Measured after discovery routing and App sharing guidance updates; retain 5% headroom.
-		// coding, troubleshooting: raised for the visual recipe payload, output schema, and
-		// Inline dataset guidance.
+		// authentication, coding, troubleshooting: raised for the subprocess CA / connection
+		// identity, visual recipe payload, output schema, and Inline dataset guidance.
 		const baselines = {
-			authentication: 461,
+			authentication: 504,
 			discovery: 596,
 			mutations: 602,
 			"app-releases": 872,

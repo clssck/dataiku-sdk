@@ -251,6 +251,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"execute-import",
 		"get",
 		"infer",
+		"info",
 		"list",
 		"prepare-import",
 		"schemas",

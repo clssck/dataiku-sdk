@@ -1,3 +1,4 @@
+import { DataikuError, } from "../../errors.js";
 import { sanitizeErrorSecrets, sanitizeSecrets, } from "../../utils/secret-sanitize.js";
 import { requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
@@ -28,6 +29,7 @@ const SENSITIVE_CONNECTION_KEYS: Record<string, true> = {
 	refreshtoken: true,
 	secret: true,
 	secretkey: true,
+	sessiontoken: true,
 	sharesecret: true,
 	token: true,
 };
@@ -115,12 +117,34 @@ export const connectionCommands: Record<string, CommandMeta> = withUsage("connec
 		handler: async (c, a,) => {
 			const usage = commandUsage("connection", "get",);
 			requireArgs(a, 1, usage,);
-			const details = await c.connections.adminGet(requireConnectionName(a[0], usage,),);
-			return sanitizeConnectionSecrets(details,);
+			const name = requireConnectionName(a[0], usage,);
+			try {
+				const details = await c.connections.adminGet(name,);
+				return sanitizeConnectionSecrets(details,);
+			} catch (error) {
+				if (error instanceof DataikuError && error.status === 403) {
+					// The admin endpoint refuses non-admin keys for every connection,
+					// including ones they can query; status, code, and exit stay as is.
+					error.retryHint =
+						"connection get reads the admin definition. For a connection this key can use, run `dss connection info NAME`; `dss doctor` shows which identity the key acts as.";
+				}
+				throw error;
+			}
 		},
 		description:
 			"Get a connection by name (admin). Credential-bearing params (e.g. params.password) are redacted in output.",
 		examples: ["dss connection get postgres",],
+	},
+	info: {
+		handler: async (c, a,) => {
+			const usage = commandUsage("connection", "info",);
+			requireArgs(a, 1, usage,);
+			const details = await c.connections.info(requireConnectionName(a[0], usage,),);
+			return sanitizeConnectionSecrets(details,);
+		},
+		description:
+			"Read a connection's usage view (no admin privilege required): type, params, and credentials mode for every connection the key can query, where `connection get` (admin) answers 403. Credential-bearing params (e.g. params.password) are redacted in output.",
+		examples: ["dss connection info postgres",],
 	},
 	create: {
 		handler: async (c, _a, f,) => {

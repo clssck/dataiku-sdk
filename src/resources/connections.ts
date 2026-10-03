@@ -260,6 +260,24 @@ export class ConnectionsResource extends BaseResource {
 	}
 
 	/**
+	 * Reads one connection's usage view (no admin privilege required): the
+	 * non-admin Python-client route `GET /connections/{name}/info`
+	 * (`DSSConnection.get_info()`). Works for every connection the key can
+	 * query, where the admin definition GET answers 403 for non-admin keys.
+	 * Returns `{type, params, credentialsMode, ...}` per the server payload;
+	 * CLI output layers redact credential-bearing params.
+	 */
+	async info(connectionName: string,): Promise<Record<string, unknown>> {
+		const enc = requireNonEmpty(connectionName, "connectionName",).trim();
+		const raw = await this.client.get<unknown>(
+			`/public/api/connections/${encodeURIComponent(enc,)}/info`,
+		);
+		return raw !== undefined && raw !== null && typeof raw === "object" && !Array.isArray(raw,)
+			? raw as Record<string, unknown>
+			: {};
+	}
+
+	/**
 	 * Creates a connection (Admin required). Body is the Connection definition
 	 * (`{name, type, params, ...}`); params are connection-type specific per
 	 * the docs. DSS answers 200 with an empty body.

@@ -678,6 +678,7 @@ export const LIVE_COVERAGE_CATALOGUE: Record<
 			"execute-import",
 			"get",
 			"infer",
+			"info",
 			"list",
 			"prepare-import",
 			"schemas",

@@ -93,10 +93,24 @@ export interface DoctorResult {
 		tlsVerify: "strict" | "disabled";
 		caCert: "default" | "custom";
 	};
+	identity?: DoctorIdentity;
 	permissions?: DoctorPermissions;
 	permissionDetails?: Partial<Record<DoctorPermissionKey, Record<string, unknown>>>;
 	fixtures?: DoctorFixtures;
 	environment?: DoctorEnvironment;
+}
+
+/**
+ * The identity a DSS API key acts as, from `GET /public/api/auth/info`
+ * (no admin privilege required). Explains unexplained 403s: a personal key
+ * acts as its owner, a global key shows up as an `api:<id>` identity.
+ * Carries no secret material.
+ */
+export interface DoctorIdentity {
+	authSource?: string;
+	authIdentifier?: string;
+	groups?: string[];
+	userProfile?: string;
 }
 
 export function errorDetails(error: unknown,): Record<string, unknown> {
@@ -146,6 +160,36 @@ export function doctorEnvironment(
 			bundles: integrationFlag("RUN_DATAIKU_INTEGRATION_BUNDLES",),
 			apiServices: integrationFlag("RUN_DATAIKU_INTEGRATION_API_SERVICES",),
 		},
+	};
+}
+
+/**
+ * Identity fields this doctor version reports, read from the documented
+ * `GET /public/api/auth/info` payload. Everything is optional: the field set
+ * varies across DSS versions and absent fields stay absent.
+ */
+function doctorIdentityFromAuthInfo(raw: unknown,): DoctorIdentity | undefined {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw,)) return undefined;
+	const record = raw as Record<string, unknown>;
+	const groups = Array.isArray(record["groups"],)
+		? (record["groups"] as unknown[]).filter((g,): g is string => typeof g === "string")
+		: undefined;
+	const authSource = typeof record["authSource"] === "string" ? record["authSource"] : undefined;
+	const authIdentifier = typeof record["authIdentifier"] === "string"
+		? record["authIdentifier"]
+		: undefined;
+	const userProfile = typeof record["userProfile"] === "string" ? record["userProfile"] : undefined;
+	if (
+		authSource === undefined && authIdentifier === undefined && userProfile === undefined
+		&& (groups === undefined || groups.length === 0)
+	) {
+		return undefined;
+	}
+	return {
+		...(authSource !== undefined ? { authSource, } : {}),
+		...(authIdentifier !== undefined ? { authIdentifier, } : {}),
+		...(groups !== undefined && groups.length > 0 ? { groups, } : {}),
+		...(userProfile !== undefined ? { userProfile, } : {}),
 	};
 }
 
@@ -468,6 +512,7 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 
 	let accessibleProjects: unknown[] | undefined;
 	let environmentVersion: DoctorVersionInfo | undefined;
+	let identity: DoctorIdentity | undefined;
 
 	if (credentialsOk) {
 		const requestTimeoutMs = num(flags["request-timeout"], "--request-timeout",);
@@ -526,6 +571,16 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 			},);
 		}
 
+		// Which principal the key acts as (personal vs global key, groups) explains
+		// 403s on objects the user's UI profile can use. Diagnostic only: an
+		// unanswered /auth/info (older DSS) never fails doctor.
+		if (accessibleProjects) {
+			identity = await client.get<unknown>("/public/api/auth/info",).then(
+				doctorIdentityFromAuthInfo,
+				(): undefined => undefined,
+			);
+		}
+
 		if (projectKey) {
 			try {
 				const project = await client.projects.get(projectKey,);
@@ -549,7 +604,12 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 		}
 	}
 
-	const result: DoctorResult = { ok: checks.every((check,) => check.ok), checks, context, };
+	const result: DoctorResult = {
+		ok: checks.every((check,) => check.ok),
+		checks,
+		context,
+		...(identity ? { identity, } : {}),
+	};
 	if (flags["capabilities"] === true && credentialsOk) {
 		const requestTimeoutMs = num(flags["request-timeout"], "--request-timeout",);
 		const retryMaxAttempts = num(flags["retries"], "--retries",) ?? 1;

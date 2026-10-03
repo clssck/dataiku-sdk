@@ -147,7 +147,7 @@ export function unexpectedResponseError(detail: string, status = 200,): DataikuE
 export const SQL_QUERY_FAILED_MARKER = "SQL query failed in DSS";
 
 const TLS_CERTIFICATE_HINT =
-	"TLS certificate verification failed. Trust the DSS/corporate CA with --ca-cert PATH or NODE_EXTRA_CA_CERTS; use --insecure only for temporary troubleshooting.";
+	"TLS certificate verification failed. Trust the DSS/corporate CA with --ca-cert PATH or NODE_EXTRA_CA_CERTS, or save it for every process and directory with `dss auth login --ca-cert PATH` (a project .env applies only when dss runs in that directory); use --insecure only for temporary troubleshooting.";
 const BUSINESS_APPS_API_UNAVAILABLE_HINT =
 	"Business Apps API is not available on this DSS instance. Use classic app commands or check DSS version/feature availability.";
 const MAX_ERROR_SUMMARY_LENGTH = 200;

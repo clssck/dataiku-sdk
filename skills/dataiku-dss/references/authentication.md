@@ -36,4 +36,6 @@ dss auth login
 ```
 `auth login` lists projects before saving: the key needs project-list permission. Returns `{"saved":true,"path":"..."}`. Storage: `credentials.json` in `DSS_CONFIG_DIR`, else `XDG_CONFIG_HOME/dataiku`, Windows `APPDATA/dataiku`, or `~/.config/dataiku`.
 
-TLS: `--insecure` disables verification; `--ca-cert PATH` adds a PEM CA bundle. Environment equivalents: `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`.
+TLS: `--insecure` disables verification; `--ca-cert PATH` adds a PEM CA bundle. Environment equivalents: `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`. A subprocess sees only its own env and cwd `.env`; `dss auth login --ca-cert PATH` saves the CA for all processes.
+
+Connection `403` the UI allows: check the key's identity (`dss doctor`: `authSource`, login, groups). `connection get` needs admin; `connection info NAME` covers usable connections.

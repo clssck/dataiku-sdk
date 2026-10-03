@@ -2316,6 +2316,14 @@
 				"arg": "name"
 			}
 		],
+		"connection.info": [
+			"dss",
+			"connection",
+			"info",
+			{
+				"arg": "name"
+			}
+		],
 		"connection.infer": [
 			"dss",
 			"connection",

@@ -9,6 +9,7 @@ import { commands, } from "../../src/cli/commands/index.js";
 import { sanitizeUserSecrets, } from "../../src/cli/commands/user.js";
 import { buildMutationPlan, } from "../../src/cli/plans.js";
 import { DataikuClient, } from "../../src/client.js";
+import { DataikuError, } from "../../src/errors.js";
 
 const USER = commands["user"]!;
 const GROUP = commands["group"]!;
@@ -47,6 +48,7 @@ describe("CLI user/group/connection actions", () => {
 		for (
 			const action of [
 				"get",
+				"info",
 				"create",
 				"update",
 				"delete",
@@ -270,6 +272,54 @@ describe("CLI user/group/connection actions", () => {
 			expect(json,).not.toContain(leak,);
 		}
 		expect(out.params.ordinary,).toBe("keep me",);
+	});
+
+	it("connection info reads the non-admin usage view; connection get 403 points at it", async () => {
+		const requests: string[] = [];
+		const server = createServer((req: IncomingMessage, res: ServerResponse,) => {
+			requests.push(`${String(req.method,)} ${String(req.url,)}`,);
+			res.setHeader("Content-Type", "application/json",);
+			if (req.url === "/public/api/connections/s3%20main/info") {
+				res.end(JSON.stringify({
+					type: "EC2",
+					params: { chbucket: "bucket", },
+					resolvedAWSCredential: {
+						accessKey: "AK-LEAK",
+						secretKey: "SK-LEAK",
+						sessionToken: "ST-LEAK",
+					},
+					credentialsMode: "STS_ASSUME_ROLE",
+				},),);
+				return;
+			}
+			res.statusCode = 403;
+			res.end(JSON.stringify({ message: "Action forbidden, you are not admin", },),);
+		},);
+		await new Promise<void>((resolve,) => server.listen(0, "127.0.0.1", () => resolve(),));
+		const { port, } = server.address() as AddressInfo;
+		const c = new DataikuClient({ url: `http://127.0.0.1:${String(port,)}`, apiKey: "k", },);
+		try {
+			const info = await CONNECTION["info"]!.handler(c, ["s3 main",], {},) as Record<string, unknown>;
+			expect(info,).toMatchObject({ type: "EC2", params: { chbucket: "bucket", }, },);
+			const json = JSON.stringify(info,);
+			for (const leak of ["AK-LEAK", "SK-LEAK", "ST-LEAK",]) expect(json,).not.toContain(leak,);
+
+			const failure = await Promise.resolve(CONNECTION["get"]!.handler(c, ["s3 main",], {},),).then(
+				() => undefined,
+				(error: unknown,) => error,
+			);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect(failure,).toMatchObject({
+				status: 403,
+				retryHint: expect.stringContaining("dss connection info",),
+			},);
+			expect(requests,).toEqual([
+				"GET /public/api/connections/s3%20main/info",
+				"GET /public/api/admin/connections/s3%20main",
+			],);
+		} finally {
+			await new Promise<void>((resolve,) => server.close(() => resolve()));
+		}
 	});
 
 	it("redacts user secrets arrays and scrubs array entries from errors", () => {
