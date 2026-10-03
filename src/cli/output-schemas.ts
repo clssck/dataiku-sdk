@@ -12,6 +12,7 @@
  *
  * Imported by the generator and the discovery parity test only.
  */
+import { compactListOutputSchemas, } from "./list-shapes.js";
 
 const PROJECT_LIBRARY_ITEM_OUTPUT_SCHEMA: Record<string, unknown> = {
 	type: "object",
@@ -68,33 +69,26 @@ export function typeBoxCommandOutputSchemas(): Record<string, Record<string, unk
 	const {
 		CodeEnvDetailsSchema,
 		CodeEnvLogSummaryArraySchema,
-		CodeEnvSummaryArraySchema,
 		CodeEnvUsageArraySchema,
 		CodeEnvVersionForProjectSchema,
 		DatasetDetailsSchema,
 		DatasetSchemaSchema,
-		DatasetSummaryArraySchema,
 		FlowZoneArraySchema,
 		FlowZoneSchema,
-		JobSummaryArraySchema,
 		JobWaitResultSchema,
 		JupyterNotebookContentSchema,
 		JupyterNotebookSummaryArraySchema,
 		NotebookSessionArraySchema,
 		ProjectDetailsSchema,
 		ProjectMetadataSchema,
-		ProjectSummaryArraySchema,
-		RecipeSummaryArraySchema,
 		ScenarioDetailsSchema,
 		ScenarioStatusSchema,
-		ScenarioSummaryArraySchema,
 		SqlNotebookContentSchema,
 		SqlNotebookHistorySchema,
 		SqlNotebookSummaryArraySchema,
 		SqlQueryResponseSchema,
 	} = require("../schemas.js",) as typeof import("../schemas.js");
 	return commandOutputSchemas = {
-		"code-env.list": CodeEnvSummaryArraySchema,
 		"code-env.get": CodeEnvDetailsSchema,
 		"code-env.list-logs": CodeEnvLogSummaryArraySchema,
 		"code-env.get-log": {
@@ -226,17 +220,12 @@ export function typeBoxCommandOutputSchemas(): Record<string, Record<string, unk
 				maxLines: { type: "integer", minimum: 0, },
 			},
 		},
-		"project.list": ProjectSummaryArraySchema,
 		"project.get": ProjectDetailsSchema,
 		"project.metadata": ProjectMetadataSchema,
-		"dataset.list": DatasetSummaryArraySchema,
 		"dataset.get": DatasetDetailsSchema,
 		"dataset.schema": DatasetSchemaSchema,
-		"recipe.list": RecipeSummaryArraySchema,
-		"job.list": JobSummaryArraySchema,
 		"job.wait": JobWaitResultSchema,
 		"job.monitor": JobWaitResultSchema,
-		"scenario.list": ScenarioSummaryArraySchema,
 		"scenario.get": ScenarioDetailsSchema,
 		"scenario.status": ScenarioStatusSchema,
 		"flow-zone.list": FlowZoneArraySchema,
@@ -259,5 +248,7 @@ export function typeBoxCommandOutputSchemas(): Record<string, Record<string, unk
 				},
 			],
 		},
+		// `*.list` defaults to compact items; `--full` returns the DSS objects.
+		...compactListOutputSchemas(),
 	};
 }

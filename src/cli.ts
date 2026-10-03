@@ -3,7 +3,7 @@
 import * as fs from "node:fs/promises";
 import { homedir, } from "node:os";
 import { resolve, } from "node:path";
-import { num, unknownJsonInput, } from "./cli/coerce.js";
+import { num, seenJsonInputCredentials, unknownJsonInput, } from "./cli/coerce.js";
 import { commands, } from "./cli/commands/index.js";
 import type { CommandRegistryEntry, } from "./cli/contract.js";
 import { ambientProjectKey, loadEnvFile, } from "./cli/env.js";
@@ -12,13 +12,14 @@ import {
 	FLAG_ALIASES,
 	isNegativeNumberToken,
 	parseArgs,
-	SHORT_FLAGS,
-	VALUE_FLAGS,
+	rawPositionals,
 } from "./cli/flags.js";
 import { cleanupLedgerEntry, } from "./cli/helpers/cleanup.js";
+import { shapeListResult, } from "./cli/list-output.js";
 import {
 	commandFailureExitCode,
 	CommandResultFailure,
+	enqueueCliWarning,
 	flushCliWarnings,
 	isFailedWaitResult,
 	planResult,
@@ -31,7 +32,7 @@ import {
 	resolveCredentials,
 	resolveLoginCredentials,
 } from "./cli/runtime.js";
-import { commandUsage, } from "./cli/syntax.js";
+import { commandSyntaxTree, commandUsage, } from "./cli/syntax.js";
 import {
 	COMMANDS_RUN_HINT,
 	inferRequiresProject,
@@ -40,6 +41,7 @@ import {
 	requireArgs,
 	RESOURCE_NAMES,
 	unknownActionError,
+	unknownFlagError,
 	unknownResourceError,
 	UsageError,
 } from "./cli/usage.js";
@@ -47,10 +49,11 @@ import { cliVersionResult, } from "./cli/version.js";
 import type { DataikuClient, } from "./client.js";
 import { getCredentialsPath, } from "./config.js";
 import {
-	canonicalStatusText,
 	ClientValidationError,
 	DataikuError,
 	dataikuErrorCode,
+	FORBIDDEN_HINT,
+	NOT_FOUND_HINT,
 	type StableErrorCode,
 } from "./errors.js";
 import {
@@ -391,10 +394,6 @@ function supportedCommandFlags(entry: CommandRegistryEntry,): Record<string, tru
 	return supported;
 }
 
-function scopedCommandDiscoveryHint(resource: string, action: string,): string {
-	return `Use \`dss commands run --fields ${resource}.${action}\` to list the flags this command supports.`;
-}
-
 /**
  * Resolve the registry field selectors for `commands run --fields`. Omitting the flag
  * selects the action summary; `--output` exports the full registry, but an explicitly supplied value carrying no selector is a
@@ -427,13 +426,7 @@ function validateSupportedCommandFlags(
 	if (!entry) return;
 	const supported = supportedCommandFlags(entry,);
 	for (const flagName of Object.keys(flags,)) {
-		if (supported[flagName] !== true) {
-			throw new UsageError(
-				`Unknown flag --${flagName} for ${resource} ${action}`,
-				"unknown_flag",
-				scopedCommandDiscoveryHint(resource, action,),
-			);
-		}
+		if (supported[flagName] !== true) throw unknownFlagError(`--${flagName}`, resource, action,);
 	}
 	if (executionMode(flags,).dryRun && !entry.dryRun) {
 		throw new UsageError(
@@ -475,12 +468,11 @@ function validateRequiredCommandInputs(
 	flags: Record<string, string | boolean>,
 	entry: CommandRegistryEntry,
 ): void {
-	const argCount = entry.positionalArguments.filter((positional,) => positional.required).length;
 	const allowEmptyFlags: Record<string, true> = {};
 	for (const flag of entry.flags) {
 		if (flag.allowEmptyValue === true) allowEmptyFlags[flag.name] = true;
 	}
-	if (args.length < argCount) requireArgs(args, argCount, entry.usage,);
+	requireEntryPositionals(entry, args,);
 	for (const flagName of entry.requiredFlags) {
 		if (!flagIsProvided(flags, flagName, allowEmptyFlags[flagName] === true,)) {
 			throw new UsageError(
@@ -517,6 +509,11 @@ function validateRegistryCommandInputs(
 	if (!entry) return;
 	validateSupportedCommandFlags(resource, action, flags,);
 	validateRequiredCommandInputs(resource, action, args, flags, entry,);
+}
+
+function requireEntryPositionals(entry: CommandRegistryEntry, args: string[],): void {
+	const argCount = entry.positionalArguments.filter((positional,) => positional.required).length;
+	if (args.length < argCount) requireArgs(args, argCount, entry.usage,);
 }
 
 class BatchDryRunValidationComplete extends Error {
@@ -956,7 +953,29 @@ async function runMetaCommand(
 	}
 }
 
+const COMMAND_SEARCH_LIMIT = 5;
+
 async function commandsRunResult(flags: Record<string, string | boolean>,): Promise<unknown> {
+	const query = flags["contains"];
+	if (typeof query === "string") {
+		if (flags["fields"] !== undefined || flags["output"] !== undefined) {
+			throw new UsageError(
+				"--contains cannot be combined with --fields or --output.",
+				"usage_error",
+				contract.COMMANDS_USAGE,
+			);
+		}
+		const matches = contract.searchCommands(query,);
+		if (matches.length > COMMAND_SEARCH_LIMIT) {
+			enqueueCliWarning({
+				code: "results_truncated",
+				shown: COMMAND_SEARCH_LIMIT,
+				total: matches.length,
+				hint: "Add words to --contains to narrow the search.",
+			},);
+		}
+		return matches.slice(0, COMMAND_SEARCH_LIMIT,);
+	}
 	const selectors = commandRegistrySelectors(flags,);
 	const outputPath = flags["output"];
 	if (selectors.length === 0 && typeof outputPath !== "string") {
@@ -1292,6 +1311,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 					await preflightCleanupLedgerForFlags(client, stepFlags,);
 					const stepArgs = positional.slice(2,);
 					result = await meta.handler(client, stepArgs, stepFlags,);
+					if (action === "list") result = shapeListResult(resource, result, stepFlags,);
 					await recordCleanupLedgerEntry(
 						client,
 						resource,
@@ -1405,34 +1425,6 @@ function summarizeCleanupFailures(failures: Array<Record<string, unknown>>,): Fa
 	},),);
 }
 
-/**
- * Positional arguments scanned with the same flag grammar as `parseArgs`, so
- * error reporting can recover the invoked resource/action without depending
- * on the command registry being loaded.
- */
-function rawPositionals(argv: string[],): string[] {
-	const positionals: string[] = [];
-	for (let index = 0; index < argv.length; index++) {
-		const arg = argv[index];
-		if (arg === "--") {
-			positionals.push(...argv.slice(index + 1,),);
-			break;
-		}
-		if (arg.startsWith("--",)) {
-			const name = arg.slice(2,).split("=",)[0] ?? "";
-			const canonical = FLAG_ALIASES[name] ?? name;
-			if (!arg.includes("=",) && VALUE_FLAGS.has(canonical,)) index++;
-			continue;
-		}
-		if (arg.length === 2 && arg[0] === "-" && arg[1] !== "-") {
-			const long = SHORT_FLAGS[arg[1]!];
-			if (long && VALUE_FLAGS.has(long,)) index++;
-			continue;
-		}
-		positionals.push(arg,);
-	}
-	return positionals;
-}
 function rawFlagValue(argv: string[], flagName: string,): string | undefined {
 	const longFlag = `--${flagName}`;
 	for (let index = 0; index < argv.length; index++) {
@@ -1513,58 +1505,79 @@ const DSS_DIAGNOSTIC_MESSAGE_FIELDS = ["detailedMessage", "message", "errorMessa
 const MAX_DSS_DIAGNOSTIC_LENGTH = 300;
 
 /**
- * Credential material for redacting a server echo in a receipt: resolved
- * through the same resolver every command uses (flag → env → saved), so the
- * report path never grows a second credential-precedence convention.
+ * Credential material for redacting a server echo in an error report: the API
+ * key, resolved through the same resolver every command uses (flag → env →
+ * saved), and credential values from the command's JSON input, which DSS
+ * error text can echo back.
  */
 function cliSecretValues(): string[] {
+	const inputCredentials = [...seenJsonInputCredentials(),];
 	try {
 		const { apiKey, } = resolveCredentials(parseArgs(process.argv.slice(2,),).flags,);
-		return apiKey ? [apiKey,] : [];
+		return apiKey ? [apiKey, ...inputCredentials,] : inputCredentials;
 	} catch {
-		return [];
+		return inputCredentials;
 	}
 }
 
 /**
- * Bounded, sanitized server diagnostic preserved on an ambiguous mutation
- * envelope (`dssMessage`/`dssErrorType`, next to the existing `dssCategory`):
- * the DSS error text and Java error type the response body carried, so the
- * receipt explains why the server failed while the mutation outcome stays
- * unknown. Whitespace collapses to one line, credential material is redacted,
- * long text truncates, and the raw body/stack never pass through.
+ * Envelope details a DSS failure carries beyond the top-level fields: safe
+ * response metadata (target, elapsed time), a truncated-body marker, and the
+ * retry record only when a retry or timeout actually happened.
+ */
+function dssErrorDetails(err: DataikuError,): Record<string, unknown> {
+	const { requestId: _requestId, request_id: _requestIdAlt, errorId: _errorId, ...metadata } =
+		safeResponseMetadata(err.body,);
+	return {
+		...metadata,
+		...(err.trustedTarget ? { target: err.trustedTarget, } : {}),
+		...(err.trustedElapsedMs !== undefined ? { elapsedMs: err.trustedElapsedMs, } : {}),
+		...(err.bodyTruncated ? { bodyTruncated: true, } : {}),
+		...(err.retry && (err.retry.retries > 0 || err.retry.timedOut) ? { retry: err.retry, } : {}),
+	};
+}
+
+/**
+ * Bounded, sanitized server diagnostic: the DSS error text (`dssMessage`) and
+ * Java error type (`dssErrorType`) the response body carried. Whitespace
+ * collapses to one line, credential material is redacted, long text
+ * truncates, and the raw body/stack never pass through.
  */
 function dssDiagnosticDetails(err: DataikuError,): Record<string, string> {
+	let secrets: string[] | undefined;
+	const diagnostic = (value: unknown,): string | undefined => {
+		if (typeof value !== "string" || value.trim() === "") return undefined;
+		secrets ??= cliSecretValues();
+		const sanitized = sanitizeSecrets(value.replace(/\s+/g, " ",).trim(), {
+			sensitiveKeys: {},
+			secrets,
+			redactUrlUserinfo: true,
+		},);
+		return sanitized.length > MAX_DSS_DIAGNOSTIC_LENGTH
+			? `${sanitized.slice(0, MAX_DSS_DIAGNOSTIC_LENGTH,)}…`
+			: sanitized;
+	};
+	let parsed: unknown;
 	try {
-		const parsed: unknown = JSON.parse(err.body,);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed,)) return {};
-		const record = parsed as Record<string, unknown>;
-		let secrets: string[] | undefined;
-		const diagnostic = (value: unknown,): string | undefined => {
-			if (typeof value !== "string" || value.trim() === "") return undefined;
-			secrets ??= cliSecretValues();
-			const sanitized = sanitizeSecrets(value.replace(/\s+/g, " ",).trim(), {
-				sensitiveKeys: {},
-				secrets,
-				redactUrlUserinfo: true,
-			},);
-			return sanitized.length > MAX_DSS_DIAGNOSTIC_LENGTH
-				? `${sanitized.slice(0, MAX_DSS_DIAGNOSTIC_LENGTH,)}…`
-				: sanitized;
-		};
-		let message: string | undefined;
-		for (const field of DSS_DIAGNOSTIC_MESSAGE_FIELDS) {
-			message = diagnostic(record[field],);
-			if (message !== undefined) break;
-		}
-		const errorType = diagnostic(record["errorType"],);
-		return {
-			...(message !== undefined ? { dssMessage: message, } : {}),
-			...(errorType !== undefined ? { dssErrorType: errorType, } : {}),
-		};
+		parsed = JSON.parse(err.body,);
 	} catch {
-		return {};
+		// Plain-text or HTML bodies, and the client's own transport detail for
+		// status 0, surface through the bounded summary.
+		const dssMessage = err.body.trim() === "" ? undefined : diagnostic(err.summary,);
+		return dssMessage === undefined ? {} : { dssMessage, };
 	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed,)) return {};
+	const record = parsed as Record<string, unknown>;
+	let message: string | undefined;
+	for (const field of DSS_DIAGNOSTIC_MESSAGE_FIELDS) {
+		message = diagnostic(record[field],);
+		if (message !== undefined) break;
+	}
+	const errorType = diagnostic(record["errorType"],);
+	return {
+		...(message !== undefined ? { dssMessage: message, } : {}),
+		...(errorType !== undefined ? { dssErrorType: errorType, } : {}),
+	};
 }
 
 function isAmbiguousMutationFailure(
@@ -1692,46 +1705,41 @@ function buildErrorReport(
 			status: err.status,
 			retryable: false,
 			requestId: err.requestId ?? requestIdFromBody(err.body,),
+			// The retry record proves how many times the mutation was dispatched.
 			details: {
-				dssCategory: err.category,
-				...(err.bodyTruncated ? { bodyTruncated: true, } : {}),
-				...dssDiagnosticDetails(err,),
-				statusText: canonicalStatusText(err.status,),
 				idempotency: "none",
+				...dssErrorDetails(err,),
+				...dssDiagnosticDetails(err,),
 				...(err.retry ? { retry: err.retry, } : {}),
 			},
 			...context,
 		};
 	}
 	if (err instanceof DataikuError) {
-		const errorMessage = err.category === "not_found" && context.resource
-			? `Not found: ${context.resource}${context.action ? ` ${context.action}` : ""}`
-				+ `${context.projectKey ? ` in project ${context.projectKey}` : ""}`
-				+ " — verify the object identifier and project key."
-				+ `\nHint: ${err.retryHint}`
-			: err.safeMessage;
-		const safeMetadata = safeResponseMetadata(err.body,);
-		if (err.trustedTarget) safeMetadata.target = err.trustedTarget;
-		if (err.trustedElapsedMs !== undefined) safeMetadata.elapsedMs = err.trustedElapsedMs;
-		const safeBody = JSON.stringify(safeMetadata,);
+		const { dssMessage, dssErrorType, } = dssDiagnosticDetails(err,);
+		const details = { ...dssErrorDetails(err,), ...(dssErrorType ? { dssErrorType, } : {}), };
+		// Generic hints name what the command targeted. DSS answers 403 (not
+		// 404) for a project that does not exist.
+		const inProject = context.projectKey ? ` in project ${context.projectKey}` : "";
+		const hint = err.retryHint === FORBIDDEN_HINT && context.projectKey
+			? `Check that project ${context.projectKey} exists (\`dss project list\`) and that this API key may access it.`
+			: err.retryHint === NOT_FOUND_HINT && context.resource
+			? `Check the ${context.resource} identifier${inProject}${
+				commandSyntaxTree(context.resource, "list",) ? ` (\`dss ${context.resource} list\`)` : ""
+			}.`
+			: err.retryHint;
 		return {
 			type: "error",
 			ok: false,
-			error: errorMessage,
+			error: dssMessage ? `${err.safeMessage}: ${dssMessage}` : err.safeMessage,
 			code: dataikuErrorCode(err.category,),
 			category: "dss",
 			exitCode,
-			hint: err.retryHint,
+			hint,
 			status: err.status,
 			retryable: err.retryable,
 			requestId: err.requestId ?? requestIdFromBody(err.body,),
-			details: {
-				dssCategory: err.category,
-				...(err.bodyTruncated ? { bodyTruncated: true, } : {}),
-				statusText: canonicalStatusText(err.status,),
-				body: safeBody,
-				...(err.retry ? { retry: err.retry, } : {}),
-			},
+			...(Object.keys(details,).length > 0 ? { details, } : {}),
 			...context,
 		};
 	}
@@ -1815,8 +1823,12 @@ async function main(): Promise<void> {
 	if (!actionMeta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
 	await loadCommandRuntime();
 	validateSupportedCommandFlags(resource, action, flags,);
-
 	const args = positional.slice(2,);
+	// A missing required positional is a usage error with the usage line, never
+	// a handler crash. Required flags stay with the handlers' own validation,
+	// which names the specific alternatives.
+	const registryEntry = cachedCommandRegistry(resource,)?.[action];
+	if (registryEntry) requireEntryPositionals(registryEntry, args,);
 	// Command-local validation runs for live, --plan, and --dry-run alike, so a
 	// bad identifier is a usage error before any plan is built or request made.
 	actionMeta.validate?.(args, flags,);
@@ -1876,7 +1888,8 @@ async function main(): Promise<void> {
 
 	assertCleanupLedgerSupported(resource, action, flags,);
 	await preflightCleanupLedgerForFlags(client, flags,);
-	const result = await actionMeta.handler(client, args, flags,);
+	const handled = await actionMeta.handler(client, args, flags,);
+	const result = action === "list" ? shapeListResult(resource, handled, flags,) : handled;
 	await recordCleanupLedgerEntry(client, resource, action, args, flags, result, projectKey,);
 	const failureExitCode = commandFailureExitCode(result,);
 	if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);

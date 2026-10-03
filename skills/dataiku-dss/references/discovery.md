@@ -8,11 +8,13 @@
 - Exits: 0 success, 1 usage/configuration, 2 DSS/internal/permission-or-environment, 3 transient/retryable DSS error, 4 failed long-running result/assertion.
 - Recipe payload stdout: JSON string. With `--output PATH`: exact bytes to file, JSON string equal to `PATH` on stdout.
 - General `--fields a,b,c`: object projection, element-wise for object arrays. Dotted paths traverse nested objects; missing fields become `null`; strings/scalars pass through.
+- `*.list`: compact items (ids, kind, next-step fields such as recipe `inputs`/`outputs`); `--full`/`--fields` use DSS objects. `--contains TEXT` filters ids; `--limit N` caps (`list_truncated` warning).
 
 ## Discovery
 
 ```text
 dss commands run
+dss commands run --contains "propagate schema"
 dss agent contract --fields commands.actions.dataset
 dss commands run --fields dataset.create
 dss commands run --fields dataset.preview.usage,dataset.preview.description,dataset.preview.flags,dataset.preview.examples
@@ -21,10 +23,6 @@ dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,com
 dss agent contract --fields commands.actions
 ```
 
-`commands run` defaults to a resource→action-name summary (~1.6k tokens), never full entries. For a known resource, project `commands.actions.RESOURCE` from `agent contract` (~64 tokens for dataset). Bootstrap once with the six-field projection above (~250 tokens); fetch `schemas` or `commands` only as needed.
+`commands run`: resource→action summary (~1.6k tokens). Unknown name: `--contains TEXT` gives the top 5 actions with usage. Known resource: `agent contract --fields commands.actions.RESOURCE`. Bootstrap once with the six-field projection (~250 tokens). Global flags (`--fields`, `--verbose`, connection/TLS) appear once in `commands.globalFlags`, not per entry.
 
-Look up syntax before invoking. `--fields RESOURCE` selects every full entry (potentially large); `RESOURCE.ACTION` one complete entry; append `.FIELD` for nested metadata. Reads: prefer `usage,description,flags,examples`. Writes: fetch the full entry directly once, not compact-then-full. It includes flags, positionals, side effects, auth, output, idempotency, dry-run, examples, payload schemas, unsafe outputs, cleanup, and exits.
-
-Comma-separate selectors to batch lookups. Keys echo selectors: `--fields dataset.create` → `{"dataset.create":{...}}`. Empty `--fields` fails usage validation, never dumps everything. Unknown resources/actions exit 1 with compact JSON errors listing valid options.
-
-Full registry: `commands run --output PATH` only. With `--fields`, export that subset instead. Files contain compact JSON; stdout is `{"path":"PATH"}`, never registry content.
+Look up syntax before invoking: `RESOURCE.ACTION` is one entry, `.FIELD` nests, commas batch, keys echo selectors. Reads: `usage,description,flags,examples`. Writes: the full entry once (flags, side effects, idempotency, dry-run, payload schemas, cleanup, exits). Unknown flags, resources, and actions exit 1 with the usage line or valid options. Full registry: `commands run --output PATH` only; stdout is `{"path":"PATH"}`.

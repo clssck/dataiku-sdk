@@ -27,4 +27,4 @@ Dispatch/runtime failure: one compact stdout error:
 
 `doctor`/`batch`/`cleanup` command failures return direct stdout result objects; check nonzero exit before interpreting. Recover from structured `code`, `category`, `exitCode`, `retryable`, `status`, `details`, never message scraping.
 
-`details.body` is sanitized metadata, **not the DSS response body**: at most `requestId`/`request_id`/`errorId`/`elapsedMs` plus locally trusted target/timing. `details.statusText` derives from numeric status, not remote reason phrases. Use top-level `code`, `category`, `status`, `retryable`, `requestId`, `hint`, and `details.dssCategory`; never assume server-body fields.
+DSS failures: `error` is `STATUS Text: DSS message` (credentials redacted, bounded); `hint` names the next check (resource, project). `details` appears only with content: `elapsedMs`/`target`, `dssErrorType`, `bodyTruncated`, and `retry` when a retry or timeout happened. Refused connections, unknown hosts, bad URLs, and untrusted certificates fail at once as `validation_failed` (exit 2); `transient` (exit 3) means automatic retries already ran.

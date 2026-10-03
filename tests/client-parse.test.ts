@@ -71,6 +71,22 @@ async function withEnv(
 	}
 }
 
+describe("DataikuClient transport retries", () => {
+	it("fails a refused connection at once instead of backing off", async () => {
+		// A port that was just released: nothing listens, so every attempt is refused.
+		let closedUrl = "";
+		await withServer(() => {}, async (url,) => {
+			closedUrl = url;
+		},);
+		const refused = new DataikuClient({ url: closedUrl, apiKey: "test", },);
+		const startedAt = Date.now();
+		const error = await refused.projects.list().catch((caught: unknown,) => caught);
+		expect(Date.now() - startedAt,).toBeLessThan(1_000,);
+		expect(error,).toMatchObject({ status: 0, category: "validation", retryable: false, },);
+		expect(error,).toMatchObject({ retry: { attempts: 1, retries: 0, }, },);
+	});
+});
+
 describe("DataikuClient.parse()", () => {
 	it("returns valid object unchanged", () => {
 		const input = { projectKey: "X", name: "Y", };

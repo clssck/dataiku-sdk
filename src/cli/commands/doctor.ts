@@ -7,7 +7,8 @@ export const doctorCommands: Record<string, CommandMeta> = withUsage("doctor", {
 			const { runDoctor, } = await import("../doctor.js");
 			return (await runDoctor(f,)).result;
 		},
-		description: "Run JSON diagnostics for DSS credentials, connectivity, and project access.",
+		description:
+			"Run JSON diagnostics for DSS credentials, connectivity, and project access, and report the identity (whoami: user, groups, auth source) the API key acts as.",
 		examples: ["dss doctor", "dss doctor --project-key MYPROJ", "dss doctor --capabilities --fast",],
 	},
 },);

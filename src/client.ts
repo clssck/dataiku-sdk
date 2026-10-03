@@ -219,6 +219,20 @@ function isTransientError(status: number, body: string,): boolean {
 	return classifyDataikuError(status, body,).category === "transient";
 }
 
+/**
+ * Transport failure text that keeps the system error code: Bun puts it on the
+ * error (`ConnectionRefused`, `ENOTFOUND`), Node's fetch on `cause`.
+ */
+function transportErrorDetail(error: unknown,): string {
+	if (!(error instanceof Error)) return "Unknown transport error";
+	const cause = error.cause instanceof Error ? error.cause : undefined;
+	const codeOf = (value: Error | undefined,): string | undefined =>
+		value && "code" in value && typeof value.code === "string" ? value.code : undefined;
+	const code = codeOf(error,) ?? codeOf(cause,);
+	const message = cause?.message ?? error.message;
+	return code && !message.includes(code,) ? `${code}: ${message}` : message;
+}
+
 function shouldRetryMethod(method: string,): boolean {
 	return method.toUpperCase() === "GET";
 }
@@ -1642,7 +1656,13 @@ export class DataikuClient {
 					}
 					timedOut = true;
 				}
-				const canRetry = retryEnabled && attempt < maxAttempts;
+				const detail = timedOut
+					? `Request timed out after ${attemptTimeoutMs}ms`
+					: transportErrorDetail(error,);
+				// The classifier that labels the final error also decides the retry:
+				// a refused connection, unknown host, bad URL, or untrusted certificate
+				// fails the same way on every attempt.
+				const canRetry = retryEnabled && attempt < maxAttempts && isTransientError(0, detail,);
 				if (canRetry) {
 					const delayMs = computeBackoffDelayMs(attempt,);
 					if (deadlineAt === undefined || Date.now() + delayMs <= deadlineAt) {
@@ -1658,11 +1678,6 @@ export class DataikuClient {
 						buildRetryMetadata(method, retryEnabled, maxAttempts, attempt, delaysMs, true,),
 					);
 				}
-				const detail = timedOut
-					? `Request timed out after ${attemptTimeoutMs}ms`
-					: error instanceof Error
-					? error.message
-					: "Unknown transport error";
 				this.logTrace({
 					phase: "error",
 					method,

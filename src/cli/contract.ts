@@ -113,8 +113,7 @@ export interface CommandRequiredInputGroup {
 }
 
 export interface CommandStructuredExample {
-	shell: string;
-	argv?: string[];
+	argv: string[];
 	payload?: unknown;
 }
 
@@ -139,7 +138,6 @@ export interface CommandRegistryEntry {
 	examples?: string[];
 	structuredExamples: CommandStructuredExample[];
 	flags: CommandFlagMetadata[];
-	positionals: string[];
 	positionalArguments: CommandPositionalMetadata[];
 	sideEffect: CommandSideEffect;
 	requiresAuth: boolean;
@@ -322,11 +320,15 @@ const AUTHENTICATED_AGENT_FLAGS = [
 	"insecure",
 	"ca-cert",
 ];
+const GLOBAL_FLAG_NAMES: Record<string, true> = Object.fromEntries(
+	[...GLOBAL_AGENT_FLAGS, ...AUTHENTICATED_AGENT_FLAGS,].map((flag,) => [flag, true,]),
+);
 export const COMMANDS_USAGE = commandUsage("commands", "run",);
 const COMMANDS_DESCRIPTION =
-	"Print a compact resource/action summary by default; use --fields for scoped command metadata or --output PATH to export the full registry without sending it through stdout.";
+	"Print a compact resource/action summary by default; --contains TEXT finds commands by concept (top 5 of id/usage/description matches), --fields gives scoped command metadata, and --output PATH exports the full registry without sending it through stdout.";
 const COMMANDS_EXAMPLES = [
 	"dss commands run",
+	'dss commands run --contains "propagate schema"',
 	"dss commands run --fields dataset",
 	"dss commands run --fields dataset.create",
 	"dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples",
@@ -517,19 +519,21 @@ function canonicalizeArgv(argv: string[],): string[] {
 	return canonical;
 }
 
+/** Machine forms of `examples`: canonical argv arrays, plus the example payload for --data examples. */
 function structuredExamples(
 	examples: string[] | undefined,
 	examplePayload: unknown,
 ): CommandStructuredExample[] {
-	return (examples ?? []).map((shell,) => {
+	return (examples ?? []).flatMap((shell,) => {
 		const argv = exampleArgv(shell,);
-		return {
-			shell,
-			...(argv ? { argv, } : {}),
-			...(examplePayload !== undefined && shell.includes("--data",)
-				? { payload: examplePayload, }
-				: {}),
-		};
+		return argv
+			? [{
+				argv,
+				...(examplePayload !== undefined && shell.includes("--data",)
+					? { payload: examplePayload, }
+					: {}),
+			},]
+			: [];
 	},);
 }
 
@@ -1252,12 +1256,20 @@ export function buildRegistryEntry(
 		};
 	},);
 	const positionalArguments = syntax.positionalArguments;
-	const positionals = positionalArguments.map((positional,) => positional.name);
+	// Implicit global flags are listed once in the agent contract
+	// (`commands.globalFlags`); entries keep the flags their usage names. The
+	// argv schema still accepts both.
+	const implicitGlobalFlags = new Set(
+		flags.filter((name,) => GLOBAL_FLAG_NAMES[name] === true && !usageFlags.includes(name,)),
+	);
+	const commandFlagMetadata = flagMetadata.filter((flag,) => !implicitGlobalFlags.has(flag.name,));
 	const inputGroups = requiredInputGroups(resource, action,);
 	const outputShape = inferOutputShape(resource, action,);
 	const producesLocalFile = syntax.producesLocalFile;
 	const uniqueRequiredFlags = uniqueStrings(requiredFlags,);
-	const uniqueOptionalFlags = uniqueStrings(optionalFlags,);
+	const uniqueOptionalFlags = uniqueStrings(optionalFlags,).filter((flag,) =>
+		!implicitGlobalFlags.has(flag,)
+	);
 	const unsafe = unsafeOutputs(resource, action, producesLocalFile,);
 	let schemas: CommandAgentSchemas | undefined;
 	return {
@@ -1267,8 +1279,7 @@ export function buildRegistryEntry(
 		description: meta.description,
 		examples: meta.examples,
 		structuredExamples: structuredExamples(meta.examples, examplePayload,),
-		flags: flagMetadata,
-		positionals,
+		flags: commandFlagMetadata,
 		positionalArguments,
 		sideEffect,
 		requiresAuth,
@@ -1426,6 +1437,64 @@ export function buildCommandRegistry(
 	return registry;
 }
 
+/** Query words that match nearly every description and carry no intent. */
+const SEARCH_STOPWORDS: Record<string, true> = {
+	the: true,
+	and: true,
+	for: true,
+	how: true,
+	what: true,
+	why: true,
+	did: true,
+	does: true,
+	who: true,
+	can: true,
+	with: true,
+	from: true,
+	into: true,
+	this: true,
+	that: true,
+	dss: true,
+};
+
+export interface CommandSearchMatch {
+	id: string;
+	usage: string;
+	description: string;
+}
+
+/**
+ * Find actions by concept: every query word of three or more letters is
+ * matched (case-insensitively, trailing plural `s` ignored) against the action
+ * id, usage, and description. When some actions match every word, only those
+ * are returned; otherwise actions matching more words rank first. Matches in
+ * the id break ties. Reads command definitions only, never builds entries.
+ */
+export function searchCommands(query: string,): CommandSearchMatch[] {
+	const words = [...new Set(query.toLowerCase().split(/[^a-z0-9]+/,),),]
+		.filter((word,) => word.length >= 3 && SEARCH_STOPWORDS[word] !== true)
+		.map((word,) => word.length > 4 && word.endsWith("s",) ? word.slice(0, -1,) : word);
+	if (words.length === 0) return [];
+	const scored: Array<CommandSearchMatch & { matched: number; inId: number; }> = [];
+	for (const [resource, actions,] of Object.entries(commandDefinitions(),)) {
+		for (const [action, meta,] of Object.entries(actions,)) {
+			const id = `${resource}.${action}`;
+			const usage = meta.usage ?? commandUsage(resource, action,);
+			const description = meta.description ?? "";
+			const text = `${id} ${usage} ${description}`.toLowerCase();
+			const matched = words.filter((word,) => text.includes(word,));
+			if (matched.length === 0) continue;
+			const inId = matched.filter((word,) => id.includes(word,)).length;
+			scored.push({ id, usage, description, matched: matched.length, inId, },);
+		}
+	}
+	const best = Math.max(0, ...scored.map((match,) => match.matched),);
+	return scored
+		.filter((match,) => best < words.length || match.matched === words.length)
+		.sort((a, b,) => b.matched - a.matched || b.inId - a.inId || a.id.localeCompare(b.id,))
+		.map(({ id, usage, description, },) => ({ id, usage, description, }));
+}
+
 function commandFlagJsonSchema(): Record<string, unknown> {
 	return {
 		type: "object",
@@ -1450,7 +1519,6 @@ function commandRegistryEntryJsonSchema(): Record<string, unknown> {
 			"action",
 			"usage",
 			"flags",
-			"positionals",
 			"positionalArguments",
 			"sideEffect",
 			"requiresAuth",
@@ -1468,9 +1536,16 @@ function commandRegistryEntryJsonSchema(): Record<string, unknown> {
 			usage: { type: "string", },
 			description: { type: "string", },
 			examples: { type: "array", items: { type: "string", }, },
-			structuredExamples: { type: "array", items: { type: "object", additionalProperties: true, }, },
+			structuredExamples: {
+				type: "array",
+				items: {
+					type: "object",
+					required: ["argv",],
+					additionalProperties: false,
+					properties: { argv: { type: "array", items: { type: "string", }, }, payload: {}, },
+				},
+			},
 			flags: { type: "array", items: commandFlagJsonSchema(), },
-			positionals: { type: "array", items: { type: "string", }, },
 			positionalArguments: {
 				type: "array",
 				items: {
@@ -1615,12 +1690,19 @@ export function buildAgentContract(): Record<string, unknown> {
 				fullRegistryExportCommand: "dss commands run --output PATH",
 				scopedDiscoveryCommand: "dss commands run --fields RESOURCE[.ACTION[.FIELD...]]",
 				actionIndexCommand: "dss agent contract --fields commands.actions",
+				searchCommand: "dss commands run --contains TEXT",
 				scopedDiscoveryExamples: [
 					"dss commands run --fields dataset",
 					"dss commands run --fields dataset.create",
 				],
 				scopedDiscoveryHint:
-					"Default: resource/action summary. --fields RESOURCE: all resource entries; RESOURCE.ACTION: one entry keyed by that path; append .FIELD for nested metadata. Comma-separate paths. --output PATH exports the full registry.",
+					"Default: resource/action summary. --contains TEXT: top 5 actions by concept. --fields RESOURCE: all resource entries; RESOURCE.ACTION: one entry keyed by that path; append .FIELD for nested metadata. Comma-separate paths. --output PATH exports the full registry.",
+				// Accepted by every command and absent from per-entry `flags`; the
+				// connection flags matter only for commands that call DSS.
+				globalFlags: [...GLOBAL_AGENT_FLAGS, ...AUTHENTICATED_AGENT_FLAGS,].map((name,) => {
+					const hint = GLOBAL_FLAG_VALUE_HINTS[name];
+					return { name, kind: flagKind(name,), ...(hint ? { valueType: hint.valueType, } : {}), };
+				},),
 				actions: commandActionSummary(),
 			};
 		},
@@ -1641,6 +1723,8 @@ export function buildAgentContract(): Record<string, unknown> {
 				failure: "structured-error-object",
 				failureResultDetailLimitBytes: 65_536,
 				fieldProjection: "Missing --fields paths: null on stdout; field_projection_missing on stderr.",
+				lists:
+					"*.list: compact items; --full/--fields use DSS objects; --contains/--limit filter (list_truncated warning).",
 				richFailureResults:
 					"doctor/batch/cleanup failures: own compact {ok:false,...} result on stdout and command exit code; no wrapper.",
 			},

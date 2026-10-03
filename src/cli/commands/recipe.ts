@@ -815,7 +815,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 				: result;
 		},
 		description:
-			"Write the output schemas DSS computes from a visual or SQL query recipe (the UI's Update schema; dataikuapi compute_schema_updates().apply()) to every output whose schema differs. --dry-run lists them under pending. Code recipes are rejected: their code sets the schema when it runs.",
+			"Propagate schema changes: write the output schemas DSS computes from a visual or SQL query recipe (the UI's Update schema; dataikuapi compute_schema_updates().apply()) to every output whose schema differs. --dry-run lists them under pending. Code recipes are rejected: their code sets the schema when it runs.",
 		examples: [
 			"dss recipe update-schema compute_orders_joined --dry-run",
 			"dss recipe update-schema compute_orders_joined",

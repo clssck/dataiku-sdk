@@ -152,13 +152,16 @@ describe("validateCredentials", () => {
 		);
 	});
 
-	it("returns valid: false on network error", async () => {
+	it("returns valid: false on a refused connection, without retrying it", async () => {
 		const result = await validateCredentials("http://127.0.0.1:1", "test-key",);
 		expect(result.valid,).toBe(false,);
 		expect(typeof result.error,).toBe("string",);
 		expect(result.dataikuError,).toBeInstanceOf(DataikuError,);
-		expect(result.dataikuError?.status,).toBe(0,);
-		expect(result.dataikuError?.category,).toBe("transient",);
+		expect(result.dataikuError,).toMatchObject({
+			status: 0,
+			category: "validation",
+			retryable: false,
+		},);
 	});
 
 	it("returns valid: false on server error", async () => {

@@ -148,6 +148,12 @@ export const SQL_QUERY_FAILED_MARKER = "SQL query failed in DSS";
 
 const TLS_CERTIFICATE_HINT =
 	"TLS certificate verification failed. Trust the DSS/corporate CA with --ca-cert PATH or NODE_EXTRA_CA_CERTS, or save it for every process and directory with `dss auth login --ca-cert PATH` (a project .env applies only when dss runs in that directory); use --insecure only for temporary troubleshooting.";
+/** Generic permission hint; the CLI names the project when the request was project-scoped. */
+export const FORBIDDEN_HINT =
+	"Check API key validity and project permissions for the requested action.";
+/** Generic 404 hint; the CLI names the resource and project when it knows them. */
+export const NOT_FOUND_HINT =
+	"Verify projectKey and object identifiers (dataset/recipe/scenario/folder IDs).";
 const BUSINESS_APPS_API_UNAVAILABLE_HINT =
 	"Business Apps API is not available on this DSS instance. Use classic app commands or check DSS version/feature availability.";
 const MAX_ERROR_SUMMARY_LENGTH = 200;
@@ -255,6 +261,18 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 				category: "validation",
 				retryable: false,
 				retryHint: TLS_CERTIFICATE_HINT,
+			};
+		}
+		// The same URL fails the same way on every attempt: nothing listens on
+		// the port, the host name does not resolve, or the URL is malformed.
+		if (
+			/\b(?:connectionrefused|econnrefused|enotfound|err_invalid_url|bad port)\b/.test(lowerBody,)
+		) {
+			return {
+				category: "validation",
+				retryable: false,
+				retryHint:
+					"DSS is not reachable at this URL. Check --url / DATAIKU_URL (scheme, host, port) and that DSS is running; do not retry unchanged.",
 			};
 		}
 
@@ -407,11 +425,7 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 			|| (lowerBody.includes("permission",)
 				&& (lowerBody.includes("cannot use",) || lowerBody.includes("not allowed",))));
 	if (isServerPermissionLike) {
-		return {
-			category: "forbidden",
-			retryable: false,
-			retryHint: "Check API key validity and project permissions for the requested action.",
-		};
+		return { category: "forbidden", retryable: false, retryHint: FORBIDDEN_HINT, };
 	}
 
 	if (status === 404) {
@@ -429,16 +443,12 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 			retryable: false,
 			retryHint: isHtmlGatewayResponse
 				? "Resource was not found (gateway returned HTML). Verify DSS URL, projectKey, and object identifiers."
-				: "Verify projectKey and object identifiers (dataset/recipe/scenario/folder IDs).",
+				: NOT_FOUND_HINT,
 		};
 	}
 
 	if (status === 401 || status === 403) {
-		return {
-			category: "forbidden",
-			retryable: false,
-			retryHint: "Check API key validity and project permissions for the requested action.",
-		};
+		return { category: "forbidden", retryable: false, retryHint: FORBIDDEN_HINT, };
 	}
 
 	if (status === 400 || status === 409 || status === 422) {
@@ -495,7 +505,7 @@ export class DataikuError extends Error {
 		requestId?: string,
 		trustedMetadata?: DataikuErrorTrustedMetadata,
 	) {
-		const details = DataikuError.buildDetails(status, body, retry,);
+		const details = DataikuError.buildDetails(status, body,);
 		super(details.message,);
 		this.name = "DataikuError";
 		this.category = details.category;
@@ -507,15 +517,14 @@ export class DataikuError extends Error {
 		this.trustedElapsedMs = trustedMetadata?.elapsedMs;
 		this.bodyTruncated = trustedMetadata?.bodyTruncated === true ? true : undefined;
 	}
+	/** Status line only: never echoes response body text. */
 	public get safeMessage(): string {
-		const retrySummary = DataikuError.formatRetryMetadata(this.retry,);
-		return [
-			`${this.status} ${canonicalStatusText(this.status,)}`,
-			`Error type: ${this.category}`,
-			`Retryable: ${this.retryable ? "yes" : "no"}`,
-			`Hint: ${this.retryHint}`,
-			...(retrySummary ? [retrySummary,] : []),
-		].join("\n",);
+		return `${this.status} ${canonicalStatusText(this.status,)}`;
+	}
+
+	/** The DSS message part of `message` (HTML summarized, server paths stripped, bounded). */
+	public get summary(): string {
+		return this.message.slice(this.safeMessage.length + 2,);
 	}
 
 	private static extractSummary(_status: number, body: string,): string {
@@ -529,37 +538,19 @@ export class DataikuError extends Error {
 		return summarizeErrorText(body,);
 	}
 
-	private static formatRetryMetadata(retry?: DataikuRetryMetadata,): string | undefined {
-		if (!retry) return undefined;
-		const shownDelays = retry.delaysMs.slice(0, 10,);
-		const delaysSuffix = retry.delaysMs.length > shownDelays.length ? ", …" : "";
-		const delaysPart = shownDelays.length > 0 ? `[${shownDelays.join(", ",)}${delaysSuffix}]` : "[]";
-		return [
-			`Retry attempts: ${retry.attempts}/${retry.maxAttempts}`,
-			`Retry policy: ${retry.enabled ? "enabled" : "disabled"} for ${retry.method}`,
-			`Retries performed: ${retry.retries}`,
-			`Backoff delays (ms): ${delaysPart}`,
-			`Timed out: ${retry.timedOut ? "yes" : "no"}`,
-		].join(" | ",);
-	}
-
+	/**
+	 * One line: status plus the DSS message. Category, retryability, hint, and
+	 * retry metadata are structured fields on the error, not message prose.
+	 */
 	private static buildDetails(
 		status: number,
 		body: string,
-		retry?: DataikuRetryMetadata,
 	): { message: string; } & DataikuErrorTaxonomy {
-		const summary = DataikuError.extractSummary(status, body,);
-		const taxonomy = classifyDataikuError(status, body,);
-		const retrySummary = DataikuError.formatRetryMetadata(retry,);
 		return {
-			...taxonomy,
-			message: [
-				`${status} ${canonicalStatusText(status,)}: ${summary}`,
-				`Error type: ${taxonomy.category}`,
-				`Retryable: ${taxonomy.retryable ? "yes" : "no"}`,
-				`Hint: ${taxonomy.retryHint}`,
-				...(retrySummary ? [retrySummary,] : []),
-			].join("\n",),
+			...classifyDataikuError(status, body,),
+			message: `${status} ${canonicalStatusText(status,)}: ${
+				DataikuError.extractSummary(status, body,).replace(/\s+/g, " ",).trim()
+			}`,
 		};
 	}
 }

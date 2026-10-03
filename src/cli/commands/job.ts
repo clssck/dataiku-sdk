@@ -296,7 +296,7 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			return outputPath;
 		},
 		description:
-			"Get public API job log output. Use --errors-only (or --log-filter errors) to surface just error/traceback lines, and --output PATH to write the log to a file (stdout returns the path). --log-id is accepted for UI parity but DSS API-key auth cannot select browser-only cat-activity-log files.",
+			"Get public API job log output; find why a job failed. Use --errors-only (or --log-filter errors) to surface just error/traceback lines, and --output PATH to write the log to a file (stdout returns the path). --log-id is accepted for UI parity but DSS API-key auth cannot select browser-only cat-activity-log files.",
 		examples: [
 			"dss job log JOB_ID",
 			"dss job log JOB_ID --activity main --max-log-lines 200",

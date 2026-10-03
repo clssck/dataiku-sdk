@@ -106,6 +106,35 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -484,6 +513,35 @@
 			"dss",
 			"api-service",
 			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
 			{
 				"optional": [
 					[
@@ -871,7 +929,36 @@
 		"app.list": [
 			"dss",
 			"app",
-			"list"
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			}
 		],
 		"app.manifest": [
 			"dss",
@@ -1527,7 +1614,36 @@
 		"business-app.list": [
 			"dss",
 			"business-app",
-			"list"
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			}
 		],
 		"business-app.save-settings": [
 			"dss",
@@ -1810,6 +1926,35 @@
 								"PYTHON",
 								"R"
 							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
 						}
 					]
 				]
@@ -2185,6 +2330,16 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "fields",
 							"value": "PATHS"
 						}
@@ -2365,6 +2520,35 @@
 						}
 					]
 				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			}
 		],
 		"connection.prepare-import": [
@@ -2520,6 +2704,35 @@
 			"dss",
 			"continuous-activity",
 			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
 			{
 				"optional": [
 					[
@@ -2806,6 +3019,35 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -2977,7 +3219,36 @@
 		"data-collection.list": [
 			"dss",
 			"data-collection",
-			"list"
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			}
 		],
 		"data-collection.list-objects": [
 			"dss",
@@ -4041,6 +4312,35 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -4446,6 +4746,35 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -4735,6 +5064,35 @@
 						{
 							"flag": "object",
 							"value": "TYPE:ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
 						}
 					]
 				]
@@ -5209,6 +5567,35 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -5431,7 +5818,36 @@
 		"group.list": [
 			"dss",
 			"group",
-			"list"
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			}
 		],
 		"group.update": [
 			"dss",
@@ -5637,6 +6053,35 @@
 			"dss",
 			"insight",
 			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
 			{
 				"optional": [
 					[
@@ -6145,6 +6590,15 @@
 						{
 							"flag": "limit",
 							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
 						}
 					]
 				]
@@ -6768,6 +7222,35 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -6827,6 +7310,35 @@
 			"dss",
 			"macro",
 			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
 			{
 				"optional": [
 					[
@@ -7097,7 +7609,36 @@
 		"meaning.list": [
 			"dss",
 			"meaning",
-			"list"
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			}
 		],
 		"meaning.update": [
 			"dss",
@@ -7642,6 +8183,35 @@
 			"dss",
 			"model-evaluation-store",
 			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
 			{
 				"optional": [
 					[
@@ -8650,7 +9220,36 @@
 		"plugin.list": [
 			"dss",
 			"plugin",
-			"list"
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			}
 		],
 		"plugin.move": [
 			"dss",
@@ -10266,6 +10865,35 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -10620,7 +11248,36 @@
 		"project.list": [
 			"dss",
 			"project",
-			"list"
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			}
 		],
 		"project.map": [
 			"dss",
@@ -11479,6 +12136,35 @@
 			"dss",
 			"recipe",
 			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
 			{
 				"optional": [
 					[
@@ -12471,6 +13157,35 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -12883,6 +13598,35 @@
 			"dss",
 			"scenario",
 			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
 			{
 				"optional": [
 					[
@@ -13690,6 +14434,35 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -13855,6 +14628,35 @@
 					[
 						{
 							"flag": "connected"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
 						}
 					]
 				]
@@ -14116,6 +14918,35 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -14371,6 +15202,35 @@
 				"optional": [
 					[
 						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -14534,7 +15394,36 @@
 		"workspace.list": [
 			"dss",
 			"workspace",
-			"list"
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			}
 		],
 		"workspace.list-objects": [
 			"dss",

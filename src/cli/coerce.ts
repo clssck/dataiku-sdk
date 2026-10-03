@@ -1,5 +1,6 @@
 import { readFileSync, } from "node:fs";
 import type { JobBuildTargetType, JobLogFilter, } from "../resources/jobs.js";
+import { credentialValues, } from "../utils/secret-sanitize.js";
 import { UsageError, } from "./usage.js";
 
 function safeValuePreview(value: string,): string {
@@ -258,33 +259,37 @@ function readInputText(path: string, flag: string,): string {
 	}
 }
 
+/**
+ * Credential values seen in this process's JSON inputs. DSS error text can
+ * echo the request payload, so error reports redact these.
+ */
+const jsonInputCredentials: string[] = [];
+
+export function seenJsonInputCredentials(): readonly string[] {
+	return jsonInputCredentials;
+}
+
+function parseJsonSource(text: string, source: string, kind: "object" | "any",): unknown {
+	const value = kind === "object" ? parseJsonObject(text, source,) : parseJsonValue(text, source,);
+	jsonInputCredentials.push(...credentialValues(value,),);
+	return value;
+}
+
 function resolveJsonSourceText(
 	flags: Record<string, string | boolean>,
 	kind: "object" | "any",
 ): unknown {
 	const source = selectSingleSource(flags, JSON_SOURCE_FLAGS,);
 	if (source === undefined) return undefined;
-	if (source === "stdin") {
-		const jsonText = readStdinText();
-		return kind === "object"
-			? parseJsonObject(jsonText, "stdin",)
-			: parseJsonValue(jsonText, "stdin",);
-	}
+	if (source === "stdin") return parseJsonSource(readStdinText(), "stdin", kind,);
 	if (source === "data-file") {
 		const fileValue = flags["data-file"];
 		if (typeof fileValue === "string") {
-			const jsonText = readInputText(fileValue, "--data-file",);
-			return kind === "object"
-				? parseJsonObject(jsonText, fileValue,)
-				: parseJsonValue(jsonText, fileValue,);
+			return parseJsonSource(readInputText(fileValue, "--data-file",), fileValue, kind,);
 		}
 	}
 	const dataValue = flags["data"];
-	if (typeof dataValue === "string") {
-		return kind === "object"
-			? parseJsonObject(dataValue, "--data",)
-			: parseJsonValue(dataValue, "--data",);
-	}
+	if (typeof dataValue === "string") return parseJsonSource(dataValue, "--data", kind,);
 	throw new UsageError("JSON input source is present but has no value.", "invalid_flag_value",);
 }
 

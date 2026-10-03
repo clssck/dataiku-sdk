@@ -201,21 +201,29 @@ essentials: exactly one compact JSON value on stdout per command (void success i
 failures as one structured JSON error object on stdout with a nonzero exit code, stderr reserved
 for JSONL diagnostics only, and exit codes `0` success / `1` usage error / `2` DSS or internal
 error / `3` transient DSS error / `4` failed long-running result or assertion. `--retries N`
-controls idempotent GET retries only; `dss sql query --start-retries N` retries transient failures
+controls idempotent GET retries only, and only transient failures (408/425/429, 5xx without a known
+non-transient cause, connection resets, timeouts) are retried: a refused connection, unknown host,
+bad URL, or untrusted certificate fails at once. `dss sql query --start-retries N` retries transient failures
 while starting a query. For portable multi-step mutations, prefer `dss batch`; shell chaining and
 pipeline exit semantics differ across platforms.
+
+`*.list` commands print compact items (identifiers, kind, next-step fields) by default; `--full`
+returns the DSS objects, `--contains TEXT` filters on identifiers, and `--limit N` caps the count
+with a `list_truncated` warning.
 
 Discover the command surface with scoped calls:
 
 ```text
 dss commands run
+dss commands run --contains "propagate schema"
 dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples
 dss commands run --output commands.json
 dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility
 ```
 
-`dss commands run` prints the compact resource/action summary; registry entries never dump to stdout — they travel only via `--output PATH`. See the canonical skill for
-the full `--fields` projection rules and planning workflow.
+`dss commands run` prints the compact resource/action summary, and `--contains TEXT` finds the top 5
+actions for a concept; registry entries never dump to stdout — they travel only via `--output PATH`.
+See the canonical skill for the full `--fields` projection rules and planning workflow.
 
 ## Agent skill installation
 

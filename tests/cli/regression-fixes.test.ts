@@ -30,6 +30,36 @@ function cliEnvWithoutProject(url: string,) {
 }
 
 describe("CLI regression fixes", () => {
+	it(
+		"reports every missing required positional as a usage error, never a handler crash",
+		async () => {
+			// knowledge-bank search used to dereference its missing positional and exit internal_error.
+			const targets = Object.values(buildCommandRegistry(),).flatMap((actions,) =>
+				Object.values(actions,).filter((entry,) =>
+					entry.positionalArguments.some((positional,) => positional.required)
+				)
+			);
+			const env = { ...hermeticEnv, DATAIKU_URL: "http://127.0.0.1:9", DATAIKU_API_KEY: "x", };
+			const failures: string[] = [];
+			let next = 0;
+			await Promise.all(Array.from({ length: 8, }, async () => {
+				while (next < targets.length) {
+					const entry = targets[next++]!;
+					const failure = await dssFailure([entry.resource, entry.action,], { env, },);
+					const report: unknown = JSON.parse(failure.stdout,);
+					const code = report && typeof report === "object" && "code" in report
+						? report.code
+						: undefined;
+					if (code !== "missing_required_arg") {
+						failures.push(`${entry.resource}.${entry.action}: ${String(code,)}`,);
+					}
+				}
+			},),);
+			expect(failures,).toEqual([],);
+		},
+		60_000,
+	);
+
 	it("advertises project map as project-scoped with a project-key flag", () => {
 		const registry = buildCommandRegistry();
 		const map = registry.project?.map;
@@ -114,9 +144,11 @@ describe("CLI regression fixes", () => {
 				const failure = await dssFailure(argv, { env: cliEnv(url,), },);
 				expect(failure.code,).toBe(1,);
 				expect(failure.stderr,).toBe("",);
-				expect(failure.stdout,).toContain(
-					`Unknown flag --record-cleanup for project ${argv[1]}`,
-				);
+				expect(JSON.parse(failure.stdout,),).toMatchObject({
+					error: "Unknown flag: --record-cleanup",
+					resource: "project",
+					action: argv[1],
+				},);
 			}
 		},);
 		expect(requests,).toBe(0,);
@@ -599,7 +631,7 @@ describe("CLI regression fixes", () => {
 			resource: "project",
 			action: "list",
 		},);
-		expect(report.error,).toBe("Unknown flag --name for project list",);
+		expect(report.error,).toBe("Unknown flag: --name",);
 
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
@@ -618,9 +650,8 @@ describe("CLI regression fixes", () => {
 			expect(JSON.parse(success.stdout,),).toEqual([{ projectKey: "P1", name: "One", },],);
 		},);
 	});
-	it("does not expose arbitrary remote error response text", async () => {
-		const sentinels = [
-			"REMOTE_MESSAGE_SENTINEL",
+	it("shows only the sanitized DSS message from a remote error body", async () => {
+		const hidden = [
 			"REMOTE_API_KEY_SENTINEL",
 			"REMOTE_PASSWORD_SENTINEL",
 			"REMOTE_AUTHORIZATION_SENTINEL",
@@ -628,36 +659,29 @@ describe("CLI regression fixes", () => {
 			"REMOTE_TARGET_SENTINEL",
 			"REMOTE_STATUS_TEXT_SENTINEL",
 		];
+		const env = cliEnv("",);
+		const apiKey = String(env.DATAIKU_API_KEY,);
 		await withCliServer((req, res,) => {
 			expect(req.url,).toContain("/public/api/projects/",);
-			res.statusMessage = sentinels[6]!;
+			res.statusMessage = hidden[5]!;
 			sendJson(res, {
-				message: sentinels[0],
-				apiKey: sentinels[1],
+				// DSS messages can echo request material; the caller's key is redacted.
+				message: `REMOTE_MESSAGE ${apiKey}`,
+				apiKey: hidden[0],
 				nested: {
-					password: sentinels[2],
-					authorization: sentinels[3],
-					token: `Bearer ${sentinels[4]}`,
+					password: hidden[1],
+					authorization: hidden[2],
+					token: `Bearer ${hidden[3]}`,
 				},
 				requestId: "req-safe-123",
-				target: sentinels[5],
+				target: hidden[4],
 				elapsedMs: 37,
 			}, 400,);
 		}, async (url,) => {
 			const failure = await dssFailure(["project", "list",], { env: cliEnv(url,), },);
-			const combined = failure.stdout;
-			for (const sentinel of sentinels) expect(combined,).not.toContain(sentinel,);
-			const report = JSON.parse(failure.stdout,) as {
-				code?: string;
-				category?: string;
-				exitCode?: number;
-				requestId?: string;
-				status?: number;
-				retryable?: boolean;
-				hint?: string;
-				details?: { dssCategory?: string; statusText?: string; body?: string; };
-			};
-			expect(report,).toMatchObject({
+			for (const sentinel of [...hidden, apiKey,]) expect(failure.stdout,).not.toContain(sentinel,);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				error: expect.stringMatching(/^400 Bad Request: REMOTE_MESSAGE /,),
 				code: "validation_failed",
 				category: "dss",
 				exitCode: 2,
@@ -665,17 +689,8 @@ describe("CLI regression fixes", () => {
 				status: 400,
 				retryable: false,
 				hint: expect.any(String,),
-				details: {
-					dssCategory: "validation",
-					statusText: "Bad Request",
-					body: JSON.stringify({
-						requestId: "req-safe-123",
-						elapsedMs: 37,
-					},),
-				},
+				details: { elapsedMs: 37, },
 			},);
-			expect(report.details.body,).not.toContain("message",);
-			expect(report.details.body,).not.toContain("apiKey",);
 		},);
 	});
 
@@ -1138,7 +1153,7 @@ describe("CLI regression fixes", () => {
 			details: { urlHasEmbeddedUserinfo: true, },
 		},);
 	});
-	it("rewrites generic DSS 404 dataset failures with command context without exposing raw body", async () => {
+	it("shows the DSS 404 message and names the resource and project in the hint", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			if (req.method === "GET" && url.pathname.includes("/datasets/NOPE",)) {
@@ -1157,14 +1172,13 @@ describe("CLI regression fixes", () => {
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(2,);
 			expect(failure.stderr,).toBe("",);
-			const report = JSON.parse(failure.stdout,) as {
-				code?: string;
-				error?: string;
-				details?: { body?: string; };
-			};
-			expect(report.code,).toBe("not_found",);
-			expect(report.error,).toContain("Not found: dataset get in project TEST",);
-			expect(report.details?.body,).toBe("{}",);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(report,).toMatchObject({
+				code: "not_found",
+				error: "404 Not Found: Dataiku instance not found",
+				hint: "Check the dataset identifier in project TEST (`dss dataset list`).",
+			},);
+			expect(report,).not.toHaveProperty("details",);
 		},);
 	});
 	it("rejects conflicting JSON payload sources as a usage error on stdout", async () => {

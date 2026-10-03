@@ -465,7 +465,7 @@ describeProjectIntegration("Rigorous integration: read-only SDK/CLI parity", () 
 		expect(result.stderr, "timeout should keep stderr clean",).toBe("",);
 		expect(payload.code,).toBe("transient",);
 		expect(payload.retryable,).toBe(true,);
-		expect(String(payload.error ?? "",),).toContain("Retry attempts:",);
+		expect(payload.details,).toMatchObject({ retry: { timedOut: true, }, },);
 	}, 30_000,);
 },);
 

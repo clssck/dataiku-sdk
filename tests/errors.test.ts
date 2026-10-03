@@ -312,8 +312,7 @@ describe("classifyDataikuError", () => {
 			const err = new DataikuError(405, "Method Not Allowed", "method rejected",);
 			expect(err.category,).toBe("unexpected_response",);
 			expect(err.retryable,).toBe(false,);
-			expect(err.safeMessage,).toContain("Error type: unexpected_response",);
-			expect(err.safeMessage,).toContain("405 Method Not Allowed",);
+			expect(err.safeMessage,).toBe("405 Method Not Allowed",);
 		});
 
 		it("maps canonical status text for the newly covered 4xx codes", () => {
@@ -344,14 +343,11 @@ describe("DataikuError", () => {
 		expect(err,).toBeInstanceOf(Error,);
 	});
 
-	it("includes status, statusText, body summary, category, retryable, and hint in message", () => {
-		const err = new DataikuError(500, "Internal Server Error", "Something broke",);
-		expect(err.message,).toContain("500",);
-		expect(err.message,).toContain("Internal Server Error",);
-		expect(err.message,).toContain("Something broke",);
-		expect(err.message,).toContain("transient",);
-		expect(err.message,).toContain("Retryable: yes",);
-		expect(err.message,).toContain("Hint:",);
+	it("keeps the message to one line of status and DSS summary; taxonomy stays structured", () => {
+		const err = new DataikuError(500, "Internal Server Error", "Something\nbroke",);
+		expect(err.message,).toBe("500 Internal Server Error: Something broke",);
+		expect(err.summary,).toBe("Something broke",);
+		expect(err,).toMatchObject({ category: "transient", retryable: true, },);
 	});
 
 	it("extracts .message from JSON body as summary", () => {
@@ -367,9 +363,7 @@ describe("DataikuError", () => {
 			"REMOTE_STATUS_TEXT_SECRET",
 			JSON.stringify({ message: "REMOTE_SECRET", apiKey: "TOKEN_SECRET", },),
 		);
-		expect(err.safeMessage,).toContain("502 Bad Gateway",);
-		expect(err.safeMessage,).toContain("Error type: transient",);
-		expect(err.safeMessage,).toContain("Retryable: yes",);
+		expect(err.safeMessage,).toBe("502 Bad Gateway",);
 		expect(err.safeMessage,).not.toContain("REMOTE_SECRET",);
 		expect(err.safeMessage,).not.toContain("TOKEN_SECRET",);
 		expect(err.safeMessage,).not.toContain("REMOTE_STATUS_TEXT_SECRET",);
@@ -396,7 +390,7 @@ describe("DataikuError", () => {
 			"<script>hidden-script</script><style>hidden-style</style><p>  </p>"
 				+ "<p>first\rcontinued &amp; decoded</p><p>later-line</p>",
 		);
-		expect(error.message,).toContain("first\rcontinued & decoded",);
+		expect(error.message,).toContain("first continued & decoded",);
 		expect(error.message,).not.toContain("hidden-script",);
 		expect(error.message,).not.toContain("hidden-style",);
 		expect(error.message,).not.toContain("later-line",);
@@ -416,7 +410,7 @@ describe("DataikuError", () => {
 		expect(err.message,).toContain("(empty response body)",);
 	});
 
-	it("includes retry metadata in message when provided", () => {
+	it("keeps retry metadata structured, out of the message", () => {
 		const retry = {
 			method: "GET",
 			enabled: true,
@@ -428,15 +422,6 @@ describe("DataikuError", () => {
 		};
 		const err = new DataikuError(503, "Service Unavailable", "unavailable", retry,);
 		expect(err.retry,).toBe(retry,);
-		expect(err.message,).toContain("Retry attempts: 3/3",);
-		expect(err.message,).toContain("enabled for GET",);
-		expect(err.message,).toContain("Retries performed: 2",);
-		expect(err.message,).toContain("[100, 200]",);
-		expect(err.message,).toContain("Timed out: no",);
-	});
-
-	it("omits retry metadata line from message when not provided", () => {
-		const err = new DataikuError(500, "Error", "fail",);
-		expect(err.message,).not.toContain("Retry attempts:",);
+		expect(err.message,).toBe("503 Service Unavailable: unavailable",);
 	});
 });

@@ -26,18 +26,22 @@ const TOKEN_BUDGETS = {
 	// grew `commands.actions` from 3_015 to 3_410 o200k tokens. All prose
 	// sections are byte-identical to the pre-expansion contract; the delta is
 	// action-name arrays only. Budget raised accordingly, same ~6% margin.
-	agentContract: { baseline: 3_410, maxTokens: 3_600, },
+	// agentContractVersion 3 adds `commands.globalFlags` (listed once instead of in
+	// every entry), the --contains search command, and the list-shape note.
+	agentContract: { baseline: 3_586, maxTokens: 3_800, },
 	commandsRunDefault: { baseline: 1_577, maxTokens: 1_700, },
 	registryExportStdout: { baseline: 17, maxTokens: 40, },
-	datasetResource: { baseline: 18_210, maxTokens: 19_300, },
-	datasetCreate: { baseline: 1_035, maxTokens: 1_200, },
+	// Entries no longer repeat global flags or shell copies of examples (was 18_210 / 1_035).
+	datasetResource: { baseline: 14_570, maxTokens: 15_500, },
+	datasetCreate: { baseline: 878, maxTokens: 1_000, },
 	datasetCreateUsage: { baseline: 50, maxTokens: 70, },
 	datasetCreateDescription: { baseline: 11, maxTokens: 24, },
-	scopedBootstrap: { baseline: 245, maxTokens: 285, },
+	scopedBootstrap: { baseline: 278, maxTokens: 300, },
 	actionSummary: { baseline: 1_581, maxTokens: 1_700, },
 	fourFieldProjection: { baseline: 356, maxTokens: 390, },
 	fieldsUsageFailure: { baseline: 92, maxTokens: 110, },
-	unknownFlag: { baseline: 42, maxTokens: 60, },
+	// The usage line in the hint replaces a ~850-token `commands run --fields` round trip.
+	unknownFlag: { baseline: 71, maxTokens: 90, },
 	unknownResourceRecovery: { baseline: 204, maxTokens: 240, },
 	doctorFailure: { baseline: 105, maxTokens: 130, },
 	batchFailure: { baseline: 188, maxTokens: 220, },
@@ -64,15 +68,15 @@ describe("agent-facing token budgets", () => {
 	it("bounds every on-demand skill reference", () => {
 		// Measured after discovery routing and App sharing guidance updates; retain 5% headroom.
 		// authentication, coding, troubleshooting: raised for the subprocess CA / connection
-		// identity, visual recipe payload, output schema, and Inline dataset guidance.
+		// identity, visual recipe payload, output schema, Inline dataset, and error envelope guidance.
 		const baselines = {
 			authentication: 504,
-			discovery: 596,
+			discovery: 594,
 			mutations: 602,
 			"app-releases": 872,
 			"flow-maps": 159,
 			coding: 331,
-			troubleshooting: 977,
+			troubleshooting: 1_002,
 		};
 		for (const [name, baseline,] of Object.entries(baselines,)) {
 			const text = readFileSync(

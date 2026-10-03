@@ -1,5 +1,5 @@
 import type { StableErrorCode, } from "../errors.js";
-import { commandSyntaxTree, syntaxHasFlag, } from "./syntax.js";
+import { commandSyntaxTree, renderNodes, syntaxHasFlag, } from "./syntax.js";
 
 export const RESOURCE_NAMES = [
 	"agent",
@@ -157,6 +157,30 @@ export function unknownResourceError(resource: string,): UsageError {
 		"usage_error",
 		COMMANDS_RUN_HINT,
 		{ resource, validResources: RESOURCE_NAMES, },
+	);
+}
+
+/**
+ * Agents rarely mistype; they reuse plausible flags from other commands or
+ * CLIs. When the command is known, the hint is its usage line, which lists
+ * every flag it takes, so one error carries the fix without a discovery round
+ * trip. `--json` gets its own hint: stdout is always JSON.
+ */
+export function unknownFlagError(
+	flagLabel: string,
+	resource?: string,
+	action?: string,
+): UsageError {
+	const command = resource && action ? commandSyntaxTree(resource, action,) : undefined;
+	// The envelope already names resource and action; the message stays the flag.
+	const message = `Unknown flag: ${flagLabel}`;
+	if (flagLabel === "--json") {
+		return new UsageError(message, "unknown_flag", "Drop --json: stdout is always one JSON value.",);
+	}
+	return new UsageError(
+		message,
+		"unknown_flag",
+		command ? `Usage: ${renderNodes(command,)}` : undefined,
 	);
 }
 

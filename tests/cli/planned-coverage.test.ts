@@ -669,14 +669,10 @@ describe("CLI planned command coverage", () => {
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(3,);
 			expect(failure.stderr,).toBe("",);
-			const report = JSON.parse(failure.stdout,) as {
-				requestId?: string;
-				details: { body: string; };
-			};
-			const body = JSON.parse(report.details.body,) as { elapsedMs: number; target: string; };
-			expect(report.requestId,).toBe("req-123",);
-			expect(body.target,).toBe("folder:fld-123",);
-			expect(body.elapsedMs,).toEqual(expect.any(Number,),);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				requestId: "req-123",
+				details: { target: "folder:fld-123", elapsedMs: expect.any(Number,), },
+			},);
 		},);
 	});
 
@@ -699,13 +695,11 @@ describe("CLI planned command coverage", () => {
 			], { env: cliEnv(url,), },);
 			expect(failure.code,).toBe(3,);
 			expect(failure.stderr,).toBe("",);
-			const report = JSON.parse(failure.stdout,) as {
-				requestId?: string;
-				details: { body: string; };
-			};
-			const body = JSON.parse(report.details.body,) as { target: string; };
-			expect(report.requestId,).toBe("req-list",);
-			expect(body.target,).toBe("folder:Named folder",);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				requestId: "req-list",
+				error: "503 Service Unavailable: gateway timeout",
+				details: { target: "folder:Named folder", },
+			},);
 		},);
 	});
 

@@ -169,17 +169,14 @@ interface DashboardExportErrorEnvelope {
 	code?: unknown;
 	status?: unknown;
 	hint?: unknown;
-	details?: { dssCategory?: unknown; statusText?: unknown; body?: unknown; };
 }
 
 /**
  * Classify a dashboard-export CLI failure.
  *
- * The CLI error report redacts the gateway's HTML body (details.body becomes
- * "{}"), so the raw "Dataiku instance not found" phrase is not observable from
- * the case. The observed envelope for an unserved route is exactly:
- * code "not_found", status 404, hint "gateway returned HTML", details.body
- * "{}" and details.dssCategory "not_found".
+ * The observed envelope for an unserved route is: code "not_found", status
+ * 404, and hint "gateway returned HTML" (the gateway answered with an HTML
+ * page such as "Dataiku instance not found").
  *
  * Before declaring the endpoint unavailable, the same documented URL
  * (POST /dashboards/{id}/action/export) is re-verified READ-ONLY through the
@@ -202,9 +199,7 @@ async function classifyDashboardExportFailure(
 	const hint = typeof envelope.hint === "string" ? envelope.hint : "";
 	const isGatewayRouteMiss = envelope.code === "not_found"
 		&& status === 404
-		&& hint.includes("gateway returned HTML",)
-		&& envelope.details?.dssCategory === "not_found"
-		&& envelope.details?.body === "{}";
+		&& hint.includes("gateway returned HTML",);
 	if (!isGatewayRouteMiss) return error;
 
 	// Read-only corroboration: the dashboard definitely exists (GET passed just

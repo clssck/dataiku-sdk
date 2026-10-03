@@ -157,10 +157,18 @@ describe("agent contract accuracy", () => {
 			}
 		}
 
-		expect(registry.project?.list?.schemas.output,).toMatchObject({
-			type: "array",
-			items: { type: "object", required: ["projectKey", "name",], },
-		},);
+		// Lists advertise their compact default items, not the DSS objects.
+		const projectList = registry.project?.list?.schemas.output as {
+			type?: string;
+			items?: { additionalProperties?: boolean; properties?: Record<string, unknown>; };
+		};
+		expect(projectList.type,).toBe("array",);
+		expect(projectList.items?.additionalProperties,).toBe(false,);
+		expect(Object.keys(projectList.items?.properties ?? {},),).toEqual([
+			"projectKey",
+			"name",
+			"ownerLogin",
+		],);
 		expect(registry.dataset?.get?.schemas.output,).toMatchObject({
 			type: "object",
 			required: ["name",],
@@ -316,15 +324,33 @@ describe("agent contract accuracy", () => {
 		}
 	});
 
-	it("unknown-flag recovery points at scoped compact discovery", async () => {
+	it("unknown-flag recovery carries the command's usage line", async () => {
 		const failure = await dssFailure(["project", "list", "--name", "X",],);
 		expect(failure.code,).toBe(1,);
 		expect(failure.stderr,).toBe("",);
 		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
-			error: "Unknown flag --name for project list",
+			error: "Unknown flag: --name",
 			code: "unknown_flag",
-			hint: "Use `dss commands run --fields project.list` to list the flags this command supports.",
+			hint: "Usage: dss project list [--contains TEXT] [--limit N] [--full]",
+			resource: "project",
+			action: "list",
+		},);
+	});
+
+	it("finds commands by concept with --contains", async () => {
+		const { stdout, stderr, } = await dss(["commands", "run", "--contains", "propagate schema",],);
+		expect(stderr,).toBe("",);
+		const matches = JSON.parse(stdout,) as Array<{ id: string; usage: string; }>;
+		// Only actions matching every word are returned when any exist.
+		expect(matches.map((match,) => match.id),).toEqual(["recipe.update-schema",],);
+		expect(matches[0]!.usage,).toStartWith("dss recipe update-schema",);
+
+		const broad = await dss(["commands", "run", "--contains", "dataset",],);
+		expect((JSON.parse(broad.stdout,) as unknown[]).length,).toBe(5,);
+		expect(JSON.parse(broad.stderr,),).toMatchObject({
+			type: "warning",
+			warnings: [{ code: "results_truncated", shown: 5, },],
 		},);
 	});
 

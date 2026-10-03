@@ -220,8 +220,9 @@ describe("CLI execution behavior", () => {
 				resource: "scenario",
 				action: "update",
 			},);
-			expect(report.error,).toContain("400 Bad Request",);
-			expect(report.error,).toContain("Error type: validation",);
+			expect(report.error,).toBe(
+				"400 Bad Request: Scenario update did not persist requested fields after refetch: params.steps",
+			);
 		},);
 	});
 
@@ -357,8 +358,8 @@ describe("CLI execution behavior", () => {
 				resource: "sql",
 				action: "query",
 			},);
-			expect(report.error,).toContain("Not found: sql query",);
-			expect(report.error,).not.toContain("dataset lookup failed",);
+			// The DSS message says what failed; the hint says what to check.
+			expect(report.error,).toBe("404 Not Found: dataset lookup failed",);
 		},);
 	});
 
@@ -390,8 +391,7 @@ describe("CLI execution behavior", () => {
 				resource: "sql",
 				action: "query",
 			},);
-			expect(report.error,).toContain("403 Forbidden",);
-			expect(report.error,).not.toContain("dataset access denied",);
+			expect(report.error,).toBe("403 Forbidden: dataset access denied",);
 		},);
 	});
 
@@ -615,8 +615,6 @@ describe("CLI execution behavior", () => {
 				error: string;
 				retryable: boolean;
 				details?: {
-					dssCategory?: string;
-					statusText?: string;
 					idempotency?: string;
 					dssMessage?: string;
 					dssErrorType?: string;
@@ -628,13 +626,11 @@ describe("CLI execution behavior", () => {
 				retryable: false,
 				error: "The POST request failed after dispatch; the mutation outcome is unknown.",
 			},);
-			expect(report.details,).toMatchObject({
-				dssCategory: "transient",
-				statusText: "Internal Server Error",
+			expect(report.details,).toEqual({
 				idempotency: "none",
 				dssMessage: "Streaming is not available on this instance",
 				dssErrorType: "java.lang.IllegalStateException",
-				retry: { enabled: false, maxAttempts: 1, },
+				retry: expect.objectContaining({ enabled: false, maxAttempts: 1, },),
 			},);
 			expect(failure.stdout,).toContain("Streaming is not available on this instance",);
 		},);
@@ -722,7 +718,7 @@ describe("CLI execution behavior", () => {
 				expect(JSON.parse(failure.stdout,),).toMatchObject({
 					code: "ambiguous_outcome",
 					retryable: false,
-					details: { dssCategory: "validation", },
+					details: { dssMessage: expect.stringContaining(detail,), },
 				},);
 			},);
 		}
@@ -1590,7 +1586,7 @@ describe("CLI execution behavior", () => {
 			expect(hint,).toContain("Business Apps API is not available",);
 			expect(hint,).toContain("classic app commands",);
 			expect(hint,).not.toContain("projectKey and object identifiers",);
-			expect(String(report.error,),).toContain("Business Apps API is not available",);
+			expect(report.error,).toBe("404 Not Found: Not Found: /dip/publicapi/business-apps/",);
 		},);
 	});
 

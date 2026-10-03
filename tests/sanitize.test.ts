@@ -1,5 +1,17 @@
 import { describe, expect, it, } from "bun:test";
 import { sanitizeFileName, } from "../src/utils/sanitize.js";
+import { credentialValues, } from "../src/utils/secret-sanitize.js";
+
+describe("credentialValues", () => {
+	it("collects secrets but not credential settings", () => {
+		expect(credentialValues({
+			login: "u1",
+			password: "S3cret-p4ss!",
+			authRealm: { key: "realm-key-9f8e7d", },
+			params: { credentialsMode: "STS_ASSUME_ROLE", passwordType: "PLAIN", apiKey: "ak-123456", },
+		},),).toEqual(["S3cret-p4ss!", "realm-key-9f8e7d", "ak-123456",],);
+	});
+});
 
 describe("sanitizeFileName", () => {
 	const fallback = "unnamed";

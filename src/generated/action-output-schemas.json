@@ -124,21 +124,26 @@
 		"code-env.list": {
 			"type": "array",
 			"items": {
-				"additionalProperties": true,
 				"type": "object",
-				"required": [
-					"envName",
-					"envLang"
-				],
+				"additionalProperties": false,
 				"properties": {
 					"envName": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"envLang": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"deploymentMode": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					}
 				}
 			}
@@ -361,41 +366,32 @@
 		"dataset.list": {
 			"type": "array",
 			"items": {
-				"additionalProperties": true,
 				"type": "object",
-				"required": [
-					"name"
-				],
+				"additionalProperties": false,
 				"properties": {
 					"name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"type": {
-						"type": "string"
-					},
-					"shortDesc": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"managed": {
-						"type": "boolean"
+						"type": [
+							"boolean",
+							"null"
+						]
 					},
-					"params": {
-						"additionalProperties": true,
-						"type": "object",
-						"properties": {
-							"connection": {
-								"type": "string"
-							},
-							"uploadConnection": {
-								"type": "string"
-							},
-							"schema": {
-								"type": "string"
-							},
-							"catalog": {
-								"type": "string"
-							}
-						}
+					"connection": {
+						"type": [
+							"string",
+							"null"
+						]
 					}
 				}
 			}
@@ -730,44 +726,107 @@
 				}
 			}
 		},
+		"folder.list": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"properties": {
+					"id": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"name": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"type": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"connection": {
+						"type": [
+							"string",
+							"null"
+						]
+					}
+				}
+			}
+		},
+		"group.list": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"properties": {
+					"name": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"description": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"admin": {
+						"type": [
+							"boolean",
+							"null"
+						]
+					}
+				}
+			}
+		},
 		"job.list": {
 			"type": "array",
 			"items": {
-				"additionalProperties": true,
 				"type": "object",
+				"additionalProperties": false,
 				"properties": {
-					"def": {
-						"additionalProperties": true,
-						"type": "object",
-						"properties": {
-							"id": {
-								"type": "string"
-							},
-							"type": {
-								"type": "string"
-							}
-						}
+					"id": {
+						"type": [
+							"string",
+							"null"
+						]
 					},
-					"baseStatus": {
-						"additionalProperties": true,
-						"type": "object",
-						"properties": {
-							"def": {
-								"additionalProperties": true,
-								"type": "object",
-								"properties": {
-									"id": {
-										"type": "string"
-									},
-									"type": {
-										"type": "string"
-									}
-								}
-							},
-							"state": {
-								"type": "string"
-							}
-						}
+					"name": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"type": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"state": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"startTime": {
+						"type": [
+							"number",
+							"null"
+						]
+					},
+					"endTime": {
+						"type": [
+							"number",
+							"null"
+						]
 					}
 				}
 			}
@@ -905,6 +964,60 @@
 				},
 				"log": {
 					"type": "string"
+				}
+			}
+		},
+		"macro.list": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"properties": {
+					"runnableType": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"ownerPluginId": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"label": {
+						"type": [
+							"string",
+							"null"
+						]
+					}
+				}
+			}
+		},
+		"meaning.list": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"properties": {
+					"id": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"label": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"type": {
+						"type": [
+							"string",
+							"null"
+						]
+					}
 				}
 			}
 		},
@@ -1186,6 +1299,33 @@
 				}
 			}
 		},
+		"plugin.list": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"properties": {
+					"id": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"version": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"label": {
+						"type": [
+							"string",
+							"null"
+						]
+					}
+				}
+			}
+		},
 		"project-library.diff": {
 			"type": "object",
 			"additionalProperties": false,
@@ -1407,21 +1547,26 @@
 		"project.list": {
 			"type": "array",
 			"items": {
-				"additionalProperties": true,
 				"type": "object",
-				"required": [
-					"projectKey",
-					"name"
-				],
+				"additionalProperties": false,
 				"properties": {
 					"projectKey": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
-					"shortDesc": {
-						"type": "string"
+					"ownerLogin": {
+						"type": [
+							"string",
+							"null"
+						]
 					}
 				}
 			}
@@ -1492,17 +1637,32 @@
 		"recipe.list": {
 			"type": "array",
 			"items": {
-				"additionalProperties": true,
 				"type": "object",
-				"required": [
-					"name"
-				],
+				"additionalProperties": false,
 				"properties": {
 					"name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"type": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"inputs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"outputs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
 					}
 				}
 			}
@@ -1573,20 +1733,38 @@
 		"scenario.list": {
 			"type": "array",
 			"items": {
-				"additionalProperties": true,
 				"type": "object",
-				"required": [
-					"id"
-				],
+				"additionalProperties": false,
 				"properties": {
 					"id": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"name": {
-						"type": "string"
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"type": {
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"active": {
-						"type": "boolean"
+						"type": [
+							"boolean",
+							"null"
+						]
+					},
+					"running": {
+						"type": [
+							"boolean",
+							"null"
+						]
 					}
 				}
 			}
@@ -1730,6 +1908,45 @@
 					}
 				}
 			]
+		},
+		"user.list": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"properties": {
+					"login": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"displayName": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"userProfile": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"groups": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"enabled": {
+						"type": [
+							"boolean",
+							"null"
+						]
+					}
+				}
+			}
 		}
 	}
 }

@@ -98,6 +98,55 @@ export function sanitizeSecrets<T,>(value: T, options: SecretSanitizeOptions,): 
 	return value;
 }
 
+/** Credential-like key fragments (normalized); values under them are secrets. */
+const CREDENTIAL_KEY_FRAGMENTS = [
+	"password",
+	"passwd",
+	"passphrase",
+	"secret",
+	"token",
+	"apikey",
+	"accesskey",
+	"privatekey",
+	"credential",
+	"authorization",
+] as const;
+
+/** Keys naming how credentials work (`credentialsMode`, `passwordType`), not secrets. */
+const CREDENTIAL_SETTING_SUFFIXES = ["mode", "type", "policy",] as const;
+
+/**
+ * Every string value under a credential-like key (any depth), plus bare
+ * `key` fields such as `authRealm.key`. Collected from a command's own JSON
+ * input so that DSS error text echoing the payload can be scrubbed; error
+ * redaction only, so the broad key match errs toward hiding.
+ */
+export function credentialValues(value: unknown,): string[] {
+	const found: string[] = [];
+	const visit = (node: unknown, sensitive: boolean,): void => {
+		if (typeof node === "string") {
+			if (sensitive && node.length > 0) found.push(node,);
+			return;
+		}
+		if (Array.isArray(node,)) {
+			for (const item of node) visit(item, sensitive,);
+			return;
+		}
+		if (node === null || typeof node !== "object") return;
+		for (const [key, item,] of Object.entries(node,)) {
+			const normalized = normalizeSecretKey(key,);
+			const setting = CREDENTIAL_SETTING_SUFFIXES.some((suffix,) => normalized.endsWith(suffix,));
+			visit(
+				item,
+				sensitive || (!setting && (normalized === "key"
+					|| CREDENTIAL_KEY_FRAGMENTS.some((fragment,) => normalized.includes(fragment,)))),
+			);
+		}
+	};
+	visit(value, false,);
+	return found;
+}
+
 /**
  * Scrub secret material from an error's message, stack, and string body.
  * `DataikuError.message` is built at construction, so all three carriers need

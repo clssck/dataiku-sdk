@@ -18,11 +18,11 @@ type CommandRegistryEntry = {
 	usage: string;
 	description?: string;
 	examples?: string[];
-	structuredExamples: Array<{ shell: string; argv?: string[]; payload?: unknown; }>;
+	structuredExamples: Array<{ argv: string[]; payload?: unknown; }>;
 	flags: Array<
 		{ name: string; kind: "boolean" | "value"; valueType?: string; enumValues?: string[]; }
 	>;
-	positionals: string[];
+	positionalArguments: Array<{ name: string; required: boolean; }>;
 	sideEffect: "read" | "write" | "auth";
 	outputShape: "object" | "array" | "string" | "void";
 	inputContract: { stdin?: boolean; dataFlag?: boolean; dataFileFlag?: boolean; };
@@ -619,7 +619,10 @@ describe("CLI command surface", () => {
 				expect(meta?.resource, `${resource} ${action} resource`,).toBe(resource,);
 				expect(meta?.action, `${resource} ${action} action`,).toBe(action,);
 				expect(Array.isArray(meta?.flags,), `${resource} ${action} flags`,).toBe(true,);
-				expect(Array.isArray(meta?.positionals,), `${resource} ${action} positionals`,).toBe(true,);
+				expect(Array.isArray(meta?.positionalArguments,), `${resource} ${action} positionalArguments`,)
+					.toBe(
+						true,
+					);
 				expect(["object", "array", "string", "void",], `${resource} ${action} outputShape`,).toContain(
 					meta?.outputShape,
 				);
@@ -642,7 +645,7 @@ describe("CLI command surface", () => {
 				expect(typeof meta?.dryRun, `${resource} ${action} dryRun`,).toBe("boolean",);
 				expect(Array.isArray(meta?.requiredFlags,), `${resource} ${action} requiredFlags`,).toBe(true,);
 				expect(Array.isArray(meta?.optionalFlags,), `${resource} ${action} optionalFlags`,).toBe(true,);
-				expect(meta?.agentContractVersion, `${resource} ${action} agentContractVersion`,).toBe(2,);
+				expect(meta?.agentContractVersion, `${resource} ${action} agentContractVersion`,).toBe(3,);
 				expect(Array.isArray(meta?.structuredExamples,), `${resource} ${action} structuredExamples`,)
 					.toBe(
 						true,

@@ -76,7 +76,7 @@ describe("CLI agent-only command surface", () => {
 			resource: "agent",
 			action: "contract",
 			requiresAuth: false,
-			agentContractVersion: 2,
+			agentContractVersion: 3,
 		},);
 		expect(registry.recipe["get-payload"],).toHaveProperty("unsafeOutputs",);
 	});
@@ -87,7 +87,7 @@ describe("CLI agent-only command surface", () => {
 		const contract = JSON.parse(stdout,) as Record<string, unknown>;
 		expect(contract,).toMatchObject({
 			protocol: "dataiku-sdk-agent",
-			agentContractVersion: 2,
+			agentContractVersion: 3,
 		},);
 		expect(contract,).toHaveProperty("commands.actions.agent",);
 		expect(contract,).toHaveProperty("schemas.agentContract",);
@@ -241,15 +241,22 @@ describe("CLI command registry discovery", () => {
 				agentContractVersion?: number;
 			}>
 		>;
+		// Global flags are listed once in the agent contract, not in every entry.
 		const projectFlags = registry.project.list.flags?.map((flag,) => flag.name) ?? [];
-		expect(projectFlags,).toEqual(expect.arrayContaining(["verbose", "url", "api-key",],),);
+		expect(projectFlags,).not.toContain("verbose",);
 		expect(projectFlags,).not.toContain("help",);
 		expect(projectFlags,).not.toContain("report-json",);
 		expect(projectFlags,).not.toContain("json",);
 		expect(projectFlags,).not.toContain("raw",);
+		const contract = JSON.parse(
+			(await dss(["agent", "contract", "--fields", "commands.globalFlags",],)).stdout,
+		) as { "commands.globalFlags": Array<{ name: string; }>; };
+		expect(contract["commands.globalFlags"].map((flag,) => flag.name),).toEqual(
+			expect.arrayContaining(["verbose", "fields", "url", "api-key",],),
+		);
 		expect(registry.recipe["get-payload"].action,).toBe("get-payload",);
 		expect(registry.recipe["set-payload"].action,).toBe("set-payload",);
-		expect(registry.agent.contract.agentContractVersion,).toBe(2,);
+		expect(registry.agent.contract.agentContractVersion,).toBe(3,);
 	});
 });
 
@@ -261,8 +268,8 @@ describe("CLI command registry short flags", () => {
 			string,
 			Record<string, { flags?: Array<{ name: string; }>; }>
 		>;
-		const projectFlags = registry.project.list.flags?.map((flag,) => flag.name) ?? [];
-		expect(projectFlags,).toContain("verbose",);
+		const projectFlags = registry.project.get.flags?.map((flag,) => flag.name) ?? [];
+		expect(projectFlags,).toContain("project-key",);
 		expect(projectFlags,).not.toContain("help",);
 	});
 });

@@ -134,26 +134,6 @@ export function writeCommandResult(result: unknown,): void {
 	);
 }
 
-export function transientBodyWithTargetContext(
-	body: string,
-	target: string,
-	elapsedMs: number,
-): string {
-	try {
-		const parsed = JSON.parse(body,) as unknown;
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed,)) {
-			const record = parsed as Record<string, unknown>;
-			const message = typeof record.message === "string" && record.message.length > 0
-				? `Target: ${target}\nElapsed: ${elapsedMs}ms\n${record.message}`
-				: `Target: ${target}\nElapsed: ${elapsedMs}ms`;
-			return JSON.stringify({ ...record, message, target, elapsedMs, },);
-		}
-	} catch {
-		// Non-JSON DSS bodies are wrapped as text below.
-	}
-	return `Target: ${target}\nElapsed: ${elapsedMs}ms\n${body}`;
-}
-
 export function addTransientTargetContext(
 	error: unknown,
 	target: string,
@@ -163,7 +143,7 @@ export function addTransientTargetContext(
 		throw new DataikuError(
 			error.status,
 			error.statusText,
-			transientBodyWithTargetContext(error.body, target, elapsedMs,),
+			error.body,
 			error.retry,
 			error.requestId,
 			{ target, elapsedMs, bodyTruncated: error.bodyTruncated, },

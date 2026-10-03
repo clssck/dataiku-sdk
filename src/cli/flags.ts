@@ -1,5 +1,40 @@
 import { parseBooleanOption, } from "./coerce.js";
-import { unsupportedHelpFlag, UsageError, } from "./usage.js";
+import { unknownFlagError, unsupportedHelpFlag, UsageError, } from "./usage.js";
+
+/**
+ * Positional arguments scanned with the same flag grammar as `parseArgs`, so
+ * error reporting can recover the invoked resource/action without depending
+ * on the command registry being loaded.
+ */
+export function rawPositionals(argv: string[],): string[] {
+	const positionals: string[] = [];
+	for (let index = 0; index < argv.length; index++) {
+		const arg = argv[index]!;
+		if (arg === "--") {
+			positionals.push(...argv.slice(index + 1,),);
+			break;
+		}
+		if (arg.startsWith("--",)) {
+			const name = arg.slice(2,).split("=",)[0] ?? "";
+			const canonical = FLAG_ALIASES[name] ?? name;
+			if (!arg.includes("=",) && VALUE_FLAGS.has(canonical,)) index++;
+			continue;
+		}
+		if (arg.length === 2 && arg[0] === "-" && arg[1] !== "-") {
+			const long = SHORT_FLAGS[arg[1]!];
+			if (long && VALUE_FLAGS.has(long,)) index++;
+			continue;
+		}
+		positionals.push(arg,);
+	}
+	return positionals;
+}
+
+/** Unknown flags name the invoked command, so the error carries its usage line. */
+function commandUnknownFlagError(flagLabel: string, argv: string[],): UsageError {
+	const [resource, action,] = rawPositionals(argv,);
+	return unknownFlagError(flagLabel, resource, action,);
+}
 
 /** Planning wins dispatch; dryRun remains set for combined plan metadata. */
 export function executionMode(
@@ -37,6 +72,7 @@ export const BOOLEAN_FLAGS = new Set([
 	"force-rebuild",
 	"auto-update-schema",
 	"latest",
+	"full",
 	"copy-output-settings",
 	"copy-permissions",
 	"continue-on-error",
@@ -280,11 +316,11 @@ export const KNOWN_LONG_FLAGS = new Set([
 	...Object.values(FLAG_ALIASES,),
 ],);
 
-export function normalizeLongFlag(rawFlagName: string,): string {
+export function normalizeLongFlag(rawFlagName: string, argv: string[],): string {
 	if (rawFlagName === "help") throw unsupportedHelpFlag();
 	const flagName = FLAG_ALIASES[rawFlagName] ?? rawFlagName;
 	if (!KNOWN_LONG_FLAGS.has(rawFlagName,) && !KNOWN_LONG_FLAGS.has(flagName,)) {
-		throw new UsageError(`Unknown flag: --${rawFlagName}`, "unknown_flag",);
+		throw commandUnknownFlagError(`--${rawFlagName}`, argv,);
 	}
 	return flagName;
 }
@@ -337,7 +373,7 @@ export function parseArgs(argv: string[],): ParsedArgs {
 			const eqIdx = arg.indexOf("=",);
 			if (eqIdx !== -1) {
 				const raw = arg.slice(2, eqIdx,);
-				const flagName = normalizeLongFlag(raw,);
+				const flagName = normalizeLongFlag(raw, argv,);
 				const value = arg.slice(eqIdx + 1,);
 				if (BOOLEAN_FLAGS.has(flagName,)) {
 					flags[flagName] = parseBooleanOption(value, `--${flagName}`,)!;
@@ -346,7 +382,7 @@ export function parseArgs(argv: string[],): ParsedArgs {
 				}
 			} else {
 				const rawFlagName = arg.slice(2,);
-				const flagName = normalizeLongFlag(rawFlagName,);
+				const flagName = normalizeLongFlag(rawFlagName, argv,);
 				if (BOOLEAN_FLAGS.has(flagName,)) {
 					flags[flagName] = true;
 				} else {
@@ -367,7 +403,7 @@ export function parseArgs(argv: string[],): ParsedArgs {
 				}
 			} else {
 				if (arg[1] === "h") throw unsupportedHelpFlag();
-				throw new UsageError(`Unknown flag: -${arg[1]}`, "unknown_flag",);
+				throw commandUnknownFlagError(`-${arg[1]}`, argv,);
 			}
 		} else {
 			positional.push(arg,);
