@@ -336,6 +336,113 @@ describe("JobsResource.log", () => {
 			expect(stderr,).toContain("stderr: legacy record",);
 		},);
 	});
+
+	it("keeps exception causes and drops JVM frames in the errors filter", async () => {
+		// Shaped like the real DSS backend log of a failed activity: two
+		// [ERROR] records whose exceptions live on untimestamped continuation
+		// lines, plus a [WARN] record with an irrelevant exception.
+		const dssLog = [
+			"[2026/10/03-16:16:58.771] [ActivityExecutor-65] [INFO] [dku.datasets.file] running python_src_a_NP - Building Filesystem handler",
+			"[2026/10/03-16:16:58.778] [ActivityExecutor-65] [ERROR] [com.dataiku.dip.connections.ConnectionsDAO] running python_src_a_NP - Failed to convert connection from EC2Connection to FsConnection",
+			"java.lang.ClassCastException: Cannot cast com.dataiku.dip.connections.EC2Connection to com.dataiku.dip.connections.FsConnection",
+			"\tat java.base/java.lang.Class.cast(Class.java:3892)",
+			"\tat com.dataiku.dip.connections.ConnectionsDAO.getMandatoryConnectionAs(ConnectionsDAO.java:215)",
+			"[2026/10/03-16:16:58.838] [ActivityExecutor-65] [ERROR] [dku.flow.jobrunner] running python_src_a_NP - Activity unexpectedly failed",
+			"java.lang.IllegalArgumentException: in running python_src_a_NP: Unexpected connection type for FsConnection: EC2",
+			"\tat com.dataiku.dip.utils.ErrorContext.iaef(ErrorContext.java:147)",
+			"\tat com.dataiku.dip.dataflow.jobrunner.ActivityRunner.runActivity(ActivityRunner.java:604)",
+			"[2026/10/03-16:16:58.840] [ActivityExecutor-65] [DEBUG] [dku.flow.jobrunner] running python_src_a_NP - runActivity terminated, success=false",
+			"[2026/10/03-16:16:58.968] [qtp2099541600-52] [WARN] [dku.job.slave]  - Failed to dump metrics at end of job",
+			"java.io.FileNotFoundException: metrics.json (Permission denied)",
+			"\tat java.base/java.io.FileOutputStream.open0(Native Method)",
+		].join("\n",);
+		await withDataikuServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(dssLog,);
+		}, async (client,) => {
+			const errors = (await client.jobs.log("job-errors", { logFilter: "errors", },)).split("\n",);
+			expect(errors,).toEqual([
+				"[2026/10/03-16:16:58.778] [ActivityExecutor-65] [ERROR] [com.dataiku.dip.connections.ConnectionsDAO] running python_src_a_NP - Failed to convert connection from EC2Connection to FsConnection",
+				"java.lang.ClassCastException: Cannot cast com.dataiku.dip.connections.EC2Connection to com.dataiku.dip.connections.FsConnection",
+				"[2026/10/03-16:16:58.838] [ActivityExecutor-65] [ERROR] [dku.flow.jobrunner] running python_src_a_NP - Activity unexpectedly failed",
+				"java.lang.IllegalArgumentException: in running python_src_a_NP: Unexpected connection type for FsConnection: EC2",
+				"[2026/10/03-16:16:58.968] [qtp2099541600-52] [WARN] [dku.job.slave]  - Failed to dump metrics at end of job",
+				"java.io.FileNotFoundException: metrics.json (Permission denied)",
+			],);
+			expect(errors.join("\n",),).not.toContain("\tat ",);
+		},);
+	});
+
+	it("keeps a Python traceback's frames and user-code line in the errors filter", async () => {
+		// Child traceback re-logged by DSS, one timestamped record per line:
+		// only the "Traceback" header record matches a keyword, so frame and
+		// source lines must survive as traceback state, and the unrelated
+		// [null-out] record must stay out.
+		const dssLog = [
+			"[2026/10/03-16:29:29.096] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  - Begin Python stack",
+			"[2026/10/03-16:29:29.096] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  - Traceback (most recent call last):",
+			'[2026/10/03-16:29:29.097] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  -   File "/opt/dataiku/python/dataiku/container/exec_py_recipe.py", line 15, in <module>',
+			"[2026/10/03-16:29:29.097] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  -     exec(fd.read())",
+			'[2026/10/03-16:29:29.097] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  -   File "<string>", line 4, in <module>',
+			'[2026/10/03-16:29:29.097] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  -     raise RuntimeError("probe deliberate failure")',
+			"[2026/10/03-16:29:29.097] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  - RuntimeError: probe deliberate failure",
+			"[2026/10/03-16:29:29.098] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  - End Python stack",
+			"[2026/10/03-16:29:29.100] [null-out-84] [INFO] [dku.utils]  - user stdout noise",
+		].join("\n",);
+		await withDataikuServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(dssLog,);
+		}, async (client,) => {
+			const errors = (await client.jobs.log("job-py-errors", { logFilter: "errors", },)).split("\n",);
+			expect(errors,).toEqual([
+				"[2026/10/03-16:29:29.096] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  - Traceback (most recent call last):",
+				'[2026/10/03-16:29:29.097] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  -   File "/opt/dataiku/python/dataiku/container/exec_py_recipe.py", line 15, in <module>',
+				"[2026/10/03-16:29:29.097] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  -     exec(fd.read())",
+				'[2026/10/03-16:29:29.097] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  -   File "<string>", line 4, in <module>',
+				'[2026/10/03-16:29:29.097] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  -     raise RuntimeError("probe deliberate failure")',
+				"[2026/10/03-16:29:29.097] [kubectl-stream-logs-out-95] [INFO] [dku.utils]  - RuntimeError: probe deliberate failure",
+			],);
+		},);
+	});
+
+	it("keeps Caused by chains and filters non-DSS logs per line", async () => {
+		// A record with a Caused by chain: the chain is kept, unrelated frames dropped.
+		const causedLog = [
+			"[2026/10/03-16:16:58.778] [ActivityExecutor-65] [ERROR] [dku] running x - Activity unexpectedly failed",
+			"com.dataiku.DataikuException: in running x: build failed",
+			"Caused by: java.io.IOException: No space left on device",
+			"\tat com.dataiku.dip.dataflow.ActivityRunner.run(ActivityRunner.java:604)",
+			"tail without record",
+		].join("\n",);
+		await withDataikuServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(causedLog,);
+		}, async (client,) => {
+			expect((await client.jobs.log("job-caused", { logFilter: "errors", },)).split("\n",),).toEqual([
+				"[2026/10/03-16:16:58.778] [ActivityExecutor-65] [ERROR] [dku] running x - Activity unexpectedly failed",
+				"com.dataiku.DataikuException: in running x: build failed",
+				"Caused by: java.io.IOException: No space left on device",
+			],);
+		},);
+
+		// Untimestamped (non-DSS) logs keep the per-line keyword behaviour,
+		// now matching Exception/Error class-name suffixes too.
+		await withDataikuServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(
+				"step 1 ok\njava.lang.IllegalStateException: nope\nplain info line\nValueError: bad value\n",
+			);
+		}, async (client,) => {
+			expect((await client.jobs.log("job-plain", { logFilter: "errors", },)).split("\n",),).toEqual([
+				"java.lang.IllegalStateException: nope",
+				"ValueError: bad value",
+			],);
+		},);
+	});
 });
 
 describe("JobsResource.wait", () => {

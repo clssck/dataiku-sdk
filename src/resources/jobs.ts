@@ -162,6 +162,39 @@ function jobLogLines(log: string,): string[] {
 const LEGACY_STDOUT_RECORD = /^\s*stdout:/i;
 const LEGACY_STDERR_RECORD = /^\s*stderr:/i;
 
+/**
+ * A DSS backend log record starts with a timestamped header line
+ * (`[YYYY/MM/DD-HH:MM:SS.mmm]`); every following non-timestamped line is a
+ * continuation of that record (exception chain, JVM frames, ...).
+ */
+const DSS_RECORD_HEADER = /^\[\d{4}\/\d{2}\/\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}\]/;
+const ERROR_KEYWORDS = /\b(error|failed|failure|exception|traceback)\b/i;
+/**
+ * Exception class names ending in the `Exception`/`Error` suffix (e.g.
+ * `java.lang.ClassCastException`, `ValueError`): no word boundary precedes the
+ * suffix inside a compound name, so the keyword regex alone misses them.
+ */
+const ERROR_CLASS_NAME = /\b\w*(?:Exception|Error)\b/;
+const PY_TRACEBACK_HEAD = /^\s*Traceback \(most recent call last\):$/;
+const PY_FILE_FRAME = /^\s*File "(?:[^"\\]|\\.)*", line \d+/;
+const JVM_STACK_FRAME = /^\s+at\s/;
+const JVM_MORE_FRAMES = /^\s*\.\.\. \d+ more\b/;
+
+/**
+ * Message payload of a DSS record line: timestamp header and the
+ * `[thread] [LEVEL] [logger] -` prefix stripped, so continuation logic can be
+ * shared between timestamped records and raw log lines.
+ */
+function dssRecordMessage(line: string,): string {
+	return line
+		.replace(/^\[\d{4}\/\d{2}\/\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}\]\s?/, "",)
+		.replace(/^\[[^\]]*\] \[[^\]]*\] \[[^\]]*\]\s+-\s?/, "",);
+}
+
+function isErrorContent(line: string,): boolean {
+	return ERROR_KEYWORDS.test(line,) || ERROR_CLASS_NAME.test(line,) || PY_FILE_FRAME.test(line,);
+}
+
 function lineMatchesLogFilter(line: string, filter: JobLogFilter,): boolean {
 	const normalized = line.toLowerCase();
 	switch (filter) {
@@ -171,7 +204,7 @@ function lineMatchesLogFilter(line: string, filter: JobLogFilter,): boolean {
 		case "stderr":
 			return normalized.includes("[null-err-",) || LEGACY_STDERR_RECORD.test(line,);
 		case "errors":
-			return /\b(error|failed|failure|exception|traceback)\b/i.test(line,);
+			return isErrorContent(line,);
 		case "user":
 			return !/^\d{4}[-/]\d{2}[-/]\d{2}/.test(line,)
 				&& !normalized.includes("backend-log",)
@@ -179,9 +212,77 @@ function lineMatchesLogFilter(line: string, filter: JobLogFilter,): boolean {
 	}
 }
 
+/**
+ * Errors filter over DSS records. A record's exception spans lines: the
+ * timestamped header carries the level/message, untimestamped continuations
+ * carry the exception chain. A record whose header matches the error keywords
+ * keeps its cause-bearing continuation lines (exception headers like
+ * `pkg.FooException: msg`, `Caused by:` chains, Python `Traceback` essentials)
+ * and drops bare JVM stack frames. A Python traceback body is tracked as state,
+ * so `File "..."` frames and the user-code source line survive even though they
+ * carry no error keyword — including when DSS re-logs each child-stderr line as
+ * its own timestamped record.
+ */
+function filterJobLogToErrors(lines: string[],): string {
+	const kept: string[] = [];
+	let recordMatches = false;
+	let pyTraceback = false;
+	for (const line of lines) {
+		const isHeader = DSS_RECORD_HEADER.test(line,);
+		const message = dssRecordMessage(line,);
+		if (pyTraceback) {
+			if (JVM_STACK_FRAME.test(line,) || JVM_MORE_FRAMES.test(line,)) {
+				if (isHeader) recordMatches = false;
+				continue;
+			}
+			if (/^\s+\S/.test(message,)) {
+				kept.push(line,); // `File "..."` frame or user-code source line
+				if (isHeader) recordMatches = false;
+				continue;
+			}
+			if (ERROR_CLASS_NAME.test(message,)) {
+				kept.push(line,); // terminating exception line
+				pyTraceback = false;
+				if (isHeader) recordMatches = false;
+				continue;
+			}
+			pyTraceback = false;
+		}
+		if (isHeader) {
+			recordMatches = isErrorContent(line,) || PY_FILE_FRAME.test(message,);
+			if (recordMatches && (PY_TRACEBACK_HEAD.test(message,) || PY_FILE_FRAME.test(message,))) {
+				pyTraceback = true;
+			}
+			if (recordMatches) kept.push(line,);
+			continue;
+		}
+		if (PY_TRACEBACK_HEAD.test(message,)) {
+			kept.push(line,);
+			pyTraceback = true;
+			continue;
+		}
+		if (
+			recordMatches
+			&& !JVM_STACK_FRAME.test(line,)
+			&& !JVM_MORE_FRAMES.test(line,)
+			&& isErrorContent(line,)
+		) kept.push(line,);
+	}
+	return kept.join("\n",);
+}
+
+/**
+ * Filter a job log. DSS logs (any timestamped record) use the record-aware
+ * errors pass; untimestamped (non-DSS) logs keep the per-line behaviour, since
+ * no record structure can be inferred.
+ */
 function filterJobLog(log: string, filter: JobLogFilter | undefined,): string {
 	if (!filter) return log;
-	return jobLogLines(log,).filter((line,) => lineMatchesLogFilter(line, filter,)).join("\n",);
+	const lines = jobLogLines(log,);
+	if (filter !== "errors" || !lines.some((line,) => DSS_RECORD_HEADER.test(line,))) {
+		return lines.filter((line,) => lineMatchesLogFilter(line, filter,)).join("\n",);
+	}
+	return filterJobLogToErrors(lines,);
 }
 
 function limitJobLog(log: string, maxLines: number | undefined,): string {
