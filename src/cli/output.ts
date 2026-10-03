@@ -46,6 +46,32 @@ function resolveFieldPath(source: Record<string, unknown>, field: string,): Reso
 	return { found: true, value: current ?? null, };
 }
 
+/**
+ * Keys available at the deepest parent object a dotted field actually reaches.
+ * A miss like `recipe.params` is ambiguous — the path may be unsupported or the
+ * key may merely be absent — so listing sibling keys under the resolved parent
+ * (`recipe.type`, `recipe.name`, ...) shows nested paths work and points at
+ * real alternatives; a plain top-level miss keeps listing top-level keys.
+ */
+function availableFieldsFor(
+	records: Array<Record<string, unknown>>,
+	field: string,
+): string[] {
+	const segments = field.split(".",);
+	const parentPath = segments.slice(0, -1,).join(".",);
+	const keys = new Set<string>();
+	for (const record of records) {
+		const parent = parentPath === ""
+			? record
+			: resolveFieldPath(record, parentPath,).value;
+		if (parent === null || typeof parent !== "object" || Array.isArray(parent,)) continue;
+		for (const key of Object.keys(parent as Record<string, unknown>,)) {
+			keys.add(parentPath === "" ? key : `${parentPath}.${key}`,);
+		}
+	}
+	return [...keys,].sort();
+}
+
 export function pickResultFields(item: unknown, fields: string[],): unknown {
 	if (!item || typeof item !== "object" || Array.isArray(item,)) return item;
 	const source = item as Record<string, unknown>;
@@ -72,8 +98,9 @@ function warnUnknownProjectionFields(
 		!records.some((record,) => resolveFieldPath(record, field,).found)
 	);
 	if (unknownFields.length === 0) return;
-	const availableFields = availableFieldNames?.()
-		?? [...new Set(records.flatMap((record,) => Object.keys(record,)),),].sort();
+	const explicitNames = availableFieldNames?.();
+	const availableFields = explicitNames
+		?? [...new Set(unknownFields.flatMap((field,) => availableFieldsFor(records, field,)),),].sort();
 	enqueueCliWarning({
 		code: "field_projection_missing",
 		fields: unknownFields,
