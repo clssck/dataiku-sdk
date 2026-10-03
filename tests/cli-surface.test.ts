@@ -198,6 +198,7 @@ const EXPECTED_COMMANDS: Record<string, string[]> = {
 		"get-payload",
 		"cat",
 		"set-payload",
+		"update-schema",
 		"clone",
 		"restore",
 		"assert-unchanged",

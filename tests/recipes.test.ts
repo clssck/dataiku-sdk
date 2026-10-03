@@ -5,7 +5,8 @@ import { type AddressInfo, } from "node:net";
 import { tmpdir, } from "node:os";
 import { join, resolve, } from "node:path";
 import { DataikuClient, } from "../src/client.js";
-import { DataikuError, } from "../src/errors.js";
+import { ClientValidationError, DataikuError, } from "../src/errors.js";
+import type { RecipeUpdateSchemaResult, } from "../src/schemas.js";
 
 async function readBody(req: IncomingMessage,): Promise<string> {
 	let body = "";
@@ -577,7 +578,7 @@ describe("RecipesResource", () => {
 		},);
 	});
 
-	it("pre-provisions filesystem outputs under a project path when output connection is explicit", async () => {
+	it("provisions missing outputs through the managed-dataset endpoint on the explicit connection", async () => {
 		const requests: string[] = [];
 		let datasetCreateBody: Record<string, unknown> | undefined;
 		let recipeCreateBody: Record<string, unknown> | undefined;
@@ -598,9 +599,10 @@ describe("RecipesResource", () => {
 				return;
 			}
 
-			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/") {
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/managed") {
 				datasetCreateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
-				sendJson(res, { name: "output_ds", },);
+				res.statusCode = 204;
+				res.end();
 				return;
 			}
 
@@ -632,19 +634,13 @@ describe("RecipesResource", () => {
 
 		expect(requests,).toEqual([
 			"GET /public/api/projects/TEST/datasets/",
-			"POST /public/api/projects/TEST/datasets/",
+			"POST /public/api/projects/TEST/datasets/managed",
 			"POST /public/api/projects/TEST/recipes/",
 		],);
-		expect(datasetCreateBody,).toMatchObject({
-			projectKey: "TEST",
+		// DSS derives type, path, and format from the connection; the client sends no guessed params.
+		expect(datasetCreateBody,).toEqual({
 			name: "output_ds",
-			type: "Filesystem",
-			params: {
-				connection: "s3_conn",
-				path: "/dataiku/TEST/output_ds",
-				metastoreTableName: "output_ds",
-			},
-			managed: true,
+			creationSettings: { connectionId: "s3_conn", },
 		},);
 		expect(recipeCreateBody,).toMatchObject({
 			recipePrototype: {
@@ -654,139 +650,133 @@ describe("RecipesResource", () => {
 		},);
 	});
 
-	it("propagates the single input schema to a schemaless sync dataset output", async () => {
-		const requests: string[] = [];
-		const inputColumns = [
-			{ name: "id", type: "int", },
-			{ name: "category", type: "string", },
-		];
-		let schemaUpdateBody: Record<string, unknown> | undefined;
-
-		await withRecipeServer(async (req, res,) => {
+	function schemaUpdateServer(
+		computables: Array<Record<string, unknown>>,
+		requests: string[],
+		applied: Array<Record<string, unknown>>,
+		schemaUpdateStatus = 200,
+	) {
+		return async (req: IncomingMessage, res: ServerResponse,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			requests.push(`${req.method} ${url.pathname}`,);
-
 			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
 				sendJson(res, { name: "sync_output_ds", },);
 				return;
 			}
-
 			if (
 				req.method === "GET"
-				&& url.pathname === "/public/api/projects/TEST/datasets/input_ds/schema"
+				&& url.pathname === "/public/api/projects/TEST/recipes/sync_output_ds/schema-update"
 			) {
-				sendJson(res, { columns: inputColumns, },);
+				if (schemaUpdateStatus !== 200) {
+					sendJson(res, { message: "Input dataset has no schema", }, schemaUpdateStatus,);
+					return;
+				}
+				sendJson(res, { totalIncompatibilities: computables.length, computables, recipeChanges: [], },);
 				return;
 			}
-
 			if (
-				req.method === "GET"
-				&& url.pathname === "/public/api/projects/TEST/datasets/output_ds/schema"
+				req.method === "POST"
+				&& url.pathname
+					=== "/public/api/projects/TEST/recipes/sync_output_ds/actions/updateOutputSchema"
 			) {
-				sendJson(res, { columns: [], },);
+				applied.push(JSON.parse(await readBody(req,),) as Record<string, unknown>,);
+				sendJson(res, { hasAnyProblem: false, datasetsNeedingAction: [], },);
 				return;
 			}
-
-			if (
-				req.method === "PUT"
-				&& url.pathname === "/public/api/projects/TEST/datasets/output_ds/schema"
-			) {
-				schemaUpdateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
-				sendJson(res, { ok: true, },);
-				return;
-			}
-
 			res.statusCode = 404;
 			res.end("unexpected request",);
-		}, async (url,) => {
-			const client = createClient(url,);
-			const result = await client.recipes.create({
-				type: "sync",
-				inputDatasets: ["input_ds",],
-				outputDataset: "output_ds",
-			},);
+		};
+	}
 
-			expect(result,).toEqual({
-				recipeName: "sync_output_ds",
-				type: "sync",
-				createdDatasets: [],
-				joinConfigured: false,
-				outputProvisioningFallbackUsed: false,
-				syncOutputSchemaPropagated: ["output_ds",],
-			},);
-		},);
+	const computedColumns = [
+		{ name: "id", type: "bigint", },
+		{ name: "category", type: "string", },
+	];
 
-		expect(requests,).toEqual([
-			"POST /public/api/projects/TEST/recipes/",
-			"GET /public/api/projects/TEST/datasets/input_ds/schema",
-			"GET /public/api/projects/TEST/datasets/output_ds/schema",
-			"PUT /public/api/projects/TEST/datasets/output_ds/schema",
-		],);
-		expect(schemaUpdateBody,).toEqual({ columns: inputColumns, },);
-	});
-
-	it("does not propagate sync output schema when the output already has columns", async () => {
+	it("writes the DSS-computed schema to a visual-recipe output whose schema is empty", async () => {
 		const requests: string[] = [];
-		const inputColumns = [
-			{ name: "id", type: "int", },
-			{ name: "category", type: "string", },
-		];
-
-		await withRecipeServer((req, res,) => {
-			const url = new URL(req.url ?? "/", "http://localhost",);
-			requests.push(`${req.method} ${url.pathname}`,);
-
-			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
-				sendJson(res, { name: "sync_output_ds", },);
-				return;
-			}
-
-			if (
-				req.method === "GET"
-				&& url.pathname === "/public/api/projects/TEST/datasets/input_ds/schema"
-			) {
-				sendJson(res, { columns: inputColumns, },);
-				return;
-			}
-
-			if (
-				req.method === "GET"
-				&& url.pathname === "/public/api/projects/TEST/datasets/output_ds/schema"
-			) {
-				sendJson(res, {
-					columns: [{ name: "existing", type: "string", },],
+		const applied: Array<Record<string, unknown>> = [];
+		await withRecipeServer(
+			schemaUpdateServer(
+				[{
+					type: "DATASET",
+					datasetName: "output_ds",
+					previousSchemaWasEmpty: true,
+					incompatibilities: ["The existing schema is empty",],
+					newSchema: { columns: computedColumns, userModified: true, },
+				},],
+				requests,
+				applied,
+			),
+			async (url,) => {
+				const result = await createClient(url,).recipes.create({
+					type: "sync",
+					inputDatasets: ["input_ds",],
+					outputDataset: "output_ds",
 				},);
-				return;
-			}
-
-			res.statusCode = 404;
-			res.end("unexpected request",);
-		}, async (url,) => {
-			const client = createClient(url,);
-			const result = await client.recipes.create({
-				type: "sync",
-				inputDatasets: ["input_ds",],
-				outputDataset: "output_ds",
-			},);
-
-			expect(result.syncOutputSchemaPropagated,).toBeUndefined();
-			expect(result,).toEqual({
-				recipeName: "sync_output_ds",
-				type: "sync",
-				createdDatasets: [],
-				joinConfigured: false,
-				outputProvisioningFallbackUsed: false,
-			},);
-		},);
+				expect(result.outputSchemaUpdated,).toEqual(["output_ds",],);
+				expect(result.outputSchemaUpdateError,).toBeUndefined();
+			},
+		);
 
 		expect(requests,).toEqual([
 			"POST /public/api/projects/TEST/recipes/",
-			"GET /public/api/projects/TEST/datasets/input_ds/schema",
-			"GET /public/api/projects/TEST/datasets/output_ds/schema",
+			"GET /public/api/projects/TEST/recipes/sync_output_ds/schema-update",
+			"POST /public/api/projects/TEST/recipes/sync_output_ds/actions/updateOutputSchema",
 		],);
+		expect(applied,).toEqual([{
+			computableType: "DATASET",
+			computableId: "output_ds",
+			newSchema: { columns: computedColumns, userModified: true, },
+		},],);
 	});
 
-	it("does not propagate schema for non-sync recipe types", async () => {
+	it("never replaces an existing output schema it did not create", async () => {
+		const requests: string[] = [];
+		const applied: Array<Record<string, unknown>> = [];
+		await withRecipeServer(
+			schemaUpdateServer(
+				[{
+					type: "DATASET",
+					datasetName: "output_ds",
+					previousSchemaWasEmpty: false,
+					incompatibilities: ["Different number of columns",],
+					newSchema: { columns: computedColumns, },
+				},],
+				requests,
+				applied,
+			),
+			async (url,) => {
+				const result = await createClient(url,).recipes.create({
+					type: "sync",
+					inputDatasets: ["input_ds",],
+					outputDataset: "output_ds",
+				},);
+				expect(result.outputSchemaUpdated,).toBeUndefined();
+			},
+		);
+		expect(applied,).toEqual([],);
+	});
+
+	it("keeps the created recipe and reports why DSS could not compute the output schema", async () => {
+		const requests: string[] = [];
+		const applied: Array<Record<string, unknown>> = [];
+		await withRecipeServer(
+			schemaUpdateServer([], requests, applied, 400,),
+			async (url,) => {
+				const result = await createClient(url,).recipes.create({
+					type: "sync",
+					inputDatasets: ["input_ds",],
+					outputDataset: "output_ds",
+				},);
+				expect(result.recipeName,).toBe("sync_output_ds",);
+				expect(result.outputSchemaUpdateError,).toContain("Input dataset has no schema",);
+			},
+		);
+		expect(applied,).toEqual([],);
+	});
+
+	it("does not ask DSS for output schemas of code recipes", async () => {
 		const requests: string[] = [];
 
 		await withRecipeServer((req, res,) => {
@@ -808,7 +798,6 @@ describe("RecipesResource", () => {
 				outputDataset: "output_ds",
 			},);
 
-			expect(result.syncOutputSchemaPropagated,).toBeUndefined();
 			expect(result,).toEqual({
 				recipeName: "python_output_ds",
 				type: "python",
@@ -845,9 +834,10 @@ describe("RecipesResource", () => {
 				return;
 			}
 
-			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/") {
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/managed") {
 				tempDatasetBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
-				sendJson(res, { name: "python_FOLDERID_folder_output_marker", },);
+				res.statusCode = 204;
+				res.end();
 				return;
 			}
 
@@ -915,18 +905,15 @@ describe("RecipesResource", () => {
 
 		expect(requests,).toEqual([
 			"GET /public/api/projects/TEST/datasets/",
-			"POST /public/api/projects/TEST/datasets/",
+			"POST /public/api/projects/TEST/datasets/managed",
 			"POST /public/api/projects/TEST/recipes/",
 			"GET /public/api/projects/TEST/recipes/python_FOLDERID",
 			"PUT /public/api/projects/TEST/recipes/python_FOLDERID",
 			"DELETE /public/api/projects/TEST/datasets/python_FOLDERID_folder_output_marker",
 		],);
-		expect(tempDatasetBody,).toMatchObject({
+		expect(tempDatasetBody,).toEqual({
 			name: "python_FOLDERID_folder_output_marker",
-			params: {
-				connection: "s3_conn",
-				path: "/dataiku/TEST/python_FOLDERID_folder_output_marker",
-			},
+			creationSettings: { connectionId: "s3_conn", },
 		},);
 		expect(recipeCreateBody,).toMatchObject({
 			recipePrototype: {
@@ -948,7 +935,7 @@ describe("RecipesResource", () => {
 		},);
 	});
 
-	it("configures exact joins from the created recipe skeleton", async () => {
+	it("configures exact joins on the recipe name DSS returns", async () => {
 		const requests: string[] = [];
 		let createBody: Record<string, unknown> | undefined;
 		let updateBody: Record<string, unknown> | undefined;
@@ -959,18 +946,19 @@ describe("RecipesResource", () => {
 
 			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
 				createBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
-				sendJson(res, { name: "join_joined_ds", },);
+				// DSS may rename on creation; follow-up calls must use the returned name.
+				sendJson(res, { name: "compute_joined_ds", },);
 				return;
 			}
 
 			if (
 				req.method === "GET"
-				&& url.pathname === "/public/api/projects/TEST/recipes/join_joined_ds"
+				&& url.pathname === "/public/api/projects/TEST/recipes/compute_joined_ds"
 			) {
 				sendJson(res, {
 					serverOwned: { revision: 7, },
 					recipe: {
-						name: "join_joined_ds",
+						name: "compute_joined_ds",
 						type: "join",
 						versionTag: { versionNumber: 4, },
 						customRecipeField: "preserve-me",
@@ -988,10 +976,18 @@ describe("RecipesResource", () => {
 
 			if (
 				req.method === "PUT"
-				&& url.pathname === "/public/api/projects/TEST/recipes/join_joined_ds"
+				&& url.pathname === "/public/api/projects/TEST/recipes/compute_joined_ds"
 			) {
 				updateBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
 				sendJson(res, { ok: true, },);
+				return;
+			}
+
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/recipes/compute_joined_ds/schema-update"
+			) {
+				sendJson(res, { totalIncompatibilities: 0, computables: [], },);
 				return;
 			}
 
@@ -1008,15 +1004,16 @@ describe("RecipesResource", () => {
 			},);
 
 			expect(result,).toMatchObject({
-				recipeName: "join_joined_ds",
+				recipeName: "compute_joined_ds",
 				joinConfigured: true,
 			},);
 		},);
 
 		expect(requests,).toEqual([
 			"POST /public/api/projects/TEST/recipes/",
-			"GET /public/api/projects/TEST/recipes/join_joined_ds",
-			"PUT /public/api/projects/TEST/recipes/join_joined_ds",
+			"GET /public/api/projects/TEST/recipes/compute_joined_ds",
+			"PUT /public/api/projects/TEST/recipes/compute_joined_ds",
+			"GET /public/api/projects/TEST/recipes/compute_joined_ds/schema-update",
 		],);
 		expect(createBody,).toMatchObject({
 			recipePrototype: {
@@ -1032,7 +1029,7 @@ describe("RecipesResource", () => {
 		expect(updateBody,).toMatchObject({
 			serverOwned: { revision: 7, },
 			recipe: {
-				name: "join_joined_ds",
+				name: "compute_joined_ds",
 				type: "join",
 				versionTag: { versionNumber: 4, },
 				customRecipeField: "preserve-me",
@@ -1125,6 +1122,14 @@ describe("RecipesResource", () => {
 				return;
 			}
 
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/recipes/fuzzyjoin_joined_ds/schema-update"
+			) {
+				sendJson(res, { totalIncompatibilities: 0, computables: [], },);
+				return;
+			}
+
 			res.statusCode = 404;
 			res.end("unexpected request",);
 		}, async (url,) => {
@@ -1150,6 +1155,7 @@ describe("RecipesResource", () => {
 			"POST /public/api/projects/TEST/recipes/",
 			"GET /public/api/projects/TEST/recipes/fuzzyjoin_joined_ds",
 			"PUT /public/api/projects/TEST/recipes/fuzzyjoin_joined_ds",
+			"GET /public/api/projects/TEST/recipes/fuzzyjoin_joined_ds/schema-update",
 		],);
 		expect(createBody,).toMatchObject({
 			recipePrototype: {
@@ -1493,6 +1499,107 @@ describe("RecipesResource", () => {
 			],
 			type: "NON_RECURSIVE_FORCED_BUILD",
 		},);
+	});
+});
+
+describe("RecipesResource.updateSchema", () => {
+	const computables = [
+		{
+			type: "DATASET",
+			datasetName: "was_empty",
+			previousSchemaWasEmpty: true,
+			incompatibilities: ["The existing schema is empty",],
+			newSchema: { columns: [{ name: "id", type: "bigint", },], },
+		},
+		{
+			type: "DATASET",
+			datasetName: "drifted",
+			previousSchemaWasEmpty: false,
+			incompatibilities: ["Different number of columns",],
+			newSchema: { columns: [{ name: "id", type: "bigint", }, { name: "total", type: "double", },], },
+		},
+		{
+			type: "DATASET",
+			datasetName: "in_sync",
+			previousSchemaWasEmpty: false,
+			incompatibilities: [],
+			newSchema: { columns: [{ name: "id", type: "bigint", },], },
+		},
+	];
+
+	async function runUpdateSchema(
+		recipeType: string,
+		opts: { derivedOutputs?: string[]; dryRun?: boolean; },
+	) {
+		const requests: string[] = [];
+		const appliedIds: unknown[] = [];
+		let result: RecipeUpdateSchemaResult | undefined;
+		let failure: unknown;
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/recipes/agg") {
+				sendJson(res, { recipe: { name: "agg", type: recipeType, }, },);
+				return;
+			}
+			if (
+				req.method === "GET" && url.pathname === "/public/api/projects/TEST/recipes/agg/schema-update"
+			) {
+				sendJson(res, { totalIncompatibilities: 2, computables, recipeChanges: [], },);
+				return;
+			}
+			if (
+				req.method === "POST"
+				&& url.pathname === "/public/api/projects/TEST/recipes/agg/actions/updateOutputSchema"
+			) {
+				const body = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				appliedIds.push(body.computableId,);
+				sendJson(res, { hasAnyProblem: false, datasetsNeedingAction: [], },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (url,) => {
+			try {
+				result = await createClient(url,).recipes.updateSchema("agg", opts,);
+			} catch (error) {
+				failure = error;
+			}
+		},);
+		return { requests, appliedIds, result, failure, };
+	}
+
+	it("writes every differing output schema and leaves matching ones alone", async () => {
+		const { appliedIds, result, } = await runUpdateSchema("grouping", {},);
+		expect(appliedIds,).toEqual(["was_empty", "drifted",],);
+		expect(result,).toMatchObject({
+			updated: ["was_empty", "drifted",],
+			pending: [],
+			unchanged: ["in_sync",],
+			totalIncompatibilities: 2,
+		},);
+	});
+
+	it("derivedOutputs writes listed and empty outputs and keeps other schemas pending", async () => {
+		const { appliedIds, result, } = await runUpdateSchema("join", { derivedOutputs: [], },);
+		expect(appliedIds,).toEqual(["was_empty",],);
+		expect(result,).toMatchObject({ updated: ["was_empty",], pending: ["drifted",], },);
+
+		const listed = await runUpdateSchema("join", { derivedOutputs: ["drifted",], },);
+		expect(listed.appliedIds,).toEqual(["was_empty", "drifted",],);
+		expect(listed.result,).toMatchObject({ pending: [], },);
+	});
+
+	it("dryRun writes nothing and lists what would change", async () => {
+		const { appliedIds, result, } = await runUpdateSchema("shaker", { dryRun: true, },);
+		expect(appliedIds,).toEqual([],);
+		expect(result,).toMatchObject({ updated: [], pending: ["was_empty", "drifted",], },);
+	});
+
+	it("rejects code recipes before asking DSS to compute a schema", async () => {
+		const { requests, failure, } = await runUpdateSchema("python", {},);
+		expect(failure,).toBeInstanceOf(ClientValidationError,);
+		expect(requests,).toEqual(["GET /public/api/projects/TEST/recipes/agg",],);
 	});
 });
 

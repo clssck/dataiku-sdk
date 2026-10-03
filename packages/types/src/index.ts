@@ -271,9 +271,47 @@ export const RecipeCreateResultSchema = Type.Object({
 	outputFolder: Type.Optional(Type.String(),),
 	temporaryOutputDataset: Type.Optional(Type.String(),),
 	temporaryOutputDatasetDeleted: Type.Optional(Type.Boolean(),),
-	syncOutputSchemaPropagated: Type.Optional(Type.Array(Type.String(),),),
+	/** Output datasets whose schema DSS computed and the client applied after creation. */
+	outputSchemaUpdated: Type.Optional(Type.Array(Type.String(),),),
+	/** Why DSS could not compute the output schema; the recipe itself was created. */
+	outputSchemaUpdateError: Type.Optional(Type.String(),),
 },);
 export type RecipeCreateResult = Static<typeof RecipeCreateResultSchema>;
+
+/** One output from GET /recipes/{name}/schema-update (dataikuapi compute_schema_updates). */
+export const RecipeSchemaUpdateComputableSchema = Type.Object({
+	type: Type.String(),
+	id: Type.Optional(Type.String(),),
+	datasetName: Type.Optional(Type.String(),),
+	previousSchemaWasEmpty: Type.Optional(Type.Boolean(),),
+	incompatibilities: Type.Optional(Type.Array(Type.String(),),),
+	newSchema: Type.Optional(Type.Object({
+		columns: Type.Array(Type.Record(Type.String(), Type.Unknown(),),),
+	}, { additionalProperties: true, },),),
+}, { additionalProperties: true, },);
+export type RecipeSchemaUpdateComputable = Static<typeof RecipeSchemaUpdateComputableSchema>;
+
+export const RecipeSchemaUpdatesSchema = Type.Object({
+	totalIncompatibilities: Type.Optional(Type.Number(),),
+	computables: Type.Array(RecipeSchemaUpdateComputableSchema,),
+	recipeChanges: Type.Optional(Type.Array(Type.Unknown(),),),
+}, { additionalProperties: true, },);
+export type RecipeSchemaUpdates = Static<typeof RecipeSchemaUpdatesSchema>;
+
+export const RecipeUpdateSchemaResultSchema = Type.Object({
+	recipeName: Type.String(),
+	/** Output ids whose schema was replaced by the DSS-computed schema. */
+	updated: Type.Array(Type.String(),),
+	/** Output ids whose schema differs from the computed one but was left as is (`derivedOutputs`, `dryRun`). */
+	pending: Type.Array(Type.String(),),
+	/** Output ids whose current schema already matches. */
+	unchanged: Type.Array(Type.String(),),
+	totalIncompatibilities: Type.Number(),
+	computables: Type.Array(RecipeSchemaUpdateComputableSchema,),
+	/** `datasetsNeedingAction` entries from the DSS apply responses. */
+	datasetsNeedingAction: Type.Optional(Type.Array(Type.Unknown(),),),
+},);
+export type RecipeUpdateSchemaResult = Static<typeof RecipeUpdateSchemaResultSchema>;
 
 // ---------------------------------------------------------------------------
 // Jobs

@@ -849,6 +849,74 @@ describe("CLI recipe get-payload and set-payload", () => {
 			"GET /public/api/projects/TEST/jobs/job-folder/log/",
 		],);
 	});
+
+	it("set-payload moves DSS-derived output schemas with the payload and keeps edited ones", async () => {
+		const payloadPath = join(tmpdir(), `dss-grouping-${Date.now()}.json`,);
+		writeFileSync(payloadPath, '{"keys":[{"column":"category"}]}',);
+		const columns = (names: string[],) => ({
+			columns: names.map((name,) => ({ name, type: "string", })),
+		});
+		let saved = false;
+		const applied: unknown[] = [];
+		try {
+			await withCliServer(async (req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				const base = "/public/api/projects/TEST/recipes/group_orders";
+				if (req.method === "GET" && url.pathname === base) {
+					sendJson(res, { recipe: { name: "group_orders", type: "grouping", }, payload: "{}", },);
+					return;
+				}
+				if (req.method === "PUT" && url.pathname === base) {
+					await readBody(req,);
+					saved = true;
+					sendJson(res, {},);
+					return;
+				}
+				if (req.method === "GET" && url.pathname === `${base}/schema-update`) {
+					// derived_out matches the computed schema before the upload (DSS-derived) and
+					// differs after it; edited_out differs throughout (hand-edited).
+					sendJson(res, {
+						computables: [
+							{
+								type: "DATASET",
+								datasetName: "derived_out",
+								previousSchemaWasEmpty: false,
+								incompatibilities: saved ? ["Different number of columns",] : [],
+								newSchema: columns(saved ? ["category", "count",] : ["count",],),
+							},
+							{
+								type: "DATASET",
+								datasetName: "edited_out",
+								previousSchemaWasEmpty: false,
+								incompatibilities: ["Different number of columns",],
+								newSchema: columns(["category", "count",],),
+							},
+						],
+					},);
+					return;
+				}
+				if (req.method === "POST" && url.pathname === `${base}/actions/updateOutputSchema`) {
+					const body = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+					applied.push(body.computableId,);
+					sendJson(res, { hasAnyProblem: false, datasetsNeedingAction: [], },);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (url,) => {
+				const { stdout, stderr, } = await dss(
+					["recipe", "set-payload", "group_orders", "--file", payloadPath, "--no-backup",],
+					{ env: cliEnv(url,), },
+				);
+				expect(JSON.parse(stdout,),).toMatchObject({ outputSchemaUpdated: ["derived_out",], },);
+				expect(stderr,).toContain("recipe_output_schema_outdated",);
+				expect(stderr,).toContain("edited_out",);
+			},);
+			expect(applied,).toEqual(["derived_out",],);
+		} finally {
+			rmSync(payloadPath, { force: true, },);
+		}
+	});
 });
 
 describe("recipe set-payload backup hardening", () => {

@@ -1,5 +1,5 @@
 import { ClientValidationError, } from "../errors.js";
-import type { RecipeCreateOptions, } from "../schemas.js";
+import type { RecipeCreateOptions, RecipeSchemaUpdateComputable, } from "../schemas.js";
 import { asRecord, } from "../utils/records.js";
 
 /*
@@ -99,6 +99,41 @@ export function recipeInputItems(
 		}
 	}
 	return result;
+}
+
+/**
+ * Recipe types whose output schema DSS refuses to compute ("Output schema can't
+ * be automatically computed on 'python' recipes"): the code sets the schema
+ * when it runs. Plugin recipes (`CustomCode_*`) are code too.
+ */
+const CODE_RECIPE_TYPES: Record<string, true> = {
+	python: true,
+	r: true,
+	julia: true,
+	pyspark: true,
+	sparkr: true,
+	spark_scala: true,
+	shell: true,
+	sql_script: true,
+};
+
+/** Whether DSS can compute this recipe type's output schema (visual and SQL query recipes). */
+export function recipeOutputSchemaIsComputable(recipeType: string,): boolean {
+	const normalized = recipeType.trim().toLowerCase();
+	return CODE_RECIPE_TYPES[normalized] !== true && !normalized.startsWith("customcode_",);
+}
+
+/** The id DSS expects in actions/updateOutputSchema (dataikuapi RequiredSchemaUpdates.apply). */
+export function schemaUpdateComputableId(computable: RecipeSchemaUpdateComputable,): string {
+	return (computable.type === "DATASET" ? computable.datasetName : computable.id) ?? "";
+}
+
+/** A computed schema is worth writing when it has columns and differs from (or fills) the current one. */
+export function schemaUpdateIsPending(computable: RecipeSchemaUpdateComputable,): boolean {
+	const columns = computable.newSchema?.columns ?? [];
+	if (columns.length === 0) return false;
+	return computable.previousSchemaWasEmpty === true
+		|| (computable.incompatibilities?.length ?? 0) > 0;
 }
 
 /**

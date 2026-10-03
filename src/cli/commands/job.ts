@@ -10,10 +10,33 @@ import {
 	num,
 } from "../coerce.js";
 import { executionMode, } from "../flags.js";
-import { encodedProjectEndpoint, } from "../output.js";
+import { encodedProjectEndpoint, enqueueCliWarning, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
+
+/**
+ * With an empty output schema DSS ends a dataset build DONE after writing no
+ * columns and no rows, without an error. Flag that after a successful build so
+ * it is not mistaken for real output.
+ */
+async function warnIfBuiltDatasetHasNoColumns(
+	c: DataikuClient,
+	target: string,
+	targetType: string,
+	success: boolean,
+	projectKey: string | undefined,
+): Promise<void> {
+	if (!success || targetType !== "DATASET") return;
+	const schema = await c.datasets.schema(target, projectKey,).catch((): undefined => undefined);
+	if (!schema || schema.columns.length > 0) return;
+	enqueueCliWarning({
+		code: "built_dataset_has_no_columns",
+		dataset: target,
+		hint:
+			"The build succeeded but the dataset schema is empty, so no data was written. For a visual or SQL query recipe, run dss recipe update-schema RECIPE (or rebuild with --auto-update-schema).",
+	},);
+}
 
 // ---------------------------------------------------------------------------
 // Utility helpers
@@ -308,6 +331,7 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			requireArgs(a, 1, commandUsage("job", "build",),);
 			const pk = f["project-key"] as string | undefined;
 			const options = {
+				autoUpdateSchema: f["auto-update-schema"] === true,
 				buildMode: f["build-mode"] as BuildMode | undefined,
 				partition: f["partition"] as string | undefined,
 				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
@@ -326,11 +350,14 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 				};
 			}
 			if (f["wait"] === true) {
-				return c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },);
+				const result = await c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },);
+				await warnIfBuiltDatasetHasNoColumns(c, a[0], options.targetType, result.success, pk,);
+				return result;
 			}
 			return c.jobs.build(a[0], { ...options, projectKey: pk, },);
 		},
-		description: "Start a dataset or managed-folder build, optionally waiting for completion.",
+		description:
+			"Start a dataset or managed-folder build, optionally waiting for completion. --auto-update-schema lets DSS update each recipe's output schema before it runs.",
 		examples: [
 			"dss job build orders",
 			"dss job build orders --build-mode RECURSIVE_BUILD --wait",
@@ -342,6 +369,7 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			requireArgs(a, 1, commandUsage("job", "build-and-wait",),);
 			const pk = f["project-key"] as string | undefined;
 			const options = {
+				autoUpdateSchema: f["auto-update-schema"] === true,
 				buildMode: f["build-mode"] as BuildMode | undefined,
 				includeLogs: f["include-logs"] === true,
 				logFilter: jobLogFilterFromFlag(f["log-filter"],),
@@ -363,9 +391,12 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 					method: "POST",
 				};
 			}
-			return c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },);
+			const result = await c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },);
+			await warnIfBuiltDatasetHasNoColumns(c, a[0], options.targetType, result.success, pk,);
+			return result;
 		},
-		description: "Build a dataset or managed folder and wait for completion.",
+		description:
+			"Build a dataset or managed folder and wait for completion. --auto-update-schema lets DSS update each recipe's output schema before it runs; a successful dataset build that leaves an empty schema emits a built_dataset_has_no_columns warning.",
 		examples: [
 			"dss job build-and-wait orders",
 			"dss job build-and-wait orders --include-logs --log-filter stdout --summary",

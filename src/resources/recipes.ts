@@ -6,21 +6,35 @@ import {
 	nonJsonResponseBody,
 	unexpectedResponseError,
 } from "../errors.js";
-import { ProjectMetadataSchema, RecipeSummaryArraySchema, } from "../schemas.js";
+import {
+	ProjectMetadataSchema,
+	RecipeSchemaUpdatesSchema,
+	RecipeSummaryArraySchema,
+} from "../schemas.js";
 import type {
 	BuildMode,
 	JobWaitResult,
 	ProjectMetadata,
 	RecipeCreateOptions,
 	RecipeCreateResult,
+	RecipeSchemaUpdateComputable,
+	RecipeSchemaUpdates,
 	RecipeSummary,
+	RecipeUpdateSchemaResult,
 } from "../schemas.js";
 import { deepMerge, } from "../utils/deep-merge.js";
 import { asRecord, } from "../utils/records.js";
 import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
 import type { JobBuildTarget, JobBuildTargetType, JobLogFilter, JobLogSummary, } from "./jobs.js";
-import { asString, buildRecipeCreateRequest, recipeInputItems, } from "./recipe-create.js";
+import {
+	asString,
+	buildRecipeCreateRequest,
+	recipeInputItems,
+	recipeOutputSchemaIsComputable,
+	schemaUpdateComputableId,
+	schemaUpdateIsPending,
+} from "./recipe-create.js";
 
 // ---------------------------------------------------------------------------
 // Helpers: type narrowing
@@ -664,7 +678,6 @@ export class RecipesResource extends BaseResource {
 			inputDatasets,
 			inputs,
 			joinKeys,
-			name,
 			normalizedJoinType,
 			outputFolder,
 			outputs,
@@ -683,18 +696,14 @@ export class RecipesResource extends BaseResource {
 		const createdDatasets: string[] = [];
 		let usedOutputProvisioningFallback = false;
 
+		// Missing outputs are created through POST /datasets/managed, like the DSS UI
+		// and dataikuapi's new_managed_dataset: DSS picks the dataset type, storage
+		// path, and format from the connection (an S3 connection yields an S3
+		// dataset under the connection's naming rule), so the client never guesses
+		// type-specific params.
 		const provisionOutputDatasets = async (): Promise<void> => {
 			const existingDs = await this.client.get<
-				Array<{
-					name: string;
-					type?: string;
-					params?: {
-						connection?: string;
-						schema?: string;
-						catalog?: string;
-					};
-					managed?: boolean;
-				}>
+				Array<{ name: string; params?: { connection?: string; }; managed?: boolean; }>
 			>(`/public/api/projects/${enc}/datasets/`,);
 
 			let outputConnection = asString(rawConnection,);
@@ -708,61 +717,16 @@ export class RecipesResource extends BaseResource {
 			if (!outputConnection) return;
 
 			const existingNames = new Set([...existingDs.map((d,) => d.name), ...createdDatasets,],);
-			const connectionSample = existingDs.find(
-				(d,) => d.params?.connection === outputConnection && d.type,
-			);
-			const inferredOutputType = connectionSample?.type ?? "Filesystem";
-
 			const outputRoles = outputs as Record<string, { items?: Array<{ ref?: string; }>; }>;
 			for (const role of Object.values(outputRoles,)) {
 				for (const item of role.items ?? []) {
 					if (!item.ref || existingNames.has(item.ref,)) continue;
-
-					const datasetBody: Record<string, unknown> = inferredOutputType === "Filesystem"
-						? {
-							projectKey: pk,
-							name: item.ref,
-							type: inferredOutputType,
-							params: {
-								connection: outputConnection,
-								path: `/dataiku/${pk}/${item.ref}`,
-								metastoreTableName: item.ref,
-							},
-							formatType: "csv",
-							formatParams: {
-								style: "excel",
-								charset: "utf8",
-								separator: "\t",
-								quoteChar: '"',
-								escapeChar: "\\",
-								dateSerializationFormat: "ISO",
-								arrayMapFormat: "json",
-								parseHeaderRow: true,
-								compress: "gz",
-							},
-							managed: true,
-						}
-						: {
-							projectKey: pk,
-							name: item.ref,
-							type: inferredOutputType,
-							params: {
-								connection: outputConnection,
-								mode: "table",
-								table: item.ref,
-								...(connectionSample?.params?.schema
-									? { schema: connectionSample.params.schema, }
-									: {}),
-								...(connectionSample?.params?.catalog
-									? { catalog: connectionSample.params.catalog, }
-									: {}),
-							},
-							managed: connectionSample?.managed ?? false,
-						};
-
-					await this.client.post(`/public/api/projects/${enc}/datasets/`, datasetBody,);
+					await this.client.datasets.createManaged(
+						{ name: item.ref, connection: outputConnection, },
+						pk,
+					);
 					existingNames.add(item.ref,);
-					if (!createdDatasets.includes(item.ref,)) createdDatasets.push(item.ref,);
+					createdDatasets.push(item.ref,);
 				}
 			}
 		};
@@ -800,41 +764,10 @@ export class RecipesResource extends BaseResource {
 			finalRecipeName = retryName;
 		}
 
-		// For sync recipes (a 1:1 copy) DSS does not propagate schema on build, so a
-		// schemaless dataset output silently builds to an empty dataset. Copy the
-		// single input's schema onto any schemaless dataset output so the build
-		// materializes rows (mirrors the DSS UI, which sets the sync output schema).
-		let syncOutputSchemaPropagated: string[] | undefined;
-		if (type.toLowerCase() === "sync" && !outputFolder) {
-			const inputRefs = recipeInputItems({ inputs, },).map((item,) => item.ref);
-			const outputDatasetRefs = recipeOutputItems({ outputs, },)
-				.filter((item,) => item.type !== "MANAGED_FOLDER")
-				.map((item,) => item.ref);
-			if (inputRefs.length === 1 && outputDatasetRefs.length > 0) {
-				const inputSchema = await this.client.datasets
-					.schema(inputRefs[0], pk,)
-					.catch((): undefined => undefined);
-				const inputColumns = inputSchema?.columns;
-				if (inputColumns && inputColumns.length > 0) {
-					const propagated: string[] = [];
-					for (const ref of outputDatasetRefs) {
-						const current = await this.client.datasets
-							.schema(ref, pk,)
-							.catch((): undefined => undefined);
-						if (current && current.columns.length === 0) {
-							await this.client.datasets.updateSchema(ref, inputColumns, pk,);
-							propagated.push(ref,);
-						}
-					}
-					if (propagated.length > 0) syncOutputSchemaPropagated = propagated;
-				}
-			}
-		}
-
 		// For join recipes: configure join conditions after creation
 		let joinConfigured = false;
 		if (type === "join" && joinKeys?.length) {
-			const rnEnc = encodeURIComponent(name,);
+			const rnEnc = encodeURIComponent(finalRecipeName,);
 			const full = await this.client.get<{
 				recipe: Record<string, unknown>;
 				payload?: string;
@@ -873,7 +806,7 @@ export class RecipesResource extends BaseResource {
 		}
 
 		if (type === "fuzzyjoin" && fuzzyKeys?.length) {
-			const rnEnc = encodeURIComponent(name,);
+			const rnEnc = encodeURIComponent(finalRecipeName,);
 			const full = await this.client.get<{
 				recipe: Record<string, unknown>;
 				payload?: string;
@@ -925,7 +858,7 @@ export class RecipesResource extends BaseResource {
 
 		let temporaryOutputDatasetDeleted: boolean | undefined;
 		if (outputFolder) {
-			await this.update(name, {
+			await this.update(finalRecipeName, {
 				recipe: {
 					outputs: {
 						main: {
@@ -949,16 +882,147 @@ export class RecipesResource extends BaseResource {
 			}
 		}
 
+		// DSS computes visual-recipe output schemas only when asked (the UI asks on
+		// save; dataikuapi exposes compute_schema_updates). Without this, a join or
+		// grouping output keeps an empty schema and its build "succeeds" with no
+		// columns. Only outputs this call created, or whose schema is still empty,
+		// are written: an existing schema is never replaced implicitly.
+		let outputSchemaUpdated: string[] | undefined;
+		let outputSchemaUpdateError: string | undefined;
+		if (!outputFolder && recipeOutputSchemaIsComputable(type,)) {
+			try {
+				const created = new Set(createdDatasets,);
+				const { updated, } = await this.applySchemaUpdates(
+					finalRecipeName,
+					await this.computeSchemaUpdates(finalRecipeName, pk,),
+					pk,
+					(computable,) =>
+						computable.previousSchemaWasEmpty === true
+						|| created.has(schemaUpdateComputableId(computable,),),
+				);
+				if (updated.length > 0) outputSchemaUpdated = updated;
+			} catch (error) {
+				if (!(error instanceof DataikuError)) throw error;
+				outputSchemaUpdateError = error.message.split("\n",)[0];
+			}
+		}
+
 		return {
 			recipeName: finalRecipeName,
 			type,
 			createdDatasets,
 			joinConfigured,
 			outputProvisioningFallbackUsed: usedOutputProvisioningFallback,
-			...(syncOutputSchemaPropagated ? { syncOutputSchemaPropagated, } : {}),
+			...(outputSchemaUpdated ? { outputSchemaUpdated, } : {}),
+			...(outputSchemaUpdateError ? { outputSchemaUpdateError, } : {}),
 			...(outputFolder ? { outputFolder, } : {}),
 			...(temporaryOutputDataset ? { temporaryOutputDataset, } : {}),
 			...(temporaryOutputDatasetDeleted !== undefined ? { temporaryOutputDatasetDeleted, } : {}),
+		};
+	}
+
+	/**
+	 * Compute the output schemas DSS derives from the recipe's current settings
+	 * (GET /recipes/{name}/schema-update, dataikuapi `compute_schema_updates`).
+	 * DSS rejects code recipes, whose code sets the schema at run time.
+	 */
+	async computeSchemaUpdates(
+		recipeName: string,
+		projectKey?: string,
+	): Promise<RecipeSchemaUpdates> {
+		const raw = await this.client.get<unknown>(
+			`/public/api/projects/${this.enc(projectKey,)}/recipes/${
+				encodeURIComponent(recipeName,)
+			}/schema-update`,
+		);
+		return this.client.safeParse(RecipeSchemaUpdatesSchema, raw, "recipes.computeSchemaUpdates",);
+	}
+
+	/**
+	 * Write each pending computed schema accepted by `select` through
+	 * actions/updateOutputSchema. Pending outputs `select` rejects are reported,
+	 * not written.
+	 */
+	private async applySchemaUpdates(
+		recipeName: string,
+		updates: RecipeSchemaUpdates,
+		projectKey: string | undefined,
+		select: (computable: RecipeSchemaUpdateComputable,) => boolean,
+	): Promise<
+		{ updated: string[]; pending: string[]; unchanged: string[]; datasetsNeedingAction: unknown[]; }
+	> {
+		const endpoint = `/public/api/projects/${this.enc(projectKey,)}/recipes/${
+			encodeURIComponent(recipeName,)
+		}/actions/updateOutputSchema`;
+		const updated: string[] = [];
+		const pending: string[] = [];
+		const unchanged: string[] = [];
+		const datasetsNeedingAction: unknown[] = [];
+		for (const computable of updates.computables) {
+			const computableId = schemaUpdateComputableId(computable,);
+			if (!schemaUpdateIsPending(computable,)) {
+				unchanged.push(computableId,);
+				continue;
+			}
+			if (!select(computable,)) {
+				pending.push(computableId,);
+				continue;
+			}
+			const applied = await this.client.post<{ datasetsNeedingAction?: unknown[]; } | undefined>(
+				endpoint,
+				{ computableType: computable.type, computableId, newSchema: computable.newSchema, },
+			);
+			updated.push(computableId,);
+			if (applied?.datasetsNeedingAction?.length) {
+				datasetsNeedingAction.push(...applied.datasetsNeedingAction,);
+			}
+		}
+		return { updated, pending, unchanged, datasetsNeedingAction, };
+	}
+
+	/**
+	 * Replace each output schema that differs from the DSS-computed one
+	 * (dataikuapi `compute_schema_updates().apply()`, the UI's "Update schema").
+	 * With `derivedOutputs`, only outputs whose schema is empty or listed there
+	 * are written: callers pass the outputs whose schema matched the computed
+	 * one before an edit, so DSS-derived schemas follow the edit while
+	 * hand-edited ones are left alone. `dryRun` writes nothing. Skipped
+	 * differing outputs are listed under `pending`. Code recipes are rejected
+	 * before the schema computation: DSS cannot compute their output schema.
+	 */
+	async updateSchema(
+		recipeName: string,
+		opts?: { projectKey?: string; derivedOutputs?: string[]; dryRun?: boolean; },
+	): Promise<RecipeUpdateSchemaResult> {
+		const { recipe, } = await this.get(recipeName, { projectKey: opts?.projectKey, },);
+		const recipeType = typeof recipe.type === "string" ? recipe.type : "";
+		if (!recipeOutputSchemaIsComputable(recipeType,)) {
+			throw new ClientValidationError(
+				`DSS cannot compute output schemas for ${recipeType} recipes: the code sets the schema when it runs. Build the recipe, or set columns with dss dataset refresh-schema.`,
+				"validation_failed",
+			);
+		}
+		const updates = await this.computeSchemaUpdates(recipeName, opts?.projectKey,);
+		const derived = opts?.derivedOutputs ? new Set(opts.derivedOutputs,) : undefined;
+		const applied = await this.applySchemaUpdates(
+			recipeName,
+			updates,
+			opts?.projectKey,
+			(computable,) =>
+				opts?.dryRun !== true
+				&& (derived === undefined || computable.previousSchemaWasEmpty === true
+					|| derived.has(schemaUpdateComputableId(computable,),)),
+		);
+		return {
+			recipeName,
+			updated: applied.updated,
+			pending: applied.pending,
+			unchanged: applied.unchanged,
+			totalIncompatibilities: updates.totalIncompatibilities ?? 0,
+			computables: updates.computables,
+			...(applied.datasetsNeedingAction.length > 0
+				? { datasetsNeedingAction: applied.datasetsNeedingAction, }
+				: {}),
 		};
 	}
 

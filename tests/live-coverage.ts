@@ -566,6 +566,7 @@ export const LIVE_COVERAGE_CATALOGUE: Record<
 			"run",
 			"set-payload",
 			"update",
+			"update-schema",
 			"validate-graph",
 		],
 	},

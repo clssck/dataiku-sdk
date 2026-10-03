@@ -35,6 +35,7 @@ export const BOOLEAN_FLAGS = new Set([
 	"if-exists",
 	"no-wait",
 	"force-rebuild",
+	"auto-update-schema",
 	"latest",
 	"copy-output-settings",
 	"copy-permissions",

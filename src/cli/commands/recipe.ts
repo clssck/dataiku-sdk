@@ -1,7 +1,13 @@
 import { readFileSync, } from "node:fs";
 import { writeFile, } from "node:fs/promises";
 import { join, } from "node:path";
-import { ClientValidationError, } from "../../errors.js";
+import type { DataikuClient, } from "../../client.js";
+import { ClientValidationError, DataikuError, } from "../../errors.js";
+import {
+	recipeOutputSchemaIsComputable,
+	schemaUpdateComputableId,
+	schemaUpdateIsPending,
+} from "../../resources/recipe-create.js";
 import type { BuildMode, } from "../../schemas.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import {
@@ -32,7 +38,7 @@ import {
 	recipeRunShouldWait,
 	writeRecipeBackup,
 } from "../helpers/recipe.js";
-import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
+import { encodedProjectEndpoint, enqueueCliWarning, readIfExists, skipResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -62,6 +68,61 @@ function readRecipeBackupFile(backupPath: string,): Record<string, unknown> {
 			"not_found",
 			"Verify the backup file path and that it is readable.",
 		);
+	}
+}
+
+/**
+ * DSS does not recompute visual-recipe output schemas when the recipe is
+ * saved, and a build against a stale or empty output schema "succeeds" with
+ * the wrong columns. Around a payload write: outputs whose schema matched the
+ * DSS-computed one before the write (DSS-derived) or is empty get the newly
+ * computed schema; outputs whose schema had been hand-edited are left alone
+ * and reported in a warning.
+ */
+async function writeKeepingDerivedOutputSchemas(
+	c: DataikuClient,
+	recipeName: string,
+	recipeType: unknown,
+	projectKey: string | undefined,
+	write: () => Promise<void>,
+): Promise<{ outputSchemaUpdated?: string[]; }> {
+	if (typeof recipeType !== "string" || !recipeOutputSchemaIsComputable(recipeType,)) {
+		await write();
+		return {};
+	}
+	const derivedOutputs = await c.recipes.computeSchemaUpdates(recipeName, projectKey,).then(
+		(before,) =>
+			before.computables.filter((computable,) => !schemaUpdateIsPending(computable,)).map(
+				schemaUpdateComputableId,
+			),
+		// Unknown before-state: only empty schemas are safe to fill.
+		(error: unknown,) => {
+			if (error instanceof DataikuError) return [];
+			throw error;
+		},
+	);
+	await write();
+	try {
+		const result = await c.recipes.updateSchema(recipeName, { projectKey, derivedOutputs, },);
+		if (result.pending.length > 0) {
+			enqueueCliWarning({
+				code: "recipe_output_schema_outdated",
+				recipe: recipeName,
+				outputs: result.pending,
+				hint:
+					`These outputs have an edited schema that differs from the DSS-computed one. Run dss recipe update-schema ${recipeName} to replace it, or build with --auto-update-schema.`,
+			},);
+		}
+		return result.updated.length > 0 ? { outputSchemaUpdated: result.updated, } : {};
+	} catch (error) {
+		if (!(error instanceof DataikuError)) throw error;
+		enqueueCliWarning({
+			code: "recipe_output_schema_not_computed",
+			recipe: recipeName,
+			error: error.message.split("\n",)[0],
+			hint: `Fix the recipe settings, then run dss recipe update-schema ${recipeName}.`,
+		},);
+		return {};
 	}
 }
 
@@ -372,9 +433,18 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 				objectId: createdName,
 				objectType: "RECIPE",
 			},], pk,);
+			if (created.outputSchemaUpdateError) {
+				enqueueCliWarning({
+					code: "recipe_output_schema_not_computed",
+					recipe: createdName,
+					error: created.outputSchemaUpdateError,
+					hint: `Fix the recipe settings, then run dss recipe update-schema ${createdName}.`,
+				},);
+			}
 			return { created: createdName, resource: "recipe", ...created, ...moved, };
 		},
-		description: "Create a recipe with optional inputs and a dataset or managed-folder output.",
+		description:
+			"Create a recipe with optional inputs and a dataset or managed-folder output. Missing outputs are created on --output-connection as DSS managed datasets (DSS picks type, path, and format). For visual and SQL query recipes, outputs created here or with an empty schema get the DSS-computed schema (outputSchemaUpdated).",
 		examples: [
 			"dss recipe create --type python --input raw_orders,lookup --output orders_clean",
 			"dss recipe create --type python --input orders --input customers --output orders_clean --zone Experiments",
@@ -708,21 +778,47 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 					`${JSON.stringify(recipeBackupDocument(a[0], pk, current,), null, 2,)}\n`,
 				);
 			}
-			await c.recipes.replace(a[0], { ...current, payload: content, }, pk,);
+			const schema = await writeKeepingDerivedOutputSchemas(
+				c,
+				a[0],
+				current.recipe.type,
+				pk,
+				() => c.recipes.replace(a[0], { ...current, payload: content, }, pk,),
+			);
 			return {
 				updated: a[0],
 				resource: "recipe",
 				file: filePath,
 				backupCreated: backupPath !== undefined,
 				...(backupPath ? { backupPath, } : {}),
+				...schema,
 			};
 		},
 		description:
-			"Upload recipe code from a local file, backing up payload, graph, settings, and version metadata by default.",
+			"Upload recipe code from a local file, backing up payload, graph, settings, and version metadata by default. For visual and SQL query recipes, outputs whose schema was empty or matched the DSS-computed one before the upload get the newly computed schema (outputSchemaUpdated); hand-edited output schemas are kept and reported in a recipe_output_schema_outdated warning.",
 		examples: [
 			"dss recipe set-payload compute_orders --file code.py --dry-run",
 			"dss recipe set-payload compute_orders --file code.py --backup-dir ./backups",
 			"dss recipe set-payload compute_orders --file code.py --no-backup",
+		],
+	},
+	"update-schema": {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 1, commandUsage("recipe", "update-schema",),);
+			const dryRun = executionMode(f,).dryRun;
+			const result = await c.recipes.updateSchema(a[0], {
+				projectKey: f["project-key"] as string | undefined,
+				dryRun,
+			},);
+			return dryRun
+				? { dryRun: true, action: "update-schema", resource: "recipe", name: a[0], ...result, }
+				: result;
+		},
+		description:
+			"Write the output schemas DSS computes from a visual or SQL query recipe (the UI's Update schema; dataikuapi compute_schema_updates().apply()) to every output whose schema differs. --dry-run lists them under pending. Code recipes are rejected: their code sets the schema when it runs.",
+		examples: [
+			"dss recipe update-schema compute_orders_joined --dry-run",
+			"dss recipe update-schema compute_orders_joined",
 		],
 	},
 	restore: {

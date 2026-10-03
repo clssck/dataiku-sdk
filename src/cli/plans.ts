@@ -406,7 +406,7 @@ function jobBuildPayload(
 		outputs: [output,],
 		type: (flags["build-mode"] as string | undefined) ?? "NON_RECURSIVE_FORCED_BUILD",
 	};
-	if (flags["force-rebuild"] === true && targetType === "DATASET") {
+	if (flags["auto-update-schema"] === true && targetType === "DATASET") {
 		payload.autoUpdateSchemaBeforeEachRecipeRun = true;
 	}
 	return payload;
@@ -991,6 +991,27 @@ export function commandPlanShape(
 				identifiers: { name: id, },
 				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
+		case "recipe.update-schema": {
+			const recipePath = `/recipes/${encodeURIComponent(id,)}`;
+			return {
+				exact: false,
+				reason:
+					"DSS computes the output schemas from the live recipe; one POST is sent per output whose computed schema differs. Use recipe update-schema --dry-run to list them.",
+				method: "POST",
+				endpoint: projectEndpoint(`${recipePath}/actions/updateOutputSchema`,),
+				identifiers: { name: id, },
+				requests: [
+					{ method: "GET", endpoint: projectEndpoint(recipePath,), },
+					{ method: "GET", endpoint: projectEndpoint(`${recipePath}/schema-update`,), },
+					{
+						method: "POST",
+						endpoint: projectEndpoint(`${recipePath}/actions/updateOutputSchema`,),
+						payload: { computableType: "{type}", computableId: "{id}", newSchema: "{newSchema}", },
+						repeat: "per output whose computed schema differs",
+					},
+				],
+			};
+		}
 		case "recipe.set-payload": {
 			const file = requiredPlanFlag(flags, "file", entry.usage,);
 			const backupDir = flags["no-backup"] === true

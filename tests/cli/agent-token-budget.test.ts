@@ -63,14 +63,15 @@ function expectWithinBudget(name: string, text: string, budget: TokenBudget,): n
 describe("agent-facing token budgets", () => {
 	it("bounds every on-demand skill reference", () => {
 		// Measured after discovery routing and App sharing guidance updates; retain 5% headroom.
+		// coding, troubleshooting: raised for the visual recipe payload and output schema guidance.
 		const baselines = {
 			authentication: 461,
 			discovery: 596,
 			mutations: 602,
 			"app-releases": 872,
 			"flow-maps": 159,
-			coding: 231,
-			troubleshooting: 876,
+			coding: 331,
+			troubleshooting: 925,
 		};
 		for (const [name, baseline,] of Object.entries(baselines,)) {
 			const text = readFileSync(

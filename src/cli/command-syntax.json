@@ -5900,6 +5900,15 @@
 				"optional": [
 					[
 						{
+							"flag": "auto-update-schema"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "dry-run"
 						}
 					]
@@ -6028,6 +6037,15 @@
 						{
 							"flag": "partition",
 							"value": "PARTITION"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "auto-update-schema"
 						}
 					]
 				]
@@ -11817,6 +11835,33 @@
 					]
 				],
 				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"recipe.update-schema": [
+			"dss",
+			"recipe",
+			"update-schema",
+			{
+				"arg": "name"
 			},
 			{
 				"optional": [
