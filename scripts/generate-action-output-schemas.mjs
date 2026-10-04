@@ -47,8 +47,8 @@ const serialized = `${JSON.stringify(metadata, null, "\t",)}\n`;
 
 if (process.argv.includes("--check",)) {
 	if (!existsSync(outputPath,) || readFileSync(outputPath, "utf-8",) !== serialized) {
-		console.error(
-			"src/generated/action-output-schemas.json is stale. Run `bun scripts/generate-action-output-schemas.mjs` and commit the result.",
+		process.stderr.write(
+			"src/generated/action-output-schemas.json is stale. Run `bun scripts/generate-action-output-schemas.mjs` and commit the result.\n",
 		);
 		process.exitCode = 1;
 	} else {

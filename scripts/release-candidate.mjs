@@ -14,7 +14,7 @@ function run(argv, cwd = root,) {
 	return result.stdout.toString().trim();
 }
 function integrity(bytes,) {
-	return "sha512-" + createHash("sha512",).update(bytes,).digest("base64",);
+	return `sha512-${createHash("sha512",).update(bytes,).digest("base64",)}`;
 }
 
 export function readCandidate(directory,) {
@@ -76,7 +76,7 @@ function prepareCandidate(bump, directory,) {
 		bytes: bytes.length,
 		integrity: integrity(bytes,),
 	};
-	fs.writeFileSync(path.join(directory, "manifest.json",), JSON.stringify(manifest,) + "\n",);
+	fs.writeFileSync(path.join(directory, "manifest.json",), `${JSON.stringify(manifest,)}\n`,);
 	run([
 		"git",
 		"bundle",
@@ -87,7 +87,7 @@ function prepareCandidate(bump, directory,) {
 		`^${baseRevision}`,
 	],);
 	verifyCandidate(directory,);
-	console.log(JSON.stringify(manifest,),);
+	process.stdout.write(`${JSON.stringify(manifest,)}\n`,);
 }
 
 function restoreCandidate(directory,) {
@@ -110,7 +110,7 @@ function restoreCandidate(directory,) {
 	) {
 		throw new Error("Candidate source/tag does not match its manifest",);
 	}
-	console.log(JSON.stringify(manifest,),);
+	process.stdout.write(`${JSON.stringify(manifest,)}\n`,);
 }
 
 class PublicationMismatch extends Error {}
@@ -192,7 +192,7 @@ export async function verifyPublishedCandidate(directory, {
 				}
 				hash.update(chunk,);
 			}
-			if (size !== manifest.bytes || "sha512-" + hash.digest("base64",) !== manifest.integrity) {
+			if (size !== manifest.bytes || `sha512-${hash.digest("base64",)}` !== manifest.integrity) {
 				throw new PublicationMismatch("Published tarball integrity mismatch",);
 			}
 			return manifest;
@@ -212,7 +212,9 @@ if (import.meta.main) {
 	if (command === "prepare" && first && second) prepareCandidate(first, path.resolve(second,),);
 	else if (command === "restore" && first) restoreCandidate(path.resolve(first,),);
 	else if (command === "verify" && first) {
-		console.log(JSON.stringify(await verifyPublishedCandidate(path.resolve(first,),),),);
+		process.stdout.write(
+			`${JSON.stringify(await verifyPublishedCandidate(path.resolve(first,),),)}\n`,
+		);
 	} else {throw new Error(
 			"Usage: release-candidate.mjs prepare BUMP DIRECTORY | restore DIRECTORY | verify DIRECTORY",
 		);}

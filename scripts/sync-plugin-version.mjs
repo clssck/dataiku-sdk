@@ -12,10 +12,10 @@ if (typeof expectedVersion !== "string" || expectedVersion.length === 0) {
 
 if (process.argv.includes("--check",)) {
 	if (plugin.version !== expectedVersion) {
-		console.error(
+		process.stderr.write(
 			`plugin.json version ${
 				JSON.stringify(plugin.version,)
-			} does not match package.json version ${expectedVersion}.`,
+			} does not match package.json version ${expectedVersion}.\n`,
 		);
 		process.exitCode = 1;
 	}

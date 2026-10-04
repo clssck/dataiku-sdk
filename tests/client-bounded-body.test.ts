@@ -335,7 +335,7 @@ describe("DataikuClient bounded response bodies", () => {
 	});
 
 	for (const method of ["stream", "postStream",] as const) {
-		it(method + " rejects a stalled body after headers", async () => {
+		it(`${method} rejects a stalled body after headers`, async () => {
 			await withDataikuServer((_req, res,) => {
 				res.writeHead(200, { "Content-Type": "application/octet-stream", },);
 				res.write("first chunk",);
@@ -349,7 +349,7 @@ describe("DataikuClient bounded response bodies", () => {
 					expect((error as DataikuError).status,).toBe(0,);
 				}
 			}, { requestTimeoutMs: 100, },);
-		},);
+		});
 	}
 
 	it("streams a healthy transfer beyond the timeout without buffering or truncation", async () => {
@@ -364,7 +364,7 @@ describe("DataikuClient bounded response bodies", () => {
 			const res = await client.stream("/long",);
 			expect(res.status,).toBe(206,);
 			expect(res.headers.get("x-stream",),).toBe("intact",);
-			expect(res.url,).toBe(client.getBaseUrl() + "/long",);
+			expect(res.url,).toBe(`${client.getBaseUrl()}/long`,);
 			expect(await res.text(),).toBe("onetwothree",);
 		}, { requestTimeoutMs: 200, maxResponseBodyBytes: 1, },);
 	});

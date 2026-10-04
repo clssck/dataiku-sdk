@@ -301,24 +301,24 @@ describe("DatasetsResource.download", () => {
 	});
 });
 
+function buildBatchedTsv(rowCount: number,): { tsv: string; expectedCsv: string; } {
+	const tsv: string[] = ["id\tname\tamount\tnote\n",];
+	const csv: string[] = ["id,name,amount,note\n",];
+	for (let i = 0; i < rowCount; i++) {
+		const name = `user-${String(i,).padStart(7, "0",)}`;
+		const note = `row-payload-${"x".repeat(120,)}-${String(i,).padStart(7, "0",)}`;
+		tsv.push(`${String(i,)}\t${name}\t${String(i * 7,)}\t${note}\n`,);
+		csv.push(`${String(i,)},${name},${String(i * 7,)},${note}\n`,);
+	}
+	return { tsv: tsv.join("",), expectedCsv: csv.join("",), };
+}
+
 describe("DatasetsResource.download CSV batching", () => {
 	// ~162 bytes per row: 2k rows span several full 64 KiB output batches and
 	// still leave a partial batch at EOF. The truncation limit below stops after
 	// a flushed batch with rows still pending in the batch being filled.
 	const rows = 2_000;
 	const truncatedRows = 1_500;
-
-	function buildBatchedTsv(rowCount: number,): { tsv: string; expectedCsv: string; } {
-		const tsv: string[] = ["id\tname\tamount\tnote\n",];
-		const csv: string[] = ["id,name,amount,note\n",];
-		for (let i = 0; i < rowCount; i++) {
-			const name = `user-${String(i,).padStart(7, "0",)}`;
-			const note = `row-payload-${"x".repeat(120,)}-${String(i,).padStart(7, "0",)}`;
-			tsv.push(`${String(i,)}\t${name}\t${String(i * 7,)}\t${note}\n`,);
-			csv.push(`${String(i,)},${name},${String(i * 7,)},${note}\n`,);
-		}
-		return { tsv: tsv.join("",), expectedCsv: csv.join("",), };
-	}
 
 	it("writes batched plain exports byte-identically across batch boundaries", async () => {
 		const { tsv, expectedCsv, } = buildBatchedTsv(rows,);
@@ -860,8 +860,9 @@ describe("NotebooksResource.create", () => {
 		const requests: string[] = [];
 		let observedBody: JupyterNotebookContent | undefined;
 		const notebookName = "analysis notebook";
-		const notebookPath = "/public/api/projects/TEST/jupyter-notebooks/"
-			+ encodeURIComponent(notebookName,);
+		const notebookPath = `/public/api/projects/TEST/jupyter-notebooks/${
+			encodeURIComponent(notebookName,)
+		}`;
 		const notebook: JupyterNotebookContent = {
 			metadata: { kernelspec: { name: "python3", }, },
 			nbformat: 4,
@@ -953,8 +954,9 @@ describe("NotebooksResource.clearJupyterOutputs", () => {
 
 	it("rejects the legacy GET-strip-PUT path: no notebook read or write occurs", async () => {
 		const notebookName = "analysis notebook";
-		const notebookPath = "/public/api/projects/TEST/jupyter-notebooks/"
-			+ encodeURIComponent(notebookName,);
+		const notebookPath = `/public/api/projects/TEST/jupyter-notebooks/${
+			encodeURIComponent(notebookName,)
+		}`;
 		const outputsPath = `${notebookPath}/outputs`;
 		const requests: string[] = [];
 
@@ -1115,8 +1117,9 @@ describe("NotebooksResource.unloadJupyterAll", () => {
 
 describe("NotebooksResource.saveOrCreateJupyter", () => {
 	const notebookName = "analysis notebook";
-	const notebookPath = "/public/api/projects/TEST/jupyter-notebooks/"
-		+ encodeURIComponent(notebookName,);
+	const notebookPath = `/public/api/projects/TEST/jupyter-notebooks/${
+		encodeURIComponent(notebookName,)
+	}`;
 	const content: JupyterNotebookContent = {
 		metadata: { kernelspec: { name: "python3", }, },
 		nbformat: 4,

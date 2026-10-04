@@ -21,7 +21,7 @@ function candidate() {
 		baseRevision: "a".repeat(40,),
 		commit: "b".repeat(40,),
 		bytes: bytes.length,
-		integrity: "sha512-" + createHash("sha512",).update(bytes,).digest("base64",),
+		integrity: `sha512-${createHash("sha512",).update(bytes,).digest("base64",)}`,
 	};
 	fs.writeFileSync(path.join(directory, "package.tgz",), bytes,);
 	fs.writeFileSync(path.join(directory, "manifest.json",), JSON.stringify(manifest,),);
@@ -33,7 +33,7 @@ function metadata(fixture: ReturnType<typeof candidate>, url: string,) {
 		version: fixture.manifest.version,
 		dist: {
 			integrity: fixture.manifest.integrity,
-			tarball: url + "dataiku-sdk/-/dataiku-sdk-3.3.1.tgz",
+			tarball: `${url}dataiku-sdk/-/dataiku-sdk-3.3.1.tgz`,
 		},
 	};
 }
@@ -55,7 +55,7 @@ it("waits for both metadata and the canonical tarball before confirming publicat
 			metadataReads++;
 			return metadataReads === 1
 				? new Response(null, { status: 404, },)
-				: Response.json(metadata(fixture, new URL(request.url,).origin + "/",),);
+				: Response.json(metadata(fixture, `${new URL(request.url,).origin}/`,),);
 		},
 	},);
 	try {
@@ -82,8 +82,8 @@ for (const mismatch of ["metadata", "download-url", "tarball",] as const) {
 			fetch(request,) {
 				requests++;
 				if (request.url.endsWith(".tgz",)) return new Response(Buffer.alloc(fixture.bytes.length, 0,),);
-				const value = metadata(fixture, new URL(request.url,).origin + "/",);
-				if (mismatch === "metadata") value.dist.integrity = "sha512-" + "0".repeat(86,) + "==";
+				const value = metadata(fixture, `${new URL(request.url,).origin}/`,);
+				if (mismatch === "metadata") value.dist.integrity = `sha512-${"0".repeat(86,)}==`;
 				if (mismatch === "download-url") value.dist.tarball = "https://untrusted.invalid/package.tgz";
 				return Response.json(value,);
 			},

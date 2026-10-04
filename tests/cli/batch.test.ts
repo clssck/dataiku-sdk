@@ -435,6 +435,33 @@ describe("CLI batch command", () => {
 	});
 });
 
+function successorStep(ledger: string, extra: string[] = [],): string {
+	return JSON.stringify([
+		[
+			"app",
+			"create-successor-instance",
+			"MYAPP",
+			"--from",
+			"OLD_INSTANCE",
+			"--to",
+			"NEW_INSTANCE",
+			...extra,
+			"--record-cleanup",
+			ledger,
+		],
+	],);
+}
+
+function tempLedger(): { dir: string; ledger: string; cleanup: () => void; } {
+	const dir = join(tmpdir(), `dss-batch-cleanup-${Date.now()}-${Math.random()}`,);
+	mkdirSync(dir, { recursive: true, },);
+	return {
+		dir,
+		ledger: join(dir, "cleanup.jsonl",),
+		cleanup: () => rmSync(dir, { recursive: true, force: true, },),
+	};
+}
+
 describe("CLI batch cleanup ledger parity", () => {
 	const TEMPLATE_MANIFEST = {
 		projectKey: "MYAPP_TEMPLATE",
@@ -526,33 +553,6 @@ describe("CLI batch cleanup ledger parity", () => {
 			}
 			res.statusCode = 500;
 			res.end(`unexpected ${req.method} ${url.pathname}`,);
-		};
-	}
-
-	function successorStep(ledger: string, extra: string[] = [],): string {
-		return JSON.stringify([
-			[
-				"app",
-				"create-successor-instance",
-				"MYAPP",
-				"--from",
-				"OLD_INSTANCE",
-				"--to",
-				"NEW_INSTANCE",
-				...extra,
-				"--record-cleanup",
-				ledger,
-			],
-		],);
-	}
-
-	function tempLedger(): { dir: string; ledger: string; cleanup: () => void; } {
-		const dir = join(tmpdir(), `dss-batch-cleanup-${Date.now()}-${Math.random()}`,);
-		mkdirSync(dir, { recursive: true, },);
-		return {
-			dir,
-			ledger: join(dir, "cleanup.jsonl",),
-			cleanup: () => rmSync(dir, { recursive: true, force: true, },),
 		};
 	}
 

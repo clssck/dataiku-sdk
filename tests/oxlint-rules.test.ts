@@ -12,7 +12,7 @@ async function lint(rule: string, cases: Record<string, string>,): Promise<strin
 			JSON.stringify({
 				categories: { correctness: "off", },
 				jsPlugins: [{ name: "dss", specifier: resolve("tools/oxlint/index.ts",), },],
-				rules: { ["dss/" + rule]: "error", },
+				rules: { [`dss/${rule}`]: "error", },
 			},),
 		);
 		for (const [name, code,] of Object.entries(cases,)) {

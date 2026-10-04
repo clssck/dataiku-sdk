@@ -18,7 +18,7 @@ const pending = match[1].trim();
 
 if (process.argv.includes("--check",)) {
 	if (!text.split("\n",).includes(heading,)) {
-		console.error(`CHANGELOG.md has no ${heading} section.`,);
+		process.stderr.write(`CHANGELOG.md has no ${heading} section.\n`,);
 		process.exitCode = 1;
 	}
 } else {

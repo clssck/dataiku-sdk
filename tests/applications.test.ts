@@ -656,7 +656,7 @@ describe("ApplicationsResource", () => {
 				{ kind: "folder", status: "failed", checked: 2, malformed: 1, missing: 1, },
 				{ kind: "variable", status: "failed", checked: 3, malformed: 0, missing: 1, },
 			],);
-			expect(result.errors.map(({ code, path, },) => ({ code, path, })),).toEqual([
+			expect(result.errors.map(({ code, path: jsonPath, },) => ({ code, path: jsonPath, })),).toEqual([
 				{
 					code: "MISSING_SCENARIO",
 					path: '$["homepageSections"][0]["tiles"][1]["scenarioId"]',
@@ -678,9 +678,9 @@ describe("ApplicationsResource", () => {
 					path: '$["homepageSections"][0]["tiles"][6]["params"][2]["name"]',
 				},
 			],);
-			expect(result.references.map(({ kind, path, value, exists, },) => ({
+			expect(result.references.map(({ kind, path: jsonPath, value, exists, },) => ({
 				kind,
-				path,
+				path: jsonPath,
 				value,
 				exists,
 			})),).toEqual([
@@ -770,7 +770,7 @@ describe("ApplicationsResource", () => {
 					exists: false,
 				},
 			],);
-			expect(result.errors.map(({ code, path, },) => ({ code, path, })),).toEqual([
+			expect(result.errors.map(({ code, path: jsonPath, },) => ({ code, path: jsonPath, })),).toEqual([
 				{
 					code: "MISSING_FOLDER",
 					path: '$["homepageSections"][0]["tiles"][0]["folderId"]',
@@ -837,7 +837,7 @@ describe("ApplicationsResource", () => {
 				{ kind: "folder", status: "failed", checked: 0, malformed: 1, missing: 0, },
 				{ kind: "variable", status: "failed", checked: 0, malformed: 1, missing: 0, },
 			],);
-			expect(result.errors.map(({ path, },) => path),).toEqual([
+			expect(result.errors.map((error,) => error.path),).toEqual([
 				'$["homepageSections"][0]["tiles"][0]["scenarioId"]',
 				'$["homepageSections"][0]["tiles"][1]["folderId"]',
 				'$["homepageSections"][0]["tiles"][2]["params"][0]["name"]',

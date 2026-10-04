@@ -16,6 +16,32 @@ import {
 	writeFileSync,
 } from "./_harness.js";
 
+function sqlPreviewServer(queryId: string, rows: number[][],) {
+	return (req: IncomingMessage, res: ServerResponse,): void => {
+		const url = new URL(req.url ?? "/", "http://localhost",);
+		if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+			sendJson(res, { queryId, hasResults: true, schema: [{ name: "id", type: "bigint", },], },);
+			return;
+		}
+		if (req.method === "GET" && url.pathname === `/public/api/sql/queries/${queryId}/stream`) {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "application/json",);
+			res.end(JSON.stringify(rows,),);
+			return;
+		}
+		if (
+			req.method === "GET"
+			&& url.pathname === `/public/api/sql/queries/${queryId}/finish-streaming`
+		) {
+			res.statusCode = 200;
+			res.end("",);
+			return;
+		}
+		res.statusCode = 404;
+		res.end("not found",);
+	};
+}
+
 describe("CLI execution behavior", () => {
 	it("prints { ok: true } for void commands", async () => {
 		await withCliServer(async (req, res,) => {
@@ -788,32 +814,6 @@ describe("CLI execution behavior", () => {
 		expect(failure.stderr,).toBe("",);
 		expect(failure.stdout,).toContain("--start-retries must be a positive integer",);
 	});
-
-	function sqlPreviewServer(queryId: string, rows: number[][],) {
-		return (req: IncomingMessage, res: ServerResponse,): void => {
-			const url = new URL(req.url ?? "/", "http://localhost",);
-			if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
-				sendJson(res, { queryId, hasResults: true, schema: [{ name: "id", type: "bigint", },], },);
-				return;
-			}
-			if (req.method === "GET" && url.pathname === `/public/api/sql/queries/${queryId}/stream`) {
-				res.statusCode = 200;
-				res.setHeader("Content-Type", "application/json",);
-				res.end(JSON.stringify(rows,),);
-				return;
-			}
-			if (
-				req.method === "GET"
-				&& url.pathname === `/public/api/sql/queries/${queryId}/finish-streaming`
-			) {
-				res.statusCode = 200;
-				res.end("",);
-				return;
-			}
-			res.statusCode = 404;
-			res.end("not found",);
-		};
-	}
 
 	it("includes a default 5-row preview in the --output summary", async () => {
 		const outputPath = join(tmpdir(), `dss-cli-sql-preview-${Date.now()}.json`,);

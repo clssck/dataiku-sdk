@@ -460,14 +460,16 @@ describe("agent-facing token budgets", () => {
 		try {
 			writeFileSync(
 				ledgerPath,
-				JSON.stringify({
-					ts: "2026-08-13T00:00:00.000Z",
-					resource: "dataset",
-					action: "create",
-					name: "nope",
-					dssUrl: "https://other.example.com/",
-					cleanup: { argv: ["dataset", "delete", "nope",], },
-				},) + "\n",
+				`${
+					JSON.stringify({
+						ts: "2026-08-13T00:00:00.000Z",
+						resource: "dataset",
+						action: "create",
+						name: "nope",
+						dssUrl: "https://other.example.com/",
+						cleanup: { argv: ["dataset", "delete", "nope",], },
+					},)
+				}\n`,
 			);
 			const cleanup = await dssFailure(
 				["cleanup", "run", "--file", ledgerPath, "--apply",],

@@ -504,21 +504,21 @@ describe("agent contract accuracy", () => {
 		const { stdout, stderr, } = await dss(["agent", "contract",],);
 		expect(stderr,).toBe("",);
 		const contract = JSON.parse(stdout,) as Record<string, Record<string, unknown>>;
-		const commands = contract.commands as Record<string, unknown>;
-		expect(commands.scopedDiscoveryCommand,).toBe(
+		const contractCommands = contract.commands as Record<string, unknown>;
+		expect(contractCommands.scopedDiscoveryCommand,).toBe(
 			"dss commands run --fields RESOURCE[.ACTION[.FIELD...]]",
 		);
-		expect(commands,).not.toHaveProperty("compactOutputFlag",);
-		expect(commands,).not.toHaveProperty("compactOutputHint",);
-		expect(commands.scopedDiscoveryExamples,).toEqual(
+		expect(contractCommands,).not.toHaveProperty("compactOutputFlag",);
+		expect(contractCommands,).not.toHaveProperty("compactOutputHint",);
+		expect(contractCommands.scopedDiscoveryExamples,).toEqual(
 			expect.arrayContaining([
 				"dss commands run --fields dataset",
 				"dss commands run --fields dataset.create",
 			],),
 		);
-		expect(commands.fullRegistryExportCommand,).toBe("dss commands run --output PATH",);
-		expect(commands.discoveryCommand,).toBe("dss commands run",);
-		expect(commands.actionIndexCommand,).toBe(
+		expect(contractCommands.fullRegistryExportCommand,).toBe("dss commands run --output PATH",);
+		expect(contractCommands.discoveryCommand,).toBe("dss commands run",);
+		expect(contractCommands.actionIndexCommand,).toBe(
 			"dss agent contract --fields commands.actions",
 		);
 	});

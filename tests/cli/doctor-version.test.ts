@@ -409,12 +409,12 @@ describe("buildVersionPayload provenance", () => {
 /*  Git revision resolution: packed refs, worktrees, validation        */
 /* ------------------------------------------------------------------ */
 
+function gitRoot(): string {
+	return mkdtempSync(join(tmpdir(), "dss-git-",),);
+}
+
 describe("git revision resolution", () => {
 	const FORTY_41 = "a".repeat(41,);
-
-	function gitRoot(): string {
-		return mkdtempSync(join(tmpdir(), "dss-git-",),);
-	}
 
 	it("resolves a detached HEAD revision as-is", () => {
 		const root = gitRoot();
@@ -437,13 +437,15 @@ describe("git revision resolution", () => {
 			writeFileSync(join(gitDir, "refs", "heads", "other",), `${FORTY_B}\n`,);
 			writeFileSync(
 				join(gitDir, "packed-refs",),
-				[
-					"# pack-refs with: peeled fully-peeled sorted",
-					`${FORTY_B} refs/heads/other`,
-					`${FORTY_B} refs/heads/tagged`,
-					`^${FORTY_A}`,
-					`${FORTY_A} refs/heads/main`,
-				].join("\n",) + "\n",
+				`${
+					[
+						"# pack-refs with: peeled fully-peeled sorted",
+						`${FORTY_B} refs/heads/other`,
+						`${FORTY_B} refs/heads/tagged`,
+						`^${FORTY_A}`,
+						`${FORTY_A} refs/heads/main`,
+					].join("\n",)
+				}\n`,
 			);
 			expect(gitFullRevision(root,),).toBe(FORTY_A,);
 			expect(gitRevision(root,),).toBe(FORTY_A.slice(0, 7,),);
@@ -570,51 +572,51 @@ describe("dss version provenance", () => {
 /*  bin/dss.js: build revision forwarding                              */
 /* ------------------------------------------------------------------ */
 
-describe("bin/dss.js build revision forwarding", () => {
-	async function runLauncher(
-		metadata: string | null,
-		inherited: string | undefined,
-	): Promise<{ revision: string | null; }> {
-		const root = mkdtempSync(join(tmpdir(), "dss-bin-",),);
-		try {
-			mkdirSync(join(root, "bin",), { recursive: true, },);
-			mkdirSync(join(root, "dist", "src",), { recursive: true, },);
-			writeFileSync(
-				join(root, "bin", "dss.js",),
-				readFileSync(join(SDK_ROOT, "bin", "dss.js",), "utf-8",),
-			);
-			writeFileSync(
-				join(root, "package.json",),
-				readFileSync(join(SDK_ROOT, "package.json",), "utf-8",),
-			);
-			writeFileSync(
-				join(root, "bin", "bun-version.js",),
-				readFileSync(join(SDK_ROOT, "bin", "bun-version.js",), "utf-8",),
-			);
-			writeFileSync(
-				join(root, "dist", "src", "cli.js",),
-				"process.stdout.write(JSON.stringify({revision: process.env.DSS_BUILD_REVISION ?? null}));",
-			);
-			if (metadata !== null) {
-				writeFileSync(join(root, "dist", "build-metadata.json",), metadata,);
-			}
-			const env: NodeJS.ProcessEnv = { ...process.env, };
-			delete env.DSS_BUILD_REVISION;
-			if (inherited !== undefined) env.DSS_BUILD_REVISION = inherited;
-			const { stdout, } = await exec(
-				BUN,
-				["--no-env-file", join(root, "bin", "dss.js",), "version",],
-				{
-					cwd: root,
-					env,
-				},
-			);
-			return JSON.parse(stdout,) as { revision: string | null; };
-		} finally {
-			rmSync(root, { recursive: true, force: true, },);
+async function runLauncher(
+	metadata: string | null,
+	inherited: string | undefined,
+): Promise<{ revision: string | null; }> {
+	const root = mkdtempSync(join(tmpdir(), "dss-bin-",),);
+	try {
+		mkdirSync(join(root, "bin",), { recursive: true, },);
+		mkdirSync(join(root, "dist", "src",), { recursive: true, },);
+		writeFileSync(
+			join(root, "bin", "dss.js",),
+			readFileSync(join(SDK_ROOT, "bin", "dss.js",), "utf-8",),
+		);
+		writeFileSync(
+			join(root, "package.json",),
+			readFileSync(join(SDK_ROOT, "package.json",), "utf-8",),
+		);
+		writeFileSync(
+			join(root, "bin", "bun-version.js",),
+			readFileSync(join(SDK_ROOT, "bin", "bun-version.js",), "utf-8",),
+		);
+		writeFileSync(
+			join(root, "dist", "src", "cli.js",),
+			"process.stdout.write(JSON.stringify({revision: process.env.DSS_BUILD_REVISION ?? null}));",
+		);
+		if (metadata !== null) {
+			writeFileSync(join(root, "dist", "build-metadata.json",), metadata,);
 		}
+		const env: NodeJS.ProcessEnv = { ...process.env, };
+		delete env.DSS_BUILD_REVISION;
+		if (inherited !== undefined) env.DSS_BUILD_REVISION = inherited;
+		const { stdout, } = await exec(
+			BUN,
+			["--no-env-file", join(root, "bin", "dss.js",), "version",],
+			{
+				cwd: root,
+				env,
+			},
+		);
+		return JSON.parse(stdout,) as { revision: string | null; };
+	} finally {
+		rmSync(root, { recursive: true, force: true, },);
 	}
+}
 
+describe("bin/dss.js build revision forwarding", () => {
 	it("forwards a full lowercase hexadecimal metadata revision", async () => {
 		const child = await runLauncher(
 			JSON.stringify({ buildRevision: FORTY_A, },),

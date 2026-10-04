@@ -230,9 +230,13 @@ function isTransientError(status: number, body: string,): boolean {
 function transportErrorDetail(error: unknown,): string {
 	if (!(error instanceof Error)) return "Unknown transport error";
 	const cause = error.cause instanceof Error ? error.cause : undefined;
-	const codeOf = (value: Error | undefined,): string | undefined =>
-		value && "code" in value && typeof value.code === "string" ? value.code : undefined;
-	const code = codeOf(error,) ?? codeOf(cause,);
+	let code: string | undefined;
+	for (const candidate of [error, cause,]) {
+		if (candidate && "code" in candidate && typeof candidate.code === "string") {
+			code = candidate.code;
+			break;
+		}
+	}
 	const message = cause?.message ?? error.message;
 	return code && !message.includes(code,) ? `${code}: ${message}` : message;
 }

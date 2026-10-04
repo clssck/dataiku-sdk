@@ -1188,6 +1188,26 @@ describe("Project tags and metadata replacement", () => {
 	});
 });
 
+/**
+ * Keep a response pending until the client aborts, then report whether the
+ * abort was observed. `answerAfterMs` is a bounded fallback for the
+ * simulated slow server so a missing abort fails an assertion instead of
+ * hanging the suite. The client deadline is real wall-clock time, so fake
+ * timers cannot drive it.
+ */
+async function holdResponse(res: ServerResponse, answerAfterMs: number,): Promise<boolean> {
+	const settled = Promise.withResolvers<boolean>();
+	const fallback = setTimeout(() => {
+		if (!res.destroyed && !res.writableEnded) sendJson(res, [],);
+		settled.resolve(false,);
+	}, answerAfterMs,);
+	res.on("close", () => {
+		clearTimeout(fallback,);
+		settled.resolve(!res.writableEnded,);
+	},);
+	return settled.promise;
+}
+
 describe("Project map metadata budget", () => {
 	const graphPayload = {
 		nodes: {
@@ -1219,26 +1239,6 @@ describe("Project map metadata budget", () => {
 			return true;
 		}
 		return false;
-	}
-
-	/**
-	 * Keep a response pending until the client aborts, then report whether the
-	 * abort was observed. `answerAfterMs` is a bounded fallback for the
-	 * simulated slow server so a missing abort fails an assertion instead of
-	 * hanging the suite. The client deadline is real wall-clock time, so fake
-	 * timers cannot drive it.
-	 */
-	async function holdResponse(res: ServerResponse, answerAfterMs: number,): Promise<boolean> {
-		const settled = Promise.withResolvers<boolean>();
-		const fallback = setTimeout(() => {
-			if (!res.destroyed && !res.writableEnded) sendJson(res, [],);
-			settled.resolve(false,);
-		}, answerAfterMs,);
-		res.on("close", () => {
-			clearTimeout(fallback,);
-			settled.resolve(!res.writableEnded,);
-		},);
-		return settled.promise;
 	}
 
 	it("returns fast metadata without warnings", async () => {
@@ -1376,8 +1376,8 @@ describe("Project map metadata budget", () => {
 			expect(result.map.warnings.some((warning,) => /metadata timed out after/.test(warning,)),).toBe(
 				false,
 			);
-			for (const path of Object.keys(FAST_METADATA,)) {
-				expect(requests.filter((request,) => request.path === path),).toHaveLength(1,);
+			for (const metadataPath of Object.keys(FAST_METADATA,)) {
+				expect(requests.filter((request,) => request.path === metadataPath),).toHaveLength(1,);
 			}
 		},);
 	});

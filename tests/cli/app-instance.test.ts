@@ -260,7 +260,7 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					sendJson(res, { jobId: body.targetProjectKey, },);
 					return;
 				}
-				const key = createdKeys.find((candidate,) => path === "/public/api/futures/" + candidate);
+				const key = createdKeys.find((candidate,) => path === `/public/api/futures/${candidate}`);
 				if (req.method === "GET" && key) {
 					sendJson(res, {
 						alive: false,
@@ -269,9 +269,7 @@ describe("app create-instance wait, plans, and cleanup", () => {
 					},);
 					return;
 				}
-				const project = createdKeys.find((candidate,) =>
-					path === "/public/api/projects/" + candidate + "/"
-				);
+				const project = createdKeys.find((candidate,) => path === `/public/api/projects/${candidate}/`);
 				if (req.method === "GET" && project) {
 					sendJson(res, { ...PROJECT_DETAILS, projectKey: project, },);
 					return;
@@ -1440,27 +1438,29 @@ describe("app create-instance wait, plans, and cleanup", () => {
 				};
 				writeFileSync(
 					ledger,
-					[
-						{
-							...common,
-							cleanup: {
-								argv: ["app", "delete-instance", "--project-key", "NEWPROJ",],
+					`${
+						[
+							{
+								...common,
+								cleanup: {
+									argv: ["app", "delete-instance", "--project-key", "NEWPROJ",],
+								},
 							},
-						},
-						{
-							...common,
-							cleanup: {
-								argv: [
-									"app",
-									"delete-instance",
-									"--project-key",
-									"NEWPROJ",
-									"--expect-project-incarnation",
-									PROJECT_INCARNATION_HASH,
-								],
+							{
+								...common,
+								cleanup: {
+									argv: [
+										"app",
+										"delete-instance",
+										"--project-key",
+										"NEWPROJ",
+										"--expect-project-incarnation",
+										PROJECT_INCARNATION_HASH,
+									],
+								},
 							},
-						},
-					].map((entry,) => JSON.stringify(entry,)).join("\n",) + "\n",
+						].map((entry,) => JSON.stringify(entry,)).join("\n",)
+					}\n`,
 				);
 				const failure = await dssFailure(
 					["cleanup", "--file", ledger, "--apply",],

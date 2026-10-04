@@ -205,21 +205,15 @@ function optionalNumber(value: unknown,): number | undefined {
 function scenarioRunSummaryFromRaw(entry: unknown,): ScenarioRunSummary {
 	if (!isRecord(entry,)) return { runId: "unknown", };
 	const runId = typeof entry.runId === "string" ? entry.runId : "unknown";
-	const optionalRecord = (value: unknown,): Record<string, unknown> | undefined =>
-		isRecord(value,) ? value : undefined;
+	const start = optionalNumber(entry.start,);
+	const end = optionalNumber(entry.end,);
 	return {
 		runId,
-		...(optionalNumber(entry.start,) !== undefined ? { start: optionalNumber(entry.start,), } : {}),
-		...(optionalNumber(entry.end,) !== undefined ? { end: optionalNumber(entry.end,), } : {}),
-		...(optionalRecord(entry.scenario,) !== undefined
-			? { scenario: optionalRecord(entry.scenario,), }
-			: {}),
-		...(optionalRecord(entry.variables,) !== undefined
-			? { variables: optionalRecord(entry.variables,), }
-			: {}),
-		...(optionalRecord(entry.result,) !== undefined
-			? { result: optionalRecord(entry.result,), }
-			: {}),
+		...(start !== undefined ? { start, } : {}),
+		...(end !== undefined ? { end, } : {}),
+		...(isRecord(entry.scenario,) ? { scenario: entry.scenario, } : {}),
+		...(isRecord(entry.variables,) ? { variables: entry.variables, } : {}),
+		...(isRecord(entry.result,) ? { result: entry.result, } : {}),
 	};
 }
 

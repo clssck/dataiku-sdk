@@ -106,11 +106,11 @@ try {
 		);
 		assert(
 			installedReference.equals(packagedReference,),
-			"installed skill reference differs from packaged bytes: " + relativePath,
+			`installed skill reference differs from packaged bytes: ${relativePath}`,
 		);
 	}
 	for (const file of skillResult.installed[0].files) {
-		assert(fs.existsSync(file.path,), "bundled skill file is missing: " + file.path,);
+		assert(fs.existsSync(file.path,), `bundled skill file is missing: ${file.path}`,);
 	}
 
 	// A real API command exercises the compiled DataikuClient resource path,

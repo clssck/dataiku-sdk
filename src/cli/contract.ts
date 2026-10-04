@@ -647,8 +647,9 @@ function argvJsonSchema(
 	for (const flag of flags) {
 		aliases[flag.name] = flag.aliases ?? [];
 	}
-	const booleanNames = flags.filter((flag,) => flag.kind === "boolean")
-		.flatMap((flag,) => [flag.name, ...(flag.aliases ?? []),]);
+	const booleanNames = flags.flatMap((flag,) =>
+		flag.kind === "boolean" ? [flag.name, ...(flag.aliases ?? []),] : []
+	);
 	const valueFlags = flags.filter((flag,) => flag.kind === "value");
 	const requiredPositionals = commandSyntax(resource, action,).positionalArguments
 		.filter((positional,) => positional.required).map((positional,) => positional.name);

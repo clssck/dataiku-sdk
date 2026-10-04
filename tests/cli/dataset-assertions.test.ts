@@ -22,6 +22,22 @@ function tsvResponse(res: ServerResponse, lines: string[],): void {
 	res.end(lines.join("\n",),);
 }
 
+const schemaServer =
+	(schema: unknown,) => async (req: IncomingMessage, res: ServerResponse,): Promise<void> => {
+		expect(req.method,).toBe("GET",);
+		expect(new URL(req.url ?? "/", "http://localhost",).pathname,).toBe(
+			"/public/api/projects/TEST/datasets/orders/schema",
+		);
+		sendJson(res, schema,);
+	};
+const resultsServer =
+	(results: unknown[],) => async (req: IncomingMessage, res: ServerResponse,): Promise<void> => {
+		expect(req.method,).toBe("GET",);
+		expect(new URL(req.url ?? "/", "http://localhost",).pathname,).toBe(
+			"/public/api/projects/TEST/datasets/orders/data-quality/last-rules-result",
+		);
+		sendJson(res, results,);
+	};
 describe("dataset assertions", () => {
 	describe("dataset preview truncation", () => {
 		it("probes one row past the cap and reports truncated with a warning", async () => {
@@ -369,15 +385,6 @@ describe("dataset assertions", () => {
 	});
 
 	describe("dataset assert-schema", () => {
-		const schemaServer =
-			(schema: unknown,) => async (req: IncomingMessage, res: ServerResponse,): Promise<void> => {
-				expect(req.method,).toBe("GET",);
-				expect(new URL(req.url ?? "/", "http://localhost",).pathname,).toBe(
-					"/public/api/projects/TEST/datasets/orders/schema",
-				);
-				sendJson(res, schema,);
-			};
-
 		it("satisfies on structurally identical schemas regardless of key order", async () => {
 			const actual = {
 				columns: [
@@ -505,15 +512,6 @@ describe("dataset assertions", () => {
 	});
 
 	describe("data-quality assert-results", () => {
-		const resultsServer =
-			(results: unknown[],) => async (req: IncomingMessage, res: ServerResponse,): Promise<void> => {
-				expect(req.method,).toBe("GET",);
-				expect(new URL(req.url ?? "/", "http://localhost",).pathname,).toBe(
-					"/public/api/projects/TEST/datasets/orders/data-quality/last-rules-result",
-				);
-				sendJson(res, results,);
-			};
-
 		it("passes when every selected result reports OK", async () => {
 			await withCliServer(
 				resultsServer([

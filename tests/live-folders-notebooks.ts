@@ -926,13 +926,13 @@ export async function exerciseFoldersNotebooks(ctx: LiveContext,): Promise<void>
 					);
 				}
 			};
+			const body = async () => {
+				const resolved = await ensureMacro();
+				await exerciseMacroRun(ctx, projectKey, requireRunnable(resolved,),);
+			};
 			if (wantsMacroRun) {
 				// When both cases run, disposal belongs to the last one (abort).
 				await ctx.check("core.macro.run", runActions, async () => {
-					const body = async () => {
-						const resolved = await ensureMacro();
-						await exerciseMacroRun(ctx, projectKey, requireRunnable(resolved,),);
-					};
 					if (wantsMacroAbort) await body();
 					else await withMacroTeardown(body,);
 				}, { capability: "macro.audited-source", required: false, },);

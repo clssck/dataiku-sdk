@@ -475,6 +475,9 @@ describe("recipe diff and local file validation", () => {
 	});
 });
 
+const columns = (names: string[],) => ({
+	columns: names.map((name,) => ({ name, type: "string", })),
+});
 describe("CLI recipe get-payload and set-payload", () => {
 	it("get-payload prints recipe code to stdout", async () => {
 		await withCliServer((_req, res,) => {
@@ -853,9 +856,6 @@ describe("CLI recipe get-payload and set-payload", () => {
 	it("set-payload moves DSS-derived output schemas with the payload and keeps edited ones", async () => {
 		const payloadPath = join(tmpdir(), `dss-grouping-${Date.now()}.json`,);
 		writeFileSync(payloadPath, '{"keys":[{"column":"category"}]}',);
-		const columns = (names: string[],) => ({
-			columns: names.map((name,) => ({ name, type: "string", })),
-		});
 		let saved = false;
 		const applied: unknown[] = [];
 		try {

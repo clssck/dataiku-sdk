@@ -816,6 +816,28 @@ describe("app verify-instance API readiness", () => {
 	});
 });
 
+/** Extract the failed-wait result from the CLI error report on stdout. */
+function failedResult(failure: { stdout: string; },): Record<string, unknown> {
+	const report = JSON.parse(failure.stdout,) as {
+		details: { result: Record<string, unknown>; };
+	};
+	return report.details.result;
+}
+/** Extract the CLI error-report envelope printed on stdout for a refused command. */
+function errorReport(failure: { stdout: string; },): {
+	code: string;
+	category: string;
+	hint?: string;
+	details?: Record<string, unknown>;
+} {
+	return JSON.parse(failure.stdout,) as {
+		code: string;
+		category: string;
+		hint?: string;
+		details?: Record<string, unknown>;
+	};
+}
+
 describe("app create-successor-instance", () => {
 	type Route = (req: IncomingMessage, res: ServerResponse,) => void;
 
@@ -940,28 +962,6 @@ describe("app create-successor-instance", () => {
 			}
 			res.statusCode = 500;
 			res.end(`unexpected ${req.method} ${url.pathname}`,);
-		};
-	}
-
-	/** Extract the failed-wait result from the CLI error report on stdout. */
-	function failedResult(failure: { stdout: string; },): Record<string, unknown> {
-		const report = JSON.parse(failure.stdout,) as {
-			details: { result: Record<string, unknown>; };
-		};
-		return report.details.result;
-	}
-	/** Extract the CLI error-report envelope printed on stdout for a refused command. */
-	function errorReport(failure: { stdout: string; },): {
-		code: string;
-		category: string;
-		hint?: string;
-		details?: Record<string, unknown>;
-	} {
-		return JSON.parse(failure.stdout,) as {
-			code: string;
-			category: string;
-			hint?: string;
-			details?: Record<string, unknown>;
 		};
 	}
 

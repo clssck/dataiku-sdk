@@ -74,6 +74,44 @@ async function withRecipeServer(
 	}
 }
 
+function schemaUpdateServer(
+	computables: Array<Record<string, unknown>>,
+	requests: string[],
+	applied: Array<Record<string, unknown>>,
+	schemaUpdateStatus = 200,
+) {
+	return async (req: IncomingMessage, res: ServerResponse,) => {
+		const url = new URL(req.url ?? "/", "http://localhost",);
+		requests.push(`${req.method} ${url.pathname}`,);
+		if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+			sendJson(res, { name: "sync_output_ds", },);
+			return;
+		}
+		if (
+			req.method === "GET"
+			&& url.pathname === "/public/api/projects/TEST/recipes/sync_output_ds/schema-update"
+		) {
+			if (schemaUpdateStatus !== 200) {
+				sendJson(res, { message: "Input dataset has no schema", }, schemaUpdateStatus,);
+				return;
+			}
+			sendJson(res, { totalIncompatibilities: computables.length, computables, recipeChanges: [], },);
+			return;
+		}
+		if (
+			req.method === "POST"
+			&& url.pathname
+				=== "/public/api/projects/TEST/recipes/sync_output_ds/actions/updateOutputSchema"
+		) {
+			applied.push(JSON.parse(await readBody(req,),) as Record<string, unknown>,);
+			sendJson(res, { hasAnyProblem: false, datasetsNeedingAction: [], },);
+			return;
+		}
+		res.statusCode = 404;
+		res.end("unexpected request",);
+	};
+}
+
 describe("RecipesResource", () => {
 	it("guards empty successful responses and keeps payload query parameters", async () => {
 		let requestedPath = "";
@@ -655,44 +693,6 @@ describe("RecipesResource", () => {
 			},
 		},);
 	});
-
-	function schemaUpdateServer(
-		computables: Array<Record<string, unknown>>,
-		requests: string[],
-		applied: Array<Record<string, unknown>>,
-		schemaUpdateStatus = 200,
-	) {
-		return async (req: IncomingMessage, res: ServerResponse,) => {
-			const url = new URL(req.url ?? "/", "http://localhost",);
-			requests.push(`${req.method} ${url.pathname}`,);
-			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
-				sendJson(res, { name: "sync_output_ds", },);
-				return;
-			}
-			if (
-				req.method === "GET"
-				&& url.pathname === "/public/api/projects/TEST/recipes/sync_output_ds/schema-update"
-			) {
-				if (schemaUpdateStatus !== 200) {
-					sendJson(res, { message: "Input dataset has no schema", }, schemaUpdateStatus,);
-					return;
-				}
-				sendJson(res, { totalIncompatibilities: computables.length, computables, recipeChanges: [], },);
-				return;
-			}
-			if (
-				req.method === "POST"
-				&& url.pathname
-					=== "/public/api/projects/TEST/recipes/sync_output_ds/actions/updateOutputSchema"
-			) {
-				applied.push(JSON.parse(await readBody(req,),) as Record<string, unknown>,);
-				sendJson(res, { hasAnyProblem: false, datasetsNeedingAction: [], },);
-				return;
-			}
-			res.statusCode = 404;
-			res.end("unexpected request",);
-		};
-	}
 
 	const computedColumns = [
 		{ name: "id", type: "bigint", },

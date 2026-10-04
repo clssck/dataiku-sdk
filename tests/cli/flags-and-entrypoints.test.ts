@@ -231,7 +231,7 @@ describe("explicit boolean execution modes", () => {
 	it("honors explicit false and rejects invalid booleans before sending requests", async () => {
 		const calls: string[] = [];
 		await withCliServer((req, res,) => {
-			calls.push(req.method + " " + req.url,);
+			calls.push(`${req.method} ${req.url}`,);
 			sendJson(res, {},);
 		}, async (url,) => {
 			const env = cliEnv(url,);

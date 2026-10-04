@@ -18,7 +18,7 @@ import {
 
 describe("CLI archive downloads", () => {
 	it("rejects bodyless archive responses without creating output files", async () => {
-		const root = join(tmpdir(), "dss-bodyless-" + Date.now(),);
+		const root = join(tmpdir(), `dss-bodyless-${Date.now()}`,);
 		mkdirSync(root, { recursive: true, },);
 		try {
 			const client = {
@@ -30,7 +30,7 @@ describe("CLI archive downloads", () => {
 				{ command: bundleCommands["download-exported"]!, args: ["bundle",], },
 			];
 			for (const { command, args, } of cases) {
-				const output = join(root, args[0] + ".zip",);
+				const output = join(root, `${args[0]}.zip`,);
 				await expect(command.handler(client, args, { output, },),).rejects.toBeInstanceOf(Error,);
 				expect(readFileExists(output,),).toBe(false,);
 			}
@@ -40,7 +40,7 @@ describe("CLI archive downloads", () => {
 	});
 
 	it("exports a progressing archive beyond the timeout and fails a stalled body", async () => {
-		const root = join(tmpdir(), "dss-archive-timeout-" + Date.now(),);
+		const root = join(tmpdir(), `dss-archive-timeout-${Date.now()}`,);
 		mkdirSync(root, { recursive: true, },);
 		let stall = false;
 		try {

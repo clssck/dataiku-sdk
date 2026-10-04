@@ -104,9 +104,9 @@ async function probe(argv: string[], home: string,): Promise<string | undefined>
 		if (plan.payload === undefined || SUMMARIZED_BY_DESIGN.test(JSON.stringify(plan.payload,),)) {
 			return undefined;
 		}
-		const planned_ = stableJson(plan.payload,);
+		const plannedPayload = stableJson(plan.payload,);
 		const actual = stableJson(request.body,);
-		return planned_ === actual ? undefined : `payload ${planned_} != ${actual}`;
+		return plannedPayload === actual ? undefined : `payload ${plannedPayload} != ${actual}`;
 	} finally {
 		server.stop(true,);
 	}
