@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 3.7.0
+
 - Fix: `recipe create --output-connection` creates missing outputs through DSS's managed-dataset endpoint (`POST /datasets/managed`, as the UI and dataikuapi do), so DSS picks the dataset type, storage path, and format from the connection. Before, the CLI guessed: an S3 connection with no existing dataset got a `Filesystem` dataset (builds failed with `Unexpected connection type ... EC2`), and once one S3 dataset existed the next output got SQL-table params with no `path` (`Placing a managed dataset at the root of a connection is not permitted`; DSS then answered `recipe create --type shaker` and `dataset refresh-schema` with an empty-body `500`).
 - Fix: `recipe create` asks DSS to compute the output schema of visual and SQL query recipes (`GET /recipes/{name}/schema-update`) after creating and configuring them, and writes it to outputs the command created or whose schema is empty. Join and grouping outputs no longer keep `columns: []` and build to an empty dataset. The result reports `outputSchemaUpdated`; if DSS cannot compute the schema, the recipe is kept and `outputSchemaUpdateError` plus a `recipe_output_schema_not_computed` warning explain why. This replaces the sync-only input-schema copy: `syncOutputSchemaPropagated` is now `outputSchemaUpdated`.
 - New: `dss recipe update-schema NAME` (SDK `recipes.updateSchema`, `recipes.computeSchemaUpdates`) writes the DSS-computed schema to every output whose schema differs, like the UI's "Update schema" and dataikuapi `compute_schema_updates().apply()`; `--dry-run` lists them under `pending`. Code recipes are rejected up front because DSS cannot compute their schema.
