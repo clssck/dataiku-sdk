@@ -1,5 +1,5 @@
 import { deepMerge, } from "../../utils/deep-merge.js";
-import { num, parseBooleanOption, requiredJsonInput, } from "../coerce.js";
+import { num, parseBooleanOption, requiredJsonInput, splitCsvFlag, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
@@ -42,6 +42,42 @@ export const dataQualityCommands: Record<string, CommandMeta> = withUsage("data-
 		},
 		description: "Get the aggregate data quality status for a dataset.",
 		examples: ["dss data-quality status orders",],
+	},
+	"instance-status": {
+		handler: (c,) => c.dataQuality.instanceStatus(),
+		description:
+			"Data quality status of every monitored project you can read, keyed by project key (ok/warning/error/empty rule counts, last run).",
+		examples: ["dss data-quality instance-status",],
+	},
+	"partitions-status": {
+		handler: (c, a, f,) =>
+			c.dataQuality.partitionsStatus(a[0]!, {
+				projectKey: f["project-key"] as string | undefined,
+				partitions: splitCsvFlag(f["partitions"],),
+			},),
+		description:
+			"Last data quality outcome for specific partitions of a dataset (--partitions P1,P2); a non-partitioned dataset needs none.",
+		examples: ["dss data-quality partitions-status orders --partitions 2026-01,2026-02",],
+	},
+	"delete-history": {
+		handler: async (c, a, f,) => {
+			const partition = (f["partition"] as string | undefined) ?? "NP";
+			const pk = f["project-key"] as string | undefined;
+			if (executionMode(f,).dryRun) {
+				return {
+					dryRun: true,
+					action: "delete-history",
+					resource: "data-quality",
+					dataset: a[0],
+					partition,
+				};
+			}
+			await c.dataQuality.deleteHistory(a[0]!, { projectKey: pk, partition, },);
+			return { deleted: "history", resource: "data-quality", dataset: a[0], partition, };
+		},
+		description:
+			"Delete data quality rule history of a dataset partition (--partition, default NP; ALL for every partition).",
+		examples: ["dss data-quality delete-history orders --partition ALL --dry-run",],
 	},
 	"create-rule": {
 		handler: async (c, a, f,) => {

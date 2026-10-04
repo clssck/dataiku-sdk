@@ -123,4 +123,27 @@ export const wikiCommands: Record<string, CommandMeta> = withUsage("wiki", {
 		description: "Delete a wiki article.",
 		examples: ["dss wiki delete ARTICLE_ID --dry-run",],
 	},
+	"update-settings": {
+		handler: async (c, _a, f,) => {
+			const pk = f["project-key"] as string | undefined;
+			const settings = jsonInput(f,);
+			if (!settings) {
+				throw new UsageError("--data, --data-file, or --stdin is required.", "missing_required_flag",);
+			}
+			if (executionMode(f,).dryRun) {
+				return {
+					dryRun: true,
+					action: "update-settings",
+					resource: "wiki",
+					current: await c.wiki.settings(pk,),
+					next: settings,
+				};
+			}
+			await c.wiki.updateSettings(settings, pk,);
+			return { updated: "wiki", resource: "wiki", };
+		},
+		description:
+			"Replace the wiki properties (home article id and taxonomy tree) with an object from dss wiki settings, edited.",
+		examples: ["dss wiki update-settings --data-file wiki.json --dry-run",],
+	},
 },);

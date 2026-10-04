@@ -142,6 +142,63 @@
 				]
 			}
 		],
+		"analysis.list-ml-tasks": [
+			"dss",
+			"analysis",
+			"list-ml-tasks",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"analysis.update": [
+			"dss",
+			"analysis",
+			"update",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"api-deployer.create-deployment": [
 			"dss",
 			"api-deployer",
@@ -1347,6 +1404,37 @@
 				]
 			}
 		],
+		"bundle.create-project": [
+			"dss",
+			"bundle",
+			"create-project",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "archive-path",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-folder",
+							"value": "FOLDER_ID"
+						}
+					]
+				]
+			}
+		],
 		"bundle.delete-exported": [
 			"dss",
 			"bundle",
@@ -1434,6 +1522,24 @@
 						}
 					]
 				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"bundle.get-exported": [
+			"dss",
+			"bundle",
+			"get-exported",
+			{
+				"arg": "bundleId"
 			},
 			{
 				"optional": [
@@ -2471,14 +2577,6 @@
 				"arg": "name"
 			}
 		],
-		"connection.info": [
-			"dss",
-			"connection",
-			"info",
-			{
-				"arg": "name"
-			}
-		],
 		"connection.infer": [
 			"dss",
 			"connection",
@@ -2505,6 +2603,14 @@
 						}
 					]
 				]
+			}
+		],
+		"connection.info": [
+			"dss",
+			"connection",
+			"info",
+			{
+				"arg": "name"
 			}
 		],
 		"connection.list": [
@@ -3480,6 +3586,43 @@
 				]
 			}
 		],
+		"data-quality.delete-history": [
+			"dss",
+			"data-quality",
+			"delete-history",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partition",
+							"value": "PARTITION"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"data-quality.delete-rule": [
 			"dss",
 			"data-quality",
@@ -3608,6 +3751,11 @@
 				]
 			}
 		],
+		"data-quality.instance-status": [
+			"dss",
+			"data-quality",
+			"instance-status"
+		],
 		"data-quality.last-results": [
 			"dss",
 			"data-quality",
@@ -3631,6 +3779,34 @@
 						{
 							"flag": "rule-id",
 							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"data-quality.partitions-status": [
+			"dss",
+			"data-quality",
+			"partitions-status",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partitions",
+							"value": "P1,P2"
 						}
 					]
 				]
@@ -4243,6 +4419,26 @@
 				"optional": [
 					[
 						{
+							"flag": "columns",
+							"value": "COLS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partitions",
+							"value": "SPEC"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -4464,6 +4660,26 @@
 				"optional": [
 					[
 						{
+							"flag": "columns",
+							"value": "COLS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partitions",
+							"value": "SPEC"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -4587,6 +4803,24 @@
 				]
 			}
 		],
+		"dataset.sync-hive-metastore": [
+			"dss",
+			"dataset",
+			"sync-hive-metastore",
+			{
+				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"dataset.update": [
 			"dss",
 			"dataset",
@@ -4624,6 +4858,24 @@
 						}
 					]
 				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"dataset.update-from-hive": [
+			"dss",
+			"dataset",
+			"update-from-hive",
+			{
+				"arg": "name"
 			},
 			{
 				"optional": [
@@ -4798,6 +5050,57 @@
 			{
 				"flag": "text",
 				"value": "TEXT"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"discussion.update": [
+			"dss",
+			"discussion",
+			"update",
+			{
+				"arg": "objectType"
+			},
+			{
+				"arg": "objectId"
+			},
+			{
+				"arg": "discussionId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "topic",
+							"value": "TEXT"
+						}
+					],
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
 			},
 			{
 				"optional": [
@@ -5329,6 +5632,178 @@
 				]
 			}
 		],
+		"flow.download-documentation": [
+			"dss",
+			"flow",
+			"download-documentation",
+			{
+				"arg": "exportId"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"flow.generate-documentation": [
+			"dss",
+			"flow",
+			"generate-documentation",
+			{
+				"optional": [
+					[
+						{
+							"flag": "template-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "folder",
+							"value": "FOLDER_ID"
+						},
+						{
+							"flag": "path",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"flow.propagate-schema": [
+			"dss",
+			"flow",
+			"propagate-schema",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "no-auto-rebuild"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "stop-at",
+							"value": "RECIPES"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "mark-ok",
+							"value": "RECIPES"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"folder.contents": [
 			"dss",
 			"folder",
@@ -5708,6 +6183,58 @@
 			"get",
 			{
 				"arg": "id"
+			}
+		],
+		"future.list": [
+			"dss",
+			"future",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "all-users"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "with-scenarios"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			}
 		],
 		"future.peek": [
@@ -7735,12 +8262,162 @@
 				]
 			}
 		],
+		"metrics.dataset-run-checks": [
+			"dss",
+			"metrics",
+			"dataset-run-checks",
+			{
+				"arg": "dataset"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "partitions",
+							"value": "SPEC"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"metrics.folder-get": [
 			"dss",
 			"metrics",
 			"folder-get",
 			{
 				"arg": "folderId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.compute-diagnostics": [
+			"dss",
+			"ml-task",
+			"compute-diagnostics",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"arg": "modelId"
+			},
+			{
+				"flag": "kind",
+				"values": [
+					"subpopulation-analyses",
+					"partial-dependencies",
+					"timeseries-residuals"
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "features",
+							"value": "COLS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "sample-size",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "random-state",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "n-jobs",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
 			},
 			{
 				"optional": [
@@ -7783,6 +8460,91 @@
 						{
 							"flag": "prediction-type",
 							"value": "TYPE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "backend-type",
+							"value": "TYPE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "guess-policy",
+							"value": "POLICY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.create-for-dataset": [
+			"dss",
+			"ml-task",
+			"create-for-dataset",
+			{
+				"arg": "dataset"
+			},
+			{
+				"flag": "task-type",
+				"values": [
+					"PREDICTION",
+					"CLUSTERING"
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "target",
+							"value": "COLUMN"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "prediction-type",
+							"value": "TYPE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "time-variable",
+							"value": "COLUMN"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeseries-ids",
+							"value": "COLS"
 						}
 					]
 				]
@@ -7899,6 +8661,224 @@
 				]
 			}
 		],
+		"ml-task.diagnostics": [
+			"dss",
+			"ml-task",
+			"diagnostics",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"arg": "modelId"
+			},
+			{
+				"flag": "kind",
+				"values": [
+					"subpopulation-analyses",
+					"partial-dependencies",
+					"timeseries-residuals",
+					"per-timeseries-metrics",
+					"per-timeseries-evaluation-forecasts"
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.download-documentation": [
+			"dss",
+			"ml-task",
+			"download-documentation",
+			{
+				"arg": "exportId"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.download-scoring-jar": [
+			"dss",
+			"ml-task",
+			"download-scoring-jar",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"arg": "modelId"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full-class-name",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "include-libs",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.download-scoring-pmml": [
+			"dss",
+			"ml-task",
+			"download-scoring-pmml",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"arg": "modelId"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.generate-documentation": [
+			"dss",
+			"ml-task",
+			"generate-documentation",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"arg": "modelId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "template-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "folder",
+							"value": "FOLDER_ID"
+						},
+						{
+							"flag": "path",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"ml-task.get-settings": [
 			"dss",
 			"ml-task",
@@ -7908,6 +8888,50 @@
 			},
 			{
 				"arg": "mlTaskId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.list": [
+			"dss",
+			"ml-task",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			},
 			{
 				"optional": [
@@ -7965,6 +8989,122 @@
 				]
 			}
 		],
+		"ml-task.reguess": [
+			"dss",
+			"ml-task",
+			"reguess",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "prediction-type",
+							"value": "TYPE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "target",
+							"value": "COLUMN"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "time-variable",
+							"value": "COLUMN"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeseries-ids",
+							"value": "COLS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full-reguess",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.reguess-forecasting": [
+			"dss",
+			"ml-task",
+			"reguess-forecasting",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"ml-task.set-settings": [
 			"dss",
 			"ml-task",
@@ -7992,6 +9132,60 @@
 					[
 						{
 							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"ml-task.set-user-meta": [
+			"dss",
+			"ml-task",
+			"set-user-meta",
+			{
+				"arg": "analysisId"
+			},
+			{
+				"arg": "mlTaskId"
+			},
+			{
+				"arg": "modelId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
 						}
 					]
 				]
@@ -8082,6 +9276,324 @@
 					[
 						{
 							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"mlflow.clean-db": [
+			"dss",
+			"mlflow",
+			"clean-db",
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"mlflow.create-experiments-dataset": [
+			"dss",
+			"mlflow",
+			"create-experiments-dataset",
+			{
+				"arg": "datasetName"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "experiments",
+							"value": "IDS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "view-type",
+							"values": [
+								"ACTIVE_ONLY",
+								"DELETED_ONLY",
+								"ALL"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "filter",
+							"value": "EXPR"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "format",
+							"values": [
+								"LONG",
+								"JSON"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"mlflow.deploy-run": [
+			"dss",
+			"mlflow",
+			"deploy-run",
+			{
+				"arg": "runId"
+			},
+			{
+				"arg": "savedModelId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "version-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "model-name",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "evaluation-dataset",
+							"value": "DATASET"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "target",
+							"value": "COLUMN"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "classes",
+							"value": "A,B"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "code-env",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "set-active",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "binary-classification-threshold",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "use-optimal-threshold",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "skip-expensive-reports",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"mlflow.garbage-collect": [
+			"dss",
+			"mlflow",
+			"garbage-collect",
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"mlflow.list-models": [
+			"dss",
+			"mlflow",
+			"list-models",
+			{
+				"arg": "runId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"mlflow.set-inference-info": [
+			"dss",
+			"mlflow",
+			"set-inference-info",
+			{
+				"arg": "runId"
+			},
+			{
+				"flag": "prediction-type",
+				"values": [
+					"REGRESSION",
+					"BINARY_CLASSIFICATION",
+					"MULTICLASS",
+					"OTHER"
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "classes",
+							"value": "A,B"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "code-env",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "target",
+							"value": "COLUMN"
 						}
 					]
 				]
@@ -9752,6 +11264,17 @@
 				]
 			}
 		],
+		"project-deployer.delete-bundle": [
+			"dss",
+			"project-deployer",
+			"delete-bundle",
+			{
+				"arg": "publishedProjectKey"
+			},
+			{
+				"arg": "bundleId"
+			}
+		],
 		"project-deployer.delete-deployment": [
 			"dss",
 			"project-deployer",
@@ -9760,10 +11283,34 @@
 				"arg": "deploymentId"
 			}
 		],
+		"project-deployer.delete-infra": [
+			"dss",
+			"project-deployer",
+			"delete-infra",
+			{
+				"arg": "infraId"
+			}
+		],
+		"project-deployer.delete-project": [
+			"dss",
+			"project-deployer",
+			"delete-project",
+			{
+				"arg": "publishedProjectKey"
+			}
+		],
 		"project-deployer.deploy": [
 			"dss",
 			"project-deployer",
 			"deploy",
+			{
+				"arg": "deploymentId"
+			}
+		],
+		"project-deployer.deployment-settings": [
+			"dss",
+			"project-deployer",
+			"deployment-settings",
 			{
 				"arg": "deploymentId"
 			}
@@ -9784,6 +11331,40 @@
 				"arg": "deploymentId"
 			}
 		],
+		"project-deployer.get-infra": [
+			"dss",
+			"project-deployer",
+			"get-infra",
+			{
+				"arg": "infraId"
+			}
+		],
+		"project-deployer.governance-status": [
+			"dss",
+			"project-deployer",
+			"governance-status",
+			{
+				"arg": "deploymentId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "bundle-id",
+							"value": "ID"
+						}
+					]
+				]
+			}
+		],
+		"project-deployer.infra-settings": [
+			"dss",
+			"project-deployer",
+			"infra-settings",
+			{
+				"arg": "infraId"
+			}
+		],
 		"project-deployer.list-deployments": [
 			"dss",
 			"project-deployer",
@@ -9799,6 +11380,19 @@
 			"project-deployer",
 			"list-projects"
 		],
+		"project-deployer.list-stages": [
+			"dss",
+			"project-deployer",
+			"list-stages"
+		],
+		"project-deployer.project-settings": [
+			"dss",
+			"project-deployer",
+			"project-settings",
+			{
+				"arg": "publishedProjectKey"
+			}
+		],
 		"project-deployer.project-status": [
 			"dss",
 			"project-deployer",
@@ -9813,6 +11407,64 @@
 			"save-deployment-settings",
 			{
 				"arg": "deploymentId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"project-deployer.save-infra-settings": [
+			"dss",
+			"project-deployer",
+			"save-infra-settings",
+			{
+				"arg": "infraId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"project-deployer.save-project-settings": [
+			"dss",
+			"project-deployer",
+			"save-project-settings",
+			{
+				"arg": "publishedProjectKey"
 			},
 			{
 				"oneOf": [
@@ -11447,6 +13099,24 @@
 				]
 			}
 		],
+		"project.push-to-git-remote": [
+			"dss",
+			"project",
+			"push-to-git-remote",
+			{
+				"arg": "remote"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"project.settings-get": [
 			"dss",
 			"project",
@@ -11943,6 +13613,96 @@
 					[
 						{
 							"flag": "normalize"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "group-by",
+							"value": "COLS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "aggregate",
+							"value": "COL:FN[+FN],..."
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "order-by",
+							"value": "COL"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "rename",
+							"value": "OLD=NEW,..."
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "fill-empty",
+							"value": "COL=VAL,..."
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "formula",
+							"value": "NAME=EXPR"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "filter",
+							"value": "EXPR"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "drop-columns",
+							"value": "COLS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "keep-columns",
+							"value": "COLS"
 						}
 					]
 				]
@@ -12595,6 +14355,104 @@
 				]
 			}
 		],
+		"saved-model.compute-diagnostics": [
+			"dss",
+			"saved-model",
+			"compute-diagnostics",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"flag": "kind",
+				"values": [
+					"subpopulation-analyses",
+					"partial-dependencies",
+					"timeseries-residuals"
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "features",
+							"value": "COLS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "sample-size",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "random-state",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "n-jobs",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"saved-model.create-external": [
 			"dss",
 			"saved-model",
@@ -12726,6 +14584,59 @@
 						}
 					]
 				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.diagnostics": [
+			"dss",
+			"saved-model",
+			"diagnostics",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"flag": "kind",
+				"values": [
+					"subpopulation-analyses",
+					"partial-dependencies",
+					"timeseries-residuals",
+					"per-timeseries-metrics",
+					"per-timeseries-evaluation-forecasts"
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.download-documentation": [
+			"dss",
+			"saved-model",
+			"download-documentation",
+			{
+				"arg": "exportId"
+			},
+			{
+				"flag": "output",
+				"value": "PATH"
 			},
 			{
 				"optional": [
@@ -12958,6 +14869,86 @@
 					[
 						{
 							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"saved-model.generate-documentation": [
+			"dss",
+			"saved-model",
+			"generate-documentation",
+			{
+				"arg": "modelId"
+			},
+			{
+				"arg": "versionId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "template-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "folder",
+							"value": "FOLDER_ID"
+						},
+						{
+							"flag": "path",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "wait"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timeout",
+							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "poll-interval",
+							"value": "MS"
 						}
 					]
 				]
@@ -14390,6 +16381,38 @@
 				]
 			}
 		],
+		"streaming-endpoint.create-managed": [
+			"dss",
+			"streaming-endpoint",
+			"create-managed",
+			{
+				"arg": "id"
+			},
+			{
+				"flag": "connection",
+				"value": "CONN"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "format-option",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"streaming-endpoint.delete": [
 			"dss",
 			"streaming-endpoint",
@@ -14455,6 +16478,63 @@
 					[
 						{
 							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"streaming-endpoint.schema": [
+			"dss",
+			"streaming-endpoint",
+			"schema",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"streaming-endpoint.set-schema": [
+			"dss",
+			"streaming-endpoint",
+			"set-schema",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
 						}
 					]
 				]
@@ -15019,6 +17099,33 @@
 				]
 			}
 		],
+		"webapp.trust": [
+			"dss",
+			"webapp",
+			"trust",
+			{
+				"arg": "webappId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "for-everybody"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"webapp.update-settings": [
 			"dss",
 			"webapp",
@@ -15320,6 +17427,51 @@
 				]
 			}
 		],
+		"wiki.update-settings": [
+			"dss",
+			"wiki",
+			"update-settings",
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"workspace.add-object": [
 			"dss",
 			"workspace",
@@ -15431,6 +17583,17 @@
 			"list-objects",
 			{
 				"arg": "workspaceKey"
+			}
+		],
+		"workspace.remove-object": [
+			"dss",
+			"workspace",
+			"remove-object",
+			{
+				"arg": "workspaceKey"
+			},
+			{
+				"arg": "workspaceObjectId"
 			}
 		],
 		"workspace.update-settings": [

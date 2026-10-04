@@ -62,6 +62,14 @@ export class WikiResource extends BaseResource {
 		return this.client.safeParse(WikiSettingsSchema, raw, "wiki.settings",);
 	}
 
+	/**
+	 * Replace the wiki properties (home article and taxonomy, PUT /wiki/) with
+	 * an object obtained from `settings`, edited.
+	 */
+	async updateSettings(settings: Record<string, unknown>, projectKey?: string,): Promise<void> {
+		await this.client.putVoid(`/public/api/projects/${this.enc(projectKey,)}/wiki/`, settings,);
+	}
+
 	async list(projectKey?: string,): Promise<WikiArticleData[]> {
 		const settings = await this.settings(projectKey,);
 		const ids = taxonomyIds(settings.taxonomy,);

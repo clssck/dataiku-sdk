@@ -1,3 +1,4 @@
+import { unexpectedResponseError, } from "../errors.js";
 import type { FutureState, FutureWaitResult, } from "../schemas.js";
 import { FutureStateSchema, FutureWaitResultSchema, } from "../schemas.js";
 import {
@@ -11,6 +12,30 @@ import { BaseResource, } from "./base.js";
 export interface FutureWaitOptions {
 	pollIntervalMs?: number;
 	timeoutMs?: number;
+}
+
+/**
+ * A DSS long task as started (dataikuapi `DSSFuture.from_resp`): `jobId`
+ * addresses a running task in `futures.wait`; a task DSS finished inline comes
+ * back without one, as its final state (`hasResult`, `result`).
+ */
+export interface DssTask {
+	jobId?: string;
+	hasResult?: boolean;
+	result?: unknown;
+	[key: string]: unknown;
+}
+
+/** Validate a task-start response: an object whose `jobId`, when present, is a string. */
+export function dssTask(raw: unknown, operation: string,): DssTask {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw,)) {
+		throw unexpectedResponseError(`${operation} returned no task state.`,);
+	}
+	const state: DssTask = { ...raw, };
+	if (state.jobId !== undefined && typeof state.jobId !== "string") {
+		throw unexpectedResponseError(`${operation} returned a non-string jobId.`,);
+	}
+	return state;
 }
 
 function sleep(ms: number,): Promise<void> {
@@ -33,6 +58,27 @@ function waitState(state: FutureState,): string {
 }
 
 export class FuturesResource extends BaseResource {
+	/**
+	 * Long tasks in progress (GET /futures/): the caller's own by default,
+	 * every user's with `allUsers`, running scenarios too with `withScenarios`.
+	 */
+	async list(opts: { allUsers?: boolean; withScenarios?: boolean; } = {},): Promise<FutureState[]> {
+		const query = new URLSearchParams({
+			allUsers: String(opts.allUsers === true,),
+			withScenarios: String(opts.withScenarios === true,),
+		},);
+		return this.client.get<FutureState[]>(`/public/api/futures/?${query}`,);
+	}
+
+	/** Wait for a started task; a task DSS already finished inline is returned as is. */
+	async waitTask(task: DssTask, opts: FutureWaitOptions = {},): Promise<FutureWaitResult | DssTask> {
+		if (task.jobId === undefined) return task;
+		return this.wait(task.jobId, {
+			pollIntervalMs: opts.pollIntervalMs,
+			timeoutMs: opts.timeoutMs,
+		},);
+	}
+
 	async get(
 		futureId: string,
 		opts: { timeoutMs?: number; noRetry?: boolean; } = {},

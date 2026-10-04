@@ -5,6 +5,13 @@ import {
 	assertDatasetTypeCreatable,
 	buildDatasetCreateBody,
 } from "../resources/dataset-create.js";
+import { schemaPropagationBody, } from "../resources/flow.js";
+import { mlTaskCreateBody, mlTaskReguessQuery, } from "../resources/ml-tasks.js";
+import {
+	deployRunQuery,
+	experimentsDatasetBody,
+	inferenceInfoBody,
+} from "../resources/mlflow-extension.js";
 import { validatePluginDestinationPath, validatePluginPath, } from "../resources/plugins.js";
 import {
 	encodeLibraryPath,
@@ -14,6 +21,7 @@ import {
 	validateLibraryPath,
 } from "../resources/project-library.js";
 import { buildRecipeCreateRequest, } from "../resources/recipe-create.js";
+import { modelDiagnosticsBody, } from "../resources/trained-model.js";
 import { encodeGitReferencePath, validateGitReferencePath, } from "../utils/git-reference.js";
 import {
 	jobBuildTargetTypeFromFlags,
@@ -29,8 +37,16 @@ import {
 	stableHash,
 	stringField,
 	textInput,
+	unknownJsonInput,
 } from "./coerce.js";
 import { parseCodeRunIntegerFlag, resolveCodeInputWithSource, } from "./commands/code.js";
+import { schemaPropagationOptionsFromFlags, } from "./commands/flow.js";
+import { mlTaskFieldsFromFlags, mlTaskReguessOptionsFromFlags, } from "./commands/ml-task.js";
+import {
+	deployRunOptionsFromFlags,
+	experimentsDatasetOptionsFromFlags,
+	inferenceInfoFromFlags,
+} from "./commands/mlflow.js";
 import { projectLibraryPutPayload, } from "./commands/project-library.js";
 import { recipeCreateOptionsFromFlags, } from "./commands/recipe.js";
 import { resolveSqlQueryInvocation, } from "./commands/sql.js";
@@ -39,6 +55,7 @@ import { ambientProjectKey, } from "./env.js";
 import { executionMode, } from "./flags.js";
 import { flowZoneColor, flowZoneMoveItems, flowZoneName, } from "./helpers/flow-zone.js";
 import { recipeBackupPath, recipeRunShouldWait, } from "./helpers/recipe.js";
+import { diagnosticsComputationFromFlags, } from "./helpers/trained-model.js";
 import { encodedProjectEndpointForPlan, planResult, } from "./output.js";
 import { commandUsage, } from "./syntax.js";
 import type { CommandMeta, } from "./types.js";
@@ -442,10 +459,26 @@ export function commandPlanShape(
 	wait?: unknown;
 	requests?: unknown;
 } {
-	const projectEndpoint = (suffix: string,) => {
-		if (!projectKey) throw new UsageError(`Missing project key for ${resource} ${action}.`,);
-		return encodedProjectEndpointForPlan(projectKey, suffix,);
+	/** Route and ids of the trained model an `ml-task` (3 ids) or `saved-model` (2 ids) action targets. */
+	const trainedModelEndpoint = () => {
+		requireArgs(args, resource === "ml-task" ? 3 : 2, entry.usage,);
+		const [first, second, third,] = args.map((arg,) => encodeURIComponent(arg,));
+		return resource === "ml-task"
+			? {
+				path: projectEndpoint(`/models/lab/${first}/${second}/models/${third}`,),
+				identifiers: { analysisId: args[0], mlTaskId: args[1], modelId: args[2], },
+			}
+			: {
+				path: projectEndpoint(`/savedmodels/${first}/versions/${second}`,),
+				identifiers: { savedModelId: args[0], versionId: args[1], },
+			};
 	};
+	const requiredProjectKey = () => {
+		if (!projectKey) throw new UsageError(`Missing project key for ${resource} ${action}.`,);
+		return projectKey;
+	};
+	const projectEndpoint = (suffix: string,) =>
+		encodedProjectEndpointForPlan(requiredProjectKey(), suffix,);
 	const id = args[0];
 	const codeEnvEndpoint = (suffix = "",) =>
 		`/public/api/admin/code-envs/${encodeURIComponent(codeEnvLang(args[0], entry.usage,),)}/${
@@ -653,11 +686,184 @@ export function commandPlanShape(
 				identifiers: { dataset: args[0], ruleId: flags["rule-id"] as string | undefined, },
 				wait: flags["wait"] === true,
 			};
+		case "data-quality.delete-history": {
+			const partition = (flags["partition"] as string | undefined) ?? "NP";
+			return {
+				method: "DELETE",
+				endpoint: dataQualityEndpoint(
+					projectKey!,
+					args[0]!,
+					`/history/${encodeURIComponent(partition,)}`,
+				),
+				identifiers: { dataset: args[0], partition, },
+			};
+		}
+		case "dataset.sync-hive-metastore":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/datasets/${encodeURIComponent(id,)}/actions/synchronizeHiveMetastore`,
+				),
+				identifiers: { name: id, },
+			};
+		case "dataset.update-from-hive":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/datasets/${encodeURIComponent(id,)}/actions/updateFromHive`,),
+				identifiers: { name: id, },
+			};
+		case "metrics.dataset-run-checks": {
+			const partitions = flags["partitions"] as string | undefined;
+			const data = unknownJsonInput(flags,);
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/datasets/${encodeURIComponent(id,)}/actions/runChecks/${
+						partitions ? `?partitions=${encodeURIComponent(partitions,)}` : ""
+					}`,
+				),
+				identifiers: { dataset: id, },
+				...(data !== undefined ? { payload: data, } : {}),
+			};
+		}
+		case "workspace.remove-object":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/workspaces/${encodeURIComponent(args[0]!,)}/objects/${
+					encodeURIComponent(args[1]!,)
+				}`,
+				identifiers: { workspaceKey: args[0], workspaceObjectId: args[1], },
+			};
+		case "discussion.update": {
+			const endpoint = projectEndpoint(
+				`/discussions/${encodeURIComponent(args[0]!,)}/${encodeURIComponent(args[1]!,)}/${
+					encodeURIComponent(args[2]!,)
+				}`,
+			);
+			const body = jsonInput(flags,);
+			return body
+				? { method: "PUT", endpoint, identifiers: { discussionId: args[2], }, payload: body, }
+				: {
+					exact: false,
+					reason:
+						"--topic edits the current discussion: DSS returns it first (GET), then the edited object is PUT.",
+					method: "PUT",
+					endpoint,
+					identifiers: { discussionId: args[2], },
+					requests: [
+						{ method: "GET", endpoint, },
+						{ method: "PUT", endpoint, payloadEdits: { topic: flags["topic"], }, },
+					],
+				};
+		}
+		case "wiki.update-settings":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint("/wiki/",),
+				identifiers: {},
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "streaming-endpoint.create-managed":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/streamingendpoints/managed",),
+				identifiers: { id, },
+				payload: {
+					id,
+					creationSettings: {
+						connectionId: requiredPlanFlag(flags, "connection", entry.usage,),
+						...(typeof flags["format-option"] === "string"
+							? { formatOptionId: flags["format-option"], }
+							: {}),
+					},
+				},
+			};
+		case "streaming-endpoint.set-schema":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/streamingendpoints/${encodeURIComponent(id,)}/schema`,),
+				identifiers: { id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "webapp.trust":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/webapps/${encodeURIComponent(id,)}/actions/trust${
+						flags["for-everybody"] === true ? "?trustForEverybody=true" : ""
+					}`,
+				),
+				identifiers: { id, },
+			};
+		case "project.push-to-git-remote":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(`/actions/push-to-git-remote?remote=${encodeURIComponent(id,)}`,),
+				identifiers: { remote: id, },
+			};
 		case "future.abort":
 			return {
 				method: "DELETE",
 				endpoint: `/public/api/futures/${encodeURIComponent(id,)}`,
 				identifiers: { id, },
+			};
+		case "mlflow.set-inference-info":
+			return {
+				method: "POST",
+				endpoint: "/public/api/api/2.0/mlflow/extension/set-run-inference-info",
+				identifiers: { runId: id, trackingProjectKey: requiredProjectKey(), },
+				payload: inferenceInfoBody(inferenceInfoFromFlags(id!, flags,),),
+			};
+		case "mlflow.deploy-run": {
+			const options = deployRunOptionsFromFlags(id!, args[1]!, flags,);
+			const query = deployRunQuery(
+				{ ...options, versionId: options.versionId ?? "<timestamp>", },
+				requiredProjectKey(),
+			);
+			return {
+				...(options.versionId === undefined
+					? {
+						exact: false,
+						reason: "Without --version-id the SDK names the version after the current time.",
+					}
+					: {}),
+				method: "POST",
+				endpoint: `/public/api/api/2.0/mlflow/extension/deploy-run?${query}`,
+				identifiers: { runId: id, savedModelId: args[1], versionId: options.versionId, },
+			};
+		}
+		case "mlflow.create-experiments-dataset":
+			return {
+				method: "POST",
+				endpoint: "/public/api/api/2.0/mlflow/extension/create-project-experiments-dataset",
+				identifiers: { dataset: id, trackingProjectKey: requiredProjectKey(), },
+				payload: experimentsDatasetBody(experimentsDatasetOptionsFromFlags(id!, flags,),),
+			};
+		case "mlflow.garbage-collect":
+			return {
+				method: "POST",
+				endpoint: "/public/api/api/2.0/mlflow/extension/garbage-collect",
+				identifiers: { trackingProjectKey: requiredProjectKey(), },
+			};
+		case "mlflow.clean-db":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/api/2.0/mlflow/extension/clean-db/${
+					encodeURIComponent(requiredProjectKey(),)
+				}`,
+				identifiers: { projectKey, },
+			};
+		case "flow.propagate-schema":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/flow/tools/propagate-schema/",),
+				identifiers: { dataset: args[0], },
+				payload: schemaPropagationBody(
+					projectKey!,
+					args[0]!,
+					schemaPropagationOptionsFromFlags(flags,),
+				),
+				wait: flags["wait"] === true,
 			};
 		case "flow-zone.create": {
 			const name = flowZoneName(flags["name"],);
@@ -907,15 +1113,33 @@ export function commandPlanShape(
 			}
 			const endpoint = projectEndpoint("/recipes/",); // throws without a project key
 			// Same flag mapping and body construction as the handler and RecipesResource.create.
-			const { recipePrototype, creationSettings, } = buildRecipeCreateRequest(
+			const { recipePrototype, creationSettings, grouping, prepareSteps, } = buildRecipeCreateRequest(
 				recipeCreateOptionsFromFlags(flags,),
 				projectKey!,
+			);
+			const edits = grouping
+				? { grouping, }
+				: prepareSteps.length > 0
+				? { steps: prepareSteps, }
+				: undefined;
+			const recipePath = projectEndpoint(
+				`/recipes/${encodeURIComponent(recipePrototype.name as string,)}`,
 			);
 			return {
 				method: "POST",
 				endpoint,
 				identifiers: { name: recipePrototype.name as string, },
 				payload: { recipePrototype, creationSettings, },
+				// Grouping keys/aggregates and prepare steps are written into the payload DSS creates.
+				...(edits
+					? {
+						requests: [
+							{ method: "POST", endpoint, payload: { recipePrototype, creationSettings, }, },
+							{ method: "GET", endpoint: recipePath, },
+							{ method: "PUT", endpoint: recipePath, payloadEdits: edits, },
+						],
+					}
+					: {}),
 			};
 		}
 		case "recipe.run":
@@ -1254,6 +1478,60 @@ export function commandPlanShape(
 				identifiers: { infraId: payload.id, },
 				payload,
 			};
+		}
+		case "project-deployer.save-infra-settings":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/project-deployer/infras/${encodeURIComponent(id,)}/settings`,
+				identifiers: { infraId: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "project-deployer.delete-infra":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/project-deployer/infras/${encodeURIComponent(id,)}`,
+				identifiers: { infraId: id, },
+			};
+		case "project-deployer.delete-project":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/project-deployer/projects/${encodeURIComponent(id,)}`,
+				identifiers: { publishedProjectKey: id, },
+			};
+		case "project-deployer.save-project-settings":
+			return {
+				method: "PUT",
+				endpoint: `/public/api/project-deployer/projects/${encodeURIComponent(id,)}/settings`,
+				identifiers: { publishedProjectKey: id, },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "project-deployer.delete-bundle":
+			return {
+				method: "DELETE",
+				endpoint: `/public/api/project-deployer/projects/${encodeURIComponent(id,)}/bundles/${
+					encodeURIComponent(args[1]!,)
+				}`,
+				identifiers: { publishedProjectKey: id, bundleId: args[1], },
+			};
+		case "bundle.create-project": {
+			const archivePath = flags["archive-path"];
+			const query = querySuffix({
+				archivePath: typeof archivePath === "string" ? archivePath : undefined,
+				projectFolderId: flags["project-folder"] as string | undefined,
+			},);
+			const file = flags["file"];
+			return typeof file === "string"
+				? {
+					method: "POST",
+					endpoint: `/public/api/projectsFromBundle/${query}`,
+					identifiers: { filePath: file, },
+					payload: uploadPayload(file,),
+				}
+				: {
+					method: "POST",
+					endpoint: `/public/api/projectsFromBundle/fromArchive${query}`,
+					identifiers: { archivePath, },
+				};
 		}
 		case "api-deployer.create-infra": {
 			const payload = requiredPlanJsonInput(flags, entry.usage,);
@@ -1733,15 +2011,67 @@ export function commandPlanShape(
 				payload,
 			};
 		}
-		case "saved-model.set-user-meta":
+		case "ml-task.set-user-meta":
+		case "saved-model.set-user-meta": {
+			const modelEndpoint = trainedModelEndpoint();
 			return {
 				method: "PUT",
+				endpoint: `${modelEndpoint.path}/user-meta`,
+				identifiers: modelEndpoint.identifiers,
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		}
+		case "ml-task.compute-diagnostics":
+		case "saved-model.compute-diagnostics": {
+			const modelEndpoint = trainedModelEndpoint();
+			const { kind, features, computation, } = diagnosticsComputationFromFlags(flags,);
+			const payload = modelDiagnosticsBody(kind, features, computation,);
+			return {
+				method: "POST",
+				endpoint: `${modelEndpoint.path}/${kind}`,
+				identifiers: modelEndpoint.identifiers,
+				...(payload !== undefined ? { payload, } : {}),
+				wait: flags["wait"] === true,
+			};
+		}
+		case "ml-task.reguess": {
+			const query = mlTaskReguessQuery(mlTaskReguessOptionsFromFlags(flags,),);
+			return {
+				method: "POST",
 				endpoint: projectEndpoint(
-					`/savedmodels/${encodeURIComponent(id,)}/versions/${
-						encodeURIComponent(args[1] ?? "",)
-					}/user-meta`,
+					`/models/lab/${encodeURIComponent(id!,)}/${encodeURIComponent(args[1]!,)}/guess${
+						query.size > 0 ? `?${query}` : ""
+					}`,
 				),
-				identifiers: { savedModelId: id, versionId: args[1], },
+				identifiers: { analysisId: id, mlTaskId: args[1], },
+			};
+		}
+		case "ml-task.reguess-forecasting":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint(
+					`/models/lab/${encodeURIComponent(id!,)}/${
+						encodeURIComponent(args[1]!,)
+					}/reguess-with-forecasting-params`,
+				),
+				identifiers: { analysisId: id, mlTaskId: args[1], },
+				payload: requiredPlanJsonInput(flags, entry.usage,),
+			};
+		case "ml-task.create-for-dataset":
+			return {
+				method: "POST",
+				endpoint: projectEndpoint("/models/lab/",),
+				identifiers: { inputDataset: id, },
+				payload: {
+					inputDataset: id,
+					...mlTaskCreateBody(mlTaskFieldsFromFlags(flags, entry.usage,),),
+				},
+			};
+		case "analysis.update":
+			return {
+				method: "PUT",
+				endpoint: projectEndpoint(`/lab/${encodeURIComponent(id!,)}/`,),
+				identifiers: { analysisId: id, },
 				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
 		case "user.update":

@@ -1,20 +1,51 @@
 import { ClientValidationError, } from "../errors.js";
 import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
-import { BaseResource, requireNonEmpty, } from "./base.js";
+import { BaseResource, requireArrayResponse, requireNonEmpty, requireObject, } from "./base.js";
+import { TrainedModel, } from "./trained-model.js";
 
 const TRAIN_POLL_INTERVAL_MS = 5_000;
 const TRAIN_DEFAULT_TIMEOUT_MS = 120_000;
 
 export type MlTaskType = "PREDICTION" | "CLUSTERING";
 
-export interface MlTaskCreateOptions {
-	analysisId: string;
+/** ML task definition; time series forecasting is PREDICTION with predictionType TIMESERIES_FORECAST. */
+export interface MlTaskCreateFields {
 	taskType: MlTaskType;
 	targetVariable?: string;
 	predictionType?: string;
+	/** Forecasting tasks: the parsed-date time column. */
+	timeVariable?: string;
+	/** Forecasting tasks: columns identifying each series of a multi-series dataset. */
+	timeseriesIdentifiers?: string[];
 	backendType?: string;
 	guessPolicy?: string;
 	projectKey?: string;
+}
+
+export interface MlTaskCreateOptions extends MlTaskCreateFields {
+	analysisId: string;
+}
+
+export interface MlTaskCreateForDatasetOptions extends MlTaskCreateFields {
+	inputDataset: string;
+}
+
+export interface MlTaskListItem extends Record<string, unknown> {
+	analysisId?: string;
+	mlTaskId?: string;
+	analysisName?: string;
+	mlTaskName?: string;
+	taskType?: string;
+	inputDataset?: string;
+}
+
+export interface MlTaskReguessOptions {
+	predictionType?: string;
+	targetVariable?: string;
+	timeVariable?: string;
+	timeseriesIdentifiers?: string[];
+	/** Re-guess every setting after the core change, not just the impacted ones. */
+	fullReguess?: boolean;
 }
 
 export interface MlTaskCreateResult extends Record<string, unknown> {
@@ -130,47 +161,72 @@ function modelIdsFromStatus(status: MlTaskStatus,): string[] {
 	return modelIds;
 }
 
+/** Query of POST .../guess; repeated `timeseriesIdentifiers` as dataikuapi sends a list (pure; shared with `--plan`). */
+export function mlTaskReguessQuery(opts: MlTaskReguessOptions,): URLSearchParams {
+	const query = new URLSearchParams();
+	if (opts.predictionType !== undefined) query.set("predictionType", opts.predictionType,);
+	if (opts.targetVariable !== undefined) query.set("targetVariable", opts.targetVariable,);
+	if (opts.timeVariable !== undefined) query.set("timeVariable", opts.timeVariable,);
+	for (const id of opts.timeseriesIdentifiers ?? []) query.append("timeseriesIdentifiers", id,);
+	if (opts.fullReguess !== undefined) query.set("fullReguess", String(opts.fullReguess,),);
+	return query;
+}
+
+/**
+ * Task-creation body shared by `create` (existing analysis) and
+ * `createForDataset` (new analysis), with dataikuapi's defaults (pure; shared
+ * with `--plan`).
+ */
+export function mlTaskCreateBody(opts: MlTaskCreateFields,): Record<string, unknown> {
+	if (opts.taskType !== "PREDICTION" && opts.taskType !== "CLUSTERING") {
+		throw new ClientValidationError(
+			"taskType must be PREDICTION or CLUSTERING.",
+			"invalid_enum",
+		);
+	}
+	if (
+		opts.taskType === "PREDICTION"
+		&& (typeof opts.targetVariable !== "string" || opts.targetVariable.trim().length === 0)
+	) {
+		throw new ClientValidationError(
+			"targetVariable is required for PREDICTION ML tasks.",
+			"missing_required_arg",
+		);
+	}
+	const forecast = opts.predictionType === "TIMESERIES_FORECAST";
+	if (forecast && (typeof opts.timeVariable !== "string" || opts.timeVariable.trim().length === 0)) {
+		throw new ClientValidationError(
+			"timeVariable is required for TIMESERIES_FORECAST ML tasks.",
+			"missing_required_arg",
+		);
+	}
+	const backendType = opts.backendType ?? "PY_MEMORY";
+	const guessPolicy = opts.guessPolicy
+		?? (opts.taskType === "CLUSTERING" ? "KMEANS" : forecast ? "TIMESERIES_DEFAULT" : "DEFAULT");
+	requireNonEmpty(backendType, "backendType",);
+	requireNonEmpty(guessPolicy, "guessPolicy",);
+	if (opts.targetVariable !== undefined) requireNonEmpty(opts.targetVariable, "targetVariable",);
+	if (opts.predictionType !== undefined) requireNonEmpty(opts.predictionType, "predictionType",);
+	return {
+		taskType: opts.taskType,
+		...(opts.targetVariable !== undefined ? { targetVariable: opts.targetVariable, } : {}),
+		...(opts.predictionType !== undefined ? { predictionType: opts.predictionType, } : {}),
+		...(opts.timeVariable !== undefined ? { timeVariable: opts.timeVariable, } : {}),
+		...(opts.timeseriesIdentifiers !== undefined
+			? { timeseriesIdentifiers: opts.timeseriesIdentifiers, }
+			: {}),
+		backendType,
+		guessPolicy,
+	};
+}
+
 export class MlTasksResource extends BaseResource {
 	/** Create a prediction or clustering task in an existing visual analysis. */
 	async create(opts: MlTaskCreateOptions,): Promise<MlTaskCreateResult> {
-		if (opts.taskType !== "PREDICTION" && opts.taskType !== "CLUSTERING") {
-			throw new ClientValidationError(
-				"taskType must be PREDICTION or CLUSTERING.",
-				"invalid_enum",
-			);
-		}
-		if (
-			opts.taskType === "PREDICTION"
-			&& (typeof opts.targetVariable !== "string" || opts.targetVariable.trim().length === 0)
-		) {
-			throw new ClientValidationError(
-				"targetVariable is required for PREDICTION ML tasks.",
-				"missing_required_arg",
-			);
-		}
-
 		const analysisId = encodeURIComponent(requireNonEmpty(opts.analysisId, "analysisId",),);
-		const backendType = opts.backendType ?? "PY_MEMORY";
-		const guessPolicy = opts.guessPolicy
-			?? (opts.taskType === "CLUSTERING" ? "KMEANS" : "DEFAULT");
-		requireNonEmpty(backendType, "backendType",);
-		requireNonEmpty(guessPolicy, "guessPolicy",);
-		if (opts.targetVariable !== undefined) requireNonEmpty(opts.targetVariable, "targetVariable",);
-		if (opts.predictionType !== undefined) requireNonEmpty(opts.predictionType, "predictionType",);
-
 		return this.client.post<MlTaskCreateResult>(
 			`/public/api/projects/${this.enc(opts.projectKey,)}/lab/${analysisId}/models/`,
-			{
-				taskType: opts.taskType,
-				...(opts.targetVariable !== undefined
-					? { targetVariable: opts.targetVariable, }
-					: {}),
-				...(opts.predictionType !== undefined
-					? { predictionType: opts.predictionType, }
-					: {}),
-				backendType,
-				guessPolicy,
-			},
+			mlTaskCreateBody(opts,),
 		);
 	}
 
@@ -390,6 +446,85 @@ export class MlTasksResource extends BaseResource {
 	/** Delete an ML task and its trained models. */
 	async delete(analysisId: string, mlTaskId: string, projectKey?: string,): Promise<void> {
 		await this.client.del(`${this.taskPath(analysisId, mlTaskId, projectKey,)}/`,);
+	}
+
+	/** Every ML task of the project, with its visual analysis (GET /models/lab/). */
+	async list(projectKey?: string,): Promise<MlTaskListItem[]> {
+		const res = await this.client.get<{ mlTasks?: MlTaskListItem[]; }>(
+			`/public/api/projects/${this.enc(projectKey,)}/models/lab/`,
+		);
+		return requireArrayResponse<MlTaskListItem>(res.mlTasks, "mlTasks.list",);
+	}
+
+	/**
+	 * Create a new visual analysis on `inputDataset` with one ML task
+	 * (POST /models/lab/). Returns `{analysisId, mlTaskId}`; DSS guesses the
+	 * settings asynchronously (watch `status().guessing`).
+	 */
+	async createForDataset(opts: MlTaskCreateForDatasetOptions,): Promise<MlTaskCreateResult> {
+		return this.client.post<MlTaskCreateResult>(
+			`/public/api/projects/${this.enc(opts.projectKey,)}/models/lab/`,
+			{
+				inputDataset: requireNonEmpty(opts.inputDataset, "inputDataset",),
+				...mlTaskCreateBody(opts,),
+			},
+		);
+	}
+
+	/**
+	 * Re-guess the task settings: all of them, or (prediction tasks) after
+	 * setting a new prediction type, target, time variable, or series
+	 * identifiers — only the impacted settings unless `fullReguess`.
+	 */
+	async reguess(
+		analysisId: string,
+		mlTaskId: string,
+		opts: MlTaskReguessOptions = {},
+		projectKey?: string,
+	): Promise<void> {
+		const query = mlTaskReguessQuery(opts,);
+		await this.client.post(
+			`${this.taskPath(analysisId, mlTaskId, projectKey,)}/guess${query.size > 0 ? `?${query}` : ""}`,
+		);
+	}
+
+	/**
+	 * Time series forecasting tasks: change the forecasting parameters
+	 * (`forecastHorizon`, `validationHorizons`, `timestepParams`,
+	 * `updateAlgorithmSettings`) and re-guess the impacted algorithm settings.
+	 */
+	async reguessForecasting(
+		analysisId: string,
+		mlTaskId: string,
+		params: Record<string, unknown>,
+		projectKey?: string,
+	): Promise<void> {
+		await this.client.post(
+			`${this.taskPath(analysisId, mlTaskId, projectKey,)}/reguess-with-forecasting-params`,
+			requireObject(params, "params",),
+		);
+	}
+
+	/**
+	 * One trained lab model as a {@link TrainedModel}: diagnostics
+	 * (subpopulation analyses, partial dependencies, timeseries residuals and
+	 * per-series results), documentation, scoring exports, user metadata.
+	 */
+	model(analysisId: string, mlTaskId: string, modelId: string, projectKey?: string,): TrainedModel {
+		const id = encodeURIComponent(requireNonEmpty(modelId, "modelId",),);
+		return new TrainedModel(
+			this.client,
+			`${this.taskPath(analysisId, mlTaskId, projectKey,)}/models/${id}`,
+		);
+	}
+
+	/** GET a generated lab model documentation (docx) by the `exportId` of its finished future. */
+	async downloadModelDocumentation(exportId: string, projectKey?: string,): Promise<Response> {
+		return this.client.stream(
+			`/public/api/projects/${this.enc(projectKey,)}/models/lab/documentations/${
+				encodeURIComponent(requireNonEmpty(exportId, "exportId",),)
+			}`,
+		);
 	}
 
 	private taskPath(analysisId: string, mlTaskId: string, projectKey?: string,): string {

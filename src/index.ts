@@ -68,9 +68,11 @@ export {
 	type UploadedFileMetadata,
 } from "./resources/datasets.js";
 export { DiscussionsResource, } from "./resources/discussions.js";
+export { type DocumentationTemplate, } from "./resources/documentation.js";
 export { type FlowZoneItemInput, FlowZonesResource, } from "./resources/flow-zones.js";
+export { FlowResource, type SchemaPropagationOptions, } from "./resources/flow.js";
 export { FoldersResource, } from "./resources/folders.js";
-export { FuturesResource, } from "./resources/futures.js";
+export { type DssTask, FuturesResource, type FutureWaitOptions, } from "./resources/futures.js";
 export { type DssGroup, type GroupCreateRequest, GroupsResource, } from "./resources/groups.js";
 export { InsightsResource, } from "./resources/insights.js";
 export {
@@ -100,6 +102,13 @@ export {
 export { MeaningsResource, } from "./resources/meanings.js";
 export { MetricsResource, } from "./resources/metrics.js";
 export * from "./resources/ml-tasks.js";
+export {
+	type MlflowDeployRunOptions,
+	type MlflowExperimentsDatasetOptions,
+	MlflowExtensionResource,
+	type MlflowInferenceInfo,
+	type MlflowPredictionType,
+} from "./resources/mlflow-extension.js";
 export * from "./resources/model-evaluation-stores.js";
 export { NotebooksResource, } from "./resources/notebooks.js";
 export {
@@ -165,6 +174,7 @@ export {
 export { SqlResource, } from "./resources/sql.js";
 export { StatisticsResource, } from "./resources/statistics.js";
 export { StreamingEndpointsResource, } from "./resources/streaming-endpoints.js";
+export * from "./resources/trained-model.js";
 export {
 	type DssUser,
 	type ExternalUserEntry,

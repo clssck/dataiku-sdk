@@ -759,6 +759,45 @@
 				}
 			}
 		},
+		"future.list": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"properties": {
+					"jobId": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"owner": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"alive": {
+						"type": [
+							"boolean",
+							"null"
+						]
+					},
+					"hasResult": {
+						"type": [
+							"boolean",
+							"null"
+						]
+					},
+					"runningTime": {
+						"type": [
+							"number",
+							"null"
+						]
+					}
+				}
+			}
+		},
 		"group.list": {
 			"type": "array",
 			"items": {

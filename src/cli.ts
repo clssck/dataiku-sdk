@@ -1719,9 +1719,11 @@ function buildErrorReport(
 		const { dssMessage, dssErrorType, } = dssDiagnosticDetails(err,);
 		const details = { ...dssErrorDetails(err,), ...(dssErrorType ? { dssErrorType, } : {}), };
 		// Generic hints name what the command targeted. DSS answers 403 (not
-		// 404) for a project that does not exist.
+		// 404) for a project that does not exist: "Failed to read project
+		// permissions". A 403 about something else keeps the generic hint.
 		const inProject = context.projectKey ? ` in project ${context.projectKey}` : "";
-		const hint = err.retryHint === FORBIDDEN_HINT && context.projectKey
+		const projectLevel = dssMessage === undefined || /\bproject\b/i.test(dssMessage,);
+		const hint = err.retryHint === FORBIDDEN_HINT && context.projectKey && projectLevel
 			? `Check that project ${context.projectKey} exists (\`dss project list\`) and that this API key may access it.`
 			: err.retryHint === NOT_FOUND_HINT && context.resource
 			? `Check the ${context.resource} identifier${inProject}${

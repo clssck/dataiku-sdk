@@ -1,7 +1,6 @@
-import { unexpectedResponseError, } from "../../errors.js";
-import { writeResponseToFile, } from "../../utils/response-file.js";
 import { json, jsonInput, parseBooleanOption, requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
+import { trainedModelCommands, } from "../helpers/trained-model.js";
 import { readIfExists, skipResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
@@ -440,99 +439,13 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 			"dss saved-model evaluate-version MODEL_ID VERSION_ID --dataset ds --skip-expensive-reports true --project-key PROJECT",
 		],
 	},
-	"download-scoring-jar": {
-		handler: async (c, a, f,) => {
-			const usage = commandUsage("saved-model", "download-scoring-jar",);
-			requireArgs(a, 2, usage,);
-			const out = f["output"] as string | undefined;
-			if (!out) throw new UsageError("--output PATH is required.", "missing_required_flag",);
-			const fullClassName = f["full-class-name"] as string | undefined;
-			const jarOptions = {
-				...(fullClassName !== undefined ? { fullClassName, } : {}),
-				...(f["include-libs"] !== undefined
-					? { includeLibs: parseBooleanOption(f["include-libs"], "--include-libs",), }
-					: {}),
-			};
-			const res = await c.savedModels.downloadScoringJar(
-				jarOptions,
-				a[0]!,
-				a[1]!,
-				f["project-key"] as string | undefined,
-			);
-			if (!res.body) {
-				throw unexpectedResponseError(
-					"savedModels.downloadScoringJar response did not include a body",
-				);
-			}
-			const bytes = await writeResponseToFile(out, res,);
-			return { path: out, bytes, };
-		},
-		description:
-			"Download the optimized scoring JAR of a version (license-gated server side). --full-class-name forwards the documented fullClassName query parameter; --include-libs toggles including scoring libraries.",
-		examples: [
-			"dss saved-model download-scoring-jar MODEL_ID VERSION_ID --output ./scoring.jar --project-key PROJECT",
-			"dss saved-model download-scoring-jar MODEL_ID VERSION_ID --output ./scoring.jar --full-class-name model.Model --include-libs false --project-key PROJECT",
-		],
-	},
-	"download-scoring-pmml": {
-		handler: async (c, a, f,) => {
-			requireArgs(
-				a,
-				2,
-				commandUsage("saved-model", "download-scoring-pmml",),
-			);
-			const out = f["output"] as string | undefined;
-			if (!out) throw new UsageError("--output PATH is required.", "missing_required_flag",);
-			const res = await c.savedModels.downloadScoringPmml(
-				a[0]!,
-				a[1]!,
-				f["project-key"] as string | undefined,
-			);
-			if (!res.body) {
-				throw unexpectedResponseError(
-					"savedModels.downloadScoringPmml response did not include a body",
-				);
-			}
-			const bytes = await writeResponseToFile(out, res,);
-			return { path: out, bytes, };
-		},
-		description: "Download the PMML scoring file of a version (license-gated server side).",
-		examples: [
-			"dss saved-model download-scoring-pmml MODEL_ID VERSION_ID --output ./model.pmml --project-key PROJECT",
-		],
-	},
-	"set-user-meta": {
-		handler: async (c, a, f,) => {
-			const usage = commandUsage("saved-model", "set-user-meta",);
-			requireArgs(a, 2, usage,);
-			const userMeta = requiredJsonInput(
-				f,
-				"User-meta JSON is required via --data, --data-file, or --stdin.",
-			);
-			const projectKey = f["project-key"] as string | undefined;
-			if (executionMode(f,).dryRun) {
-				return {
-					dryRun: true,
-					action: "set-user-meta",
-					resource: "saved-model",
-					id: a[0],
-					versionId: a[1],
-					projectKey,
-					payload: userMeta,
-				};
-			}
-			return c.savedModels.setUserMeta(a[0]!, a[1]!, userMeta, projectKey,).then(() => ({
-				updated: a[0],
-				versionId: a[1],
-				resource: "saved-model",
-			}));
-		},
-		description:
-			'Update the user metadata of a model version. Send only the "userMeta" field of a previously-retrieved version-details object.',
-		examples: [
-			'dss saved-model set-user-meta MODEL_ID VERSION_ID --data \'{"name":"Churn model","description":"v2"}\' --project-key PROJECT',
-		],
-	},
+	...trainedModelCommands({
+		resource: "saved-model",
+		ids: "MODEL_ID VERSION_ID",
+		noun: "saved-model version",
+		model: (c, a, pk,) => c.savedModels.version(a[0]!, a[1]!, pk,),
+		downloadDocumentation: (c, exportId, pk,) => c.savedModels.downloadDocumentation(exportId, pk,),
+	},),
 },);
 
 function mlflowImportOptions(f: Record<string, string | boolean>,): {

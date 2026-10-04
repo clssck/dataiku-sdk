@@ -78,4 +78,12 @@ export const workspaceCommands: Record<string, CommandMeta> = withUsage("workspa
 		description: "Add an object (link or DSS object) to a workspace.",
 		examples: ["dss workspace add-object MY_WS --data-file object.json",],
 	},
+	"remove-object": {
+		handler: async (c, a,) => {
+			await c.workspaces.removeObject(a[0]!, a[1]!,);
+			return { removed: a[1], resource: "workspace", workspace: a[0], };
+		},
+		description: "Remove an object from a workspace by its workspace object id (see list-objects).",
+		examples: ["dss workspace remove-object MY_WORKSPACE abcd1234",],
+	},
 },);

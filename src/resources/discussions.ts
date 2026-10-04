@@ -63,6 +63,23 @@ export class DiscussionsResource extends BaseResource {
 		);
 	}
 
+	/**
+	 * Update a discussion (topic, or the object it is attached to within the
+	 * project): PUT the full discussion object obtained from `get`, edited.
+	 */
+	async update(
+		objectType: string,
+		objectId: string,
+		discussionId: string,
+		discussion: Record<string, unknown>,
+		projectKey?: string,
+	): Promise<Discussion> {
+		return this.client.put<Discussion>(
+			this.discussionPath(objectType, objectId, discussionId, projectKey,),
+			discussion,
+		);
+	}
+
 	private objectDiscussionsPath(objectType: string, objectId: string, projectKey?: string,): string {
 		const pk = this.enc(projectKey,);
 		const encodedType = encodeURIComponent(objectType,);

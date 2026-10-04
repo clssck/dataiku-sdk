@@ -1,5 +1,13 @@
-import { num, requiredJsonInput, requiredStringFlag, } from "../coerce.js";
+import type { MlTaskCreateFields, MlTaskReguessOptions, } from "../../resources/ml-tasks.js";
+import {
+	num,
+	parseBooleanOption,
+	requiredJsonInput,
+	requiredStringFlag,
+	splitCsvFlag,
+} from "../coerce.js";
 import { executionMode, } from "../flags.js";
+import { trainedModelCommands, } from "../helpers/trained-model.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -28,30 +36,57 @@ function taskType(
 	);
 }
 
+/** Task definition flags shared by `create`, `create-for-dataset`, and their --plan. */
+export function mlTaskFieldsFromFlags(
+	flags: Record<string, string | boolean>,
+	usage: string,
+): MlTaskCreateFields {
+	const normalizedTaskType = taskType(flags, usage,);
+	const targetVariable = optionalStringFlag(flags, "target",);
+	if (normalizedTaskType === "PREDICTION" && targetVariable === undefined) {
+		throw new UsageError(
+			"--target is required for PREDICTION ML tasks.",
+			"missing_required_flag",
+		);
+	}
+	const timeseriesIdentifiers = splitCsvFlag(flags["timeseries-ids"],);
+	return {
+		taskType: normalizedTaskType,
+		targetVariable,
+		predictionType: optionalStringFlag(flags, "prediction-type",),
+		timeVariable: optionalStringFlag(flags, "time-variable",),
+		...(timeseriesIdentifiers.length > 0 ? { timeseriesIdentifiers, } : {}),
+		backendType: optionalStringFlag(flags, "backend-type",),
+		guessPolicy: optionalStringFlag(flags, "guess-policy",),
+	};
+}
+
+/** `reguess` flags → SDK options (shared with --plan). */
+export function mlTaskReguessOptionsFromFlags(
+	flags: Record<string, string | boolean>,
+): MlTaskReguessOptions {
+	const timeseriesIdentifiers = splitCsvFlag(flags["timeseries-ids"],);
+	return {
+		predictionType: optionalStringFlag(flags, "prediction-type",),
+		targetVariable: optionalStringFlag(flags, "target",),
+		timeVariable: optionalStringFlag(flags, "time-variable",),
+		...(timeseriesIdentifiers.length > 0 ? { timeseriesIdentifiers, } : {}),
+		...(flags["full-reguess"] !== undefined
+			? { fullReguess: parseBooleanOption(flags["full-reguess"], "--full-reguess",), }
+			: {}),
+	};
+}
+
 export const mlTaskCommands: Record<string, CommandMeta> = withUsage("ml-task", {
 	create: {
 		handler: async (c, a, f,) => {
 			const usage = commandUsage("ml-task", "create",);
 			requireArgs(a, 1, usage,);
-			const projectKey = f["project-key"] as string | undefined;
-			const normalizedTaskType = taskType(f, usage,);
-			const targetVariable = optionalStringFlag(f, "target",);
-			if (normalizedTaskType === "PREDICTION" && targetVariable === undefined) {
-				throw new UsageError(
-					"--target is required for PREDICTION ML tasks.",
-					"missing_required_flag",
-				);
-			}
-			const options = {
-				analysisId: a[0],
-				taskType: normalizedTaskType,
-				targetVariable,
-				predictionType: optionalStringFlag(f, "prediction-type",),
-				backendType: optionalStringFlag(f, "backend-type",),
-				guessPolicy: optionalStringFlag(f, "guess-policy",),
-				projectKey,
-			};
-			const created = await c.mlTasks.create(options,);
+			const created = await c.mlTasks.create({
+				analysisId: a[0]!,
+				...mlTaskFieldsFromFlags(f, usage,),
+				projectKey: f["project-key"] as string | undefined,
+			},);
 			return { created: created.mlTaskId, resource: "ml-task", analysisId: a[0], ...created, };
 		},
 		description: "Create a prediction or clustering task in an analysis.",
@@ -212,4 +247,70 @@ export const mlTaskCommands: Record<string, CommandMeta> = withUsage("ml-task", 
 			"dss ml-task delete ANALYSIS_ID TASK_ID --dry-run --project-key PROJECT",
 		],
 	},
+	list: {
+		handler: (c, _a, f,) => c.mlTasks.list(f["project-key"] as string | undefined,),
+		description:
+			"List every ML task of the project with its visual analysis (one analysis: dss analysis list-ml-tasks).",
+		examples: ["dss ml-task list",],
+	},
+	"create-for-dataset": {
+		handler: async (c, a, f,) => {
+			const usage = commandUsage("ml-task", "create-for-dataset",);
+			requireArgs(a, 1, usage,);
+			const created = await c.mlTasks.createForDataset({
+				inputDataset: a[0]!,
+				...mlTaskFieldsFromFlags(f, usage,),
+				projectKey: f["project-key"] as string | undefined,
+			},);
+			return { created: created.mlTaskId, resource: "ml-task", ...created, };
+		},
+		description:
+			"Create a new visual analysis on a dataset with one prediction, clustering, or forecasting task (--prediction-type TIMESERIES_FORECAST --time-variable COL [--timeseries-ids COLS]). DSS guesses settings asynchronously: poll status until guessing is false.",
+		examples: [
+			"dss ml-task create-for-dataset customers --task-type prediction --target churn",
+			"dss ml-task create-for-dataset sales --task-type prediction --target amount --prediction-type TIMESERIES_FORECAST --time-variable day",
+		],
+	},
+	reguess: {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 2, commandUsage("ml-task", "reguess",),);
+			await c.mlTasks.reguess(
+				a[0]!,
+				a[1]!,
+				mlTaskReguessOptionsFromFlags(f,),
+				f["project-key"] as string | undefined,
+			);
+			return { reguessed: a[1], resource: "ml-task", analysisId: a[0], };
+		},
+		description:
+			"Re-guess an ML task's settings: all of them, or after changing one core parameter (--prediction-type, --target, --time-variable, --timeseries-ids), only the impacted ones unless --full-reguess true.",
+		examples: ["dss ml-task reguess ANALYSIS_ID TASK_ID --target churn_flag",],
+	},
+	"reguess-forecasting": {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 2, commandUsage("ml-task", "reguess-forecasting",),);
+			await c.mlTasks.reguessForecasting(
+				a[0]!,
+				a[1]!,
+				requiredJsonInput(
+					f,
+					"Forecasting parameters are required via --data, --data-file, or --stdin (forecastHorizon, validationHorizons, timestepParams, updateAlgorithmSettings).",
+				),
+				f["project-key"] as string | undefined,
+			);
+			return { reguessed: a[1], resource: "ml-task", analysisId: a[0], };
+		},
+		description:
+			"Time series forecasting tasks: change forecasting parameters (forecastHorizon, validationHorizons, timestepParams {timeunit, numberOfTimeunits, ...}, updateAlgorithmSettings) and re-guess impacted algorithm settings.",
+		examples: [
+			'dss ml-task reguess-forecasting ANALYSIS_ID TASK_ID --data \'{"forecastHorizon":7,"updateAlgorithmSettings":true}\'',
+		],
+	},
+	...trainedModelCommands({
+		resource: "ml-task",
+		ids: "ANALYSIS_ID TASK_ID MODEL_ID",
+		noun: "lab model",
+		model: (c, a, pk,) => c.mlTasks.model(a[0]!, a[1]!, a[2]!, pk,),
+		downloadDocumentation: (c, exportId, pk,) => c.mlTasks.downloadModelDocumentation(exportId, pk,),
+	},),
 },);

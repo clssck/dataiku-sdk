@@ -863,6 +863,21 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "connection" && CONNECTION_FUTURE_ACTIONS[action] === true) return "write";
 	// Saved-model evaluation triggers scoring work on DSS side (cost-bearing).
 	if (resource === "saved-model" && action === "evaluate-version") return "write";
+	// Flow-wide schema propagation rewrites downstream schemas and may rebuild
+	// datasets; `propagate` matches no mutating verb pattern.
+	if (resource === "flow" && action === "propagate-schema") return "write";
+	// Hive syncs rewrite the Hive table or the dataset; running checks records outcomes.
+	if (resource === "dataset" && action === "sync-hive-metastore") return "write";
+	if (resource === "metrics" && action === "dataset-run-checks") return "write";
+	if (resource === "webapp" && action === "trust") return "write";
+	if (resource === "project" && action === "push-to-git-remote") return "write";
+	if (resource === "mlflow" && (action === "garbage-collect" || action === "clean-db")) {
+		return "write";
+	}
+	// Re-guessing rewrites the ML task settings.
+	if (resource === "ml-task" && (action === "reguess" || action === "reguess-forecasting")) {
+		return "write";
+	}
 	// LLM Mesh completions/embeddings invoke the LLM provider (cost-bearing,
 	// arbitrary-prompt execution); the verb shapes match no mutating pattern
 	// and would fall through to read, wrongly rejecting --plan. Knowledge-bank
@@ -1066,6 +1081,9 @@ const EXPLICIT_DESTRUCTIVE_KEYS: Record<string, true> = {
 	"macro.run-and-wait": true,
 	// Saved-model version deletion removes model versions permanently.
 	"saved-model.delete-versions": true,
+	// MLflow cleanup permanently erases experiment-tracking data.
+	"mlflow.garbage-collect": true,
+	"mlflow.clean-db": true,
 };
 
 function inferDestructiveLevel(
@@ -1105,6 +1123,18 @@ function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
 	if (resource === "project-git" && PROJECT_GIT_FUTURE_ACTIONS[action] === true) return "future";
 	if (resource === "code" && action === "run") return "future";
 	if (resource === "webapp" && action === "restart-backend") return "future";
+	if (
+		resource === "flow" && (action === "propagate-schema" || action === "generate-documentation")
+	) {
+		return "future";
+	}
+	// Trained-model diagnostics and documentation start DSS futures.
+	if (
+		(resource === "ml-task" || resource === "saved-model")
+		&& (action === "compute-diagnostics" || action === "generate-documentation")
+	) {
+		return "future";
+	}
 	if (
 		resource === "code-env"
 		&& ["create", "update-packages", "update-images", "set-jupyter", "delete",].includes(action,)

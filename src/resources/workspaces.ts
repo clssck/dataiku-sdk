@@ -96,4 +96,13 @@ export class WorkspacesResource extends BaseResource {
 			object,
 		);
 	}
+
+	/** Remove an object from a workspace by its workspace object id (from `listObjects`). */
+	async removeObject(workspaceKey: string, workspaceObjectId: string,): Promise<void> {
+		await this.client.del(
+			`/public/api/workspaces/${encodeURIComponent(workspaceKey,)}/objects/${
+				encodeURIComponent(workspaceObjectId,)
+			}`,
+		);
+	}
 }

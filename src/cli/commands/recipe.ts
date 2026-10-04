@@ -228,9 +228,26 @@ export function recipeCreateOptionsFromFlags(f: Record<string, string | boolean>
 		...(fuzzyDistance ? { fuzzyDistance, } : {}),
 		...(fuzzyThreshold !== undefined ? { fuzzyThreshold, } : {}),
 		fuzzyNormalize: f["normalize"] === true,
+		...csvOption("groupBy", f["group-by"],),
+		...csvOption("aggregate", f["aggregate"],),
+		...(typeof f["order-by"] === "string" ? { orderBy: f["order-by"], } : {}),
+		...csvOption("rename", f["rename"],),
+		...csvOption("fillEmpty", f["fill-empty"],),
+		...(typeof f["formula"] === "string" ? { formula: f["formula"], } : {}),
+		...(typeof f["filter"] === "string" ? { filter: f["filter"], } : {}),
+		...csvOption("dropColumns", f["drop-columns"],),
+		...csvOption("keepColumns", f["keep-columns"],),
 		projectKey: pk,
 	};
 	return payload;
+}
+
+function csvOption<K extends string,>(
+	key: K,
+	value: string | boolean | undefined,
+): Partial<Record<K, string[]>> {
+	const items = splitCsvFlag(value,);
+	return items.length > 0 ? { [key]: items, } as Partial<Record<K, string[]>> : {};
 }
 
 export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
@@ -444,11 +461,11 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 			return { created: createdName, resource: "recipe", ...created, ...moved, };
 		},
 		description:
-			"Create a recipe with optional inputs and a dataset or managed-folder output. Missing outputs are created on --output-connection as DSS managed datasets (DSS picks type, path, and format). For visual and SQL query recipes, outputs created here or with an empty schema get the DSS-computed schema (outputSchemaUpdated).",
+			"Create a recipe with optional inputs and a dataset or managed-folder output. Missing outputs are created on --output-connection as DSS managed datasets. Join, grouping (--group-by/--aggregate) and prepare (--rename/--formula/--filter/...) payloads come from flags. Visual recipe outputs get the DSS-computed schema (outputSchemaUpdated).",
 		examples: [
 			"dss recipe create --type python --input raw_orders,lookup --output orders_clean",
-			"dss recipe create --type python --input orders --input customers --output orders_clean --zone Experiments",
-			"dss recipe create --type python --input orders --output-folder LT7TUHJ8 --output-connection filesystem --dry-run",
+			"dss recipe create --type grouping --input orders --output orders_by_cat --group-by category --aggregate amount:sum+avg,name:first --order-by day",
+			"dss recipe create --type prepare --input orders --output orders_prep --rename name=label --formula 'total=amount * 2' --filter 'amount > 0'",
 		],
 	},
 	clone: {

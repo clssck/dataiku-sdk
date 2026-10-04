@@ -1,4 +1,5 @@
-import { BaseResource, requireNonEmpty, } from "./base.js";
+import { BaseResource, requireArrayResponse, requireNonEmpty, requireObject, } from "./base.js";
+import type { MlTaskListItem, } from "./ml-tasks.js";
 
 export interface AnalysisListItem extends Record<string, unknown> {
 	id?: string;
@@ -53,6 +54,29 @@ export class AnalysesResource extends BaseResource {
 	/** Delete a visual analysis. */
 	async delete(analysisId: string, projectKey?: string,): Promise<void> {
 		await this.client.del(`${this.analysisPath(analysisId, projectKey,)}/`,);
+	}
+
+	/**
+	 * Replace a visual analysis definition (script, charts, name, tags): the
+	 * object from {@link get}, edited (PUT /lab/{analysisId}/).
+	 */
+	async update(
+		analysisId: string,
+		definition: AnalysisDefinition,
+		projectKey?: string,
+	): Promise<Record<string, unknown>> {
+		return this.client.put<Record<string, unknown>>(
+			`${this.analysisPath(analysisId, projectKey,)}/`,
+			requireObject(definition, "definition",),
+		);
+	}
+
+	/** The ML tasks of one visual analysis (GET /lab/{analysisId}/models/). */
+	async listMlTasks(analysisId: string, projectKey?: string,): Promise<MlTaskListItem[]> {
+		const res = await this.client.get<{ mlTasks?: MlTaskListItem[]; }>(
+			`${this.analysisPath(analysisId, projectKey,)}/models/`,
+		);
+		return requireArrayResponse<MlTaskListItem>(res.mlTasks, "analyses.listMlTasks",);
 	}
 
 	private analysisPath(analysisId: string, projectKey?: string,): string {

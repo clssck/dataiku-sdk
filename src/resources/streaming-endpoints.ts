@@ -75,6 +75,40 @@ export class StreamingEndpointsResource extends BaseResource {
 		);
 	}
 
+	/**
+	 * Create a managed streaming endpoint (POST /streamingendpoints/managed):
+	 * DSS picks type and params from the connection and format option.
+	 */
+	async createManaged(
+		id: string,
+		creationSettings: { connectionId: string; formatOptionId?: string; },
+		projectKey?: string,
+	): Promise<void> {
+		await this.client.post(
+			`/public/api/projects/${this.enc(projectKey,)}/streamingendpoints/managed`,
+			{ id, creationSettings, },
+		);
+	}
+
+	/** Get a streaming endpoint's schema (`{columns: [{name, type}]}`). */
+	async getSchema(id: string, projectKey?: string,): Promise<Record<string, unknown>> {
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/projects/${this.enc(projectKey,)}/streamingendpoints/${
+				encodeURIComponent(id,)
+			}/schema`,
+		);
+	}
+
+	/** Replace a streaming endpoint's schema with an object obtained from `getSchema`, edited. */
+	async setSchema(id: string, schema: Record<string, unknown>, projectKey?: string,): Promise<void> {
+		await this.client.putVoid(
+			`/public/api/projects/${this.enc(projectKey,)}/streamingendpoints/${
+				encodeURIComponent(id,)
+			}/schema`,
+			schema,
+		);
+	}
+
 	/** Update one streaming endpoint's raw settings. */
 	async updateSettings(
 		id: string,

@@ -88,7 +88,8 @@ describe("CLI missing credentials", () => {
 
 	it("emits stable report JSON for DSS permission errors", async () => {
 		await withCliServer((_req, res,) => {
-			sendJson(res, { message: "Access denied", requestId: "req-123", }, 403,);
+			// DSS answers a project that does not exist with this 403.
+			sendJson(res, { message: "Failed to read project permissions", requestId: "req-123", }, 403,);
 		}, async (url,) => {
 			const failure = await dssFailure(["scenario", "list",], {
 				env: cliEnv(url,),
@@ -106,9 +107,22 @@ describe("CLI missing credentials", () => {
 				status: 403,
 				retryable: false,
 			},);
-			expect(report.error,).toBe("403 Forbidden: Access denied",);
+			expect(report.error,).toBe("403 Forbidden: Failed to read project permissions",);
 			expect(report.hint,).toBe(
 				"Check that project TEST exists (`dss project list`) and that this API key may access it.",
+			);
+		},);
+	});
+
+	it("keeps the generic permission hint for a 403 about another object", async () => {
+		await withCliServer((_req, res,) => {
+			sendJson(res, { message: "You are not allowed to trust this webapp", }, 403,);
+		}, async (url,) => {
+			const failure = await dssFailure(["webapp", "trust", "W1",], { env: cliEnv(url,), },);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(report.code,).toBe("permission_denied",);
+			expect(report.hint,).toBe(
+				"Check API key validity and project permissions for the requested action.",
 			);
 		},);
 	});

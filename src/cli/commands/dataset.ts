@@ -1,8 +1,9 @@
 import { assertDatasetTypeCreatable, } from "../../resources/dataset-create.js";
+import type { DatasetDataSelection, } from "../../resources/datasets.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { isRecord, } from "../../utils/records.js";
 import { compareStrings, stableHash, } from "../../utils/stable-hash.js";
-import { jsonInput, num, schemaColumnsInput, unknownJsonInput, } from "../coerce.js";
+import { jsonInput, num, schemaColumnsInput, splitCsvFlag, unknownJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { datasetSourceSummary, } from "../helpers/dataset.js";
 import { moveCreatedItemsToZone, resolveFlowZoneIdFromFlags, } from "../helpers/flow-zone.js";
@@ -138,6 +139,15 @@ export function compareDatasetSchemas(
 		differences: acc.items,
 		totalDifferences: acc.total,
 		differencesTruncated: acc.items.length < acc.total,
+	};
+}
+
+/** `--columns` / `--partitions` read selection (served by the POST variant of the data endpoint). */
+function dataSelectionFromFlags(f: Record<string, string | boolean>,): DatasetDataSelection {
+	const columns = splitCsvFlag(f["columns"],);
+	return {
+		...(columns.length > 0 ? { columns, } : {}),
+		...(typeof f["partitions"] === "string" ? { partitions: f["partitions"], } : {}),
 	};
 }
 
@@ -277,6 +287,7 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 				maxRows,
 				projectKey: f["project-key"] as string | undefined,
 				timeoutMs: num(f["timeout"], "--timeout",),
+				...dataSelectionFromFlags(f,),
 			},);
 			if (result.truncated) {
 				enqueueCliWarning({
@@ -296,8 +307,11 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 			return result;
 		},
 		description:
-			"Preview dataset rows (--rows is an alias for --max-rows). Returns { columns, rows, rowCount, truncated, limit }; when the dataset has more rows than the cap, truncated is true and a dataset_preview_truncated warning is written to stderr.",
-		examples: ["dss dataset preview orders", "dss dataset preview orders --rows 5",],
+			"Preview dataset rows (--rows is an alias for --max-rows); --columns COLS and --partitions SPEC narrow the read. Returns { columns, rows, rowCount, truncated, limit }; a dataset_preview_truncated warning on stderr flags more rows.",
+		examples: [
+			"dss dataset preview orders",
+			"dss dataset preview orders --rows 5 --columns id,amount",
+		],
 	},
 	"assert-count": {
 		handler: async (c, a, f,) => {
@@ -361,6 +375,24 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 		},
 		description: "Get dataset-level metadata.",
 		examples: ["dss dataset metadata orders",],
+	},
+	"sync-hive-metastore": {
+		handler: async (c, a, f,) => {
+			await c.datasets.synchronizeHiveMetastore(a[0]!, f["project-key"] as string | undefined,);
+			return { synchronized: a[0], resource: "dataset", };
+		},
+		description:
+			"Create or update the Hive table of an HDFS dataset to match its schema (Hive metastore sync). HDFS datasets only.",
+		examples: ["dss dataset sync-hive-metastore web_logs",],
+	},
+	"update-from-hive": {
+		handler: async (c, a, f,) => {
+			await c.datasets.updateFromHive(a[0]!, f["project-key"] as string | undefined,);
+			return { updated: a[0], resource: "dataset", };
+		},
+		description:
+			"Update an HDFS dataset's path, schema, partitioning, and format from its Hive metastore table. HDFS datasets only.",
+		examples: ["dss dataset update-from-hive web_logs --plan",],
 	},
 	"metadata-set": {
 		handler: async (c, a, f,) => {
@@ -563,6 +595,7 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 				projectKey: f["project-key"] as string | undefined,
 				limit: num(f["limit"], "--limit",),
 				rawData: f["raw-data"] === true,
+				...dataSelectionFromFlags(f,),
 			},);
 			if (result.truncated) {
 				enqueueCliWarning({
@@ -591,7 +624,7 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 			return result;
 		},
 		description:
-			"Download up to --limit rows (default 100k) as CSV and return { path, rows, truncated, limit }. Formula-like cells are neutralized for spreadsheets; --raw-data preserves exact bytes. Warnings report truncation and the default output path.",
+			"Download up to --limit rows (default 100k) as CSV and return { path, rows, truncated, limit }; --columns COLS and --partitions SPEC narrow the read. Formula-like cells are neutralized for spreadsheets; --raw-data preserves exact bytes.",
 		examples: [
 			"dss dataset download orders",
 			"dss dataset download orders --output ./data/",

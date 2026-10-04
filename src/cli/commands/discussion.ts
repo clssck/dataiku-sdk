@@ -1,3 +1,4 @@
+import { jsonInput, } from "../coerce.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -53,5 +54,23 @@ export const discussionCommands: Record<string, CommandMeta> = withUsage("discus
 		},
 		description: "Add a reply to an existing discussion.",
 		examples: ["dss discussion reply DATASET customers d123 --text Done",],
+	},
+	update: {
+		handler: async (c, a, f,) => {
+			const pk = f["project-key"] as string | undefined;
+			const body = jsonInput(f,);
+			const topic = f["topic"];
+			if ((body === undefined) === (typeof topic !== "string")) {
+				throw new UsageError(
+					"Pass exactly one of --topic TEXT or --data/--data-file/--stdin.",
+					"missing_required_flag",
+				);
+			}
+			const next = body ?? { ...await c.discussions.get(a[0]!, a[1]!, a[2]!, pk,), topic, };
+			return c.discussions.update(a[0]!, a[1]!, a[2]!, next, pk,);
+		},
+		description:
+			"Update a discussion: --topic TEXT edits the topic of the current discussion, or --data sends a full discussion object from get (e.g. to move it to another object of the project).",
+		examples: ['dss discussion update DATASET orders L8gkpoI6 --topic "Schema change (edited)"',],
 	},
 },);

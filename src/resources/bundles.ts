@@ -87,6 +87,37 @@ export class BundlesResource extends BaseResource {
 		);
 	}
 
+	/** Get an exported Design-node bundle's details (content summary, export manifest, changelog). */
+	async getExported(bundleId: string, projectKey?: string,): Promise<Record<string, unknown>> {
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/projects/${this.enc(projectKey,)}/bundles/exported/${
+				encodeURIComponent(bundleId,)
+			}`,
+		);
+	}
+
+	/**
+	 * Create a project from a bundle on an Automation node (global admin):
+	 * upload a local bundle zip (`filePath`) or use an archive already on the
+	 * node host (`archivePath`). `projectFolderId` places the new project.
+	 */
+	async createProjectFromBundle(
+		source: { filePath: string; } | { archivePath: string; },
+		projectFolderId?: string,
+	): Promise<Record<string, unknown> | undefined> {
+		const query = new URLSearchParams();
+		if ("archivePath" in source) query.set("archivePath", source.archivePath,);
+		if (projectFolderId) query.set("projectFolderId", projectFolderId,);
+		const suffix = query.size > 0 ? `?${query}` : "";
+		if ("archivePath" in source) {
+			return this.client.post<Record<string, unknown> | undefined>(
+				`/public/api/projectsFromBundle/fromArchive${suffix}`,
+			);
+		}
+		await this.client.upload(`/public/api/projectsFromBundle/${suffix}`, source.filePath,);
+		return undefined;
+	}
+
 	/**
 	 * Publish a Design-node bundle to the Project Deployer. The documented
 	 * optional `publishedProjectKey` parameter selects the published project
@@ -276,6 +307,92 @@ export class ProjectDeployerResource extends BaseResource {
 		return this.client.post<Record<string, unknown>>(
 			"/public/api/project-deployer/infras",
 			body,
+		);
+	}
+
+	/** Get a Project Deployer infrastructure (basic info, deployments). */
+	async getInfra(infraId: string,): Promise<Record<string, unknown>> {
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/project-deployer/infras/${encodeURIComponent(infraId,)}`,
+		);
+	}
+
+	/** Get an infrastructure's settings (permissions, automation node, remappings). */
+	async getInfraSettings(infraId: string,): Promise<Record<string, unknown>> {
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/project-deployer/infras/${encodeURIComponent(infraId,)}/settings`,
+		);
+	}
+
+	/** Save infrastructure settings obtained from `getInfraSettings`, edited. */
+	async saveInfraSettings(infraId: string, body: Record<string, unknown>,): Promise<void> {
+		await this.client.putVoid(
+			`/public/api/project-deployer/infras/${encodeURIComponent(infraId,)}/settings`,
+			body,
+		);
+	}
+
+	/** Delete an infrastructure no deployment uses. */
+	async deleteInfra(infraId: string,): Promise<void> {
+		await this.client.del(`/public/api/project-deployer/infras/${encodeURIComponent(infraId,)}`,);
+	}
+
+	/** List the Project Deployer stages (Development, Test, Production, ...). */
+	async listStages(): Promise<Record<string, unknown>[]> {
+		return this.client.get<Record<string, unknown>[]>("/public/api/project-deployer/stages",);
+	}
+
+	/** Get a deployment's settings (infra, bundle, remappings). */
+	async getDeploymentSettings(deploymentId: string,): Promise<Record<string, unknown>> {
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/project-deployer/deployments/${encodeURIComponent(deploymentId,)}/settings`,
+		);
+	}
+
+	/** Governance status of the deployment's bundle (or `bundleId`'s): messages on whether it may deploy. */
+	async getGovernanceStatus(
+		deploymentId: string,
+		bundleId?: string,
+	): Promise<Record<string, unknown>> {
+		const query = bundleId ? `?bundleId=${encodeURIComponent(bundleId,)}` : "";
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/project-deployer/deployments/${
+				encodeURIComponent(deploymentId,)
+			}/governance-status${query}`,
+		);
+	}
+
+	/** Delete a published project no deployment uses. */
+	async deleteProject(publishedProjectKey: string,): Promise<void> {
+		await this.client.del(
+			`/public/api/project-deployer/projects/${encodeURIComponent(publishedProjectKey,)}`,
+		);
+	}
+
+	/** Get a published project's settings (permissions, owner). */
+	async getProjectSettings(publishedProjectKey: string,): Promise<Record<string, unknown>> {
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/project-deployer/projects/${encodeURIComponent(publishedProjectKey,)}/settings`,
+		);
+	}
+
+	/** Save published project settings obtained from `getProjectSettings`, edited. */
+	async saveProjectSettings(
+		publishedProjectKey: string,
+		body: Record<string, unknown>,
+	): Promise<void> {
+		await this.client.putVoid(
+			`/public/api/project-deployer/projects/${encodeURIComponent(publishedProjectKey,)}/settings`,
+			body,
+		);
+	}
+
+	/** Delete a bundle of a published project that no deployment uses. */
+	async deleteBundle(publishedProjectKey: string, bundleId: string,): Promise<void> {
+		await this.client.del(
+			`/public/api/project-deployer/projects/${encodeURIComponent(publishedProjectKey,)}/bundles/${
+				encodeURIComponent(bundleId,)
+			}`,
 		);
 	}
 }

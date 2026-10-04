@@ -72,6 +72,13 @@ export const COMPACT_LIST_FIELDS: Record<string, Record<string, CompactListField
 		envLang: field("envLang", STRING,),
 		deploymentMode: field("deploymentMode", STRING,),
 	},
+	future: {
+		jobId: field("jobId", STRING,),
+		owner: field("owner", STRING,),
+		alive: field("alive", BOOLEAN,),
+		hasResult: field("hasResult", BOOLEAN,),
+		runningTime: field("runningTime", NUMBER,),
+	},
 	user: {
 		login: field("login", STRING,),
 		displayName: field("displayName", STRING,),

@@ -5,12 +5,12 @@
 		"sourceSnapshot": "official static HTML-to-markdown text, retrieved 2026-09-09",
 		"dssMajorVersion": 15,
 		"officialEndpointRows": 372,
-		"sdkSnapshot": "src/resources (44 files) + src/cli working tree 2026-09-09; CLI catalogue = buildCommandRegistry()/commandActionSummary(): 55 resources / 474 actions total (47 API-facing resources / 466 API actions + 8 meta-commands: agent, auth, batch, cleanup, commands, fixtures, install-skill, version). Mappings machine-validated: every nonempty CLI mapping exists in the catalogue and every cited SDK method is a public method on its client resource class (private helpers are cited only via their public callers).",
-		"cliResourcesAtSnapshot": 55,
-		"cliActionsAtSnapshot": 474,
+		"sdkSnapshot": "src/resources (50 files) + src/cli working tree 2026-10-03; CLI catalogue = buildCommandRegistry()/commandActionSummary(): 57 resources / 530 actions total (49 API-facing resources / 522 API actions + 8 meta-commands: agent, auth, batch, cleanup, commands, fixtures, install-skill, version). Mappings machine-validated: every nonempty CLI mapping exists in the catalogue and every cited SDK method is a public method on its client resource class (private helpers are cited only via their public callers).",
+		"cliResourcesAtSnapshot": 57,
+		"cliActionsAtSnapshot": 530,
 		"cliApiResourceSubset": {
-			"resources": 47,
-			"actions": 466,
+			"resources": 49,
+			"actions": 522,
 			"metaCommands": [
 				"agent",
 				"auth",
@@ -22,8 +22,8 @@
 				"version"
 			]
 		},
-		"implementedOfficialRows": 294,
-		"notImplementedOfficialRows": 78,
+		"implementedOfficialRows": 371,
+		"notImplementedOfficialRows": 1,
 		"countingCaveat": "Rows are documented operation entries (method + documented URI, identity by doc anchor). The 372 official entries resolve to 371 distinct (method, URI) pairs: the official page documents GET /admin/connections/{connectionName} twice (a known doc duplication); both entries are retained. Query variants on one row are not double-counted. Where the SDK reaches the same capability via a different verb/path it is recorded as implemented with a drift note, never counted twice.",
 		"parityPolicy": "No coverage percentage is claimed; counts are raw row tallies validated against the programmatic CLI registry (buildCommandRegistry()) at snapshot time.",
 		"officialDistinctMethodUriPairs": 371,
@@ -227,10 +227,14 @@
 				"method": "PUT",
 				"uri": "/projects/{projectKey}/metadata",
 				"docAnchor": "#projects-project-put",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": "SDK exposes GET metadata only; no PUT wrapper at snapshot."
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.setMetadata"
+				],
+				"cli": [
+					"dss project metadata-set"
+				],
+				"note": "Already wrapped at snapshot time; the earlier not-implemented mark was stale."
 			},
 			{
 				"section": "Projects",
@@ -359,10 +363,14 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/actions/push-to-git-remote{?remote}",
 				"docAnchor": "#projects-project-post-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": "project-git resource drives the Git remotes/branches/tags/actions family; this one-shot action endpoint is not wrapped."
+				"status": "implemented",
+				"sdk": [
+					"ProjectsResource.pushToGitRemote"
+				],
+				"cli": [
+					"dss project push-to-git-remote"
+				],
+				"note": "One-shot push of the public API; the project-git resource covers the per-project Git family (branches, commits, pull, remotes)."
 			},
 			{
 				"section": "Projects",
@@ -517,9 +525,13 @@
 				"method": "DELETE",
 				"uri": "/workspaces/{workspaceKey}/objects/{workspaceObjectId}",
 				"docAnchor": "#workspaces-workspace-objects-delete",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"WorkspacesResource.removeObject"
+				],
+				"cli": [
+					"dss workspace remove-object"
+				],
 				"note": null
 			}
 		],
@@ -661,10 +673,14 @@
 				"method": "GET",
 				"uri": "/data-quality/status",
 				"docAnchor": "#data-quality-instance-get",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": "Instance-wide DQ status not wrapped; DQ resource covers project and dataset level."
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.instanceStatus"
+				],
+				"cli": [
+					"dss data-quality instance-status"
+				],
+				"note": null
 			},
 			{
 				"section": "Data Quality",
@@ -744,10 +760,14 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/get-partitions-status",
 				"docAnchor": "#data-quality-dataset-post-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.partitionsStatus"
+				],
+				"cli": [
+					"dss data-quality partitions-status"
+				],
+				"note": "`partitions` is a repeated query parameter (dataikuapi). DSS 15 throws a NullPointerException without it, so the SDK sends `NP` when no partition is given."
 			},
 			{
 				"section": "Data Quality",
@@ -870,12 +890,16 @@
 				"subsection": "Rules",
 				"name": "Delete rule history",
 				"method": "DELETE",
-				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/{partition}/rules-history",
+				"uri": "/projects/{projectKey}/datasets/{datasetName}/data-quality/history/{partition}",
 				"docAnchor": "#data-quality-rules-delete-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"DataQualityResource.deleteHistory"
+				],
+				"cli": [
+					"dss data-quality delete-history"
+				],
+				"note": "URI corrected from the earlier `/{partition}/rules-history` transcription to the documented `/history/{partition}` (dataikuapi `clear_rules_history` uses the same path)."
 			}
 		],
 		"Flow": [
@@ -886,10 +910,14 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/flow/documentation/generate",
 				"docAnchor": "#flow-generate-flow-documentation-from-default-template-post",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": "utils/flow-analysis.ts is local graph analysis of GET /flow/graph, not flow documentation export."
+				"status": "implemented",
+				"sdk": [
+					"FlowResource.generateDocumentation"
+				],
+				"cli": [
+					"dss flow generate-documentation"
+				],
+				"note": null
 			},
 			{
 				"section": "Flow",
@@ -898,9 +926,13 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/flow/documentation/generate-with-template",
 				"docAnchor": "#flow-generate-flow-documentation-from-a-custom-template-post",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"FlowResource.generateDocumentation"
+				],
+				"cli": [
+					"dss flow generate-documentation"
+				],
 				"note": null
 			},
 			{
@@ -910,9 +942,13 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/flow/documentation/generate-with-template-in-folder{?folderId}{?path}",
 				"docAnchor": "#flow-generate-flow-documentation-from-a-template-file-in-a-managed-folder-post",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"FlowResource.generateDocumentation"
+				],
+				"cli": [
+					"dss flow generate-documentation"
+				],
 				"note": null
 			},
 			{
@@ -922,9 +958,14 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/flow/documentation/generated/{exportId}",
 				"docAnchor": "#flow-download-flow-documentation-get",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"FlowResource.downloadDocumentation"
+				],
+				"cli": [
+					"dss flow download-documentation",
+					"dss flow generate-documentation"
+				],
 				"note": null
 			}
 		],
@@ -1059,10 +1100,14 @@
 				"method": "PUT",
 				"uri": "/projects/{projectKey}/datasets/{datasetName}/metadata",
 				"docAnchor": "#datasets-dataset-metadata-put",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.updateMetadata"
+				],
+				"cli": [
+					"dss dataset metadata-set"
+				],
+				"note": "Already wrapped at snapshot time; the earlier not-implemented mark was stale."
 			},
 			{
 				"section": "Datasets",
@@ -1154,10 +1199,16 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/datasets/{datasetName}/data",
 				"docAnchor": "#datasets-dataset-data-post",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": "Data write/upload endpoint not wrapped; SDK reads data via streaming GET only."
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.preview",
+					"DatasetsResource.download"
+				],
+				"cli": [
+					"dss dataset preview",
+					"dss dataset download"
+				],
+				"note": "A read, not a write: the POST variant of Get data. Used when --columns/--partitions select data; DSS 15 also needs `format` in the body and honors `sampling` (HEAD_SEQUENTIAL maxRecords) for the row cap. There is still no public endpoint that writes dataset rows."
 			},
 			{
 				"section": "Datasets",
@@ -1230,9 +1281,13 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/datasets/{datasetName}/actions/synchronizeHiveMetastore",
 				"docAnchor": "#datasets-actions-on-dataset-post",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.synchronizeHiveMetastore"
+				],
+				"cli": [
+					"dss dataset sync-hive-metastore"
+				],
 				"note": null
 			},
 			{
@@ -1242,9 +1297,13 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/datasets/{datasetName}/actions/updateFromHive",
 				"docAnchor": "#datasets-actions-on-dataset-post-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"DatasetsResource.updateFromHive"
+				],
+				"cli": [
+					"dss dataset update-from-hive"
+				],
 				"note": null
 			},
 			{
@@ -1270,9 +1329,13 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/datasets/{datasetName}/actions/runChecks/{?partitions}",
 				"docAnchor": "#datasets-actions-on-dataset-post-3",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"MetricsResource.runDatasetChecks"
+				],
+				"cli": [
+					"dss metrics dataset-run-checks"
+				],
 				"note": null
 			},
 			{
@@ -1960,9 +2023,13 @@
 				"method": "PUT",
 				"uri": "/projects/{projectKey}/lab/{analysisId}",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-analysis-put",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"AnalysesResource.update"
+				],
+				"cli": [
+					"dss analysis update"
+				],
 				"note": null
 			},
 			{
@@ -1988,9 +2055,13 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/lab/{analysisId}/models",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-analysis-get-2",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"AnalysesResource.listMlTasks"
+				],
+				"cli": [
+					"dss analysis list-ml-tasks"
+				],
 				"note": null
 			},
 			{
@@ -2016,9 +2087,13 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/models/lab",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-ml-tasks-get",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.list"
+				],
+				"cli": [
+					"dss ml-task list"
+				],
 				"note": null
 			},
 			{
@@ -2028,10 +2103,14 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/models/lab",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-ml-tasks-post",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.createForDataset"
+				],
+				"cli": [
+					"dss ml-task create-for-dataset"
+				],
+				"note": "Creates the visual analysis and the task; supports time series forecasting (timeVariable, timeseriesIdentifiers)."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2074,10 +2153,14 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/guess{?predictionType}{?targetVariable}{?timeVariable}{?timeseriesIdentifiers}{?fullReguess}",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-mltask-post",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.reguess"
+				],
+				"cli": [
+					"dss ml-task reguess"
+				],
+				"note": "Documented POST (dataikuapi sends PUT; DSS 15 accepts both)."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2086,9 +2169,13 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/reguess-with-forecasting-params",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-mltask-post-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.reguessForecasting"
+				],
+				"cli": [
+					"dss ml-task reguess-forecasting"
+				],
 				"note": null
 			},
 			{
@@ -2117,7 +2204,7 @@
 				"status": "not-implemented",
 				"sdk": [],
 				"cli": [],
-				"note": null
+				"note": "Not wrappable over fetch: DSS 15 requires a JSON body ({modelsIds}) on this GET and rejects the call without one or as POST/PUT, while fetch (Bun and Node) refuses GET bodies. `dss ml-task model-details` returns the full details of each model."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2142,9 +2229,14 @@
 				"method": "PUT",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/user-meta",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-put",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.setUserMeta"
+				],
+				"cli": [
+					"dss ml-task set-user-meta"
+				],
 				"note": null
 			},
 			{
@@ -2170,10 +2262,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/scoring-jar{?fullClassName}{?includeLibs}",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.downloadScoringJar"
+				],
+				"cli": [
+					"dss ml-task download-scoring-jar"
+				],
+				"note": "License-gated: DSS answers 403 \"Model export is not licensed\" without the export license."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2182,10 +2279,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/scoring-pmml",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-2",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.downloadScoringPmml"
+				],
+				"cli": [
+					"dss ml-task download-scoring-pmml"
+				],
+				"note": "License-gated: DSS answers 403 \"Model export is not licensed\" without the export license."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2194,10 +2296,15 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/subpopulation-analyses",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.compute"
+				],
+				"cli": [
+					"dss ml-task compute-diagnostics"
+				],
+				"note": "`--kind subpopulation-analyses`; DSS rejects multiclass models."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2206,10 +2313,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/subpopulation-analyses",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-3",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.get"
+				],
+				"cli": [
+					"dss ml-task diagnostics"
+				],
+				"note": "`--kind subpopulation-analyses`."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2218,10 +2330,15 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/partial-dependencies",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-2",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.compute"
+				],
+				"cli": [
+					"dss ml-task compute-diagnostics"
+				],
+				"note": "`--kind partial-dependencies`."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2230,10 +2347,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/partial-dependencies",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-4",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.get"
+				],
+				"cli": [
+					"dss ml-task diagnostics"
+				],
+				"note": "`--kind partial-dependencies`."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2242,10 +2364,15 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/timeseries-residuals",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-3",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.compute"
+				],
+				"cli": [
+					"dss ml-task compute-diagnostics"
+				],
+				"note": "`--kind timeseries-residuals` (forecasting models)."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2254,10 +2381,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/timeseries-residuals",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-5",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.get"
+				],
+				"cli": [
+					"dss ml-task diagnostics"
+				],
+				"note": "`--kind timeseries-residuals` (forecasting models)."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2266,10 +2398,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/per-timeseries-metrics",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-6",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.get"
+				],
+				"cli": [
+					"dss ml-task diagnostics"
+				],
+				"note": "`--kind per-timeseries-metrics` (forecasting models)."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2278,10 +2415,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/per-timeseries-evaluation-forecasts",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-7",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.get"
+				],
+				"cli": [
+					"dss ml-task diagnostics"
+				],
+				"note": "`--kind per-timeseries-evaluation-forecasts` (forecasting models)."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2290,9 +2432,14 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-default-template",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-4",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.generateDocumentation"
+				],
+				"cli": [
+					"dss ml-task generate-documentation"
+				],
 				"note": null
 			},
 			{
@@ -2302,10 +2449,15 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-custom-template",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-5",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.generateDocumentation"
+				],
+				"cli": [
+					"dss ml-task generate-documentation"
+				],
+				"note": "`--template-file PATH` (multipart `file`)."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2314,10 +2466,15 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-template-in-folder{?folderId}{?path}",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-post-6",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.model",
+					"TrainedModel.generateDocumentation"
+				],
+				"cli": [
+					"dss ml-task generate-documentation"
+				],
+				"note": "`--folder FOLDER_ID --path PATH`."
 			},
 			{
 				"section": "Machine Learning - Lab",
@@ -2326,10 +2483,14 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/models/lab/documentations/{exportId}",
 				"docAnchor": "#machine-learning-lab-machine-learning-lab-single-model-get-8",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlTasksResource.downloadModelDocumentation"
+				],
+				"cli": [
+					"dss ml-task download-documentation"
+				],
+				"note": "`generate-documentation --output PATH` waits and downloads in one call."
 			}
 		],
 		"Machine Learning - Saved models": [
@@ -2389,10 +2550,14 @@
 				"method": "PUT",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}",
 				"docAnchor": "#machine-learning-saved-models-saved-models-put",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.updateSettings"
+				],
+				"cli": [
+					"dss saved-model update-settings"
+				],
+				"note": "Already implemented; the row was stale."
 			},
 			{
 				"section": "Machine Learning - Saved models",
@@ -2595,10 +2760,15 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/subpopulation-analyses",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-3",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.version",
+					"TrainedModel.compute"
+				],
+				"cli": [
+					"dss saved-model compute-diagnostics"
+				],
+				"note": "`--kind subpopulation-analyses`; DSS rejects multiclass models."
 			},
 			{
 				"section": "Machine Learning - Saved models",
@@ -2607,10 +2777,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/subpopulation-analyses",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-7",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.version",
+					"TrainedModel.get"
+				],
+				"cli": [
+					"dss saved-model diagnostics"
+				],
+				"note": "`--kind subpopulation-analyses`."
 			},
 			{
 				"section": "Machine Learning - Saved models",
@@ -2619,10 +2794,15 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/partial-dependencies",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-4",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.version",
+					"TrainedModel.compute"
+				],
+				"cli": [
+					"dss saved-model compute-diagnostics"
+				],
+				"note": "`--kind partial-dependencies`."
 			},
 			{
 				"section": "Machine Learning - Saved models",
@@ -2631,10 +2811,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/partial-dependencies",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-8",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.version",
+					"TrainedModel.get"
+				],
+				"cli": [
+					"dss saved-model diagnostics"
+				],
+				"note": "`--kind partial-dependencies`."
 			},
 			{
 				"section": "Machine Learning - Saved models",
@@ -2643,10 +2828,15 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/timeseries-residuals",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-5",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.version",
+					"TrainedModel.compute"
+				],
+				"cli": [
+					"dss saved-model compute-diagnostics"
+				],
+				"note": "`--kind timeseries-residuals` (forecasting models)."
 			},
 			{
 				"section": "Machine Learning - Saved models",
@@ -2655,10 +2845,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/timeseries-residuals",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-9",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.version",
+					"TrainedModel.get"
+				],
+				"cli": [
+					"dss saved-model diagnostics"
+				],
+				"note": "`--kind timeseries-residuals` (forecasting models)."
 			},
 			{
 				"section": "Machine Learning - Saved models",
@@ -2667,10 +2862,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/per-timeseries-metrics",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-10",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.version",
+					"TrainedModel.get"
+				],
+				"cli": [
+					"dss saved-model diagnostics"
+				],
+				"note": "`--kind per-timeseries-metrics` (forecasting models)."
 			},
 			{
 				"section": "Machine Learning - Saved models",
@@ -2679,10 +2879,15 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/per-timeseries-evaluation-forecasts",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-11",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.version",
+					"TrainedModel.get"
+				],
+				"cli": [
+					"dss saved-model diagnostics"
+				],
+				"note": "`--kind per-timeseries-evaluation-forecasts` (forecasting models)."
 			},
 			{
 				"section": "Machine Learning - Saved models",
@@ -2691,9 +2896,14 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-default-template",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-6",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.version",
+					"TrainedModel.generateDocumentation"
+				],
+				"cli": [
+					"dss saved-model generate-documentation"
+				],
 				"note": null
 			},
 			{
@@ -2703,10 +2913,15 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-custom-template",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-7",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.version",
+					"TrainedModel.generateDocumentation"
+				],
+				"cli": [
+					"dss saved-model generate-documentation"
+				],
+				"note": "`--template-file PATH` (multipart `file`)."
 			},
 			{
 				"section": "Machine Learning - Saved models",
@@ -2715,10 +2930,15 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-template-in-folder{?folderId}{?path}",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-post-8",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.version",
+					"TrainedModel.generateDocumentation"
+				],
+				"cli": [
+					"dss saved-model generate-documentation"
+				],
+				"note": "`--folder FOLDER_ID --path PATH`."
 			},
 			{
 				"section": "Machine Learning - Saved models",
@@ -2727,10 +2947,14 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/savedmodels/documentations/{exportId}",
 				"docAnchor": "#machine-learning-saved-models-saved-model-versions-get-12",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"SavedModelsResource.downloadDocumentation"
+				],
+				"cli": [
+					"dss saved-model download-documentation"
+				],
+				"note": "`generate-documentation --output PATH` waits and downloads in one call."
 			}
 		],
 		"Machine Learning - Experiment tracking": [
@@ -2741,10 +2965,14 @@
 				"method": "GET",
 				"uri": "/api/2.0/mlflow/extension/models/{runId}",
 				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-get",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlflowExtensionResource.listModels"
+				],
+				"cli": [
+					"dss mlflow list-models"
+				],
+				"note": "Sends `x-dku-mlflow-project-key`."
 			},
 			{
 				"section": "Machine Learning - Experiment tracking",
@@ -2753,10 +2981,14 @@
 				"method": "POST",
 				"uri": "/api/2.0/mlflow/extension/set-run-inference-info",
 				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-post",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlflowExtensionResource.setRunInferenceInfo"
+				],
+				"cli": [
+					"dss mlflow set-inference-info"
+				],
+				"note": "Validates prediction type and classes like dataikuapi; DSS stores them as run tags `dku-ext.predictionType`, `dku-ext.targetClasses`."
 			},
 			{
 				"section": "Machine Learning - Experiment tracking",
@@ -2765,10 +2997,14 @@
 				"method": "POST",
 				"uri": "/api/2.0/mlflow/extension/deploy-run",
 				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-post-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlflowExtensionResource.deployRun"
+				],
+				"cli": [
+					"dss mlflow deploy-run"
+				],
+				"note": "Query parameters as dataikuapi `deploy_run_model` sends them; synchronous, so long model loads need `--request-timeout`."
 			},
 			{
 				"section": "Machine Learning - Experiment tracking",
@@ -2777,10 +3013,14 @@
 				"method": "POST",
 				"uri": "/api/2.0/mlflow/extension/create-project-experiments-dataset",
 				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-post-2",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlflowExtensionResource.createExperimentsDataset"
+				],
+				"cli": [
+					"dss mlflow create-experiments-dataset"
+				],
+				"note": "Creates an `ExperimentsDB` dataset."
 			},
 			{
 				"section": "Machine Learning - Experiment tracking",
@@ -2789,9 +3029,13 @@
 				"method": "POST",
 				"uri": "/api/2.0/mlflow/extension/garbage-collect",
 				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-post-3",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"MlflowExtensionResource.garbageCollect"
+				],
+				"cli": [
+					"dss mlflow garbage-collect"
+				],
 				"note": null
 			},
 			{
@@ -2801,10 +3045,14 @@
 				"method": "DELETE",
 				"uri": "/api/2.0/mlflow/extension/clean-db/{projectKey}",
 				"docAnchor": "#machine-learning-experiment-tracking-experiment-tracking-delete",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"MlflowExtensionResource.cleanDb"
+				],
+				"cli": [
+					"dss mlflow clean-db"
+				],
+				"note": "Admin; classified destructive, supports `--plan`/`--dry-run`."
 			}
 		],
 		"Managed Folders": [
@@ -3132,9 +3380,13 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/streamingendpoints/managed",
 				"docAnchor": "#streaming-endpoints-streaming-endpoints-post-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"StreamingEndpointsResource.createManaged"
+				],
+				"cli": [
+					"dss streaming-endpoint create-managed"
+				],
 				"note": null
 			},
 			{
@@ -3193,9 +3445,13 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/streamingendpoints/{streamingEndpointId}/schema",
 				"docAnchor": "#streaming-endpoints-streaming-endpoint-schema-get",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"StreamingEndpointsResource.getSchema"
+				],
+				"cli": [
+					"dss streaming-endpoint schema"
+				],
 				"note": null
 			},
 			{
@@ -3205,9 +3461,13 @@
 				"method": "PUT",
 				"uri": "/projects/{projectKey}/streamingendpoints/{streamingEndpointId}/schema",
 				"docAnchor": "#streaming-endpoints-streaming-endpoint-schema-put",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"StreamingEndpointsResource.setSchema"
+				],
+				"cli": [
+					"dss streaming-endpoint set-schema"
+				],
 				"note": null
 			}
 		],
@@ -3337,9 +3597,13 @@
 				"method": "POST",
 				"uri": "/projects/{projectKey}/webapps/{webappId}/actions/trust{?trustForEverybody}",
 				"docAnchor": "#webapps-webapp-post",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"WebappsResource.trust"
+				],
+				"cli": [
+					"dss webapp trust"
+				],
 				"note": null
 			},
 			{
@@ -3630,10 +3894,14 @@
 				"method": "GET",
 				"uri": "/futures/{?allUsers}{?withScenarios}",
 				"docAnchor": "#long-tasks-tasks-running-in-the-instance-get",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": "Futures listing (allUsers/withScenarios) not wrapped; SDK addresses futures by jobId."
+				"status": "implemented",
+				"sdk": [
+					"FuturesResource.list"
+				],
+				"cli": [
+					"dss future list"
+				],
+				"note": null
 			},
 			{
 				"section": "Long tasks",
@@ -4518,10 +4786,14 @@
 				"method": "GET",
 				"uri": "/projects/{projectKey}/bundles/exported/{bundleId}",
 				"docAnchor": "#bundles,-design-side-bundles-of-a-project-get-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": "Single exported-bundle details not wrapped; the SDK lists exported bundles and downloads their /archive streams."
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.getExported"
+				],
+				"cli": [
+					"dss bundle get-exported"
+				],
+				"note": null
 			},
 			{
 				"section": "Bundles, Design-side",
@@ -4660,10 +4932,14 @@
 				"method": "POST",
 				"uri": "/projectsFromBundle{?projectFolderId}",
 				"docAnchor": "#bundles,-automation-side-new-project-post",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": "Project-from-bundle creation (Automation node) not wrapped."
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.createProjectFromBundle"
+				],
+				"cli": [
+					"dss bundle create-project"
+				],
+				"note": "Multipart `file` upload (dataikuapi `create_project_from_bundle_archive`); Automation node, global admin."
 			},
 			{
 				"section": "Bundles, Automation-side",
@@ -4672,10 +4948,14 @@
 				"method": "POST",
 				"uri": "/projectsFromBundle/fromArchive{?archivePath,projectFolderId}",
 				"docAnchor": "#bundles,-automation-side-new-project-post-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": "Project-from-archive-bundle creation (Automation node) not wrapped."
+				"status": "implemented",
+				"sdk": [
+					"BundlesResource.createProjectFromBundle"
+				],
+				"cli": [
+					"dss bundle create-project"
+				],
+				"note": "Automation node, global admin; the archive must already be on the node host."
 			},
 			{
 				"section": "Bundles, Automation-side",
@@ -4766,10 +5046,14 @@
 				"method": "GET",
 				"uri": "/project-deployer/deployments/{deploymentId}/settings",
 				"docAnchor": "#project-deployer-deployments-get-2",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": "Deployment settings GET not wrapped; the PD resource exposes settings save (PUT) only."
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.getDeploymentSettings"
+				],
+				"cli": [
+					"dss project-deployer deployment-settings"
+				],
+				"note": null
 			},
 			{
 				"section": "Project Deployer",
@@ -4810,10 +5094,14 @@
 				"method": "GET",
 				"uri": "/project-deployer/deployments/{deploymentId}/governance-status",
 				"docAnchor": "#project-deployer-deployments-get-4",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.getGovernanceStatus"
+				],
+				"cli": [
+					"dss project-deployer governance-status"
+				],
+				"note": "Optional `bundleId` query parameter as dataikuapi sends it."
 			},
 			{
 				"section": "Project Deployer",
@@ -4886,9 +5174,13 @@
 				"method": "DELETE",
 				"uri": "/project-deployer/projects/{projectKey}",
 				"docAnchor": "#project-deployer-published-projects-delete",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.deleteProject"
+				],
+				"cli": [
+					"dss project-deployer delete-project"
+				],
 				"note": null
 			},
 			{
@@ -4898,10 +5190,14 @@
 				"method": "GET",
 				"uri": "/project-deployer/projects/settings",
 				"docAnchor": "#project-deployer-published-projects-get-2",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.getProjectSettings"
+				],
+				"cli": [
+					"dss project-deployer project-settings"
+				],
+				"note": "The docs omit the project key; the SDK calls `/project-deployer/projects/{projectKey}/settings` like dataikuapi `DSSProjectDeployerProject.get_settings`."
 			},
 			{
 				"section": "Project Deployer",
@@ -4910,9 +5206,13 @@
 				"method": "PUT",
 				"uri": "/project-deployer/projects/{projectKey}/settings",
 				"docAnchor": "#project-deployer-published-projects-put",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.saveProjectSettings"
+				],
+				"cli": [
+					"dss project-deployer save-project-settings"
+				],
 				"note": null
 			},
 			{
@@ -4938,9 +5238,13 @@
 				"method": "DELETE",
 				"uri": "/project-deployer/projects/{projectKey}/bundles/{bundleId}",
 				"docAnchor": "#project-deployer-published-projects-delete-1",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.deleteBundle"
+				],
+				"cli": [
+					"dss project-deployer delete-bundle"
+				],
 				"note": null
 			},
 			{
@@ -4948,12 +5252,16 @@
 				"subsection": "Infrastructures",
 				"name": "List stages",
 				"method": "GET",
-				"uri": "/project-deployer/infras/stages",
+				"uri": "/project-deployer/stages",
 				"docAnchor": "#project-deployer-infrastructures-get",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.listStages"
+				],
+				"cli": [
+					"dss project-deployer list-stages"
+				],
+				"note": "Documented as `GET /project-deployer/stages`, as dataikuapi `list_stages` calls it."
 			},
 			{
 				"section": "Project Deployer",
@@ -4978,9 +5286,13 @@
 				"method": "GET",
 				"uri": "/project-deployer/infras/{infraId}",
 				"docAnchor": "#project-deployer-infrastructures-get-2",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.getInfra"
+				],
+				"cli": [
+					"dss project-deployer get-infra"
+				],
 				"note": null
 			},
 			{
@@ -4988,12 +5300,16 @@
 				"subsection": "Infrastructures",
 				"name": "Create infra",
 				"method": "POST",
-				"uri": "/project-deployer/projects/infras",
+				"uri": "/project-deployer/infras",
 				"docAnchor": "#project-deployer-infrastructures-post",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
-				"note": null
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.createInfra"
+				],
+				"cli": [
+					"dss project-deployer create-infra"
+				],
+				"note": "Documented as `POST /project-deployer/infras` (the earlier `/projects/infras` transcription was wrong); the existing create-infra already used the documented path, matching dataikuapi `create_infra`."
 			},
 			{
 				"section": "Project Deployer",
@@ -5002,9 +5318,13 @@
 				"method": "GET",
 				"uri": "/project-deployer/infras/{infraId}/settings",
 				"docAnchor": "#project-deployer-infrastructures-get-3",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.getInfraSettings"
+				],
+				"cli": [
+					"dss project-deployer infra-settings"
+				],
 				"note": null
 			},
 			{
@@ -5014,9 +5334,13 @@
 				"method": "PUT",
 				"uri": "/project-deployer/infras/{infraId}/settings",
 				"docAnchor": "#project-deployer-infrastructures-put",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.saveInfraSettings"
+				],
+				"cli": [
+					"dss project-deployer save-infra-settings"
+				],
 				"note": null
 			},
 			{
@@ -5026,9 +5350,13 @@
 				"method": "DELETE",
 				"uri": "/project-deployer/infras/{infraId}",
 				"docAnchor": "#project-deployer-infrastructures-delete",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"ProjectDeployerResource.deleteInfra"
+				],
+				"cli": [
+					"dss project-deployer delete-infra"
+				],
 				"note": null
 			}
 		],
@@ -5059,9 +5387,13 @@
 				"method": "PUT",
 				"uri": "/projects/{projectKey}/wiki/",
 				"docAnchor": "#wiki-wiki-put",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"WikiResource.updateSettings"
+				],
+				"cli": [
+					"dss wiki update-settings"
+				],
 				"note": null
 			},
 			{
@@ -5173,9 +5505,13 @@
 				"method": "PUT",
 				"uri": "/projects/{projectKey}/discussions/{objectType}/{objectId}/{discussionId}",
 				"docAnchor": "#discussions-discussion-put",
-				"status": "not-implemented",
-				"sdk": [],
-				"cli": [],
+				"status": "implemented",
+				"sdk": [
+					"DiscussionsResource.update"
+				],
+				"cli": [
+					"dss discussion update"
+				],
 				"note": null
 			},
 			{

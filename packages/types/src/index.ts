@@ -259,6 +259,24 @@ export const RecipeCreateOptionsSchema = Type.Object({
 	fuzzyNormalize: Type.Optional(Type.Boolean(),),
 	projectKey: Type.Optional(Type.String(),),
 	outputFolder: Type.Optional(Type.String(),),
+	/** Grouping: key columns. */
+	groupBy: Type.Optional(Type.Array(Type.String(),),),
+	/** Grouping: `COL:FN[+FN]` specs (count, countDistinct, sum, avg, min, max, median, stddev, first, last, concat, ...). */
+	aggregate: Type.Optional(Type.Array(Type.String(),),),
+	/** Grouping: ordering column for first/last aggregates. */
+	orderBy: Type.Optional(Type.String(),),
+	/** Prepare: `OLD=NEW` column renames. */
+	rename: Type.Optional(Type.Array(Type.String(),),),
+	/** Prepare: `COL=VALUE` fills for empty cells. */
+	fillEmpty: Type.Optional(Type.Array(Type.String(),),),
+	/** Prepare: one `NAME=GREL_EXPRESSION` computed column. */
+	formula: Type.Optional(Type.String(),),
+	/** Prepare: keep only rows where this GREL expression is true. */
+	filter: Type.Optional(Type.String(),),
+	/** Prepare: columns to remove. */
+	dropColumns: Type.Optional(Type.Array(Type.String(),),),
+	/** Prepare: the only columns to keep. */
+	keepColumns: Type.Optional(Type.Array(Type.String(),),),
 },);
 export type RecipeCreateOptions = Static<typeof RecipeCreateOptionsSchema>;
 
@@ -267,6 +285,8 @@ export const RecipeCreateResultSchema = Type.Object({
 	type: Type.String(),
 	createdDatasets: Type.Array(Type.String(),),
 	joinConfigured: Type.Boolean(),
+	/** Grouping keys/aggregates or prepare steps from flags were written to the payload. */
+	payloadConfigured: Type.Optional(Type.Boolean(),),
 	outputProvisioningFallbackUsed: Type.Boolean(),
 	outputFolder: Type.Optional(Type.String(),),
 	temporaryOutputDataset: Type.Optional(Type.String(),),

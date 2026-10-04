@@ -343,8 +343,11 @@ describe("agent contract accuracy", () => {
 		expect(stderr,).toBe("",);
 		const matches = JSON.parse(stdout,) as Array<{ id: string; usage: string; }>;
 		// Only actions matching every word are returned when any exist.
-		expect(matches.map((match,) => match.id),).toEqual(["recipe.update-schema",],);
-		expect(matches[0]!.usage,).toStartWith("dss recipe update-schema",);
+		expect(matches.map((match,) => match.id),).toEqual([
+			"flow.propagate-schema",
+			"recipe.update-schema",
+		],);
+		expect(matches[0]!.usage,).toStartWith("dss flow propagate-schema",);
 
 		const broad = await dss(["commands", "run", "--contains", "dataset",],);
 		expect((JSON.parse(broad.stdout,) as unknown[]).length,).toBe(5,);

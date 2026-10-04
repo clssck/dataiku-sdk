@@ -183,4 +183,22 @@ export class WebappsResource extends BaseResource {
 			`/public/api/projects/${this.enc(projectKey,)}/webapps/${id}/backend/state`,
 		);
 	}
+
+	/**
+	 * Trust a webapp's code (POST /actions/trust): for the caller, or for every
+	 * user with `trustForEverybody` (admin). Returns `{canAccess, trustedCodeStatus}`.
+	 */
+	async trust(
+		webappId: string,
+		opts: { projectKey?: string; trustForEverybody?: boolean; } = {},
+	): Promise<Record<string, unknown>> {
+		const query = opts.trustForEverybody === undefined
+			? ""
+			: `?trustForEverybody=${opts.trustForEverybody}`;
+		return this.client.post<Record<string, unknown>>(
+			`/public/api/projects/${this.enc(opts.projectKey,)}/webapps/${
+				encodeURIComponent(webappId,)
+			}/actions/trust${query}`,
+		);
+	}
 }

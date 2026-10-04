@@ -28,6 +28,7 @@ import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
 import type { JobBuildTarget, JobBuildTargetType, JobLogFilter, JobLogSummary, } from "./jobs.js";
 import {
+	applyGroupingPayload,
 	asString,
 	buildRecipeCreateRequest,
 	recipeInputItems,
@@ -675,12 +676,14 @@ export class RecipesResource extends BaseResource {
 			fuzzyDistance,
 			fuzzyKeys,
 			fuzzyThreshold,
+			grouping,
 			inputDatasets,
 			inputs,
 			joinKeys,
 			normalizedJoinType,
 			outputFolder,
 			outputs,
+			prepareSteps: prepareStepList,
 			rawConnection,
 			recipePrototype,
 			temporaryOutputDataset,
@@ -856,6 +859,27 @@ export class RecipesResource extends BaseResource {
 			joinConfigured = true;
 		}
 
+		// Grouping keys/aggregates and prepare steps edit the payload DSS created.
+		let payloadConfigured = false;
+		if (grouping || prepareStepList.length > 0) {
+			const rnEnc = encodeURIComponent(finalRecipeName,);
+			const full = await this.client.get<{ recipe: Record<string, unknown>; payload?: string; }>(
+				`/public/api/projects/${enc}/recipes/${rnEnc}`,
+			);
+			const created = parseRecipePayload(full.payload,);
+			const configured = grouping
+				? applyGroupingPayload(created, grouping,)
+				: {
+					...created,
+					steps: [...(Array.isArray(created.steps,) ? created.steps : []), ...prepareStepList,],
+				};
+			await this.client.put(`/public/api/projects/${enc}/recipes/${rnEnc}`, {
+				...full,
+				payload: JSON.stringify(configured,),
+			},);
+			payloadConfigured = true;
+		}
+
 		let temporaryOutputDatasetDeleted: boolean | undefined;
 		if (outputFolder) {
 			await this.update(finalRecipeName, {
@@ -912,6 +936,7 @@ export class RecipesResource extends BaseResource {
 			type,
 			createdDatasets,
 			joinConfigured,
+			...(payloadConfigured ? { payloadConfigured, } : {}),
 			outputProvisioningFallbackUsed: usedOutputProvisioningFallback,
 			...(outputSchemaUpdated ? { outputSchemaUpdated, } : {}),
 			...(outputSchemaUpdateError ? { outputSchemaUpdateError, } : {}),

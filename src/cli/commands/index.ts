@@ -93,6 +93,12 @@ export const commands: Record<string, Record<string, CommandMeta>> = {
 	get "future"() {
 		return (require("./future.js",) as typeof import("./future.js")).futureCommands;
 	},
+	get "flow"() {
+		return (require("./flow.js",) as typeof import("./flow.js")).flowCommands;
+	},
+	get "mlflow"() {
+		return (require("./mlflow.js",) as typeof import("./mlflow.js")).mlflowCommands;
+	},
 	get "flow-zone"() {
 		return (require("./flow-zone.js",) as typeof import("./flow-zone.js")).flowZoneCommands;
 	},

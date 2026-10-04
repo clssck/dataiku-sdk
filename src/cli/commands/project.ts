@@ -338,4 +338,13 @@ export const projectCommands: Record<string, CommandMeta> = withUsage("project",
 		description: "Update a project's settings via JSON merge.",
 		examples: ["dss project settings-set --data-file settings.json --project-key MY_PROJ",],
 	},
+	"push-to-git-remote": {
+		handler: async (c, a, f,) => {
+			await c.projects.pushToGitRemote(a[0]!, f["project-key"] as string | undefined,);
+			return { pushed: a[0], resource: "project", };
+		},
+		description:
+			"Push the project to a Git remote already declared in DSS (per-project Git mode). Branches, commits, pulls, and remotes: dss project-git.",
+		examples: ["dss project push-to-git-remote origin --plan",],
+	},
 },);

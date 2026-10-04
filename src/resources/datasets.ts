@@ -20,6 +20,14 @@ import type {
 	DatasetSummary,
 } from "../schemas.js";
 
+/** Column and partition selection for dataset data reads (POST /data body). */
+export interface DatasetDataSelection {
+	/** Only these columns, in this order. */
+	columns?: string[];
+	/** DSS partition spec, e.g. `2026-01` or `2026-01,2026-02`. */
+	partitions?: string;
+}
+
 export interface DatasetBuildValidationResult {
 	valid: boolean;
 	datasetName: string;
@@ -829,6 +837,31 @@ export class DatasetsResource extends BaseResource {
 	}
 
 	/**
+	 * TSV data stream of at most `limit` rows. A column or partition selection
+	 * uses the documented POST variant of the data endpoint (body `columns`,
+	 * `partitions`, `format`, `sampling`); otherwise the GET endpoint.
+	 */
+	private async dataStream(
+		datasetName: string,
+		limit: number,
+		projectKey: string | undefined,
+		selection: DatasetDataSelection | undefined,
+	): Promise<Response> {
+		const path = `/public/api/projects/${this.enc(projectKey,)}/datasets/${
+			encodeURIComponent(datasetName,)
+		}/data/`;
+		if (!selection?.columns?.length && !selection?.partitions) {
+			return this.client.stream(`${path}?format=tsv-excel-header&limit=${limit}`,);
+		}
+		return this.client.postStream(path, {
+			format: "tsv-excel-header",
+			...(selection.columns?.length ? { columns: selection.columns, } : {}),
+			...(selection.partitions ? { partitions: selection.partitions, } : {}),
+			sampling: { samplingMethod: "HEAD_SEQUENTIAL", maxRecords: limit, },
+		},);
+	}
+
+	/**
 	 * Preview dataset rows as structured data: column names plus row arrays,
 	 * mirroring the sql query shape ({ columns, rows, rowCount }). Streams TSV
 	 * from the API and returns up to `maxRows` data rows.
@@ -847,7 +880,7 @@ export class DatasetsResource extends BaseResource {
 			projectKey?: string;
 			validateColumns?: { name: string; }[];
 			timeoutMs?: number;
-		},
+		} & DatasetDataSelection,
 	): Promise<{
 		columns: Array<{ name: string; }>;
 		rows: string[][];
@@ -857,14 +890,9 @@ export class DatasetsResource extends BaseResource {
 	}> {
 		const maxRows = Math.max(1, Math.min(opts?.maxRows ?? 50, 500,),);
 		const timeoutMs = Math.max(1, opts?.timeoutMs ?? this.client.getRequestTimeoutMs(),);
-		const dsEnc = encodeURIComponent(datasetName,);
 		// Probe one row past the cap so callers learn whether the dataset holds
 		// more rows than requested without materializing the full dataset.
-		const res = await this.client.stream(
-			`/public/api/projects/${
-				this.enc(opts?.projectKey,)
-			}/datasets/${dsEnc}/data/?format=tsv-excel-header&limit=${maxRows + 1}`,
-		);
+		const res = await this.dataStream(datasetName, maxRows + 1, opts?.projectKey, opts,);
 		const onHeader = opts?.validateColumns
 			? (headerRow: string[],) => {
 				const warnings = validateStreamColumns(headerRow, opts.validateColumns!,);
@@ -961,6 +989,30 @@ export class DatasetsResource extends BaseResource {
 		return this.client.put<Record<string, unknown>>(
 			`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}/metadata`,
 			metadata,
+		);
+	}
+
+	/**
+	 * Create or update the Hive table of an HDFS dataset so it matches the
+	 * dataset schema (POST /actions/synchronizeHiveMetastore).
+	 */
+	async synchronizeHiveMetastore(datasetName: string, projectKey?: string,): Promise<void> {
+		await this.client.post(
+			`/public/api/projects/${this.enc(projectKey,)}/datasets/${
+				encodeURIComponent(datasetName,)
+			}/actions/synchronizeHiveMetastore`,
+		);
+	}
+
+	/**
+	 * Update an HDFS dataset (path, schema, partitioning, format) from its
+	 * Hive table (POST /actions/updateFromHive).
+	 */
+	async updateFromHive(datasetName: string, projectKey?: string,): Promise<void> {
+		await this.client.post(
+			`/public/api/projects/${this.enc(projectKey,)}/datasets/${
+				encodeURIComponent(datasetName,)
+			}/actions/updateFromHive`,
 		);
 	}
 
@@ -1103,15 +1155,10 @@ export class DatasetsResource extends BaseResource {
 			limit?: number;
 			/** Preserve exact cell bytes (no spreadsheet-safe formula neutralization), default false. */
 			rawData?: boolean;
-		},
+		} & DatasetDataSelection,
 	): Promise<{ path: string; rows: number; truncated: boolean; limit: number; }> {
 		const limit = Math.max(1, opts?.limit ?? 100_000,);
-		const dsEnc = encodeURIComponent(datasetName,);
-		const res = await this.client.stream(
-			`/public/api/projects/${
-				this.enc(opts?.projectKey,)
-			}/datasets/${dsEnc}/data/?format=tsv-excel-header&limit=${limit + 1}`,
-		);
+		const res = await this.dataStream(datasetName, limit + 1, opts?.projectKey, opts,);
 
 		const safeDatasetName = sanitizeFileName(datasetName, "dataset",);
 		const filePath = opts?.outputPath?.endsWith(".gz",) || opts?.outputPath?.endsWith(".csv",)

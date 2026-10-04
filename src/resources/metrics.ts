@@ -66,6 +66,23 @@ export class MetricsResource extends BaseResource {
 		);
 	}
 
+	/**
+	 * Run the dataset's checks (POST /actions/runChecks/{?partitions}). Without
+	 * `checks` DSS runs the checks configured on the dataset; with `checks` it
+	 * runs those definitions instead (body `{"checks": [...]}`).
+	 */
+	async runDatasetChecks(
+		datasetName: string,
+		opts: { projectKey?: string; partitions?: string; checks?: unknown[]; } = {},
+	): Promise<MetricComputationReport> {
+		const pk = this.enc(opts.projectKey,);
+		const query = opts.partitions ? `?partitions=${encodeURIComponent(opts.partitions,)}` : "";
+		return this.client.post<MetricComputationReport>(
+			`${datasetPath(pk, datasetName,)}/actions/runChecks/${query}`,
+			opts.checks ? { checks: opts.checks, } : undefined,
+		);
+	}
+
 	/** Get the last metric values for a managed folder. */
 	async getFolderMetrics(folderId: string, projectKey?: string,): Promise<MetricValues> {
 		const pk = this.enc(projectKey,);

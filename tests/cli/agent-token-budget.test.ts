@@ -28,21 +28,26 @@ const TOKEN_BUDGETS = {
 	// action-name arrays only. Budget raised accordingly, same ~6% margin.
 	// agentContractVersion 3 adds `commands.globalFlags` (listed once instead of in
 	// every entry), the --contains search command, and the list-shape note.
-	agentContract: { baseline: 3_586, maxTokens: 3_800, },
-	commandsRunDefault: { baseline: 1_577, maxTokens: 1_700, },
+	// The flow and mlflow resources plus ML diagnostics, Project Deployer, and
+	// smaller DSS 15 gap actions add 220 tokens of action names.
+	agentContract: { baseline: 3_806, maxTokens: 4_000, },
+	// Action names grow with the surface: +56 DSS 15 gap actions (1_577 before).
+	commandsRunDefault: { baseline: 1_801, maxTokens: 1_900, },
 	registryExportStdout: { baseline: 17, maxTokens: 40, },
-	// Entries no longer repeat global flags or shell copies of examples (was 18_210 / 1_035).
-	datasetResource: { baseline: 14_570, maxTokens: 15_500, },
+	// Entries no longer repeat global flags or shell copies of examples (was 18_210 / 1_035);
+	// sync-hive-metastore, update-from-hive, and --columns/--partitions added 1.1k back.
+	datasetResource: { baseline: 15_718, maxTokens: 16_600, },
 	datasetCreate: { baseline: 878, maxTokens: 1_000, },
 	datasetCreateUsage: { baseline: 50, maxTokens: 70, },
 	datasetCreateDescription: { baseline: 11, maxTokens: 24, },
 	scopedBootstrap: { baseline: 278, maxTokens: 300, },
-	actionSummary: { baseline: 1_581, maxTokens: 1_700, },
+	actionSummary: { baseline: 1_805, maxTokens: 1_900, },
 	fourFieldProjection: { baseline: 356, maxTokens: 390, },
 	fieldsUsageFailure: { baseline: 92, maxTokens: 110, },
 	// The usage line in the hint replaces a ~850-token `commands run --fields` round trip.
 	unknownFlag: { baseline: 71, maxTokens: 90, },
-	unknownResourceRecovery: { baseline: 204, maxTokens: 240, },
+	// validResources lists every resource; flow and mlflow add two names.
+	unknownResourceRecovery: { baseline: 242, maxTokens: 270, },
 	doctorFailure: { baseline: 105, maxTokens: 130, },
 	batchFailure: { baseline: 188, maxTokens: 220, },
 	cleanupFailure: { baseline: 99, maxTokens: 130, },
@@ -68,14 +73,15 @@ describe("agent-facing token budgets", () => {
 	it("bounds every on-demand skill reference", () => {
 		// Measured after discovery routing and App sharing guidance updates; retain 5% headroom.
 		// authentication, coding, troubleshooting: raised for the subprocess CA / connection
-		// identity, visual recipe payload, output schema, Inline dataset, and error envelope guidance.
+		// identity, visual recipe payload, output schema, Inline dataset, and error envelope guidance;
+		// coding again for the grouping/prepare flags, troubleshooting for flow propagate-schema.
 		const baselines = {
 			authentication: 504,
 			discovery: 594,
 			mutations: 602,
 			"app-releases": 872,
 			"flow-maps": 159,
-			coding: 331,
+			coding: 362,
 			troubleshooting: 1_002,
 		};
 		for (const [name, baseline,] of Object.entries(baselines,)) {
@@ -333,6 +339,13 @@ describe("agent-facing token budgets", () => {
 		}
 	});
 
+	/**
+	 * `recipe create` builds join, fuzzy-join, grouping, and prepare payloads
+	 * from flags, so its usage line carries every builder flag: one line
+	 * replaces hand-written payload JSON.
+	 */
+	const LONG_USAGE_BUDGETS: Record<string, number> = { "recipe.create": 220, };
+
 	it("keeps every command description concise without dropping recovery context", async () => {
 		const exportDir = join(tmpdir(), `dss-token-budget-registry-desc-${Date.now()}`,);
 		mkdirSync(exportDir, { recursive: true, },);
@@ -353,7 +366,9 @@ describe("agent-facing token budgets", () => {
 					const exampleTokens = measureAgentText(JSON.stringify(entry.examples ?? [],),).tokens;
 					expect(descriptionTokens, `${key} description is too terse`,).toBeGreaterThanOrEqual(4,);
 					expect(descriptionTokens, `${key} description is too verbose`,).toBeLessThanOrEqual(80,);
-					expect(usageTokens, `${key} usage is too verbose`,).toBeLessThanOrEqual(160,);
+					expect(usageTokens, `${key} usage is too verbose`,).toBeLessThanOrEqual(
+						LONG_USAGE_BUDGETS[key] ?? 160,
+					);
 					expect(exampleTokens, `${key} examples are too verbose`,).toBeLessThanOrEqual(120,);
 				}
 			}

@@ -1,4 +1,4 @@
-import { requiredStringFlag, } from "../coerce.js";
+import { requiredJsonInput, requiredStringFlag, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
@@ -65,5 +65,27 @@ export const analysisCommands: Record<string, CommandMeta> = withUsage("analysis
 			"dss analysis delete ANALYSIS_ID --if-exists --project-key PROJECT",
 			"dss analysis delete ANALYSIS_ID --dry-run --project-key PROJECT",
 		],
+	},
+	update: {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 1, commandUsage("analysis", "update",),);
+			const definition = requiredJsonInput(
+				f,
+				"The analysis definition is required via --data, --data-file, or --stdin (dss analysis get, edited).",
+			);
+			await c.analyses.update(a[0]!, definition, f["project-key"] as string | undefined,);
+			return { updated: a[0], resource: "analysis", };
+		},
+		description:
+			"Replace a visual analysis definition (name, script steps, charts, tags) with the object from dss analysis get, edited.",
+		examples: ["dss analysis update ANALYSIS_ID --data-file analysis.json",],
+	},
+	"list-ml-tasks": {
+		handler: (c, a, f,) => {
+			requireArgs(a, 1, commandUsage("analysis", "list-ml-tasks",),);
+			return c.analyses.listMlTasks(a[0]!, f["project-key"] as string | undefined,);
+		},
+		description: "List the ML tasks of one visual analysis (whole project: dss ml-task list).",
+		examples: ["dss analysis list-ml-tasks ANALYSIS_ID",],
 	},
 },);

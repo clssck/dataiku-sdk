@@ -8,7 +8,7 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 - **Official docs:** https://doc.dataiku.com/dss/api/15/rest/
 - **Snapshot:** official static HTML, retrieved **2026-09-09**; DSS major version **15**.
 - **Machine-readable companion:** [docs/API-COVERAGE-DSS-15.json](./API-COVERAGE-DSS-15.json) (same rows plus `meta`).
-- **CLI catalogue (actual programmatic registry):** `buildCommandRegistry()` / `commandActionSummary()` = **55 resources / 474 actions**, of which 47 resources / 466 actions are API-facing and 8 are meta-commands (`agent`, `auth`, `batch`, `cleanup`, `commands`, `fixtures`, `install-skill`, `version`).
+- **CLI catalogue (actual programmatic registry):** `buildCommandRegistry()` / `commandActionSummary()` = **57 resources / 530 actions**, of which 49 resources / 522 actions are API-facing and 8 are meta-commands (`agent`, `auth`, `batch`, `cleanup`, `commands`, `fixtures`, `install-skill`, `version`).
 
 ## Counting rules (read before citing numbers)
 
@@ -16,13 +16,13 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 - Query-parameter variants documented on one row are not double-counted (the docs fold them into `{?param}` suffixes).
 - Where the SDK reaches the same capability via a different verb or path shape, the row is marked **implemented** with a drift note (never counted twice as implemented + unsupported).
 - **No parity percentage is claimed.** Published tallies are raw row counts validated against the programmatic CLI registry at snapshot time.
-- Working-tree snapshot 2026-09-09: **294 implemented**, **78 not implemented** of 372 official rows.
+- Working-tree snapshot 2026-10-03: **371 implemented**, **1 not implemented** of 372 official rows.
 
 ## Mapping validation (machine-checked)
 
-- Every nonempty CLI mapping in this matrix exists in the current catalogue (`buildCommandRegistry()` summary: 55/474); the correct action is the one whose handler actually calls the mapped SDK method (hyphenated quoted action keys parsed structurally).
+- Every nonempty CLI mapping in this matrix exists in the current catalogue (`buildCommandRegistry()` summary: 57/530); the correct action is the one whose handler actually calls the mapped SDK method (hyphenated quoted action keys parsed structurally).
 - Every cited SDK method is a public method on its client resource class; private helpers are cited only through the public methods that call them.
-- 8 meta-commands (`agent.contract`, `auth.login`, `batch.*`, `cleanup.*`, `commands.run`, `fixtures.*`, `install-skill.*`, `version.run`) drive no REST endpoint and never appear as coverage; the API-facing subset is 47/466.
+- 8 meta-commands (`agent.contract`, `auth.login`, `batch.*`, `cleanup.*`, `commands.run`, `fixtures.*`, `install-skill.*`, `version.run`) drive no REST endpoint and never appear as coverage; the API-facing subset is 49/522.
 - This document describes source-level wiring only and makes no live-instance compatibility claims.
 
 ## Legend
@@ -36,43 +36,43 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | Section | Implemented | Total |
 |---|---|---|
 | Project Folders | 8 | 8 |
-| Projects | 12 | 14 |
-| Workspaces | 7 | 8 |
+| Projects | 14 | 14 |
+| Workspaces | 8 | 8 |
 | Collections | 8 | 8 |
-| Data Quality | 11 | 14 |
-| Flow | 0 | 4 |
-| Datasets | 21 | 26 |
+| Data Quality | 14 | 14 |
+| Flow | 4 | 4 |
+| Datasets | 26 | 26 |
 | LLM Mesh | 3 | 3 |
 | Knowledge Banks | 2 | 2 |
 | Dataset Statistics | 7 | 7 |
 | Jobs | 5 | 5 |
 | Scenarios | 16 | 16 |
-| Machine Learning - Lab | 10 | 32 |
-| Machine Learning - Saved models | 15 | 28 |
-| Machine Learning - Experiment tracking | 0 | 6 |
+| Machine Learning - Lab | 31 | 32 |
+| Machine Learning - Saved models | 28 | 28 |
+| Machine Learning - Experiment tracking | 6 | 6 |
 | Managed Folders | 9 | 9 |
 | Recipes | 7 | 7 |
-| Streaming endpoints | 5 | 8 |
+| Streaming endpoints | 8 | 8 |
 | Continuous activities | 4 | 4 |
-| Webapps | 6 | 7 |
+| Webapps | 7 | 7 |
 | Notebooks | 8 | 8 |
 | Macros | 6 | 6 |
-| Long tasks | 2 | 3 |
+| Long tasks | 3 | 3 |
 | Meanings | 4 | 4 |
 | Plugins | 33 | 33 |
 | Libraries | 7 | 7 |
 | API Services | 6 | 6 |
-| Bundles, Design-side | 5 | 6 |
-| Bundles, Automation-side | 5 | 7 |
-| Project Deployer | 12 | 24 |
-| Wiki | 4 | 5 |
-| Discussions | 4 | 5 |
+| Bundles, Design-side | 6 | 6 |
+| Bundles, Automation-side | 7 | 7 |
+| Project Deployer | 24 | 24 |
+| Wiki | 5 | 5 |
+| Discussions | 5 | 5 |
 | Dashboards | 6 | 6 |
 | Insights | 5 | 5 |
 | SQL queries | 3 | 3 |
 | Connections | 7 | 7 |
 | Security | 21 | 21 |
-| **Total** | **294** | **372** |
+| **Total** | **371** | **372** |
 
 ## Endpoint matrix
 
@@ -89,14 +89,14 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `POST` | `/project-folders/{folderId}/children{?name}` | yes | ProjectFoldersResource.createChild | `dss project-folder create-child` |  |
 | `POST` | `/project-folders/{folderId}/projects/{projectKey}/move{?destination}` | yes | ProjectFoldersResource.moveProject | `dss project-folder move-project` |  |
 
-### Projects (12/14)
+### Projects (14/14)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/projects/{tags}` | yes | ProjectsResource.list | `dss project list` | Docs publish the list endpoint as GET /projects/{tags} with an optional tags selector; the SDK GETs /projects/ and filters client-side. The same normalized shape also matches GET /projects/{projectKey}/ (project details), so both list and get land on this row. |
 | `POST` | `/projects{?projectFolderId}` | yes | ProjectsResource.createProject | `dss project create` |  |
 | `GET` | `/projects/{projectKey}/metadata` | yes | ProjectsResource.metadata | `dss project metadata` |  |
-| `PUT` | `/projects/{projectKey}/metadata` | no |  |  | SDK exposes GET metadata only; no PUT wrapper at snapshot. |
+| `PUT` | `/projects/{projectKey}/metadata` | yes | ProjectsResource.setMetadata | `dss project metadata-set` | Already wrapped at snapshot time; the earlier not-implemented mark was stale. |
 | `GET` | `/projects/{projectKey}/permissions` | yes | ProjectsResource.getPermissions | `dss app permissions-diff`, `dss app permissions-restore`, `dss app permissions-snapshot`, `dss project permissions-get` |  |
 | `PUT` | `/projects/{projectKey}/permissions` | yes | ProjectsResource.setPermissions | `dss app permissions-restore`, `dss project permissions-set` |  |
 | `GET` | `/projects/{projectKey}/variables` | yes | VariablesResource.get, VariablesResource.set | `dss variable get`, `dss variable set` |  |
@@ -104,11 +104,11 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `DELETE` | `/projects/{projectKey}{?dropData}` | yes | ApplicationsResource.deleteInstance, ProjectsResource.deleteProject | `dss app delete-instance`, `dss project delete` |  |
 | `GET` | `/projects/{projectKey}/export{?exportUploads}{?exportManaged}{?exportAnalysisModels}{?exportSavedModels}` | yes | ProjectsResource.exportArchive | `dss project export` | Verb drift: official GET /export{?exportUploads}{?exportManaged}{?exportAnalysisModels}{?exportSavedModels}; SDK POSTs /export and streams the archive. |
 | `POST` | `/projects/{projectKey}/duplicate` | yes | ProjectsResource.duplicate | `dss project duplicate` |  |
-| `POST` | `/projects/{projectKey}/actions/push-to-git-remote{?remote}` | no |  |  | project-git resource drives the Git remotes/branches/tags/actions family; this one-shot action endpoint is not wrapped. |
+| `POST` | `/projects/{projectKey}/actions/push-to-git-remote{?remote}` | yes | ProjectsResource.pushToGitRemote | `dss project push-to-git-remote` | One-shot push of the public API; the project-git resource covers the per-project Git family (branches, commits, pull, remotes). |
 | `GET` | `/projects/{projectKey}/tags` | yes | ProjectsResource.tags | `dss project tags-get` |  |
 | `PUT` | `/projects/{projectKey}/tags` | yes | ProjectsResource.setTags | `dss project tags-set` |  |
 
-### Workspaces (7/8)
+### Workspaces (8/8)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
@@ -119,7 +119,7 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `DELETE` | `/workspaces/{workspaceKey}` | yes | WorkspacesResource.delete | `dss workspace delete` |  |
 | `GET` | `/workspaces/{workspaceKey}/objects` | yes | WorkspacesResource.listObjects | `dss workspace list-objects` |  |
 | `POST` | `/workspaces/{workspaceKey}/objects` | yes | WorkspacesResource.addObject | `dss workspace add-object` |  |
-| `DELETE` | `/workspaces/{workspaceKey}/objects/{workspaceObjectId}` | no |  |  |  |
+| `DELETE` | `/workspaces/{workspaceKey}/objects/{workspaceObjectId}` | yes | WorkspacesResource.removeObject | `dss workspace remove-object` |  |
 
 ### Collections (8/8)
 
@@ -134,16 +134,16 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `POST` | `/data-collections/{dataCollectionId}/objects` | yes | DataCollectionsResource.addObject | `dss data-collection add-object` |  |
 | `DELETE` | `/data-collections/{dataCollectionId}/objects/dataset/{projectKey}/{datasetName}` | yes | DataCollectionsResource.removeDataset | `dss data-collection remove-dataset` |  |
 
-### Data Quality (11/14)
+### Data Quality (14/14)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
-| `GET` | `/data-quality/status` | no |  |  | Instance-wide DQ status not wrapped; DQ resource covers project and dataset level. |
+| `GET` | `/data-quality/status` | yes | DataQualityResource.instanceStatus | `dss data-quality instance-status` |  |
 | `GET` | `/projects/{projectKey}/data-quality/status{?onlyMonitored}` | yes | DataQualityResource.projectStatus | `dss data-quality project-status` |  |
 | `GET` | `/projects/{projectKey}/data-quality/timeline{?minTimestamp}{?maxTimestamp}` | yes | DataQualityResource.projectTimeline | `dss data-quality project-timeline` |  |
 | `GET` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/rules` | yes | DataQualityResource.getRule, DataQualityResource.listRules, DataQualityResource.rules, DataQualityResource.updateRule | `dss data-quality create-rule`, `dss data-quality delete-rule`, `dss data-quality get-rule`, `dss data-quality rules`, `dss data-quality update-rule` |  |
 | `POST` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/rules` | yes | DataQualityResource.createRule | `dss data-quality create-rule` |  |
-| `POST` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/get-partitions-status` | no |  |  |  |
+| `POST` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/get-partitions-status` | yes | DataQualityResource.partitionsStatus | `dss data-quality partitions-status` | `partitions` is a repeated query parameter (dataikuapi). DSS 15 throws a NullPointerException without it, so the SDK sends `NP` when no partition is given. |
 | `POST` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/actions/compute-rules` | yes | DataQualityResource.computeRules, DataQualityResource.computeRulesAndWait | `dss data-quality compute` |  |
 | `GET` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/status` | yes | DataQualityResource.status | `dss data-quality status` |  |
 | `GET` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/status-by-partition{?includeAllPartitions}` | yes | DataQualityResource.status, DataQualityResource.statusByPartition | `dss data-quality status`, `dss data-quality status-by-partition` |  |
@@ -151,18 +151,18 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `GET` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/rules-history{?minTimestamp}{?maxTimestamp}{?resultsPerPage}{?page}{?ruleIds}` | yes | DataQualityResource.history | `dss data-quality history` |  |
 | `PUT` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/rules/{ruleId}` | yes | DataQualityResource.updateRule | `dss data-quality update-rule` |  |
 | `DELETE` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/rules/{ruleId}` | yes | DataQualityResource.deleteRule | `dss data-quality delete-rule` |  |
-| `DELETE` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/{partition}/rules-history` | no |  |  |  |
+| `DELETE` | `/projects/{projectKey}/datasets/{datasetName}/data-quality/history/{partition}` | yes | DataQualityResource.deleteHistory | `dss data-quality delete-history` | URI corrected from the earlier `/{partition}/rules-history` transcription to the documented `/history/{partition}` (dataikuapi `clear_rules_history` uses the same path). |
 
-### Flow (0/4)
+### Flow (4/4)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
-| `POST` | `/projects/{projectKey}/flow/documentation/generate` | no |  |  | utils/flow-analysis.ts is local graph analysis of GET /flow/graph, not flow documentation export. |
-| `POST` | `/projects/{projectKey}/flow/documentation/generate-with-template` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/flow/documentation/generate-with-template-in-folder{?folderId}{?path}` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/flow/documentation/generated/{exportId}` | no |  |  |  |
+| `POST` | `/projects/{projectKey}/flow/documentation/generate` | yes | FlowResource.generateDocumentation | `dss flow generate-documentation` |  |
+| `POST` | `/projects/{projectKey}/flow/documentation/generate-with-template` | yes | FlowResource.generateDocumentation | `dss flow generate-documentation` |  |
+| `POST` | `/projects/{projectKey}/flow/documentation/generate-with-template-in-folder{?folderId}{?path}` | yes | FlowResource.generateDocumentation | `dss flow generate-documentation` |  |
+| `GET` | `/projects/{projectKey}/flow/documentation/generated/{exportId}` | yes | FlowResource.downloadDocumentation | `dss flow download-documentation`, `dss flow generate-documentation` |  |
 
-### Datasets (21/26)
+### Datasets (26/26)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
@@ -173,21 +173,21 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `PUT` | `/projects/{projectKey}/datasets/{datasetName}` | yes | DatasetsResource.update | `dss dataset update` |  |
 | `DELETE` | `/projects/{projectKey}/datasets/{datasetName}{?dropData}` | yes | DatasetsResource.delete, RecipesResource.create | `dss dataset delete`, `dss recipe create` |  |
 | `GET` | `/projects/{projectKey}/datasets/{datasetName}/metadata` | yes | DatasetsResource.metadata | `dss dataset metadata` |  |
-| `PUT` | `/projects/{projectKey}/datasets/{datasetName}/metadata` | no |  |  |  |
+| `PUT` | `/projects/{projectKey}/datasets/{datasetName}/metadata` | yes | DatasetsResource.updateMetadata | `dss dataset metadata-set` | Already wrapped at snapshot time; the earlier not-implemented mark was stale. |
 | `GET` | `/projects/{projectKey}/datasets/{datasetName}/info` | yes | DatasetsResource.info | `dss dataset info` |  |
 | `GET` | `/projects/{projectKey}/datasets/{datasetName}/schema` | yes | DatasetsResource.getSchemaObject, DatasetsResource.schema | `dss dataset assert-schema`, `dss dataset refresh-schema`, `dss dataset schema` |  |
 | `PUT` | `/projects/{projectKey}/datasets/{datasetName}/schema` | yes | DatasetsResource.updateSchema | `dss dataset refresh-schema` |  |
 | `GET` | `/projects/datasets/column-lineage{?columnName}{?maxDatasetCount}` | yes | DatasetsResource.getColumnLineage | `dss dataset column-lineage` | Path drift: docs render a merged project-scoped route GET /projects/{pk}/datasets/column-lineage{?columnName}{?maxDatasetCount}; the SDK (matching the official Python client) calls dataset-scoped GET /projects/{pk}/datasets/{datasetName}/column-lineage?columnName=...&maxDatasetCount=... |
 | `GET` | `/projects/{projectKey}/datasets/{datasetName}/data{?format}{?formatParams}{?columns}{?partitions}{?filter}{?sampling}` | yes | DatasetsResource.assertRowCount | `dss dataset assert-count` |  |
-| `POST` | `/projects/{projectKey}/datasets/{datasetName}/data` | no |  |  | Data write/upload endpoint not wrapped; SDK reads data via streaming GET only. |
+| `POST` | `/projects/{projectKey}/datasets/{datasetName}/data` | yes | DatasetsResource.preview, DatasetsResource.download | `dss dataset preview`, `dss dataset download` | A read, not a write: the POST variant of Get data. Used when --columns/--partitions select data; DSS 15 also needs `format` in the body and honors `sampling` (HEAD_SEQUENTIAL maxRecords) for the row cap. There is still no public endpoint that writes dataset rows. |
 | `DELETE` | `/projects/{projectKey}/datasets/{datasetName}/data/{?partitions}` | yes | DatasetsResource.clear | `dss dataset clear` |  |
 | `GET` | `/projects/{projectKey}/datasets/{datasetName}/partitions` | yes | DatasetsResource.listPartitions | `dss dataset list-partitions` |  |
 | `GET` | `/projects/{projectKey}/datasets/{datasetName}/metrics/last/{?partition}` | yes | MetricsResource.getDatasetMetrics | `dss metrics dataset-get` | SDK appends literal NP (no-partition) segment; official uses optional {?partition} query. |
 | `GET` | `/projects/{projectKey}/datasets/{datasetName}/metrics/history/{?partition}{?metricLookup}` | yes | MetricsResource.getDatasetMetricHistory | `dss metrics dataset-history` |  |
-| `POST` | `/projects/{projectKey}/datasets/{datasetName}/actions/synchronizeHiveMetastore` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/datasets/{datasetName}/actions/updateFromHive` | no |  |  |  |
+| `POST` | `/projects/{projectKey}/datasets/{datasetName}/actions/synchronizeHiveMetastore` | yes | DatasetsResource.synchronizeHiveMetastore | `dss dataset sync-hive-metastore` |  |
+| `POST` | `/projects/{projectKey}/datasets/{datasetName}/actions/updateFromHive` | yes | DatasetsResource.updateFromHive | `dss dataset update-from-hive` |  |
 | `POST` | `/projects/{projectKey}/datasets/{datasetName}/actions/computeMetrics/{?partitions}` | yes | MetricsResource.computeDatasetMetrics | `dss metrics dataset-compute` |  |
-| `POST` | `/projects/{projectKey}/datasets/{datasetName}/actions/runChecks/{?partitions}` | no |  |  |  |
+| `POST` | `/projects/{projectKey}/datasets/{datasetName}/actions/runChecks/{?partitions}` | yes | MetricsResource.runDatasetChecks | `dss metrics dataset-run-checks` |  |
 | `GET` | `/projects/{projectKey}/datasets/tables-import/actions/list-schemas{?connectionName}` | yes | ConnectionsResource.schemas | `dss connection schemas` |  |
 | `GET` | `/projects/{projectKey}/datasets/tables-import/actions/list-tables{?connectionName}{?catalogName}{?schemaName}` | yes | ConnectionsResource.tables | `dss connection tables` |  |
 | `POST` | `/projects/{projectKey}/datasets/tables-import/actions/prepare-from-keys` | yes | ConnectionsResource.prepareTablesImport | `dss connection prepare-import` |  |
@@ -251,51 +251,51 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `PUT` | `/projects/{projectKey}/scenarios/{scenarioId}/light` | yes | ScenariosResource.setActive | `dss scenario active-set` | SDK setActive verifies via GET before/after PUT of the light form. |
 | `PUT` | `/projects/{projectKey}/scenarios/{scenarioId}/payload` | yes | ScenariosResource.setPayload | `dss scenario payload-set` |  |
 
-### Machine Learning - Lab (10/32)
+### Machine Learning - Lab (31/32)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/projects/{projectKey}/lab` | yes | AnalysesResource.list | `dss analysis list` |  |
 | `POST` | `/projects/{projectKey}/lab` | yes | AnalysesResource.create | `dss analysis create` |  |
 | `GET` | `/projects/{projectKey}/lab/{analysisId}` | yes | AnalysesResource.get | `dss analysis delete`, `dss analysis get` |  |
-| `PUT` | `/projects/{projectKey}/lab/{analysisId}` | no |  |  |  |
+| `PUT` | `/projects/{projectKey}/lab/{analysisId}` | yes | AnalysesResource.update | `dss analysis update` |  |
 | `DELETE` | `/projects/{projectKey}/lab/{analysisId}` | yes | AnalysesResource.delete | `dss analysis delete` |  |
-| `GET` | `/projects/{projectKey}/lab/{analysisId}/models` | no |  |  |  |
+| `GET` | `/projects/{projectKey}/lab/{analysisId}/models` | yes | AnalysesResource.listMlTasks | `dss analysis list-ml-tasks` |  |
 | `POST` | `/projects/{projectKey}/lab/{analysisId}/models` | yes | MlTasksResource.create | `dss ml-task create` |  |
-| `GET` | `/projects/{projectKey}/models/lab` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/models/lab` | no |  |  |  |
+| `GET` | `/projects/{projectKey}/models/lab` | yes | MlTasksResource.list | `dss ml-task list` |  |
+| `POST` | `/projects/{projectKey}/models/lab` | yes | MlTasksResource.createForDataset | `dss ml-task create-for-dataset` | Creates the visual analysis and the task; supports time series forecasting (timeVariable, timeseriesIdentifiers). |
 | `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/settings` | yes | MlTasksResource.getSettings | `dss ml-task get-settings` |  |
 | `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/status` | yes | MlTasksResource.listTrainedModels, MlTasksResource.status | `dss ml-task list-models`, `dss ml-task status` |  |
-| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/guess{?predictionType}{?targetVariable}{?timeVariable}{?timeseriesIdentifiers}{?fullReguess}` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/reguess-with-forecasting-params` | no |  |  |  |
+| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/guess{?predictionType}{?targetVariable}{?timeVariable}{?timeseriesIdentifiers}{?fullReguess}` | yes | MlTasksResource.reguess | `dss ml-task reguess` | Documented POST (dataikuapi sends PUT; DSS 15 accepts both). |
+| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/reguess-with-forecasting-params` | yes | MlTasksResource.reguessForecasting | `dss ml-task reguess-forecasting` |  |
 | `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/train` | yes | MlTasksResource.train | `dss ml-task train` |  |
-| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models-snippets` | no |  |  |  |
+| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models-snippets` | no |  |  | Not wrappable over fetch: DSS 15 requires a JSON body ({modelsIds}) on this GET and rejects the call without one or as POST/PUT, while fetch (Bun and Node) refuses GET bodies. `dss ml-task model-details` returns the full details of each model. |
 | `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/details` | yes | MlTasksResource.trainedModelDetails | `dss ml-task model-details` |  |
-| `PUT` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/user-meta` | no |  |  |  |
+| `PUT` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/user-meta` | yes | MlTasksResource.model, TrainedModel.setUserMeta | `dss ml-task set-user-meta` |  |
 | `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/actions/deployToFlow` | yes | MlTasksResource.deployToFlow | `dss ml-task deploy` |  |
-| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/scoring-jar{?fullClassName}{?includeLibs}` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/scoring-pmml` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/subpopulation-analyses` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/subpopulation-analyses` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/partial-dependencies` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/partial-dependencies` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/timeseries-residuals` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/timeseries-residuals` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/per-timeseries-metrics` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/per-timeseries-evaluation-forecasts` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-default-template` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-custom-template` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-template-in-folder{?folderId}{?path}` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/models/lab/documentations/{exportId}` | no |  |  |  |
+| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/scoring-jar{?fullClassName}{?includeLibs}` | yes | MlTasksResource.model, TrainedModel.downloadScoringJar | `dss ml-task download-scoring-jar` | License-gated: DSS answers 403 "Model export is not licensed" without the export license. |
+| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/scoring-pmml` | yes | MlTasksResource.model, TrainedModel.downloadScoringPmml | `dss ml-task download-scoring-pmml` | License-gated: DSS answers 403 "Model export is not licensed" without the export license. |
+| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/subpopulation-analyses` | yes | MlTasksResource.model, TrainedModel.compute | `dss ml-task compute-diagnostics` | `--kind subpopulation-analyses`; DSS rejects multiclass models. |
+| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/subpopulation-analyses` | yes | MlTasksResource.model, TrainedModel.get | `dss ml-task diagnostics` | `--kind subpopulation-analyses`. |
+| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/partial-dependencies` | yes | MlTasksResource.model, TrainedModel.compute | `dss ml-task compute-diagnostics` | `--kind partial-dependencies`. |
+| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/partial-dependencies` | yes | MlTasksResource.model, TrainedModel.get | `dss ml-task diagnostics` | `--kind partial-dependencies`. |
+| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/timeseries-residuals` | yes | MlTasksResource.model, TrainedModel.compute | `dss ml-task compute-diagnostics` | `--kind timeseries-residuals` (forecasting models). |
+| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/timeseries-residuals` | yes | MlTasksResource.model, TrainedModel.get | `dss ml-task diagnostics` | `--kind timeseries-residuals` (forecasting models). |
+| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/per-timeseries-metrics` | yes | MlTasksResource.model, TrainedModel.get | `dss ml-task diagnostics` | `--kind per-timeseries-metrics` (forecasting models). |
+| `GET` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/per-timeseries-evaluation-forecasts` | yes | MlTasksResource.model, TrainedModel.get | `dss ml-task diagnostics` | `--kind per-timeseries-evaluation-forecasts` (forecasting models). |
+| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-default-template` | yes | MlTasksResource.model, TrainedModel.generateDocumentation | `dss ml-task generate-documentation` |  |
+| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-custom-template` | yes | MlTasksResource.model, TrainedModel.generateDocumentation | `dss ml-task generate-documentation` | `--template-file PATH` (multipart `file`). |
+| `POST` | `/projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/models/{modelFullId}/generate-documentation-from-template-in-folder{?folderId}{?path}` | yes | MlTasksResource.model, TrainedModel.generateDocumentation | `dss ml-task generate-documentation` | `--folder FOLDER_ID --path PATH`. |
+| `GET` | `/projects/{projectKey}/models/lab/documentations/{exportId}` | yes | MlTasksResource.downloadModelDocumentation | `dss ml-task download-documentation` | `generate-documentation --output PATH` waits and downloads in one call. |
 
-### Machine Learning - Saved models (15/28)
+### Machine Learning - Saved models (28/28)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/projects/{projectKey}/savedmodels` | yes | SavedModelsResource.list | `dss saved-model list` |  |
 | `POST` | `/projects/{projectKey}/savedmodels/create-external` | yes | SavedModelsResource.createExternal | `dss saved-model create-external` |  |
 | `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}` | yes | SavedModelsResource.get | `dss saved-model delete`, `dss saved-model get` |  |
-| `PUT` | `/projects/{projectKey}/savedmodels/{savedModelId}` | no |  |  |  |
+| `PUT` | `/projects/{projectKey}/savedmodels/{savedModelId}` | yes | SavedModelsResource.updateSettings | `dss saved-model update-settings` | Already implemented; the row was stale. |
 | `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions` | yes | SavedModelsResource.listVersions | `dss saved-model list-versions` |  |
 | `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}{?codeEnvName}{?containerExecConfigName}{?folderRef}{?path}` | yes | SavedModelsResource.importMlflowVersion, SavedModelsResource.importMlflowVersionFromFolder | `dss saved-model import-mlflow-version`, `dss saved-model import-mlflow-version-from-folder` |  |
 | `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/snippet` | yes | SavedModelsResource.versionSnippet | `dss saved-model version-snippet` |  |
@@ -308,29 +308,29 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/external-ml/actions/evaluate` | yes | SavedModelsResource.evaluateVersion | `dss saved-model evaluate-version` |  |
 | `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/scoring-jar{?fullClassName}{?includeLibs}` | yes | SavedModelsResource.downloadScoringJar | `dss saved-model download-scoring-jar` |  |
 | `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/scoring-pmml` | yes | SavedModelsResource.downloadScoringPmml | `dss saved-model download-scoring-pmml` |  |
-| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/subpopulation-analyses` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/subpopulation-analyses` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/partial-dependencies` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/partial-dependencies` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/timeseries-residuals` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/timeseries-residuals` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/per-timeseries-metrics` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/per-timeseries-evaluation-forecasts` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-default-template` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-custom-template` | no |  |  |  |
-| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-template-in-folder{?folderId}{?path}` | no |  |  |  |
-| `GET` | `/projects/{projectKey}/savedmodels/documentations/{exportId}` | no |  |  |  |
+| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/subpopulation-analyses` | yes | SavedModelsResource.version, TrainedModel.compute | `dss saved-model compute-diagnostics` | `--kind subpopulation-analyses`; DSS rejects multiclass models. |
+| `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/subpopulation-analyses` | yes | SavedModelsResource.version, TrainedModel.get | `dss saved-model diagnostics` | `--kind subpopulation-analyses`. |
+| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/partial-dependencies` | yes | SavedModelsResource.version, TrainedModel.compute | `dss saved-model compute-diagnostics` | `--kind partial-dependencies`. |
+| `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/partial-dependencies` | yes | SavedModelsResource.version, TrainedModel.get | `dss saved-model diagnostics` | `--kind partial-dependencies`. |
+| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/timeseries-residuals` | yes | SavedModelsResource.version, TrainedModel.compute | `dss saved-model compute-diagnostics` | `--kind timeseries-residuals` (forecasting models). |
+| `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/timeseries-residuals` | yes | SavedModelsResource.version, TrainedModel.get | `dss saved-model diagnostics` | `--kind timeseries-residuals` (forecasting models). |
+| `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/per-timeseries-metrics` | yes | SavedModelsResource.version, TrainedModel.get | `dss saved-model diagnostics` | `--kind per-timeseries-metrics` (forecasting models). |
+| `GET` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/per-timeseries-evaluation-forecasts` | yes | SavedModelsResource.version, TrainedModel.get | `dss saved-model diagnostics` | `--kind per-timeseries-evaluation-forecasts` (forecasting models). |
+| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-default-template` | yes | SavedModelsResource.version, TrainedModel.generateDocumentation | `dss saved-model generate-documentation` |  |
+| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-custom-template` | yes | SavedModelsResource.version, TrainedModel.generateDocumentation | `dss saved-model generate-documentation` | `--template-file PATH` (multipart `file`). |
+| `POST` | `/projects/{projectKey}/savedmodels/{savedModelId}/versions/{versionId}/generate-documentation-from-template-in-folder{?folderId}{?path}` | yes | SavedModelsResource.version, TrainedModel.generateDocumentation | `dss saved-model generate-documentation` | `--folder FOLDER_ID --path PATH`. |
+| `GET` | `/projects/{projectKey}/savedmodels/documentations/{exportId}` | yes | SavedModelsResource.downloadDocumentation | `dss saved-model download-documentation` | `generate-documentation --output PATH` waits and downloads in one call. |
 
-### Machine Learning - Experiment tracking (0/6)
+### Machine Learning - Experiment tracking (6/6)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
-| `GET` | `/api/2.0/mlflow/extension/models/{runId}` | no |  |  |  |
-| `POST` | `/api/2.0/mlflow/extension/set-run-inference-info` | no |  |  |  |
-| `POST` | `/api/2.0/mlflow/extension/deploy-run` | no |  |  |  |
-| `POST` | `/api/2.0/mlflow/extension/create-project-experiments-dataset` | no |  |  |  |
-| `POST` | `/api/2.0/mlflow/extension/garbage-collect` | no |  |  |  |
-| `DELETE` | `/api/2.0/mlflow/extension/clean-db/{projectKey}` | no |  |  |  |
+| `GET` | `/api/2.0/mlflow/extension/models/{runId}` | yes | MlflowExtensionResource.listModels | `dss mlflow list-models` | Sends `x-dku-mlflow-project-key`. |
+| `POST` | `/api/2.0/mlflow/extension/set-run-inference-info` | yes | MlflowExtensionResource.setRunInferenceInfo | `dss mlflow set-inference-info` | Validates prediction type and classes like dataikuapi; DSS stores them as run tags `dku-ext.predictionType`, `dku-ext.targetClasses`. |
+| `POST` | `/api/2.0/mlflow/extension/deploy-run` | yes | MlflowExtensionResource.deployRun | `dss mlflow deploy-run` | Query parameters as dataikuapi `deploy_run_model` sends them; synchronous, so long model loads need `--request-timeout`. |
+| `POST` | `/api/2.0/mlflow/extension/create-project-experiments-dataset` | yes | MlflowExtensionResource.createExperimentsDataset | `dss mlflow create-experiments-dataset` | Creates an `ExperimentsDB` dataset. |
+| `POST` | `/api/2.0/mlflow/extension/garbage-collect` | yes | MlflowExtensionResource.garbageCollect | `dss mlflow garbage-collect` |  |
+| `DELETE` | `/api/2.0/mlflow/extension/clean-db/{projectKey}` | yes | MlflowExtensionResource.cleanDb | `dss mlflow clean-db` | Admin; classified destructive, supports `--plan`/`--dry-run`. |
 
 ### Managed Folders (9/9)
 
@@ -358,18 +358,18 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `GET` | `/projects/{projectKey}/recipes/{recipeName}/metadata` | yes | RecipesResource.metadata | `dss recipe metadata` |  |
 | `PUT` | `/projects/{projectKey}/recipes/{recipeName}/metadata` | yes | RecipesResource.setMetadata | `dss recipe metadata-set` |  |
 
-### Streaming endpoints (5/8)
+### Streaming endpoints (8/8)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/projects/{projectKey}/streamingendpoints/` | yes | StreamingEndpointsResource.list | `dss streaming-endpoint list` |  |
 | `POST` | `/projects/{projectKey}/streamingendpoints/` | yes | StreamingEndpointsResource.create | `dss streaming-endpoint create` |  |
-| `POST` | `/projects/{projectKey}/streamingendpoints/managed` | no |  |  |  |
+| `POST` | `/projects/{projectKey}/streamingendpoints/managed` | yes | StreamingEndpointsResource.createManaged | `dss streaming-endpoint create-managed` |  |
 | `GET` | `/projects/{projectKey}/streamingendpoints/{streamingEndpointId}` | yes | StreamingEndpointsResource.get, StreamingEndpointsResource.getSettings | `dss streaming-endpoint get` |  |
 | `PUT` | `/projects/{projectKey}/streamingendpoints/{streamingEndpointId}` | yes | StreamingEndpointsResource.updateSettings | `dss streaming-endpoint update-settings` |  |
 | `DELETE` | `/projects/{projectKey}/streamingendpoints/{streamingEndpointId}` | yes | StreamingEndpointsResource.delete | `dss streaming-endpoint delete` |  |
-| `GET` | `/projects/{projectKey}/streamingendpoints/{streamingEndpointId}/schema` | no |  |  |  |
-| `PUT` | `/projects/{projectKey}/streamingendpoints/{streamingEndpointId}/schema` | no |  |  |  |
+| `GET` | `/projects/{projectKey}/streamingendpoints/{streamingEndpointId}/schema` | yes | StreamingEndpointsResource.getSchema | `dss streaming-endpoint schema` |  |
+| `PUT` | `/projects/{projectKey}/streamingendpoints/{streamingEndpointId}/schema` | yes | StreamingEndpointsResource.setSchema | `dss streaming-endpoint set-schema` |  |
 
 ### Continuous activities (4/4)
 
@@ -380,14 +380,14 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `POST` | `/projects/{projectKey}/continuous-activities/{recipeId}/start` | yes | ContinuousActivitiesResource.start | `dss continuous-activity start` |  |
 | `POST` | `/projects/{projectKey}/continuous-activities/{recipeId}/stop` | yes | ContinuousActivitiesResource.stop | `dss continuous-activity stop` |  |
 
-### Webapps (6/7)
+### Webapps (7/7)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/projects/{projectKey}/webapps/` | yes | WebappsResource.list | `dss webapp list` |  |
 | `GET` | `/projects/{projectKey}/webapps/{webappId}` | yes | WebappsResource.getSettings, WebappsResource.updateSettings | `dss webapp get-settings`, `dss webapp update-settings` |  |
 | `PUT` | `/projects/{projectKey}/webapps/{webappId}` | yes | WebappsResource.updateSettings | `dss webapp update-settings` |  |
-| `POST` | `/projects/{projectKey}/webapps/{webappId}/actions/trust{?trustForEverybody}` | no |  |  |  |
+| `POST` | `/projects/{projectKey}/webapps/{webappId}/actions/trust{?trustForEverybody}` | yes | WebappsResource.trust | `dss webapp trust` |  |
 | `PUT` | `/projects/{projectKey}/webapps/{webappId}/backend/actions/restart` | yes | WebappsResource.restartBackendAndWait, WebappsResource.startOrRestartBackend | `dss webapp restart-backend` |  |
 | `PUT` | `/projects/{projectKey}/webapps/{webappId}/backend/actions/stop` | yes | WebappsResource.stopBackend | `dss webapp stop-backend` |  |
 | `GET` | `/projects/{projectKey}/webapps/{webappId}/backend/state` | yes | WebappsResource.getBackendState | `dss webapp backend-state` |  |
@@ -416,11 +416,11 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `GET` | `/projects/{projectKey}/runnables/{runnableType}/state/{run}` | yes | MacrosResource.state | `dss macro state` |  |
 | `GET` | `/projects/{projectKey}/runnables/{runnableType}/result/{run}` | yes | MacrosResource.result | `dss macro result` |  |
 
-### Long tasks (2/3)
+### Long tasks (3/3)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
-| `GET` | `/futures/{?allUsers}{?withScenarios}` | no |  |  | Futures listing (allUsers/withScenarios) not wrapped; SDK addresses futures by jobId. |
+| `GET` | `/futures/{?allUsers}{?withScenarios}` | yes | FuturesResource.list | `dss future list` |  |
 | `GET` | `/futures/{jobId}{?peek}` | yes | FuturesResource.get, FuturesResource.peek, FuturesResource.state, FuturesResource.wait | `dss app create-instance`, `dss app delete-instance`, `dss future get`, `dss future peek`, `dss future wait` |  |
 | `DELETE` | `/futures/{jobId}` | yes | FuturesResource.abort | `dss future abort` |  |
 
@@ -494,18 +494,18 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `DELETE` | `/projects/{projectKey}/apiservices/{serviceId}/packages/{packageId}` | yes | ApiServicesResource.deletePackage | `dss api-service delete-package` |  |
 | `POST` | `/projects/{projectKey}/apiservices/{serviceId}/packages/{packageId}/publish{?publishedServiceId}` | yes | ApiServicesResource.publishPackage | `dss api-service publish-package` |  |
 
-### Bundles, Design-side (5/6)
+### Bundles, Design-side (6/6)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/projects/{projectKey}/bundles/exported` | yes | BundlesResource.listExported | `dss bundle list-exported` |  |
-| `GET` | `/projects/{projectKey}/bundles/exported/{bundleId}` | no |  |  | Single exported-bundle details not wrapped; the SDK lists exported bundles and downloads their /archive streams. |
+| `GET` | `/projects/{projectKey}/bundles/exported/{bundleId}` | yes | BundlesResource.getExported | `dss bundle get-exported` |  |
 | `GET` | `/projects/{projectKey}/bundles/exported/{bundleId}/archive` | yes | BundlesResource.downloadExportedArchive | `dss bundle download-exported` |  |
 | `PUT` | `/projects/{projectKey}/bundles/exported/` | yes | BundlesResource.exportBundle | `dss bundle export` | Path-shape drift: official "Create a new bundle" is PUT /projects/{projectKey}/bundles/exported/ with bundleId in the body; the SDK PUTs /bundles/exported/{bundleId} (id in path) and also forwards releaseNotes/evaluateProjectStandardsChecks query params. |
 | `DELETE` | `/projects/{projectKey}/bundles/exported/` | yes | BundlesResource.deleteExported | `dss bundle delete-exported` | Path-shape drift: official "Delete an exported bundle" documents DELETE /bundles/exported/ with bundleId in the body; the SDK DELETEs /bundles/exported/{bundleId}. |
 | `POST` | `/projects/{projectKey}/bundles/{bundleId}/publish{?publishedProjectKey}` | yes | BundlesResource.publish | `dss bundle publish` |  |
 
-### Bundles, Automation-side (5/7)
+### Bundles, Automation-side (7/7)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
@@ -513,11 +513,11 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `POST` | `/projects/{projectKey}/bundles/imported/actions/importFromArchive{?archivePath}` | yes | BundlesResource.importFromArchive | `dss bundle import-from-archive` |  |
 | `POST` | `/projects/{projectKey}/bundles/imported/{bundleId}/actions/preload` | yes | BundlesResource.preload | `dss bundle preload` |  |
 | `POST` | `/projects/{projectKey}/bundles/imported/{bundleId}/actions/activate` | yes | BundlesResource.activate | `dss bundle activate` |  |
-| `POST` | `/projectsFromBundle{?projectFolderId}` | no |  |  | Project-from-bundle creation (Automation node) not wrapped. |
-| `POST` | `/projectsFromBundle/fromArchive{?archivePath,projectFolderId}` | no |  |  | Project-from-archive-bundle creation (Automation node) not wrapped. |
+| `POST` | `/projectsFromBundle{?projectFolderId}` | yes | BundlesResource.createProjectFromBundle | `dss bundle create-project` | Multipart `file` upload (dataikuapi `create_project_from_bundle_archive`); Automation node, global admin. |
+| `POST` | `/projectsFromBundle/fromArchive{?archivePath,projectFolderId}` | yes | BundlesResource.createProjectFromBundle | `dss bundle create-project` | Automation node, global admin; the archive must already be on the node host. |
 | `POST` | `/projects/{projectKey}/bundles/imported/actions/importFromStream` | yes | BundlesResource.importFromStream | `dss bundle import-from-stream` |  |
 
-### Project Deployer (12/24)
+### Project Deployer (24/24)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
@@ -525,45 +525,45 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 | `GET` | `/project-deployer/deployments/{deploymentId}` | yes | ProjectDeployerResource.getDeployment | `dss project-deployer get-deployment` |  |
 | `POST` | `/project-deployer/deployments` | yes | ProjectDeployerResource.createDeployment | `dss project-deployer create-deployment` |  |
 | `DELETE` | `/project-deployer/deployments/{deploymentId}` | yes | BundlesResource.deleteDeployment, ProjectDeployerResource.deleteDeployment | `dss project-deployer delete-deployment` |  |
-| `GET` | `/project-deployer/deployments/{deploymentId}/settings` | no |  |  |  |
+| `GET` | `/project-deployer/deployments/{deploymentId}/settings` | yes | ProjectDeployerResource.getDeploymentSettings | `dss project-deployer deployment-settings` |  |
 | `PUT` | `/project-deployer/deployments/{deploymentId}/settings` | yes | BundlesResource.saveDeploymentSettings, ProjectDeployerResource.saveDeploymentSettings | `dss project-deployer save-deployment-settings` |  |
 | `GET` | `/project-deployer/deployments/{deploymentId}/status` | yes | ProjectDeployerResource.getDeploymentStatus | `dss project-deployer deployment-status` |  |
-| `GET` | `/project-deployer/deployments/{deploymentId}/governance-status` | no |  |  |  |
+| `GET` | `/project-deployer/deployments/{deploymentId}/governance-status` | yes | ProjectDeployerResource.getGovernanceStatus | `dss project-deployer governance-status` | Optional `bundleId` query parameter as dataikuapi sends it. |
 | `POST` | `/project-deployer/deployments/{deploymentId}/actions/update` | yes | ProjectDeployerResource.startUpdate | `dss project-deployer deploy` |  |
 | `GET` | `/project-deployer/projects` | yes | ProjectDeployerResource.listProjects | `dss project-deployer list-projects` |  |
 | `GET` | `/project-deployer/projects/{projectKey}` | yes | ProjectDeployerResource.getProjectStatus | `dss project-deployer project-status` |  |
 | `POST` | `/project-deployer/projects` | yes | ProjectDeployerResource.createProject | `dss project-deployer create-project` |  |
-| `DELETE` | `/project-deployer/projects/{projectKey}` | no |  |  |  |
-| `GET` | `/project-deployer/projects/settings` | no |  |  |  |
-| `PUT` | `/project-deployer/projects/{projectKey}/settings` | no |  |  |  |
+| `DELETE` | `/project-deployer/projects/{projectKey}` | yes | ProjectDeployerResource.deleteProject | `dss project-deployer delete-project` |  |
+| `GET` | `/project-deployer/projects/settings` | yes | ProjectDeployerResource.getProjectSettings | `dss project-deployer project-settings` | The docs omit the project key; the SDK calls `/project-deployer/projects/{projectKey}/settings` like dataikuapi `DSSProjectDeployerProject.get_settings`. |
+| `PUT` | `/project-deployer/projects/{projectKey}/settings` | yes | ProjectDeployerResource.saveProjectSettings | `dss project-deployer save-project-settings` |  |
 | `POST` | `/project-deployer/projects/bundles{?projectKey}{?filePart}` | yes | BundlesResource.uploadBundle, ProjectDeployerResource.uploadBundle | `dss project-deployer upload-bundle` |  |
-| `DELETE` | `/project-deployer/projects/{projectKey}/bundles/{bundleId}` | no |  |  |  |
-| `GET` | `/project-deployer/infras/stages` | no |  |  |  |
+| `DELETE` | `/project-deployer/projects/{projectKey}/bundles/{bundleId}` | yes | ProjectDeployerResource.deleteBundle | `dss project-deployer delete-bundle` |  |
+| `GET` | `/project-deployer/stages` | yes | ProjectDeployerResource.listStages | `dss project-deployer list-stages` | Documented as `GET /project-deployer/stages`, as dataikuapi `list_stages` calls it. |
 | `GET` | `/project-deployer/infras` | yes | ProjectDeployerResource.listInfras | `dss project-deployer list-infras` |  |
-| `GET` | `/project-deployer/infras/{infraId}` | no |  |  |  |
-| `POST` | `/project-deployer/projects/infras` | no |  |  |  |
-| `GET` | `/project-deployer/infras/{infraId}/settings` | no |  |  |  |
-| `PUT` | `/project-deployer/infras/{infraId}/settings` | no |  |  |  |
-| `DELETE` | `/project-deployer/infras/{infraId}` | no |  |  |  |
+| `GET` | `/project-deployer/infras/{infraId}` | yes | ProjectDeployerResource.getInfra | `dss project-deployer get-infra` |  |
+| `POST` | `/project-deployer/infras` | yes | ProjectDeployerResource.createInfra | `dss project-deployer create-infra` | Documented as `POST /project-deployer/infras` (the earlier `/projects/infras` transcription was wrong); the existing create-infra already used the documented path, matching dataikuapi `create_infra`. |
+| `GET` | `/project-deployer/infras/{infraId}/settings` | yes | ProjectDeployerResource.getInfraSettings | `dss project-deployer infra-settings` |  |
+| `PUT` | `/project-deployer/infras/{infraId}/settings` | yes | ProjectDeployerResource.saveInfraSettings | `dss project-deployer save-infra-settings` |  |
+| `DELETE` | `/project-deployer/infras/{infraId}` | yes | ProjectDeployerResource.deleteInfra | `dss project-deployer delete-infra` |  |
 
-### Wiki (4/5)
+### Wiki (5/5)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/projects/{projectKey}/wiki/` | yes | WikiResource.list, WikiResource.settings | `dss wiki create`, `dss wiki list`, `dss wiki settings` |  |
-| `PUT` | `/projects/{projectKey}/wiki/` | no |  |  |  |
+| `PUT` | `/projects/{projectKey}/wiki/` | yes | WikiResource.updateSettings | `dss wiki update-settings` |  |
 | `POST` | `/projects/{projectKey}/wiki/` | yes | WikiResource.create | `dss wiki create` |  |
 | `GET` | `/projects/{projectKey}/wiki/{articleId}` | yes | WikiResource.delete, WikiResource.get, WikiResource.update | `dss wiki delete`, `dss wiki get`, `dss wiki update` |  |
 | `PUT` | `/projects/{projectKey}/wiki/{articleId}` | yes | WikiResource.update | `dss wiki update` |  |
 
-### Discussions (4/5)
+### Discussions (5/5)
 
 | Method | Official URI | Status | SDK method(s) | CLI actions | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/projects/{projectKey}/discussions/{objectType}/{objectId}/` | yes | DiscussionsResource.list | `dss discussion list` |  |
 | `POST` | `/projects/{projectKey}/discussions/{objectType}/{objectId}/` | yes | DiscussionsResource.create | `dss discussion create` |  |
 | `GET` | `/projects/{projectKey}/discussions/{objectType}/{objectId}/{discussionId}` | yes | DiscussionsResource.get | `dss discussion get` |  |
-| `PUT` | `/projects/{projectKey}/discussions/{objectType}/{objectId}/{discussionId}` | no |  |  |  |
+| `PUT` | `/projects/{projectKey}/discussions/{objectType}/{objectId}/{discussionId}` | yes | DiscussionsResource.update | `dss discussion update` |  |
 | `POST` | `/projects/{projectKey}/discussions/{objectType}/{objectId}/{discussionId}/replies/` | yes | DiscussionsResource.reply | `dss discussion reply` |  |
 
 ### Dashboards (6/6)
@@ -642,13 +642,13 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 5. **Dataset metrics partition.** Docs fold `{?partition}` into the URI; the SDK hard-codes the literal `NP` (no-partition) segment for last-metrics.
 6. **Project delete query.** Docs document `?dropData`; the SDK sends `clearManagedDatasets`/`clearOutputManagedFolders`/`clearJobAndScenarioLogs`/`wait` (recorded as drift).
 7. **Project list encoding.** The list endpoint is published as `GET /projects/{tags}` with the tags selector optional; the SDK GETs `/projects/` and filters client-side.
+8. **Project Deployer paths.** The REST page lists `GET /project-deployer/stages` and `POST /project-deployer/infras` (the matrix rows were first transcribed as `/project-deployer/infras/stages` and `/project-deployer/projects/infras`); `GET /project-deployer/projects/settings` omits the project key, which the SDK sends as dataikuapi does (`/project-deployer/projects/{projectKey}/settings`).
+9. **ML task re-guess verb.** Docs document `POST .../guess`; dataikuapi `DSSMLTask.guess` sends `PUT`. DSS 15 accepts both; the SDK uses the documented `POST`.
 
-## Deliberately out of scope
+## Not wrapped
 
-- **MLflow / experiment-tracking extension** (`/api/2.0/mlflow/extension/*`, 6 rows): separate product surface.
-- **Deep model-analysis family** (scoring jars, PMML, subpopulation/partial-dependency/residual analyses, model-doc generation, models-snippets): analysis screens driven by the DSS UI. Core lifecycle plus the Python-parity version ops (snippet, user-meta, external-ml metadata/evaluate, MLflow version import, create-external) are wrapped; the remaining lab-side rows are marked honestly.
-- **Project Deployer deep settings** (deployment settings GET, governance status, infra settings/delete, lifecycle stages, published-bundle delete): deployments/projects/infras lifecycle is wrapped; deep settings rows are not.
+- **`GET .../models-snippets`**: DSS 15 requires a JSON body (`{modelsIds}`) on this GET and rejects the call without one, as `POST`, or as `PUT`, while `fetch` (Bun and Node) refuses GET bodies. Per-model details (`dss ml-task model-details`) carry the same information.
 
 ---
 
-*Generated 2026-09-09 from the official DSS 15 REST docs snapshot plus this repository working tree; CLI counts validated against the actual programmatic catalogue (`buildCommandRegistry()` = 55 resources / 474 actions; API-facing subset 47/466). This document makes no live-instance compatibility claims. JSON `meta` records the exact source of every number.*
+*Generated 2026-10-03 from the official DSS 15 REST docs snapshot plus this repository working tree; CLI counts validated against the actual programmatic catalogue (`buildCommandRegistry()` = 57 resources / 530 actions; API-facing subset 49/522). This document makes no live-instance compatibility claims. JSON `meta` records the exact source of every number.*

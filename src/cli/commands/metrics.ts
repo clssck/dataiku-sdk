@@ -1,6 +1,7 @@
+import { unknownJsonInput, } from "../coerce.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
-import { requireArgs, } from "../usage.js";
+import { requireArgs, UsageError, } from "../usage.js";
 
 export const metricsCommands: Record<string, CommandMeta> = withUsage("metrics", {
 	"dataset-get": {
@@ -18,6 +19,26 @@ export const metricsCommands: Record<string, CommandMeta> = withUsage("metrics",
 		},
 		description: "Compute the DSS-configured metrics for a dataset.",
 		examples: ["dss metrics dataset-compute customers",],
+	},
+	"dataset-run-checks": {
+		handler: (c, a, f,) => {
+			const data = unknownJsonInput(f,);
+			const checks = data && typeof data === "object" && "checks" in data ? data.checks : undefined;
+			if (data !== undefined && !Array.isArray(checks,)) {
+				throw new UsageError('--data must be {"checks": [...]}.', "validation_failed",);
+			}
+			return c.metrics.runDatasetChecks(a[0]!, {
+				projectKey: f["project-key"] as string | undefined,
+				partitions: f["partitions"] as string | undefined,
+				...(Array.isArray(checks,) ? { checks, } : {}),
+			},);
+		},
+		description:
+			'Run the checks configured on a dataset, or the {"checks": [...]} definitions passed as JSON, and return their outcomes.',
+		examples: [
+			"dss metrics dataset-run-checks customers",
+			"dss metrics dataset-run-checks customers --data-file checks.json",
+		],
 	},
 	"dataset-history": {
 		handler: (c, a, f,) => {

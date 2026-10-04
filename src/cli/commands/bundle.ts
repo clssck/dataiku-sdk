@@ -157,4 +157,33 @@ export const bundleCommands: Record<string, CommandMeta> = withUsage("bundle", {
 		description: "Delete an imported Automation-node bundle.",
 		examples: ["dss bundle delete-imported v1",],
 	},
+	"get-exported": {
+		handler: (c, a, f,) => c.bundles.getExported(a[0]!, f["project-key"] as string | undefined,),
+		description: "Get an exported bundle's details (content summary, export manifest, changelog).",
+		examples: ["dss bundle get-exported v1",],
+	},
+	"create-project": {
+		handler: async (c, _a, f,) => {
+			const file = f["file"];
+			const archive = f["archive-path"];
+			if ((typeof file === "string") === (typeof archive === "string")) {
+				throw new UsageError(
+					"Pass exactly one of --file PATH (local bundle zip) or --archive-path PATH (zip on the Automation node).",
+					"missing_required_flag",
+				);
+			}
+			const folder = f["project-folder"] as string | undefined;
+			const result = await c.bundles.createProjectFromBundle(
+				typeof file === "string" ? { filePath: file, } : { archivePath: archive as string, },
+				folder,
+			);
+			return result ?? { created: true, resource: "bundle", };
+		},
+		description:
+			"Automation node (global admin): create a new project from a bundle, uploading --file PATH or using --archive-path PATH on the node host; --project-folder places it.",
+		examples: [
+			"dss bundle create-project --file bundle-v1.zip",
+			"dss bundle create-project --archive-path /data/bundles/v1.zip",
+		],
+	},
 },);

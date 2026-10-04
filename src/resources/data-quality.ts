@@ -273,4 +273,43 @@ export class DataQualityResource extends BaseResource {
 		);
 		return this.client.safeParse(DataQualityTimelineSchema, raw, "dataQuality.projectTimeline",);
 	}
+
+	/**
+	 * Current Data Quality status of every monitored project the caller can
+	 * read (GET /data-quality/status), keyed by project key.
+	 */
+	async instanceStatus(): Promise<Record<string, unknown>> {
+		return this.client.get<Record<string, unknown>>("/public/api/data-quality/status",);
+	}
+
+	/**
+	 * Last rule outcome per partition (POST /data-quality/get-partitions-status,
+	 * `partitions` query parameter repeated as dataikuapi sends it). Without
+	 * partitions this asks for `NP`: DSS 15 answers a parameterless call with a
+	 * NullPointerException although the docs make it optional.
+	 */
+	async partitionsStatus(
+		datasetName: string,
+		opts: DataQualityProjectOptions & { partitions?: string[]; } = {},
+	): Promise<Record<string, unknown>> {
+		const pk = this.resolveProjectKey(opts.projectKey,);
+		const params = new URLSearchParams();
+		const partitions = opts.partitions?.length ? opts.partitions : ["NP",];
+		for (const partition of partitions) params.append("partitions", partition,);
+		return this.client.post<Record<string, unknown>>(
+			`${dataQualityPath(pk, datasetName,)}/get-partitions-status${queryString(params,)}`,
+		);
+	}
+
+	/**
+	 * Delete rule computation history for one partition (`NP` for a
+	 * non-partitioned dataset, `ALL` for every partition): DELETE
+	 * /data-quality/history/{partition}.
+	 */
+	async deleteHistory(datasetName: string, opts: DataQualityPartitionOptions = {},): Promise<void> {
+		const pk = this.resolveProjectKey(opts.projectKey,);
+		await this.client.del(
+			`${dataQualityPath(pk, datasetName,)}/history/${encodeURIComponent(opts.partition ?? "NP",)}`,
+		);
+	}
 }

@@ -133,4 +133,14 @@ export const webappCommands: Record<string, CommandMeta> = withUsage("webapp", {
 		description: "Get a webapp backend's runtime state.",
 		examples: ["dss webapp backend-state WEBAPP_ID",],
 	},
+	trust: {
+		handler: (c, a, f,) =>
+			c.webapps.trust(a[0]!, {
+				projectKey: f["project-key"] as string | undefined,
+				...(f["for-everybody"] === true ? { trustForEverybody: true, } : {}),
+			},),
+		description:
+			"Trust a webapp's code so it can run for you, or for every user with --for-everybody (admin). Returns canAccess and trustedCodeStatus.",
+		examples: ["dss webapp trust VCMN2ra", "dss webapp trust VCMN2ra --for-everybody",],
+	},
 },);

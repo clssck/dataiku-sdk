@@ -6,6 +6,16 @@ import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
 
 export const futureCommands: Record<string, CommandMeta> = withUsage("future", {
+	list: {
+		handler: (c, _a, f,) =>
+			c.futures.list({
+				allUsers: f["all-users"] === true,
+				withScenarios: f["with-scenarios"] === true,
+			},),
+		description:
+			"List long tasks in progress on the instance (DSS futures): your own, or every user's with --all-users; --with-scenarios adds running scenarios.",
+		examples: ["dss future list", "dss future list --all-users --with-scenarios",],
+	},
 	get: {
 		handler: (c, a,) => {
 			requireArgs(a, 1, commandUsage("future", "get",),);

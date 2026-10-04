@@ -583,6 +583,19 @@ export class ProjectsResource extends BaseResource {
 		);
 	}
 
+	/**
+	 * Push the project to a Git remote already declared in DSS (per-project Git
+	 * mode): POST /actions/push-to-git-remote?remote=. The project-git family
+	 * covers branches, commits, pulls, and remotes.
+	 */
+	async pushToGitRemote(remote: string, projectKey?: string,): Promise<void> {
+		await this.client.post(
+			`/public/api/projects/${this.enc(projectKey,)}/actions/push-to-git-remote?remote=${
+				encodeURIComponent(remote,)
+			}`,
+		);
+	}
+
 	/** Get project-level tags (tag name → {color?}). */
 	async tags(projectKey?: string,): Promise<ProjectTags> {
 		const enc = this.enc(projectKey,);

@@ -6,6 +6,12 @@ import { tmpdir, } from "node:os";
 import { join, resolve, } from "node:path";
 import { DataikuClient, } from "../src/client.js";
 import { ClientValidationError, DataikuError, } from "../src/errors.js";
+import {
+	applyGroupingPayload,
+	buildRecipeCreateRequest,
+	groupingPayloadConfig,
+	prepareSteps,
+} from "../src/resources/recipe-create.js";
 import type { RecipeUpdateSchemaResult, } from "../src/schemas.js";
 
 async function readBody(req: IncomingMessage,): Promise<string> {
@@ -1727,5 +1733,73 @@ describe("RecipesResource.metadata", () => {
 		},);
 
 		expect(putBody,).toEqual({ label: "kept", },);
+	});
+});
+
+describe("recipe create payload builders", () => {
+	it("sets grouping keys, aggregate flags, and the first/last ordering column on DSS's values", () => {
+		const config = groupingPayloadConfig({
+			type: "grouping",
+			groupBy: ["category",],
+			aggregate: ["amount:sum+AVG", "name:first",],
+			orderBy: "day",
+		},);
+		const payload = applyGroupingPayload({
+			keys: [],
+			globalCount: true,
+			values: [{ column: "amount", sum: false, avg: false, }, { column: "name", first: false, },],
+		}, config!,);
+		expect(payload,).toEqual({
+			keys: [{ column: "category", },],
+			globalCount: true,
+			values: [
+				{ column: "amount", sum: true, avg: true, },
+				{ column: "name", first: true, orderColumn: "day", },
+			],
+		},);
+	});
+
+	it("rejects unknown aggregates and first/last without an ordering column", () => {
+		expect(() => groupingPayloadConfig({ type: "grouping", aggregate: ["amount:mean",], },)).toThrow(
+			"--aggregate",
+		);
+		expect(() => groupingPayloadConfig({ type: "grouping", aggregate: ["name:last",], },)).toThrow(
+			"--order-by",
+		);
+	});
+
+	it("builds prepare steps in a fixed order that later steps can rely on", () => {
+		const steps = prepareSteps({
+			type: "shaker",
+			keepColumns: ["label",],
+			filter: 'category != "c"',
+			formula: "double=amount * 2",
+			rename: ["name=label",],
+			fillEmpty: ["amount=0",],
+			dropColumns: ["day",],
+		},);
+		expect(steps.map((step,) => [step.type, step.params,]),).toEqual([
+			["ColumnRenamer", { renamings: [{ from: "name", to: "label", },], },],
+			["FillEmptyWithValue", { appliesTo: "SINGLE_COLUMN", columns: ["amount",], value: "0", },],
+			["CreateColumnWithGREL", { column: "double", expression: "amount * 2", },],
+			["FilterOnCustomFormula", { expression: 'category != "c"', action: "KEEP_ROW", },],
+			["ColumnsSelector", { appliesTo: "COLUMNS", columns: ["day",], keep: false, },],
+			["ColumnsSelector", { appliesTo: "COLUMNS", columns: ["label",], keep: true, },],
+		],);
+	});
+
+	it("maps type prepare to shaker and refuses builder flags on other recipe types", () => {
+		expect(buildRecipeCreateRequest({ type: "prepare", outputDataset: "out", }, "P",).type,).toBe(
+			"shaker",
+		);
+		expect(() =>
+			buildRecipeCreateRequest({ type: "sync", outputDataset: "out", groupBy: ["a",], }, "P",)
+		).toThrow(
+			"--type grouping",
+		);
+		expect(() =>
+			buildRecipeCreateRequest({ type: "grouping", outputDataset: "out", rename: ["a=b",], }, "P",)
+		)
+			.toThrow("--type prepare",);
 	});
 });

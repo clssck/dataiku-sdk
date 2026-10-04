@@ -2,6 +2,7 @@ import { basename, } from "node:path";
 import type { UploadFormPart, } from "../client.js";
 import { ClientValidationError, } from "../errors.js";
 import { BaseResource, requireNonEmpty, requireNonEmptyArray, requireObject, } from "./base.js";
+import { type ScoringJarOptions, TrainedModel, } from "./trained-model.js";
 
 export interface SavedModelListItem extends Record<string, unknown> {
 	id?: string;
@@ -76,12 +77,6 @@ export interface ExternalModelVersionEvaluateRequest extends Record<string, unkn
 export interface ExternalModelVersionEvaluateOptions extends Record<string, unknown> {
 	useOptimalThreshold?: boolean;
 	skipExpensiveReports?: boolean;
-}
-
-/** Query options for the scoring JAR export (GET .../scoring-jar). */
-export interface SavedModelScoringJarOptions extends Record<string, unknown> {
-	fullClassName?: string;
-	includeLibs?: boolean;
 }
 
 function boolQuery(value: boolean | undefined,): string {
@@ -389,23 +384,12 @@ export class SavedModelsResource extends BaseResource {
 	 * the stream is read under the client body deadline.
 	 */
 	async downloadScoringJar(
-		options: SavedModelScoringJarOptions | undefined,
+		options: ScoringJarOptions | undefined,
 		savedModelId: string,
 		versionId: string,
 		projectKey?: string,
 	): Promise<Response> {
-		const version = encodeURIComponent(requireNonEmpty(versionId, "versionId",),);
-		const query = new URLSearchParams();
-		if (options?.fullClassName !== undefined) {
-			query.set("fullClassName", options.fullClassName,);
-		}
-		if (options?.includeLibs !== undefined) {
-			query.set("includeLibs", String(options.includeLibs,),);
-		}
-		const suffix = [...query.keys(),].length > 0 ? `?${query.toString()}` : "";
-		return this.client.stream(
-			`${this.savedModelPath(savedModelId, projectKey,)}/versions/${version}/scoring-jar${suffix}`,
-		);
+		return this.version(savedModelId, versionId, projectKey,).downloadScoringJar(options,);
 	}
 
 	/** GET the scoring PMML of a version as a binary/XML stream. */
@@ -414,10 +398,7 @@ export class SavedModelsResource extends BaseResource {
 		versionId: string,
 		projectKey?: string,
 	): Promise<Response> {
-		const version = encodeURIComponent(requireNonEmpty(versionId, "versionId",),);
-		return this.client.stream(
-			`${this.savedModelPath(savedModelId, projectKey,)}/versions/${version}/scoring-pmml`,
-		);
+		return this.version(savedModelId, versionId, projectKey,).downloadScoringPmml();
 	}
 
 	/**
@@ -430,11 +411,28 @@ export class SavedModelsResource extends BaseResource {
 		userMeta: Record<string, unknown>,
 		projectKey?: string,
 	): Promise<void> {
+		await this.version(savedModelId, versionId, projectKey,).setUserMeta(userMeta,);
+	}
+
+	/**
+	 * One saved-model version as a {@link TrainedModel}: diagnostics
+	 * (subpopulation analyses, partial dependencies, timeseries residuals and
+	 * per-series results), documentation, scoring exports, user metadata.
+	 */
+	version(savedModelId: string, versionId: string, projectKey?: string,): TrainedModel {
 		const version = encodeURIComponent(requireNonEmpty(versionId, "versionId",),);
-		requireObject(userMeta, "userMeta",);
-		await this.client.putVoid(
-			`${this.savedModelPath(savedModelId, projectKey,)}/versions/${version}/user-meta`,
-			userMeta,
+		return new TrainedModel(
+			this.client,
+			`${this.savedModelPath(savedModelId, projectKey,)}/versions/${version}`,
+		);
+	}
+
+	/** GET a generated saved-model version documentation (docx) by the `exportId` of its finished future. */
+	async downloadDocumentation(exportId: string, projectKey?: string,): Promise<Response> {
+		return this.client.stream(
+			`/public/api/projects/${this.enc(projectKey,)}/savedmodels/documentations/${
+				encodeURIComponent(requireNonEmpty(exportId, "exportId",),)
+			}`,
 		);
 	}
 

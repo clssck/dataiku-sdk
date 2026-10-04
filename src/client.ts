@@ -27,6 +27,7 @@ import type { DataQualityResource, } from "./resources/data-quality.js";
 import type { DatasetsResource, } from "./resources/datasets.js";
 import type { DiscussionsResource, } from "./resources/discussions.js";
 import type { FlowZonesResource, } from "./resources/flow-zones.js";
+import type { FlowResource, } from "./resources/flow.js";
 import type { FoldersResource, } from "./resources/folders.js";
 import type { FuturesResource, } from "./resources/futures.js";
 import type { GroupsResource, } from "./resources/groups.js";
@@ -38,6 +39,7 @@ import type { MacrosResource, } from "./resources/macros.js";
 import type { MeaningsResource, } from "./resources/meanings.js";
 import type { MetricsResource, } from "./resources/metrics.js";
 import type { MlTasksResource, } from "./resources/ml-tasks.js";
+import type { MlflowExtensionResource, } from "./resources/mlflow-extension.js";
 import type { ModelEvaluationStoresResource, } from "./resources/model-evaluation-stores.js";
 import type { NotebooksResource, } from "./resources/notebooks.js";
 import type { PluginsResource, } from "./resources/plugins.js";
@@ -117,6 +119,8 @@ export interface DataikuGetOptions {
 	 * server once instead of failing before any transport attempt.
 	 */
 	noRetry?: boolean;
+	/** Extra request headers, e.g. `x-dku-mlflow-project-key` for the MLflow API. */
+	headers?: Record<string, string>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -425,6 +429,8 @@ export class DataikuClient {
 	private scenariosResource?: ScenariosResource;
 	private foldersResource?: FoldersResource;
 	private flowZonesResource?: FlowZonesResource;
+	private flowResource?: FlowResource;
+	private mlflowExtensionResource?: MlflowExtensionResource;
 	private variablesResource?: VariablesResource;
 	private connectionsResource?: ConnectionsResource;
 	private codeEnvsResource?: CodeEnvsResource;
@@ -551,6 +557,24 @@ export class DataikuClient {
 			this.flowZonesResource = new Resource(this,);
 		}
 		return this.flowZonesResource;
+	}
+	get flow(): FlowResource {
+		if (!this.flowResource) {
+			const { FlowResource: Resource, } = require(
+				"./resources/flow.js",
+			) as typeof import("./resources/flow.js");
+			this.flowResource = new Resource(this,);
+		}
+		return this.flowResource;
+	}
+	get mlflowExtension(): MlflowExtensionResource {
+		if (!this.mlflowExtensionResource) {
+			const { MlflowExtensionResource: Resource, } = require(
+				"./resources/mlflow-extension.js",
+			) as typeof import("./resources/mlflow-extension.js");
+			this.mlflowExtensionResource = new Resource(this,);
+		}
+		return this.mlflowExtensionResource;
 	}
 	get variables(): VariablesResource {
 		if (!this.variablesResource) {
@@ -935,7 +959,7 @@ export class DataikuClient {
 		const deadlineAt = resolveGetDeadlineAt(options,);
 		const res = await this.fetchWithRetry(
 			`${this.baseUrl}${path}`,
-			{ method: "GET", headers: this.getHeaders(false,), },
+			{ method: "GET", headers: { ...this.getHeaders(false,), ...options?.headers, }, },
 			options?.noRetry === true ? 1 : undefined,
 			deadlineAt,
 		);
@@ -1017,7 +1041,7 @@ export class DataikuClient {
 	async post<T = unknown,>(
 		path: string,
 		body?: unknown,
-		options?: { retryMaxAttempts?: number; },
+		options?: { retryMaxAttempts?: number; headers?: Record<string, string>; },
 	): Promise<T> {
 		const retryMaxAttempts = options?.retryMaxAttempts;
 		if (
@@ -1028,7 +1052,7 @@ export class DataikuClient {
 		}
 		const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
 			method: "POST",
-			headers: this.getHeaders(body !== undefined,),
+			headers: { ...this.getHeaders(body !== undefined,), ...options?.headers, },
 			body: body !== undefined ? JSON.stringify(body,) : undefined,
 		}, retryMaxAttempts,);
 		return this.parseJsonResponse<T>(res,);

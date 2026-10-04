@@ -358,6 +358,8 @@ describe("CLI registry required-input usage accuracy", () => {
 			"saved-model create-external",
 			"macro run",
 			"macro run-and-wait",
+			// Without --data DSS runs every check configured on the dataset.
+			"metrics dataset-run-checks",
 		],);
 		const payloadTokens =
 			/--data\b|--stdin\b|--file(?!-)\b|--content\b|--sql\b|\[SQL\b|--packages\b|--package\b|--params\b/;
