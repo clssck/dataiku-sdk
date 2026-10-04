@@ -2,10 +2,12 @@
 	"name": "dataiku-sdk",
 	"version": "3.6.1",
 	"description": "Dataiku DSS SDK and CLI for programmatic access to DSS REST APIs",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/clssck/dataiku-sdk.git"
+	},
+	"license": "SEE LICENSE IN LICENSE",
 	"type": "module",
-	"workspaces": [
-		"packages/*"
-	],
 	"main": "dist/src/index.js",
 	"types": "dist/src/index.d.ts",
 	"bin": {
@@ -18,9 +20,9 @@
 		"bin/dss.js",
 		"bin/bun-version.js"
 	],
-	"engines": {
-		"bun": ">=1.4.2"
-	},
+	"workspaces": [
+		"packages/*"
+	],
 	"scripts": {
 		"build": "bun scripts/generate-action-output-schemas.mjs && tsc && bun scripts/generate-build-metadata.mjs",
 		"prepack": "bun scripts/sync-plugin-version.mjs --check && bun scripts/generate-action-output-schemas.mjs --check && tsc && bun scripts/generate-build-metadata.mjs",
@@ -41,30 +43,26 @@
 		"test:integration:rigorous": "cross-env RUN_DATAIKU_INTEGRATION=1 bun test tests/integration-rigorous.test.ts",
 		"test:integration:rigorous:mutating": "cross-env RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 bun test tests/integration-rigorous.test.ts"
 	},
-	"devDependencies": {
-		"@oxlint/plugins": "1.81.0",
-		"@types/bun": "^1.4.2",
-		"cross-env": "^10.1.0",
-		"dprint": "^0.57.0",
-		"js-tiktoken": "1.0.21",
-		"oxlint": "1.81.0",
-		"typescript": "^7.0.2",
-		"typescript-language-server": "6.0.0",
-		"typescript-language-service": "npm:typescript@5.9.3"
-	},
 	"dependencies": {
 		"@sinclair/typebox": "^0.34.52",
 		"node-stream-zip": "^1.16.0"
 	},
-	"license": "SEE LICENSE IN LICENSE",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/clssck/dataiku-sdk.git"
-	},
-	"publishConfig": {
-		"access": "public"
+	"devDependencies": {
+		"@oxlint/plugins": "1.86.0",
+		"@types/bun": "^1.4.2",
+		"cross-env": "^10.1.0",
+		"dprint": "^0.60.1",
+		"js-tiktoken": "1.0.21",
+		"oxlint": "1.86.0",
+		"typescript": "^7.0.2"
 	},
 	"bundleDependencies": [
 		"@sinclair/typebox"
-	]
+	],
+	"engines": {
+		"bun": ">=1.4.2"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
 }
