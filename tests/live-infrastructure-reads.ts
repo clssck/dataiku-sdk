@@ -844,6 +844,32 @@ async function exerciseStreamingEndpoints(ctx: LiveContext,): Promise<void> {
 				if (asRecord(updated,) === undefined) {
 					throw new Error("streaming-endpoint update-settings returned no object.",);
 				}
+				// Schema replace + read-back with the owned SSE daemon's record fields.
+				const columns = [{ name: "n", type: "int", }, { name: "value", type: "string", },];
+				await ctx.run([
+					"streaming-endpoint",
+					"set-schema",
+					endpointId,
+					"--data",
+					JSON.stringify({ columns, },),
+					"--project-key",
+					projectKey,
+				],);
+				const schema = asRecord(
+					await ctx.run<unknown>([
+						"streaming-endpoint",
+						"schema",
+						endpointId,
+						"--project-key",
+						projectKey,
+					],),
+				);
+				const names = asArray(schema?.["columns"],).map(column =>
+					asString(asRecord(column,)?.["name"],)
+				);
+				if (JSON.stringify(names,) !== JSON.stringify(["n", "value",],)) {
+					throw new Error(`streaming-endpoint set-schema did not persist: ${JSON.stringify(names,)}.`,);
+				}
 			} finally {
 				await ctx.run<unknown>([
 					"streaming-endpoint",
@@ -1494,6 +1520,8 @@ export async function exerciseInfrastructureReads(ctx: LiveContext,): Promise<vo
 			"streaming-endpoint.create",
 			"streaming-endpoint.get",
 			"streaming-endpoint.update-settings",
+			"streaming-endpoint.set-schema",
+			"streaming-endpoint.schema",
 			"streaming-endpoint.delete",
 			"streaming-endpoint.list",
 		],
@@ -1568,12 +1596,15 @@ export async function exerciseInfrastructureReads(ctx: LiveContext,): Promise<vo
 			"project-deployer.list-projects",
 			"project-deployer.list-deployments",
 			"project-deployer.get-deployment",
+			"project-deployer.deployment-settings",
 			"project-deployer.deployment-status",
 			"project-deployer.project-status",
 			"project-deployer.create-infra",
 			"project-deployer.upload-bundle",
 			"project-deployer.create-deployment",
 			"project-deployer.delete-deployment",
+			"project-deployer.delete-project",
+			"project-deployer.delete-infra",
 		],
 		async () => {
 			await exerciseOwnedDeployerDetails(ctx,);

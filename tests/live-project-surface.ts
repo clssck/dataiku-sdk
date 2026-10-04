@@ -46,7 +46,7 @@ function marker(ctx: LiveContext, base: string,): string {
 }
 
 /** Runs body against a fresh child project and removes it, surfacing every failure. */
-async function withChildProject(
+export async function withChildProject(
 	ctx: LiveContext,
 	label: string,
 	body: (key: string,) => Promise<void>,
@@ -311,6 +311,7 @@ async function exerciseDiscussionLifecycle(ctx: LiveContext,): Promise<void> {
 		"discussion.list",
 		"discussion.get",
 		"discussion.reply",
+		"discussion.update",
 	], async () => {
 		await withChildProject(ctx, "discussion", async key => {
 			const object = ["PROJECT", key,] as const;
@@ -356,6 +357,19 @@ async function exerciseDiscussionLifecycle(ctx: LiveContext,): Promise<void> {
 			expect([...final.replies ?? [],].map(reply => reply.text).sort(),).toEqual(
 				[firstReply, secondReply,].sort(),
 			);
+			const editedTopic = `${topic} (edited)`;
+			const updated = await ctx.run<Discussion>([
+				"discussion",
+				"update",
+				...object,
+				id,
+				"--topic",
+				editedTopic,
+			], { projectKey: key, },);
+			expect(updated.topic,).toBe(editedTopic,);
+			const reread = await ctx.client.discussions.get(...object, id, key,);
+			expect(reread.topic,).toBe(editedTopic,);
+			expect(reread.replies,).toHaveLength(2,);
 		},);
 	},);
 }
@@ -431,6 +445,7 @@ async function exerciseFutureReads(ctx: LiveContext,): Promise<void> {
 		"future.peek",
 		"future.get",
 		"future.wait",
+		"future.list",
 	], async () => {
 		// Peek never consumes, so the same future is later awaited to completion.
 		const peekable = await startOwnedFuture(ctx,);
@@ -457,6 +472,14 @@ async function exerciseFutureReads(ctx: LiveContext,): Promise<void> {
 		expect(got.unknown,).not.toBe(true,);
 		expect(got.aborted,).not.toBe(true,);
 		expect(got.alive === true || got.hasResult === true,).toBe(true,);
+		// Compact listing: every item names its future and owner.
+		const listed = await ctx.run<Array<{ jobId?: unknown; owner?: unknown; }>>([
+			"future",
+			"list",
+			"--all-users",
+		],);
+		expect(Array.isArray(listed,),).toBe(true,);
+		for (const item of listed) expect(typeof item.jobId,).toBe("string",);
 	},);
 }
 

@@ -1593,6 +1593,37 @@ export async function exerciseApplications(ctx: LiveContext,): Promise<void> {
 	);
 
 	await ctx.check(
+		"applications.webapp.trust",
+		["webapp.create", "webapp.trust",],
+		async () => {
+			const projectKey = await ctx.createProject("webtrust",);
+			try {
+				const creation = await ctx.run<JsonRecord>([
+					"webapp",
+					"create",
+					"--data",
+					JSON.stringify({ name: `Live trust ${ctx.iteration}`, type: "STANDARD", params: {}, },),
+					"--project-key",
+					projectKey,
+				],);
+				const webappId = requireId(creation["webAppId"], "webAppId",);
+				const trusted = await ctx.run<JsonRecord>([
+					"webapp",
+					"trust",
+					webappId,
+					"--project-key",
+					projectKey,
+				],);
+				expect(trusted["canAccess"],).toBe(true,);
+			} finally {
+				await ctx.deleteProject(projectKey,);
+			}
+		},
+		// Trusting webapp code needs a DSS permission API keys may lack (403).
+		{ capability: "applications.webapp-trust", required: false, },
+	);
+
+	await ctx.check(
 		"applications.webapp.backend",
 		[
 			"webapp.create",

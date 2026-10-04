@@ -539,10 +539,15 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 
 	await ctx.check(
 		"collab.wiki",
-		["wiki.settings", "wiki.list", "wiki.get", "wiki.update",],
+		["wiki.settings", "wiki.update-settings", "wiki.list", "wiki.get", "wiki.update",],
 		async () => {
 			const settings = await ctx.run<Record<string, unknown>>(["wiki", "settings",],);
 			expect(typeof settings,).toBe("object",);
+			// Whole-document PUT of the unchanged properties must read back identically.
+			await ctx.run(["wiki", "update-settings", "--data", JSON.stringify(settings,),],);
+			const reread = await ctx.run<Record<string, unknown>>(["wiki", "settings",],);
+			expect(reread.homeArticleId,).toBe(settings.homeArticleId,);
+			expect(JSON.stringify(reread.taxonomy,),).toBe(JSON.stringify(settings.taxonomy,),);
 			const list = await ctx.run<Array<{ article: { id: string; }; }>>(["wiki", "list",],);
 			expect(list.some((entry,) => entry.article.id === articleId),).toBe(true,);
 			const updated = await ctx.run<{ article: { id: string; }; payload?: string; }>([

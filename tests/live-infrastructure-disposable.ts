@@ -439,7 +439,22 @@ async function workspaceLifecycle(ctx: LiveContext,): Promise<void> {
 		if (asString(readback["displayName"],) !== asString(settings["displayName"],)) {
 			throw new Error("workspace update-settings did not preserve displayName across the merge",);
 		}
-		await ctx.run(["workspace", "list-objects", id,],);
+		const objectsBeforeRemoval = await ctx.run<Array<JsonRecord>>([
+			"workspace",
+			"list-objects",
+			id,
+		],);
+		const linkId = asString(
+			objectsBeforeRemoval.find(object =>
+				asString(asRecord(object["htmlLink"],)?.["url"],) === "https://example.com/live-lab"
+			)?.["id"],
+		);
+		if (!linkId) throw new Error("workspace list-objects returned no id for the html link",);
+		await ctx.run(["workspace", "remove-object", id, linkId,],);
+		const objectsAfterRemoval = await ctx.run<Array<JsonRecord>>(["workspace", "list-objects", id,],);
+		if (objectsAfterRemoval.some(object => asString(object["id"],) === linkId)) {
+			throw new Error("workspace remove-object left the html link in place",);
+		}
 	},);
 }
 
@@ -1278,6 +1293,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 			"workspace.add-object",
 			"workspace.update-settings",
 			"workspace.list-objects",
+			"workspace.remove-object",
 			"workspace.delete",
 		],
 		async () => {

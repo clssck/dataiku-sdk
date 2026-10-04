@@ -103,6 +103,7 @@ export const LIVE_CASES = {
 	"applications.api-service.package-lifecycle": { profile: "applications", phase: "run", },
 	"applications.api-service.publication": { profile: "applications", phase: "run", },
 	"applications.webapp.lifecycle": { profile: "applications", phase: "run", },
+	"applications.webapp.trust": { profile: "applications", phase: "run", },
 	"applications.app-discovery": { profile: "applications", phase: "run", },
 	"applications.business-app-settings": { profile: "applications", phase: "run", },
 	"applications.app.template-surface": { profile: "applications", phase: "run", },
@@ -159,6 +160,17 @@ export const LIVE_CASES = {
 	"infrastructure.plugin.git-sync": { profile: "infrastructure", phase: "run", },
 	"infrastructure.plugin.store": { profile: "infrastructure", phase: "run", },
 	"infrastructure.plugin.git-install": { profile: "infrastructure", phase: "run", },
+	"core.dataset.selection": { profile: "core", phase: "run", },
+	"core.metrics.run-checks": { profile: "core", phase: "run", },
+	"core.data-quality.delete-history": { profile: "core", phase: "run", },
+	"core.flow.propagate-schema": { profile: "core", phase: "run", },
+	"core.flow.documentation": { profile: "core", phase: "run", },
+	"core.mlflow.extension": { profile: "core", phase: "run", },
+	"ml.model.diagnostics": { profile: "ml", phase: "run", },
+	"ml.model.documentation": { profile: "ml", phase: "run", },
+	"ml.model.scoring-exports": { profile: "ml", phase: "run", },
+	"ml.task.reguess": { profile: "ml", phase: "run", },
+	"ml.timeseries.diagnostics": { profile: "ml", phase: "run", },
 } as const;
 
 export type LiveCaseId = keyof typeof LIVE_CASES;

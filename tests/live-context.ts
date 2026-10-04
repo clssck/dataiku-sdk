@@ -716,6 +716,7 @@ const GLOBAL_RULES: Record<string, GlobalRule> = {
 	"workspace.update-settings": { kind: "workspace", target: true, },
 	"workspace.delete": { kind: "workspace", target: true, },
 	"workspace.add-object": { kind: "workspace", target: true, },
+	"workspace.remove-object": { kind: "workspace", target: true, },
 	"data-collection.create": { kind: "data-collection", create: true, extra: "displayName", },
 	"data-collection.settings-set": { kind: "data-collection", target: true, },
 	"data-collection.add-object": { kind: "data-collection", target: true, },
@@ -771,6 +772,11 @@ const GLOBAL_RULES: Record<string, GlobalRule> = {
 		target: true,
 	},
 	"project-deployer.deploy": { kind: "project-deployer-deployment", target: true, },
+	"project-deployer.save-infra-settings": { kind: "project-deployer-infra", target: true, },
+	"project-deployer.delete-infra": { kind: "project-deployer-infra", target: true, },
+	"project-deployer.save-project-settings": { kind: "project-deployer-project", target: true, },
+	"project-deployer.delete-project": { kind: "project-deployer-project", target: true, },
+	"project-deployer.delete-bundle": { kind: "project-deployer-project", target: true, },
 	"plugin.set-git-remote": { kind: "plugin", target: true, },
 	"plugin.delete-git-remote": { kind: "plugin", target: true, },
 	"plugin.fetch": { kind: "plugin", target: true, },
@@ -2461,14 +2467,7 @@ export class LiveRunContext implements LiveContext {
 		if (!matches) {
 			throw new Error(`Global identity changed; refusing deletion: ${kind} ${id}`,);
 		}
-		const argv = this.deleteArgv(kind, id,);
-		if (argv) await this.run(argv,);
-		else {
-			const resource = kind === "project-deployer-infra" ? "infras" : "projects";
-			await this.client.del(
-				`/public/api/project-deployer/${resource}/${encodeURIComponent(id,)}`,
-			);
-		}
+		await this.run(this.deleteArgv(kind, id,),);
 		entry.state = "deleted";
 		await this.save();
 	}
@@ -2486,7 +2485,7 @@ export class LiveRunContext implements LiveContext {
 			await this.save();
 		}
 	}
-	private deleteArgv(kind: OwnedGlobalKind, id: string,): string[] | undefined {
+	private deleteArgv(kind: OwnedGlobalKind, id: string,): string[] {
 		switch (kind) {
 			case "user":
 				return ["user", "delete", id, "--if-exists",];
@@ -2517,8 +2516,9 @@ export class LiveRunContext implements LiveContext {
 			case "project-deployer-deployment":
 				return ["project-deployer", "delete-deployment", id,];
 			case "project-deployer-project":
+				return ["project-deployer", "delete-project", id,];
 			case "project-deployer-infra":
-				return undefined;
+				return ["project-deployer", "delete-infra", id,];
 		}
 	}
 	/**
@@ -2648,7 +2648,7 @@ export class LiveRunContext implements LiveContext {
 			case "project-deployer-deployment":
 				return this.client.projectDeployer.getDeployment(id,);
 			case "project-deployer-infra":
-				return this.client.get(`/public/api/project-deployer/infras/${encodeURIComponent(id,)}`,);
+				return this.client.projectDeployer.getInfra(id,);
 		}
 	}
 	private isConflictResult(error: LiveCommandError,): boolean {

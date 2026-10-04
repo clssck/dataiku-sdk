@@ -65,6 +65,7 @@ export async function exerciseBundles(ctx: LiveContext,): Promise<void> {
 		"project.create",
 		"bundle.list-exported",
 		"bundle.export",
+		"bundle.get-exported",
 		"bundle.download-exported",
 		"bundle.delete-exported",
 		"project.delete",
@@ -95,6 +96,8 @@ export async function exerciseBundles(ctx: LiveContext,): Promise<void> {
 			// server; every export here targets a fresh id.
 			const first = (await listExported(ctx, projectKey,)).find(b => b.bundleId === bundleId);
 			expect(first,).toBeTruthy();
+			const details = await ctx.run<unknown>(["bundle", "get-exported", bundleId,], { projectKey, },);
+			expect(JSON.stringify(details,),).toContain(`"${bundleId}"`,);
 
 			const archive = join(ctx.dir, `bundle-${String(ctx.iteration,)}.zip`,);
 			const download = await ctx.run<{ path: string; bytes: number; }>([

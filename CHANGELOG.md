@@ -35,6 +35,8 @@
 - New: `workspace remove-object`, `webapp trust [--for-everybody]`, `future list [--all-users] [--with-scenarios]`, `discussion update --topic`, `wiki update-settings`, `streaming-endpoint create-managed`/`schema`/`set-schema`, and `project push-to-git-remote REMOTE`.
 - Fix: a 403 hints that the project may not exist only when DSS's message is about the project; "You are not allowed to trust this webapp" keeps the generic permission hint.
 - The DSS 15 coverage matrix covers 371 of 372 documented operations; Project Deployer `stages` and `create infra` rows now carry their documented paths.
+- Dev tooling: oxlint and `@oxlint/plugins` 1.86.0, dprint 0.60.1 with its npm-published TypeScript 0.96.1 and JSON 0.25.1 plugins (the JSON plugin orders `package.json` keys canonically). The editor language server is TypeScript 7's native `tsc --lsp --stdio`; `typescript-language-server` and the TypeScript 5.9.3 `tsserver` alias are gone, so TypeScript 7 is the only TypeScript in the repo. `bun run lint` reports no warnings.
+- Live tests cover the DSS 15 gap actions: column/partition dataset reads, dataset checks, flow schema propagation and documentation, the MLflow extension, Visual ML diagnostics, documentation, re-guessing and time series forecasting, the new Project Deployer settings, governance and delete actions, workspace object removal, discussion topic edits, future listing, wiki settings, and data-quality instance/partition status. Lab teardown deletes Project Deployer infras and published projects through `project-deployer delete-infra`/`delete-project` instead of raw API calls.
 
 ## 3.6.1
 

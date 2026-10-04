@@ -804,6 +804,8 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 	await ctx.check("core.data-quality.partition-status", [
 		"data-quality.status",
 		"data-quality.status-by-partition",
+		"data-quality.instance-status",
+		"data-quality.partitions-status",
 	], async () => {
 		const dataset = Object.keys(ctx.fixtures.datasets,)[0];
 		if (!dataset) {
@@ -837,6 +839,11 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 			projectKey: ctx.projectKey,
 		},);
 		expect(JSON.stringify(sdk,),).toBe(JSON.stringify(all,),);
+		const instance = await ctx.run<unknown>(["data-quality", "instance-status",],);
+		expect(isPlainObject(instance,),).toBe(true,);
+		// Unpartitioned datasets report their single virtual partition NP.
+		const partitions = await ctx.run<unknown>(["data-quality", "partitions-status", dataset,],);
+		expect(isPlainObject(partitions,) || Array.isArray(partitions,),).toBe(true,);
 	},);
 
 	await ctx.check("core.dashboard.export", [

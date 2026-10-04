@@ -365,6 +365,7 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 			"project-git.fetch",
 			"project-git.pull",
 			"project-git.push",
+			"project.push-to-git-remote",
 			"project-git.reset-to-upstream",
 		], async () => {
 			const key = await sharedProject();
@@ -392,6 +393,18 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 						await commitMarker(ctx, key, `discard_${directory.nonce}`,);
 						await ctx.run(["project-git", "reset-to-upstream",], { projectKey: key, },);
 						expect(newestCommitId(await readLog(ctx, key,), "reset upstream",),).toBe(head,);
+						// The public-API one-shot push names the remote DSS declared for the project.
+						await commitMarker(ctx, key, `oneshot_${directory.nonce}`,);
+						const pushed = newestCommitId(await readLog(ctx, key,), "one-shot head",);
+						const declared = await ctx.run<{ name?: string; }>(["project-git", "get-remote",], {
+							projectKey: key,
+						},);
+						await ctx.run(["project", "push-to-git-remote", declared.name ?? "origin",], {
+							projectKey: key,
+						},);
+						expect(
+							await readBare(ctx, directory, repo, ["rev-parse", "--verify", `refs/heads/${branch}`,],),
+						).toBe(pushed,);
 					} finally {
 						const remote = await ctx.run<{ url?: string; }>(["project-git", "get-remote",], {
 							projectKey: key,

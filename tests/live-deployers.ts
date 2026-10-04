@@ -81,15 +81,6 @@ function packageIds(status: unknown,): string[] {
 		.filter((id,): id is string => id !== undefined);
 }
 
-/** Deep search for an exact string value anywhere inside a JSON document. */
-function containsString(value: unknown, needle: string,): boolean {
-	if (typeof value === "string") return value === needle;
-	if (Array.isArray(value,)) return value.some(item => containsString(item, needle,));
-	const record = asRecord(value,);
-	return record !== undefined
-		&& Object.values(record,).some(item => containsString(item, needle,));
-}
-
 /** A create is only real when the ledger holds a bound, identity-matched entry. */
 function requireBound(entry: OwnedGlobal | undefined, kind: string,): OwnedGlobal {
 	if (!entry || entry.state !== "bound" || !entry.id) {
@@ -652,8 +643,7 @@ async function createProjectDeployment(
 	ctx: LiveContext,
 	label: string,
 	stack: ProjectDeployerStack,
-): Promise<{ entry: OwnedGlobal; receipt: unknown; }> {
-	let receipt: unknown;
+): Promise<{ entry: OwnedGlobal; }> {
 	const entry = await ctx.createGlobal("project-deployer-deployment", label, name => [
 		"project-deployer",
 		"create-deployment",
@@ -664,36 +654,8 @@ async function createProjectDeployment(
 			infraId: stack.infraId,
 			bundleId: stack.bundleId,
 		},),
-	], {
-		id: result => {
-			receipt = result;
-			return deployerId(result, "deploymentBasicInfo",);
-		},
-	},);
-	return { entry, receipt, };
-}
-
-/**
- * The Project Deployer settings document (official
- * DSSProjectDeployerDeploymentSettings: bundleId + publishedProjectKey, saved
- * as a WHOLE document). GET /settings is not exposed by the SDK, so the
- * document is taken from the create receipt or the light status only when
- * one of them IS the settings document (carries bundleId, publishedProjectKey
- * and infraId — top-level or inside its deploymentBasicInfo) ; a partial PUT
- * is never sent.
- */
-function projectDeploymentSettings(candidates: unknown[],): JsonRecord | undefined {
-	for (const candidate of candidates) {
-		const record = asRecord(candidate,);
-		if (!record) continue;
-		for (const doc of [record, asRecord(record["deploymentBasicInfo"],),]) {
-			if (
-				doc && asString(doc["bundleId"],) && asString(doc["publishedProjectKey"],)
-				&& asString(doc["infraId"],)
-			) return doc;
-		}
-	}
-	return undefined;
+	], { id: result => deployerId(result, "deploymentBasicInfo",), },);
+	return { entry, };
 }
 
 async function projectDeployerDeploymentLifecycle(ctx: LiveContext,): Promise<void> {
@@ -709,7 +671,7 @@ async function projectDeployerDeploymentLifecycle(ctx: LiveContext,): Promise<vo
 			).includes(secondBundle,),
 			`second bundle ${secondBundle} missing from the published project`,
 		);
-		const { entry, receipt, } = await createProjectDeployment(ctx, "pddepl", stack,);
+		const { entry, } = await createProjectDeployment(ctx, "pddepl", stack,);
 		await withOwnedGlobal(ctx, "project-deployer-deployment", entry, async deploymentId => {
 			const light = await ctx.run<JsonRecord>(["project-deployer", "get-deployment", deploymentId,],);
 			require(
@@ -724,12 +686,25 @@ async function projectDeployerDeploymentLifecycle(ctx: LiveContext,): Promise<vo
 				),
 				`deployment ${deploymentId} missing from list-deployments`,
 			);
-			const settings = projectDeploymentSettings([receipt, light,],);
-			if (!settings) {
-				throw new LiveCapabilityError(
-					"project-deployer save-deployment-settings needs the full settings document: GET /project-deployer/deployments/{id}/settings is not exposed by the SDK and neither the create receipt nor get-deployment carried {bundleId, publishedProjectKey, infraId}; a partial PUT is never sent.",
-				);
-			}
+			// The whole settings document, GET-then-PUT with the second bundle.
+			const settings = await ctx.run<JsonRecord>([
+				"project-deployer",
+				"deployment-settings",
+				deploymentId,
+			],);
+			require(
+				asString(settings["id"],) === deploymentId
+					&& asString(settings["bundleId"],) === stack.bundleId,
+				"deployment-settings did not return the owned deployment on its first bundle",
+			);
+			const governance = await ctx.run<JsonRecord>([
+				"project-deployer",
+				"governance-status",
+				deploymentId,
+				"--bundle-id",
+				secondBundle,
+			],);
+			require(Array.isArray(governance["messages"],), "governance-status returned no messages array",);
 			await ctx.run([
 				"project-deployer",
 				"save-deployment-settings",
@@ -737,13 +712,28 @@ async function projectDeployerDeploymentLifecycle(ctx: LiveContext,): Promise<vo
 				"--data",
 				JSON.stringify({ ...settings, bundleId: secondBundle, },),
 			],);
-			const observed = [
-				await ctx.run<unknown>(["project-deployer", "get-deployment", deploymentId,],),
-				await ctx.run<unknown>(["project-deployer", "project-status", stack.publishedProjectKey,],),
-			];
+			const reread = await ctx.run<JsonRecord>([
+				"project-deployer",
+				"deployment-settings",
+				deploymentId,
+			],);
 			require(
-				observed.some(doc => containsString(doc, secondBundle,)),
-				`saved bundleId ${secondBundle} is not visible in get-deployment or project-status`,
+				asString(reread["bundleId"],) === secondBundle,
+				`save-deployment-settings did not persist bundleId ${secondBundle}`,
+			);
+			// The first bundle is no longer deployed, so DSS lets it be deleted.
+			await ctx.run([
+				"project-deployer",
+				"delete-bundle",
+				stack.publishedProjectKey,
+				stack.bundleId,
+			],);
+			const remaining = packageIds(
+				await ctx.run<unknown>(["project-deployer", "project-status", stack.publishedProjectKey,],),
+			);
+			require(
+				!remaining.includes(stack.bundleId,) && remaining.includes(secondBundle,),
+				`delete-bundle did not remove ${stack.bundleId} alone`,
 			);
 		},);
 	},);
@@ -796,6 +786,30 @@ async function projectDeployerInfraLifecycle(ctx: LiveContext,): Promise<void> {
 			),
 			`infra ${infraId} missing from list-infras`,
 		);
+		require(
+			deployerId(
+				await ctx.run<unknown>(["project-deployer", "get-infra", infraId,],),
+				"infraBasicInfo",
+			)
+				=== infraId,
+			"get-infra did not return the owned infra",
+		);
+		// GET-then-PUT with a changed governance policy, then read-back.
+		const settings = await ctx.run<JsonRecord>(["project-deployer", "infra-settings", infraId,],);
+		require(asString(settings["id"],) === infraId, "infra-settings returned another infra",);
+		const policy = asString(settings["governCheckPolicy"],) === "WARN" ? "NO_CHECK" : "WARN";
+		await ctx.run([
+			"project-deployer",
+			"save-infra-settings",
+			infraId,
+			"--data",
+			JSON.stringify({ ...settings, governCheckPolicy: policy, },),
+		],);
+		const reread = await ctx.run<JsonRecord>(["project-deployer", "infra-settings", infraId,],);
+		require(
+			asString(reread["governCheckPolicy"],) === policy,
+			`save-infra-settings did not persist governCheckPolicy ${policy}`,
+		);
 	},);
 }
 
@@ -831,6 +845,19 @@ async function projectDeployerCreateProject(ctx: LiveContext,): Promise<void> {
 			),
 			`published project ${key} missing from list-projects`,
 		);
+		// GET-then-PUT the published project settings with a changed name, then read-back.
+		const settings = await ctx.run<JsonRecord>(["project-deployer", "project-settings", key,],);
+		require(asString(settings["id"],) === key, "project-settings returned another project",);
+		const renamed = `${key} settings`;
+		await ctx.run([
+			"project-deployer",
+			"save-project-settings",
+			key,
+			"--data",
+			JSON.stringify({ ...settings, name: renamed, },),
+		],);
+		const reread = await ctx.run<JsonRecord>(["project-deployer", "project-settings", key,],);
+		require(asString(reread["name"],) === renamed, "save-project-settings did not persist the name",);
 	},);
 }
 
@@ -841,6 +868,7 @@ async function projectDeployerReads(ctx: LiveContext,): Promise<void> {
 			["project-deployer", "list-projects",],
 			["project-deployer", "list-deployments",],
 			["project-deployer", "list-infras",],
+			["project-deployer", "list-stages",],
 		]
 	) {
 		require(
@@ -940,7 +968,7 @@ export async function exerciseOwnedDeployerDetails(ctx: LiveContext,): Promise<v
 		}, id => disableApiDeployment(ctx, id,),);
 	},);
 	await withProjectDeployerStack(ctx, "pddet", async stack => {
-		const { entry, receipt, } = await createProjectDeployment(ctx, "pddet", stack,);
+		const { entry, } = await createProjectDeployment(ctx, "pddet", stack,);
 		await withOwnedGlobal(ctx, "project-deployer-deployment", entry, async deploymentId => {
 			require(
 				listHas(
@@ -976,15 +1004,15 @@ export async function exerciseOwnedDeployerDetails(ctx: LiveContext,): Promise<v
 				packageIds(publishedStatus,).includes(stack.bundleId,),
 				`project-deployer project-status ${stack.publishedProjectKey} does not list the owned bundle ${stack.bundleId}`,
 			);
-			// GET /settings is not exposed by the SDK for the project deployer;
-			// the settings document is observable through the create receipt or
-			// the light status only (the identity read-only contract — no
-			// partial PUT is ever sent here).
-			const settings = projectDeploymentSettings([receipt, light,],);
+			const settings = await ctx.run<JsonRecord>([
+				"project-deployer",
+				"deployment-settings",
+				deploymentId,
+			],);
 			require(
-				settings !== undefined && settings["publishedProjectKey"] === stack.publishedProjectKey
+				settings["publishedProjectKey"] === stack.publishedProjectKey
 					&& settings["infraId"] === stack.infraId && settings["bundleId"] === stack.bundleId,
-				`project-deployer settings of deployment ${deploymentId} do not carry the owned publishedProjectKey/infraId/bundleId`,
+				`project-deployer deployment-settings of ${deploymentId} do not carry the owned publishedProjectKey/infraId/bundleId`,
 			);
 			const status = await ctx.run<unknown>([
 				"project-deployer",
@@ -1077,6 +1105,7 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 			"project-deployer.list-projects",
 			"project-deployer.list-deployments",
 			"project-deployer.list-infras",
+			"project-deployer.list-stages",
 		],
 		async () => {
 			await projectDeployerReads(ctx,);
@@ -1085,7 +1114,14 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 	);
 	await ctx.check(
 		"infrastructure.project-deployer.infra-lifecycle" as LiveCaseId,
-		["project-deployer.create-infra", "project-deployer.list-infras",],
+		[
+			"project-deployer.create-infra",
+			"project-deployer.list-infras",
+			"project-deployer.get-infra",
+			"project-deployer.infra-settings",
+			"project-deployer.save-infra-settings",
+			"project-deployer.delete-infra",
+		],
 		async () => {
 			await projectDeployerInfraLifecycle(ctx,);
 		},
@@ -1097,6 +1133,9 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 			"project-deployer.create-project",
 			"project-deployer.project-status",
 			"project-deployer.list-projects",
+			"project-deployer.project-settings",
+			"project-deployer.save-project-settings",
+			"project-deployer.delete-project",
 		],
 		async () => {
 			await projectDeployerCreateProject(ctx,);
@@ -1112,6 +1151,8 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 			"project-deployer.upload-bundle",
 			"project-deployer.project-status",
 			"project-deployer.list-projects",
+			"project-deployer.delete-project",
+			"project-deployer.delete-infra",
 		],
 		async () => {
 			await projectDeployerUploadBundle(ctx,);
@@ -1126,8 +1167,13 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 			"project-deployer.create-deployment",
 			"project-deployer.get-deployment",
 			"project-deployer.list-deployments",
+			"project-deployer.deployment-settings",
+			"project-deployer.governance-status",
 			"project-deployer.save-deployment-settings",
+			"project-deployer.delete-bundle",
 			"project-deployer.delete-deployment",
+			"project-deployer.delete-project",
+			"project-deployer.delete-infra",
 		],
 		async () => {
 			await projectDeployerDeploymentLifecycle(ctx,);
