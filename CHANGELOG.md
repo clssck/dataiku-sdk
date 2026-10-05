@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 3.8.0
+
 - Fix: `recipe create --type vstack` (and `join`, `geojoin`, `generate_features`) sends the inputs as DSS `creationSettings.virtualInputs`, as dataikuapi does. DSS builds these recipes' inputs and payload only from virtual inputs, so a Stack recipe was created with `inputs: {}`, an empty payload, and `outputSchemaUpdateError: 500 Internal Error`; it now has every input, a UNION payload, and a computed output schema.
 - `recipe create --rename/--fill-empty/--formula/--filter/--drop-columns/--keep-columns` runs prepare steps in the order the flags are given (the first use of a flag sets its position; SDK `stepOrder`); before, renames always ran first. A `--formula` or `--filter` that still names a column an earlier `--rename` removed emits `recipe_formula_uses_renamed_column`, also on `--plan`.
 - `recipe create --name N` reports `requestedName` and a `recipe_renamed` warning (`reason: name_taken` for DSS's `N_1` suffix, otherwise `dss_chose_name`) when DSS returns a different recipe name, instead of differing silently. The public API cannot rename a recipe afterwards.
