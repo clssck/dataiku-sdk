@@ -2077,4 +2077,36 @@ describe("recipe create payload builders", () => {
 			expect(request.creationSettings, type,).not.toHaveProperty("virtualInputs",);
 		}
 	});
+
+	it("sends vstack inputs as virtualInputs and reports the recipe name DSS chose", async () => {
+		let createBody: Record<string, unknown> | undefined;
+		await withRecipeServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				createBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+				sendJson(res, { name: "stack_samples_1", },);
+				return;
+			}
+			if (
+				req.method === "GET"
+				&& url.pathname === "/public/api/projects/TEST/recipes/stack_samples_1/schema-update"
+			) {
+				sendJson(res, { totalIncompatibilities: 0, computables: [], },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected",);
+		}, async (url,) => {
+			const result = await createClient(url,).recipes.create({
+				type: "vstack",
+				name: "stack_samples",
+				inputDatasets: ["samples", "equipment",],
+				outputDataset: "stacked",
+			},);
+			expect(result.recipeName,).toBe("stack_samples_1",);
+			expect(result.requestedName,).toBe("stack_samples",);
+		},);
+		const settings = createBody?.creationSettings as { virtualInputs?: string[]; } | undefined;
+		expect(settings?.virtualInputs,).toEqual(["samples", "equipment",],);
+	});
 });

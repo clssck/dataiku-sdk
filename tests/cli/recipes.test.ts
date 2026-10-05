@@ -236,6 +236,78 @@ describe("recipe create prepare flags and naming", () => {
 		],);
 		expect(stderr,).toBe("",);
 	});
+
+	it("flags the recipe name DSS returned when it differs from --name", async () => {
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				await readBody(req,);
+				sendJson(res, { name: "compute_out_ds", },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected",);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss([
+				"recipe",
+				"create",
+				"--type",
+				"python",
+				"--input",
+				"in_ds",
+				"--output",
+				"out_ds",
+				"--name",
+				"add_status",
+				"--project-key",
+				"TEST",
+			], { env: cliEnv(url,), },);
+			const result = JSON.parse(stdout,) as Record<string, unknown>;
+			expect(result.created,).toBe("compute_out_ds",);
+			expect(result.requestedName,).toBe("add_status",);
+			const event = JSON.parse(stderr,) as { warnings: Array<Record<string, unknown>>; };
+			expect(event.warnings.length,).toBe(1,);
+			expect(event.warnings[0]!.code,).toBe("recipe_renamed",);
+			expect(event.warnings[0]!.requestedName,).toBe("add_status",);
+			expect(event.warnings[0]!.recipe,).toBe("compute_out_ds",);
+			expect(event.warnings[0]!.reason,).toBe("dss_chose_name",);
+		},);
+	});
+
+	it("reports a numeric suffix as name_taken and stays silent when the name is honored", async () => {
+		const returned = ["add_status_1", "add_status",];
+		await withCliServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+				await readBody(req,);
+				sendJson(res, { name: returned.shift(), },);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected",);
+		}, async (url,) => {
+			const args = [
+				"recipe",
+				"create",
+				"--type",
+				"python",
+				"--input",
+				"in_ds",
+				"--output",
+				"out_ds",
+				"--name",
+				"add_status",
+				"--project-key",
+				"TEST",
+			];
+			const taken = await dss(args, { env: cliEnv(url,), },);
+			const event = JSON.parse(taken.stderr,) as { warnings: Array<Record<string, unknown>>; };
+			expect(event.warnings[0]!.reason,).toBe("name_taken",);
+			const honored = await dss(args, { env: cliEnv(url,), },);
+			expect(honored.stderr,).toBe("",);
+			expect(JSON.parse(honored.stdout,),).not.toHaveProperty("requestedName",);
+		},);
+	});
 });
 
 describe("recipe input commands", () => {

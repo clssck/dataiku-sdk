@@ -984,6 +984,7 @@ export class RecipesResource extends BaseResource {
 		}
 
 		return {
+			...(opts.name && opts.name !== finalRecipeName ? { requestedName: opts.name, } : {}),
 			recipeName: finalRecipeName,
 			type,
 			createdDatasets,

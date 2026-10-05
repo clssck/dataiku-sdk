@@ -288,6 +288,8 @@ export type RecipeCreateOptions = Static<typeof RecipeCreateOptionsSchema>;
 
 export const RecipeCreateResultSchema = Type.Object({
 	recipeName: Type.String(),
+	/** The `--name` that was asked for, present only when DSS created the recipe under a different name. */
+	requestedName: Type.Optional(Type.String(),),
 	type: Type.String(),
 	createdDatasets: Type.Array(Type.String(),),
 	joinConfigured: Type.Boolean(),

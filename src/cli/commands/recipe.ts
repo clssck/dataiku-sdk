@@ -474,6 +474,23 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 				objectId: createdName,
 				objectType: "RECIPE",
 			},], pk,);
+			if (created.requestedName) {
+				// DSS appends _N when the requested name is taken; any other difference is DSS naming
+				// the recipe itself. The public API has no recipe rename.
+				const suffix = createdName.startsWith(`${created.requestedName}_`,)
+					? createdName.slice(created.requestedName.length + 1,)
+					: "";
+				const nameTaken = /^\d+$/.test(suffix,);
+				enqueueCliWarning({
+					code: "recipe_renamed",
+					requestedName: created.requestedName,
+					recipe: createdName,
+					reason: nameTaken ? "name_taken" : "dss_chose_name",
+					hint: nameTaken
+						? `A recipe named ${created.requestedName} already exists; use ${createdName} in follow-up commands.`
+						: `DSS ignored the requested name; use ${createdName} in follow-up commands.`,
+				},);
+			}
 			if (created.outputSchemaUpdateError) {
 				enqueueCliWarning({
 					code: "recipe_output_schema_not_computed",
