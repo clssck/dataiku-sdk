@@ -605,11 +605,15 @@ export const FlowZoneCreateOptionsSchema = Type.Object({
 }, { additionalProperties: false, },);
 export type FlowZoneCreateOptions = Static<typeof FlowZoneCreateOptionsSchema>;
 
+/**
+ * DSS's public `PUT /flow/zones/{id}` persists name and color but silently
+ * ignores `position`; repositioning an existing zone goes through
+ * `flowZones.recreate`, which creates a replacement zone at the new position.
+ */
 export const FlowZoneUpdateOptionsSchema = Type.Object({
 	name: Type.Optional(Type.String(),),
 	color: Type.Optional(Type.String(),),
 	projectKey: Type.Optional(Type.String(),),
-	position: Type.Optional(FlowZonePositionSchema,),
 }, { additionalProperties: false, },);
 export type FlowZoneUpdateOptions = Static<typeof FlowZoneUpdateOptionsSchema>;
 

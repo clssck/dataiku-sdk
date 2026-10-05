@@ -1,7 +1,9 @@
 import { readFileSync, } from "node:fs";
 import type { DataikuClient, } from "../../client.js";
+import { ClientValidationError, } from "../../errors.js";
 import type { FlowZoneItemInput, } from "../../resources/flow-zones.js";
 import type { FlowZone, FlowZoneObjectType, FlowZonePosition, } from "../../schemas.js";
+import type { NormalizedFlowMap, NormalizedFlowNode, } from "../../utils/flow-map.js";
 import { asRecord, } from "../../utils/records.js";
 import { compareStrings, } from "../../utils/stable-hash.js";
 import {
@@ -139,6 +141,8 @@ export interface FlowZoneOrganizeZonePlan {
 	color?: string;
 	position?: FlowZonePosition;
 	items: FlowZoneItemInput[];
+	/** Recipe/output unit members added by {@link applyFlowZoneUnits}; also present in `items`. */
+	impliedItems?: FlowZoneItemInput[];
 }
 
 export interface FlowZoneOrganizePlan {
@@ -460,6 +464,20 @@ export function flowZonePruneItems(
 	);
 }
 
+/**
+ * The position an existing zone must move to, if the plan changes it. DSS
+ * honors a zone position only on creation, so a move means recreating the zone.
+ */
+export function flowZoneRepositionTarget(
+	plan: FlowZoneOrganizeZonePlan,
+	existing: FlowZone,
+): FlowZonePosition | undefined {
+	return plan.position !== undefined
+			&& !flowZoneSamePosition(flowZoneCurrentPosition(existing,), plan.position,)
+		? plan.position
+		: undefined;
+}
+
 export function flowZoneOrganizeStep(
 	plan: FlowZoneOrganizeZonePlan,
 	existing: FlowZone | undefined,
@@ -470,12 +488,8 @@ export function flowZoneOrganizeStep(
 	const update: Record<string, unknown> = {};
 	if (existing && plan.name && plan.name !== existing.name) update.name = plan.name;
 	if (existing && plan.color && plan.color !== existing.color) update.color = plan.color;
-	if (
-		existing && plan.position !== undefined
-		&& !flowZoneSamePosition(flowZoneCurrentPosition(existing,), plan.position,)
-	) {
-		update.position = plan.position;
-	}
+	const recreatePosition = existing ? flowZoneRepositionTarget(plan, existing,) : undefined;
+	const recreate = recreatePosition ? { position: recreatePosition, } : undefined;
 	const pruneItems = sync ? flowZonePruneItems(existing, plannedItemKeys,) : [];
 	const moveItems = flowZoneMoveDelta(existing, plan.items,);
 	return {
@@ -487,9 +501,151 @@ export function flowZoneOrganizeStep(
 		},
 		...(existing ? { existing: flowZoneSummary(existing,), } : { create: true, }),
 		...(Object.keys(update,).length > 0 ? { update, } : {}),
+		...(recreate ? { recreate, } : {}),
 		moveItems,
+		...(plan.impliedItems && plan.impliedItems.length > 0
+			? { impliedItems: plan.impliedItems, }
+			: {}),
 		...(pruneItems.length > 0 ? { pruneItems, } : {}),
 	};
+}
+
+function flowNodeObjectType(
+	node: NormalizedFlowNode,
+	knownTypes: Map<string, FlowZoneObjectType>,
+): FlowZoneObjectType | undefined {
+	switch (node.kind) {
+		case "recipe":
+			return "RECIPE";
+		case "dataset":
+			return "DATASET";
+		case "folder":
+			return "MANAGED_FOLDER";
+		default:
+			return knownTypes.get(node.id,);
+	}
+}
+
+/**
+ * DSS keeps a recipe and its outputs in one zone: moving either drags the
+ * others. Each unit is keyed by its recipe id and lists the recipe plus every
+ * object the recipe writes.
+ */
+function flowZoneUnits(graph: NormalizedFlowMap,): Map<string, string[]> {
+	const kindById = new Map(graph.nodes.map((node,) => [node.id, node.kind,]),);
+	const units = new Map<string, string[]>();
+	for (const node of graph.nodes) {
+		if (node.kind === "recipe") units.set(node.id, [node.id,],);
+	}
+	for (const edge of graph.edges) {
+		if (kindById.get(edge.from,) !== "recipe" || kindById.get(edge.to,) === "recipe") continue;
+		units.get(edge.from,)?.push(edge.to,);
+	}
+	return units;
+}
+
+function explicitTypesById(zones: FlowZone[],): Map<string, FlowZoneObjectType> {
+	const types = new Map<string, FlowZoneObjectType>();
+	for (const zone of zones) {
+		for (const item of flowZoneItems(zone,)) {
+			if (!item.projectKey) types.set(item.objectId, item.objectType,);
+		}
+	}
+	return types;
+}
+
+/**
+ * Enforce the DSS recipe/output zone invariant on a plan. Rejects plans that
+ * place members of one unit in different zones (they would never converge),
+ * and adds the unlisted members of each planned unit to that zone as
+ * `impliedItems`, so moves, `--sync` pruning, and reruns all agree with what
+ * DSS actually does.
+ */
+export function applyFlowZoneUnits(
+	plan: FlowZoneOrganizePlan,
+	graph: NormalizedFlowMap,
+	zones: FlowZone[],
+	projectKey: string | undefined,
+): FlowZoneOrganizePlan {
+	const zoneIndexById = new Map<string, number>();
+	plan.zones.forEach((zonePlan, index,) => {
+		for (const item of zonePlan.items) {
+			// Shared objects from other projects never move with a local recipe.
+			if (!item.projectKey || item.projectKey === projectKey) zoneIndexById.set(item.objectId, index,);
+		}
+	},);
+	const nodeById = new Map(graph.nodes.map((node,) => [node.id, node,]),);
+	const knownTypes = explicitTypesById(zones,);
+	const conflicts: Array<{ recipe: string; zones: Record<string, string[]>; }> = [];
+	const implied = plan.zones.map((): FlowZoneItemInput[] => []);
+	for (const [recipe, members,] of flowZoneUnits(graph,)) {
+		const planned = members.filter((member,) => zoneIndexById.has(member,));
+		if (planned.length === 0) continue;
+		const indexes = new Set(planned.map((member,) => zoneIndexById.get(member,)!),);
+		if (indexes.size > 1) {
+			const byZone: Record<string, string[]> = {};
+			for (const member of planned) {
+				const label = flowZonePlanLabel(plan.zones[zoneIndexById.get(member,)!]!,);
+				(byZone[label] ??= []).push(member,);
+			}
+			conflicts.push({ recipe, zones: byZone, },);
+			continue;
+		}
+		const [index,] = indexes;
+		for (const member of members) {
+			if (zoneIndexById.has(member,)) continue;
+			const node = nodeById.get(member,);
+			const objectType = node ? flowNodeObjectType(node, knownTypes,) : undefined;
+			if (objectType) implied[index!]!.push({ objectType, objectId: member, },);
+		}
+	}
+	if (conflicts.length > 0) {
+		throw new ClientValidationError(
+			`Flow zone plan splits ${conflicts.length} recipe(s) from their outputs across zones; DSS keeps a recipe and its outputs in one zone.`,
+			"validation_failed",
+			"Assign each recipe to one zone (its outputs follow automatically), or list the recipe and all its outputs in the same zone.",
+			{ conflicts, },
+		);
+	}
+	return {
+		...plan,
+		zones: plan.zones.map((zonePlan, index,) =>
+			implied[index]!.length === 0
+				? zonePlan
+				: {
+					...zonePlan,
+					items: [...zonePlan.items, ...implied[index]!,],
+					impliedItems: implied[index],
+				}
+		),
+	};
+}
+
+/**
+ * Default-zone objects an organization plan has to place: recipes (their
+ * outputs follow) and objects no recipe produces, such as uploaded sources.
+ */
+export function flowZoneUnassignedItems(
+	graph: NormalizedFlowMap,
+	zones: FlowZone[],
+): FlowZoneItemInput[] {
+	const assigned = new Set<string>();
+	for (const zone of zones) {
+		if (zone.id === "default") continue;
+		for (const item of flowZoneExplicitItems(zone,)) assigned.add(item.objectId,);
+	}
+	const produced = new Set<string>();
+	for (const members of flowZoneUnits(graph,).values()) {
+		for (const member of members.slice(1,)) produced.add(member,);
+	}
+	const knownTypes = explicitTypesById(zones,);
+	const items: FlowZoneItemInput[] = [];
+	for (const node of graph.nodes) {
+		if (assigned.has(node.id,) || produced.has(node.id,)) continue;
+		const objectType = flowNodeObjectType(node, knownTypes,);
+		if (objectType) items.push({ objectType, objectId: node.id, },);
+	}
+	return items.sort((a, b,) => compareStrings(flowZoneItemKey(a,), flowZoneItemKey(b,),));
 }
 
 export function flowZoneValidationBucket(

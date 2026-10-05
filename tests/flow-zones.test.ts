@@ -2,6 +2,7 @@ import { describe, expect, it, } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
 import { DataikuClient, } from "../src/client.js";
+import { ClientValidationError, } from "../src/errors.js";
 
 async function withDataikuServer(
 	handler: (req: IncomingMessage, res: ServerResponse,) => Promise<void> | void,
@@ -148,7 +149,6 @@ describe("FlowZonesResource", () => {
 			const updated = await client.flowZones.update("zone-1", {
 				name: "Curated exports",
 				color: "#cc0000",
-				position: { x: 30, y: 40, },
 			},);
 			expect(updated.name,).toBe("Curated exports",);
 			expect(updated.color,).toBe("#cc0000",);
@@ -159,7 +159,45 @@ describe("FlowZonesResource", () => {
 			name: "Curated exports",
 			color: "#cc0000",
 			items: [{ objectType: "DATASET", objectId: "orders", },],
-			position: { x: 30, y: 40, },
+			position: { x: 10, y: 20, },
+		},);
+	});
+
+	it("recreate stops with ambiguous_outcome and both zone ids when a step fails", async () => {
+		await withDataikuServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname.endsWith("/zone-1",)) {
+				sendJson(res, {
+					id: "zone-1",
+					name: "Exports",
+					color: "#2ab1ac",
+					items: [{ objectType: "DATASET", objectId: "orders", },],
+					shared: [],
+				},);
+				return;
+			}
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/flow/zones") {
+				sendJson(res, { id: "zone-2", name: "Exports", color: "#2ab1ac", items: [], },);
+				return;
+			}
+			if (req.method === "PUT") {
+				res.statusCode = 204;
+				res.end();
+				return;
+			}
+			// add-items fails: the replacement exists but the items stayed behind.
+			sendJson(res, { message: "boom", }, 500,);
+		}, async (client,) => {
+			const error = await client.flowZones.recreate("zone-1", { position: { x: 1, y: 2, }, },).catch((
+				caught: unknown,
+			) => caught);
+			if (!(error instanceof ClientValidationError)) throw error;
+			expect(error.code,).toBe("ambiguous_outcome",);
+			expect(error.details,).toEqual({
+				replacedZoneId: "zone-1",
+				zoneId: "zone-2",
+				completed: ["create", "metadata",],
+			},);
 		},);
 	});
 

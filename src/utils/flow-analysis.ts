@@ -431,6 +431,10 @@ function renderMermaid(map: AnalyzedFlowMap,): string {
 			lines.push(`    ${idByNode.get(nodeId,)}["${mermaidLabel(readableNode(node,),)}"]`,);
 		}
 		lines.push("  end",);
+		// Zone colors come from DSS; only plain #RRGGBB values reach the style line.
+		if (zone.color && /^#[0-9a-fA-F]{6}$/.test(zone.color,)) {
+			lines.push(`  style z${zoneIndex} fill:${zone.color}22,stroke:${zone.color}`,);
+		}
 	}
 	for (const edge of map.edges) {
 		const from = idByNode.get(edge.from,);

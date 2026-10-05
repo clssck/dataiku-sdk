@@ -5554,6 +5554,15 @@
 				"optional": [
 					[
 						{
+							"flag": "recreate-on-move"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "dry-run"
 						}
 					]

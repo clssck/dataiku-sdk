@@ -5,6 +5,7 @@ import type {
 	FlowZoneCreateOptions,
 	FlowZoneItem,
 	FlowZoneObjectType,
+	FlowZonePosition,
 	FlowZoneUpdateOptions,
 } from "../schemas.js";
 import { FlowZoneArraySchema, FlowZoneSchema, } from "../schemas.js";
@@ -15,6 +16,18 @@ export type FlowZoneItemInput = {
 	objectId: string;
 	objectType: FlowZoneObjectType;
 	projectKey?: string;
+};
+
+export type FlowZoneRecreateOptions = {
+	position: FlowZonePosition;
+	name?: string;
+	color?: string;
+	projectKey?: string;
+};
+
+export type FlowZoneRecreateResult = {
+	zone: FlowZone;
+	replacedZoneId: string;
 };
 
 function normalizeZoneItem(item: FlowZoneItemInput,): FlowZoneItem {
@@ -46,7 +59,10 @@ export class FlowZonesResource extends BaseResource {
 		return this.client.safeParse(FlowZoneSchema, raw, "flowZones.get",);
 	}
 
-	/** Create a flow zone. */
+	/**
+	 * Create a flow zone. DSS stores `position` only while the project's manual
+	 * zone positioning is off; with it on, DSS auto-places the zone.
+	 */
 	async create(opts: FlowZoneCreateOptions,): Promise<FlowZone> {
 		const raw = await this.client.post<unknown>(
 			`/public/api/projects/${this.enc(opts.projectKey,)}/flow/zones`,
@@ -59,19 +75,77 @@ export class FlowZonesResource extends BaseResource {
 		return this.client.safeParse(FlowZoneSchema, raw, "flowZones.create",);
 	}
 
-	/** Update flow zone settings such as name, color, and manual position. */
+	/**
+	 * Update flow zone name and color. DSS's public API ignores `position` on
+	 * this endpoint; use {@link recreate} to move an existing zone.
+	 */
 	async update(zoneId: string, opts: FlowZoneUpdateOptions,): Promise<FlowZone> {
 		const current = await this.get(zoneId, opts.projectKey,);
 		const merged = deepMerge(current, {
 			...(opts.name !== undefined ? { name: opts.name, } : {}),
 			...(opts.color !== undefined ? { color: opts.color, } : {}),
-			...(opts.position !== undefined ? { position: opts.position, } : {}),
 		},);
 		await this.client.putVoid(
 			`/public/api/projects/${this.enc(opts.projectKey,)}/flow/zones/${encodeURIComponent(zoneId,)}`,
 			merged,
 		);
 		return this.get(zoneId, opts.projectKey,);
+	}
+
+	/**
+	 * Replace a zone with a new one at `position`: DSS honors a zone position
+	 * only on creation, and only while the project's manual zone positioning is
+	 * off (otherwise it auto-places the new zone). The replacement receives the
+	 * old zone's name, color, metadata (tags, custom fields, checklists, ...),
+	 * items, and shared items; the old zone is deleted once it is empty. The zone
+	 * id changes, so anything referencing the old id (for example scenario zone
+	 * builds) must be updated.
+	 */
+	async recreate(zoneId: string, opts: FlowZoneRecreateOptions,): Promise<FlowZoneRecreateResult> {
+		const base = `/public/api/projects/${this.enc(opts.projectKey,)}/flow/zones`;
+		const old = await this.get(zoneId, opts.projectKey,);
+		const created = await this.create({
+			name: opts.name ?? old.name,
+			color: opts.color ?? old.color,
+			position: opts.position,
+			projectKey: opts.projectKey,
+		},);
+		const completed: string[] = ["create",];
+		try {
+			const { id: _id, items, shared, position: _position, ...metadata } = old;
+			await this.client.putVoid(`${base}/${encodeURIComponent(created.id,)}`, {
+				...created,
+				...metadata,
+				id: created.id,
+				name: created.name,
+				color: created.color,
+				position: created.position,
+			},);
+			completed.push("metadata",);
+			if (items && items.length > 0) {
+				await this.moveItems(created.id, items, opts.projectKey,);
+			}
+			completed.push("items",);
+			for (const item of shared ?? []) {
+				await this.client.post<unknown>(
+					`${base}/${encodeURIComponent(created.id,)}/shared`,
+					normalizeZoneItem(item,),
+				);
+			}
+			completed.push("shared",);
+			await this.delete(old.id, opts.projectKey,);
+		} catch (error) {
+			throw new ClientValidationError(
+				`Recreating flow zone ${old.id} at a new position stopped after ${
+					completed.at(-1,)
+				}; both zones may now exist.`,
+				"ambiguous_outcome",
+				"Inspect both zones with dss flow-zone list, then move remaining items and delete the zone you no longer need.",
+				{ replacedZoneId: old.id, zoneId: created.id, completed, },
+				{ cause: error, },
+			);
+		}
+		return { zone: await this.get(created.id, opts.projectKey,), replacedZoneId: old.id, };
 	}
 
 	/** Delete a flow zone. DSS moves its items back to the default zone. */

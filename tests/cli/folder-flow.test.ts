@@ -446,7 +446,6 @@ describe("CLI flow zone commands", () => {
 					{
 						name: "Raw",
 						color: "#64748b",
-						position: { x: 100, y: 200, },
 						datasets: ["raw_orders",],
 						recipes: ["prepare_orders",],
 					},
@@ -476,7 +475,7 @@ describe("CLI flow zone commands", () => {
 			};
 			expect(result.dryRun,).toBe(true,);
 			expect(result.itemCount,).toBe(4,);
-			expect(result.planned[0].update,).toEqual({ color: "#64748b", position: { x: 100, y: 200, }, },);
+			expect(result.planned[0].update,).toEqual({ color: "#64748b", },);
 			expect(result.planned[0].moveItems,).toEqual([
 				{ objectType: "DATASET", objectId: "raw_orders", },
 				{ objectType: "RECIPE", objectId: "prepare_orders", },

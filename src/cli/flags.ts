@@ -85,6 +85,7 @@ export const BOOLEAN_FLAGS = new Set([
 	"allow-same-path",
 	"sync",
 	"validate-objects",
+	"recreate-on-move",
 	"errors-only",
 	"keep",
 	"full-log",

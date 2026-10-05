@@ -567,6 +567,7 @@ function payloadJsonSchema(
 	if (payloadSchema.contentType === "text/plain") {
 		return { type: "string", contentMediaType: "text/plain", };
 	}
+	if (payloadSchema.jsonSchema) return payloadSchema.jsonSchema;
 	return payloadSchema.jsonShape === "array"
 		? { type: "array", items: true, }
 		: { type: "object", additionalProperties: true, };
@@ -1261,6 +1262,8 @@ export function buildRegistryEntry(
 	const payloadSchema = meta.payloadSchema
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.payloadSchema
 		?? inferPayloadSchema(inputContract,);
+	// The precise JSON Schema is published once, as `schemas.input`.
+	const { jsonSchema: _jsonSchema, ...payloadSummary } = payloadSchema ?? {};
 	const examplePayload = meta.examplePayload
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.examplePayload;
 	const inferredCleanupCommand = meta.cleanupCommand
@@ -1332,7 +1335,7 @@ export function buildRegistryEntry(
 		optionalFlags: uniqueOptionalFlags,
 		...(requiredOneOf.length > 0 ? { requiredOneOf, } : {}),
 		...(inputGroups.length > 0 ? { requiredInputGroups: inputGroups, } : {}),
-		...(payloadSchema ? { payloadSchema, } : {}),
+		...(payloadSchema ? { payloadSchema: payloadSummary, } : {}),
 		get schemas() {
 			return schemas ??= buildCommandSchemas(
 				resource,

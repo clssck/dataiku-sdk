@@ -623,11 +623,21 @@ export class ProjectsResource extends BaseResource {
 		return this.client.get<unknown>(`/public/api/projects/${enc}/flow/graph/`,);
 	}
 
+	/**
+	 * Normalized flow topology (nodes and edges, no metadata lookups) plus its
+	 * stable fingerprint, excluding visual metadata.
+	 */
+	async flowTopology(
+		projectKey?: string,
+	): Promise<{ graph: NormalizedFlowMap; topologyFingerprint: string; }> {
+		const pk = this.resolveProjectKey(projectKey,);
+		const graph = normalizeFlowGraph(await this.flow(pk,), pk,);
+		return { graph, topologyFingerprint: flowTopologyFingerprint(graph,), };
+	}
+
 	/** Compute a stable fingerprint of flow nodes and edges, excluding visual metadata. */
 	async topologyFingerprint(projectKey?: string,): Promise<string> {
-		const pk = this.resolveProjectKey(projectKey,);
-		const rawGraph = await this.flow(pk,);
-		return flowTopologyFingerprint(normalizeFlowGraph(rawGraph, pk,),);
+		return (await this.flowTopology(projectKey,)).topologyFingerprint;
 	}
 
 	/**

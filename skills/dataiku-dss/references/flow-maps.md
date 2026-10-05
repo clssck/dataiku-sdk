@@ -7,6 +7,6 @@ dss flow-zone organize --file flow-zones.json --dry-run --project-key MYPROJ
 dss flow-zone organize --file flow-zones.json --project-key MYPROJ
 ```
 
-`project map`: zones, SCC-safe layers, weak components, diagnostics, full-flow fingerprint; rendering in `rendering.content`. DSS exposes zone positions, not node pixels.
+`project map`: zones, SCC-safe layers, weak components, diagnostics, fingerprint; rendering in `rendering.content`.
 
-Feed `flow-zone plan` to `flow-zone organize`; inspect dry-run first. Organize checks topology before/after writes and skips unchanged moves. Audit recipe payloads separately: layout commands neither fetch nor analyze code.
+Feed `flow-zone plan` (`unassigned`: to place) to `flow-zone organize`; dry-run first. Recipe outputs follow their recipe. DSS positions a zone only at creation; `--recreate-on-move` moves it (new id). Layout commands never read recipe code.

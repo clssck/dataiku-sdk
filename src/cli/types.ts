@@ -17,6 +17,8 @@ export interface CommandPayloadSchema {
 	dataFileFlag?: boolean;
 	contentType?: "application/json" | "text/plain";
 	jsonShape?: "object" | "array";
+	/** Precise JSON Schema of the payload, published as the contract's `schemas.input`. */
+	jsonSchema?: Record<string, unknown>;
 }
 
 export interface CommandFlagChoice {
