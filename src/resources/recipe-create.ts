@@ -301,6 +301,20 @@ export function prepareSteps(opts: RecipeCreateOptions,): Record<string, unknown
 }
 
 /**
+ * Recipe types created from `creationSettings.virtualInputs` (dataikuapi's
+ * VirtualInputsSingleOutputRecipeCreator subclasses: join, fuzzyjoin, geojoin,
+ * vstack, generate_features). Live DSS 15: without it these are created with
+ * no inputs (and `generate_features` fails with a NullPointerException).
+ */
+const VIRTUAL_INPUT_RECIPE_TYPES: Record<string, true> = {
+	vstack: true,
+	join: true,
+	fuzzyjoin: true,
+	geojoin: true,
+	generate_features: true,
+};
+
+/**
  * Pure request construction for POST /recipes/ (no DSS calls). Shared with
  * `recipe create --plan` so the plan equals the request the command sends.
  */
@@ -385,6 +399,10 @@ export function buildRecipeCreateRequest(opts: RecipeCreateOptions, pk: string,)
 		throw new ClientValidationError("fuzzyThreshold must be a finite number.", "validation_failed",);
 	}
 
+	// Virtual-input recipes: DSS builds `inputs` from creationSettings.virtualInputs
+	// (dataikuapi VirtualInputsSingleOutputRecipeCreator) and ignores or drops the
+	// prototype's inputs, creating the recipe with `inputs: {}` and an empty payload.
+	const hasVirtualInputs = VIRTUAL_INPUT_RECIPE_TYPES[type] === true;
 	const recipePrototype: Record<string, unknown> = {
 		type,
 		name,
@@ -396,7 +414,7 @@ export function buildRecipeCreateRequest(opts: RecipeCreateOptions, pk: string,)
 	if (payload !== undefined) {
 		creationSettings.script = payload;
 	}
-	if (type === "fuzzyjoin") {
+	if (hasVirtualInputs) {
 		creationSettings.virtualInputs = recipeInputItems({ inputs, },).map((item,) => item.ref);
 	}
 	return {

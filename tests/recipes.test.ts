@@ -2001,4 +2001,23 @@ describe("recipe create payload builders", () => {
 		)
 			.toThrow("--type prepare",);
 	});
+
+	it("creates virtual-input recipes from creationSettings.virtualInputs, as dataikuapi does", () => {
+		for (const type of ["vstack", "join", "fuzzyjoin", "geojoin", "generate_features",]) {
+			const request = buildRecipeCreateRequest({
+				type,
+				inputDatasets: ["samples", "equipment",],
+				outputDataset: "stacked",
+			}, "P",);
+			expect(request.creationSettings.virtualInputs, type,).toEqual(["samples", "equipment",],);
+		}
+		for (const type of ["sync", "grouping", "python", "shaker",]) {
+			const request = buildRecipeCreateRequest({
+				type,
+				inputDatasets: ["samples",],
+				outputDataset: "out",
+			}, "P",);
+			expect(request.creationSettings, type,).not.toHaveProperty("virtualInputs",);
+		}
+	});
 });
