@@ -8,6 +8,7 @@ import {
 	DatasetSummaryArraySchema,
 } from "../schemas.js";
 import { deepMerge, } from "../utils/deep-merge.js";
+import { isRecord, } from "../utils/records.js";
 import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
 import { resolveAdminManagedStorageConnection, } from "./connections.js";
@@ -75,6 +76,16 @@ export interface DatasetManagedCreateResult {
 	datasetName: string;
 	projectKey: string;
 	creationSettings: Record<string, unknown>;
+}
+
+/** Outcome of {@link DatasetsResource.detectSqlSchema}. */
+export interface DatasetSqlSchemaDetection {
+	/** True when DSS suggested a schema and it was stored on the dataset. */
+	detected: boolean;
+	/** Stored columns (empty when detection failed). */
+	columns: Array<{ name: string; type: string; }>;
+	/** Why detection failed. */
+	error?: string;
 }
 
 export interface DatasetCloneOptions {
@@ -711,6 +722,25 @@ function cloneDatasetParams(params: DatasetDetails["params"],): Record<string, u
 	}
 	return cloned;
 }
+
+/** Explain an empty detection result from the first error DSS put in the response body. */
+function describeSqlDetectionFailure(raw: unknown,): string {
+	if (!isRecord(raw,)) return "DSS returned no schema detection result.";
+	for (const [key, value,] of Object.entries(raw,)) {
+		if (!key.endsWith("Error",)) continue;
+		if (typeof value === "string" && value !== "") return value;
+		if (isRecord(value,)) {
+			const message = value["detailedMessage"] ?? value["message"];
+			if (typeof message === "string" && message !== "") return message;
+		}
+	}
+	const failedChecks = Object.entries(raw,)
+		.filter(([key, value,],) => key.endsWith("OK",) && value === false)
+		.map(([key,],) => key);
+	return failedChecks.length > 0
+		? `DSS detected no columns (failed checks: ${failedChecks.join(", ",)}).`
+		: "DSS detected no columns.";
+}
 function parseUploadedFiles(raw: unknown, datasetName: string,): UploadedFileMetadata[] {
 	if (!Array.isArray(raw,)) {
 		throw new ClientValidationError(
@@ -823,6 +853,49 @@ export class DatasetsResource extends BaseResource {
 			`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}/schema`,
 			{ columns, },
 		);
+	}
+
+	/**
+	 * Detect the schema of a SQL dataset (table or query mode) with DSS and
+	 * store it: `POST /actions/testAndDetectSettings/externalSQL` (what
+	 * dataikuapi's `autodetect_settings` calls), then `PUT /schema` with the
+	 * suggested schema. DSS reports connection, table, and query problems in the
+	 * response body (HTTP 200), so a failed detection is returned with
+	 * `detected: false` and the reason instead of thrown.
+	 */
+	async detectSqlSchema(
+		datasetName: string,
+		projectKey?: string,
+	): Promise<DatasetSqlSchemaDetection> {
+		const base = `/public/api/projects/${this.enc(projectKey,)}/datasets/${
+			encodeURIComponent(datasetName,)
+		}`;
+		try {
+			const raw = await this.client.post<unknown>(
+				`${base}/actions/testAndDetectSettings/externalSQL`,
+			);
+			const detection = isRecord(raw,) ? raw["schemaDetection"] : undefined;
+			const newSchema = isRecord(detection,) ? detection["newSchema"] : undefined;
+			const rawColumns = isRecord(newSchema,) && Array.isArray(newSchema["columns"],)
+				? newSchema["columns"]
+				: [];
+			const columns = rawColumns.flatMap((column: unknown,) =>
+				isRecord(column,) && typeof column["name"] === "string"
+					&& typeof column["type"] === "string"
+					? [{ name: column["name"], type: column["type"], },]
+					: []
+			);
+			if (!isRecord(newSchema,) || columns.length === 0) {
+				return { detected: false, columns: [], error: describeSqlDetectionFailure(raw,), };
+			}
+			await this.client.put<unknown>(`${base}/schema`, newSchema,);
+			return { detected: true, columns, };
+		} catch (error) {
+			if (error instanceof DataikuError) {
+				return { detected: false, columns: [], error: error.message.split("\n",)[0] ?? "", };
+			}
+			throw error;
+		}
 	}
 
 	/**
@@ -1208,7 +1281,7 @@ export class DatasetsResource extends BaseResource {
 
 		const explicitType = opts.dsType;
 		let dsType = explicitType
-			?? (opts.table ? DEFAULT_DATABASE_DATASET_TYPE : DEFAULT_FILESYSTEM_DATASET_TYPE);
+			?? (opts.table || opts.query ? DEFAULT_DATABASE_DATASET_TYPE : DEFAULT_FILESYSTEM_DATASET_TYPE);
 
 		let body = buildDatasetCreateBody({
 			projectKey: pk,
@@ -1218,6 +1291,7 @@ export class DatasetsResource extends BaseResource {
 			table: opts.table,
 			dbSchema: opts.dbSchema,
 			catalog: opts.catalog,
+			query: opts.query,
 			formatType: opts.formatType,
 			formatParams: opts.formatParams,
 			managed: opts.managed,
@@ -1262,6 +1336,7 @@ export class DatasetsResource extends BaseResource {
 					table: opts.table,
 					dbSchema: opts.dbSchema,
 					catalog: opts.catalog,
+					query: opts.query,
 					formatType: opts.formatType,
 					formatParams: opts.formatParams,
 					managed: opts.managed,
@@ -1298,6 +1373,7 @@ export class DatasetsResource extends BaseResource {
 				table: opts.table,
 				dbSchema: opts.dbSchema,
 				catalog: opts.catalog,
+				query: opts.query,
 				formatType: opts.formatType,
 				formatParams: opts.formatParams,
 				managed: opts.managed,

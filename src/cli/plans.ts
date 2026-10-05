@@ -53,6 +53,7 @@ import { resolveSqlQueryInvocation, } from "./commands/sql.js";
 import { buildRegistryEntry, type CommandRegistryEntry, splitPackageSpec, } from "./contract.js";
 import { ambientProjectKey, } from "./env.js";
 import { executionMode, } from "./flags.js";
+import { datasetSqlSourceFromFlags, } from "./helpers/dataset.js";
 import { flowZoneColor, flowZoneMoveItems, flowZoneName, } from "./helpers/flow-zone.js";
 import { recipeBackupPath, recipeRunShouldWait, } from "./helpers/recipe.js";
 import { diagnosticsComputationFromFlags, } from "./helpers/trained-model.js";
@@ -951,8 +952,17 @@ export function commandPlanShape(
 			if (!connection && dsType.toLowerCase() !== "uploadedfiles") {
 				throw new UsageError("--connection is required unless --type is UploadedFiles.",);
 			}
+			const sqlSource = datasetSqlSourceFromFlags(flags, dsType,);
+			const hasSqlSource = sqlSource.table !== undefined || sqlSource.query !== undefined;
 			const endpoint = projectEndpoint("/datasets/",); // throws without a project key
 			return {
+				...(hasSqlSource
+					? {
+						exact: false,
+						reason:
+							"The POST is exact; apply then detects the schema (POST /actions/testAndDetectSettings/externalSQL) and stores it (PUT /schema).",
+					}
+					: {}),
 				method: "POST",
 				endpoint,
 				identifiers: { name, },
@@ -961,6 +971,7 @@ export function commandPlanShape(
 					datasetName: name,
 					connection,
 					dsType,
+					...sqlSource,
 				},),
 			};
 		}

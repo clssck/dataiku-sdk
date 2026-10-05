@@ -37,8 +37,9 @@ const TOKEN_BUDGETS = {
 	// Entries no longer repeat global flags or shell copies of examples (was 18_210 / 1_035);
 	// sync-hive-metastore, update-from-hive, and --columns/--partitions added 1.1k back.
 	datasetResource: { baseline: 15_718, maxTokens: 16_600, },
-	datasetCreate: { baseline: 878, maxTokens: 1_000, },
-	datasetCreateUsage: { baseline: 50, maxTokens: 70, },
+	// --table/--schema/--catalog/--query/--query-file (SQL datasets) added ~200 tokens to the entry.
+	datasetCreate: { baseline: 1_077, maxTokens: 1_160, },
+	datasetCreateUsage: { baseline: 77, maxTokens: 90, },
 	datasetCreateDescription: { baseline: 11, maxTokens: 24, },
 	scopedBootstrap: { baseline: 278, maxTokens: 300, },
 	actionSummary: { baseline: 1_805, maxTokens: 1_900, },

@@ -245,7 +245,7 @@ function selectSingleSource(
 	return provided[0];
 }
 
-function readInputText(path: string, flag: string,): string {
+export function readInputText(path: string, flag: string,): string {
 	try {
 		return readFileSync(path, "utf-8",);
 	} catch (error) {

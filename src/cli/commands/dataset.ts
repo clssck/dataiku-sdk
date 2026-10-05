@@ -1,11 +1,14 @@
-import { assertDatasetTypeCreatable, } from "../../resources/dataset-create.js";
+import {
+	assertDatasetTypeCreatable,
+	buildDatasetCreateBody,
+} from "../../resources/dataset-create.js";
 import type { DatasetDataSelection, } from "../../resources/datasets.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { isRecord, } from "../../utils/records.js";
 import { compareStrings, stableHash, } from "../../utils/stable-hash.js";
 import { jsonInput, num, schemaColumnsInput, splitCsvFlag, unknownJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
-import { datasetSourceSummary, } from "../helpers/dataset.js";
+import { datasetSourceSummary, datasetSqlSourceFromFlags, } from "../helpers/dataset.js";
 import { moveCreatedItemsToZone, resolveFlowZoneIdFromFlags, } from "../helpers/flow-zone.js";
 import { enqueueCliWarning, readIfExists, skipResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
@@ -445,11 +448,14 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 			if (!connection && dsType.toLowerCase() !== "uploadedfiles") {
 				throw new UsageError("--connection is required unless --type is UploadedFiles.",);
 			}
+			const sqlSource = datasetSqlSourceFromFlags(f, dsType,);
+			const hasSqlSource = sqlSource.table !== undefined || sqlSource.query !== undefined;
 			const payload = {
 				datasetName: name,
 				connection,
 				dsType,
 				projectKey: pk,
+				...sqlSource,
 			};
 			const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
 			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
@@ -465,26 +471,62 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 						resource: "dataset",
 						name,
 						payload,
+						...(hasSqlSource
+							? {
+								request: {
+									method: "POST",
+									endpoint: `/public/api/projects/${
+										encodeURIComponent(c.resolveProjectKey(pk,),)
+									}/datasets/`,
+									body: buildDatasetCreateBody({
+										...payload,
+										projectKey: c.resolveProjectKey(pk,),
+									},),
+								},
+								schemaDetection:
+									"After the POST, DSS detects the schema (POST /actions/testAndDetectSettings/externalSQL) and it is stored (PUT /schema).",
+							}
+							: {}),
 						...(existing ? { current: existing, } : {}),
 						...(zoneId ? { zoneId, zoneMove: [{ objectId: name, objectType: "DATASET", },], } : {}),
 					};
 				}
 			}
 			await c.datasets.create(payload,);
+			const detection = hasSqlSource ? await c.datasets.detectSqlSchema(name, pk,) : undefined;
+			if (detection && !detection.detected) {
+				enqueueCliWarning({
+					code: "dataset_schema_not_detected",
+					dataset: name,
+					error: detection.error,
+					hint:
+						`The dataset was kept without columns. Fix the connection, table, or query, then set the columns with dss dataset refresh-schema ${name}.`,
+				},);
+			}
 			const moved = await moveCreatedItemsToZone(
 				c,
 				f,
 				[{ objectId: name, objectType: "DATASET", },],
 				pk,
 			);
-			return { created: name, resource: "dataset", ...moved, };
+			return {
+				created: name,
+				resource: "dataset",
+				...(detection
+					? {
+						schemaDetected: detection.detected,
+						columns: detection.columns,
+						...(detection.error !== undefined ? { schemaError: detection.error, } : {}),
+					}
+					: {}),
+				...moved,
+			};
 		},
-		description:
-			"Create a new dataset. UploadedFiles uses the server's default upload connection when omitted.",
+		description: "Create a dataset. SQL types: --table or --query, schema auto-detected.",
 		examples: [
 			"dss dataset create --name uploads --type UploadedFiles",
-			"dss dataset create --name orders --connection filesystem --type Filesystem",
-			"dss dataset create --name orders --connection filesystem --type Filesystem --zone Experiments --dry-run",
+			"dss dataset create --name sales --type Snowflake --connection sf --table SALES --schema PUBLIC",
+			"dss dataset create --name big --type PostgreSQL --connection pg --query-file big.sql --dry-run",
 		],
 	},
 	"create-managed": {

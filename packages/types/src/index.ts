@@ -210,6 +210,7 @@ export const DatasetCreateOptionsSchema = Type.Object({
 	table: Type.Optional(Type.String(),),
 	dbSchema: Type.Optional(Type.String(),),
 	catalog: Type.Optional(Type.String(),),
+	query: Type.Optional(Type.String(),),
 	formatType: Type.Optional(Type.String(),),
 	formatParams: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
 	managed: Type.Optional(Type.Boolean(),),

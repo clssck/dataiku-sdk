@@ -231,6 +231,8 @@ export const VALUE_FLAGS = new Set([
 	"render",
 	"prediction-type",
 	"project-key",
+	"query",
+	"query-file",
 	"recipe",
 	"reference",
 	"repository",

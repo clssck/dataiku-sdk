@@ -4231,6 +4231,48 @@
 				"optional": [
 					[
 						{
+							"flag": "table",
+							"value": "TABLE"
+						},
+						{
+							"optional": [
+								[
+									{
+										"flag": "schema",
+										"value": "SCHEMA"
+									}
+								]
+							]
+						},
+						{
+							"optional": [
+								[
+									{
+										"flag": "catalog",
+										"value": "CATALOG"
+									}
+								]
+							]
+						}
+					],
+					[
+						{
+							"flag": "query",
+							"value": "SQL"
+						}
+					],
+					[
+						{
+							"flag": "query-file",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "zone",
 							"value": "ZONE"
 						}
