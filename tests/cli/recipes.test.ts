@@ -162,6 +162,82 @@ describe("recipe create join flags", () => {
 	});
 });
 
+describe("recipe create prepare flags and naming", () => {
+	const prepareArgs = [
+		"recipe",
+		"create",
+		"--type",
+		"prepare",
+		"--input",
+		"in_ds",
+		"--output",
+		"out_ds",
+		"--name",
+		"add_status",
+	];
+
+	async function planSteps(extra: string[],) {
+		const { stdout, stderr, } = await dss([
+			...prepareArgs,
+			...extra,
+			"--plan",
+			"--project-key",
+			"TEST",
+		], { env: cliEnv("http://127.0.0.1:1",), },);
+		const plan = JSON.parse(stdout,) as {
+			requests: Array<{ payloadEdits?: { steps?: Array<{ type: string; }>; }; }>;
+		};
+		const steps = plan.requests.find((request,) => request.payloadEdits)?.payloadEdits?.steps ?? [];
+		return { steps: steps.map((step,) => step.type), stderr, };
+	}
+
+	it("warns on --plan when a --formula after --rename names the renamed-away column", async () => {
+		const { steps, stderr, } = await planSteps(["--rename", "kind=k2", "--formula", "x=kind + 1",],);
+		expect(steps,).toEqual(["ColumnRenamer", "CreateColumnWithGREL",],);
+		const event = JSON.parse(stderr,) as { type: string; warnings: Array<Record<string, unknown>>; };
+		expect(event.type,).toBe("warning",);
+		expect(event.warnings.length,).toBe(1,);
+		expect(event.warnings[0]!.code,).toBe("recipe_formula_uses_renamed_column",);
+		expect(event.warnings[0]!.flag,).toBe("--formula",);
+		expect(event.warnings[0]!.columns,).toEqual([{ renamed: "kind", to: "k2", },],);
+	});
+
+	it("also warns on --dry-run and on a --filter that runs after --rename", async () => {
+		await withCliServer((_req, res,) => sendJson(res, [],), async (url,) => {
+			const { stderr, } = await dss([
+				...prepareArgs,
+				"--rename",
+				"kind=k2",
+				"--filter",
+				"kind == 'a'",
+				"--dry-run",
+				"--project-key",
+				"TEST",
+			], { env: cliEnv(url,), },);
+			const event = JSON.parse(stderr,) as { warnings: Array<Record<string, unknown>>; };
+			expect(event.warnings.map((warning,) => [warning.code, warning.flag,]),).toEqual([
+				["recipe_formula_uses_renamed_column", "--filter",],
+			],);
+		},);
+	});
+
+	it("runs prepare steps in flag order, so a formula typed before --rename keeps the old name valid", async () => {
+		const { steps, stderr, } = await planSteps(["--formula", "x=kind + 1", "--rename", "kind=k2",],);
+		expect(steps,).toEqual(["CreateColumnWithGREL", "ColumnRenamer",],);
+		expect(stderr,).toBe("",);
+	});
+
+	it("does not warn for new names, string literals, longer identifiers, or method calls", async () => {
+		const { stderr, } = await planSteps([
+			"--rename",
+			"kind=k2",
+			"--formula",
+			'x=k2 + "kind" + kinds + upper(name)',
+		],);
+		expect(stderr,).toBe("",);
+	});
+});
+
 describe("recipe input commands", () => {
 	const baseRecipe = {
 		name: "r1",

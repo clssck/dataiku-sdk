@@ -48,7 +48,7 @@ import {
 	inferenceInfoFromFlags,
 } from "./commands/mlflow.js";
 import { projectLibraryPutPayload, } from "./commands/project-library.js";
-import { recipeCreateOptionsFromFlags, } from "./commands/recipe.js";
+import { enqueueRecipeCreateWarnings, recipeCreateOptionsFromFlags, } from "./commands/recipe.js";
 import { resolveSqlQueryInvocation, } from "./commands/sql.js";
 import { buildRegistryEntry, type CommandRegistryEntry, splitPackageSpec, } from "./contract.js";
 import { ambientProjectKey, } from "./env.js";
@@ -1113,8 +1113,10 @@ export function commandPlanShape(
 			}
 			const endpoint = projectEndpoint("/recipes/",); // throws without a project key
 			// Same flag mapping and body construction as the handler and RecipesResource.create.
+			const createOptions = recipeCreateOptionsFromFlags(flags,);
+			enqueueRecipeCreateWarnings(createOptions,);
 			const { recipePrototype, creationSettings, grouping, prepareSteps, } = buildRecipeCreateRequest(
-				recipeCreateOptionsFromFlags(flags,),
+				createOptions,
 				projectKey!,
 			);
 			const edits = grouping

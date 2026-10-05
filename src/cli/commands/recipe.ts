@@ -4,6 +4,7 @@ import { join, } from "node:path";
 import type { DataikuClient, } from "../../client.js";
 import { ClientValidationError, DataikuError, } from "../../errors.js";
 import {
+	recipeCreateWarnings,
 	recipeOutputSchemaIsComputable,
 	schemaUpdateComputableId,
 	schemaUpdateIsPending,
@@ -168,6 +169,22 @@ function formatLineDiff(
 	return lines.join("\n",);
 }
 
+const PREPARE_STEP_FLAGS: Record<string, string> = {
+	"rename": "rename",
+	"fill-empty": "fillEmpty",
+	"formula": "formula",
+	"filter": "filter",
+	"drop-columns": "dropColumns",
+	"keep-columns": "keepColumns",
+};
+
+/** Queue the stderr warnings for `recipe create` options (also used by `--plan` and `--dry-run`). */
+export function enqueueRecipeCreateWarnings(
+	options: Parameters<typeof recipeCreateWarnings>[0],
+): void {
+	for (const warning of recipeCreateWarnings(options,)) enqueueCliWarning(warning,);
+}
+
 /** Maps `recipe create` flags to SDK options; shared by the handler and `--plan`. */
 export function recipeCreateOptionsFromFlags(f: Record<string, string | boolean>,) {
 	const type = f["type"] as string;
@@ -215,6 +232,11 @@ export function recipeCreateOptionsFromFlags(f: Record<string, string | boolean>
 		fuzzyDistance = normalized;
 	}
 	const fuzzyThreshold = num(f["fuzzy-threshold"], "--fuzzy-threshold",);
+	// Prepare option groups run in the order their flags were typed (object keys keep first-use order).
+	const stepOrder = Object.keys(f,).flatMap((flag,) => {
+		const kind = Object.hasOwn(PREPARE_STEP_FLAGS, flag,) ? PREPARE_STEP_FLAGS[flag] : undefined;
+		return kind ? [kind,] : [];
+	},);
 	const payload = {
 		type,
 		name,
@@ -237,6 +259,7 @@ export function recipeCreateOptionsFromFlags(f: Record<string, string | boolean>
 		...(typeof f["filter"] === "string" ? { filter: f["filter"], } : {}),
 		...csvOption("dropColumns", f["drop-columns"],),
 		...csvOption("keepColumns", f["keep-columns"],),
+		...(stepOrder.length > 0 ? { stepOrder, } : {}),
 		projectKey: pk,
 	};
 	return payload;
@@ -411,6 +434,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 	create: {
 		handler: async (c, _a, f,) => {
 			const payload = recipeCreateOptionsFromFlags(f,);
+			enqueueRecipeCreateWarnings(payload,);
 			const name = payload.name;
 			const pk = payload.projectKey;
 			const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);

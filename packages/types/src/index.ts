@@ -277,6 +277,12 @@ export const RecipeCreateOptionsSchema = Type.Object({
 	dropColumns: Type.Optional(Type.Array(Type.String(),),),
 	/** Prepare: the only columns to keep. */
 	keepColumns: Type.Optional(Type.Array(Type.String(),),),
+	/**
+	 * Prepare: order of the option groups (`rename`, `fillEmpty`, `formula`, `filter`,
+	 * `dropColumns`, `keepColumns`); the CLI passes the order the flags were typed in.
+	 * Groups left out follow in that default order.
+	 */
+	stepOrder: Type.Optional(Type.Array(Type.String(),),),
 },);
 export type RecipeCreateOptions = Static<typeof RecipeCreateOptionsSchema>;
 

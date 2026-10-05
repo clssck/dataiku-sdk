@@ -11,6 +11,7 @@ import {
 	buildRecipeCreateRequest,
 	groupingPayloadConfig,
 	prepareSteps,
+	recipeCreateWarnings,
 } from "../src/resources/recipe-create.js";
 import type { RecipeUpdateSchemaResult, } from "../src/schemas.js";
 
@@ -1935,6 +1936,20 @@ describe("RecipesResource.metadata", () => {
 	});
 });
 
+function stepTypes(stepOrder: string[],): unknown[] {
+	return prepareSteps({
+		type: "shaker",
+		rename: ["a=b",],
+		formula: "c=a + 1",
+		dropColumns: ["d",],
+		stepOrder,
+	},).map((step,) => step.type);
+}
+
+function warnings(opts: Record<string, unknown>,) {
+	return recipeCreateWarnings({ type: "shaker", ...opts, },);
+}
+
 describe("recipe create payload builders", () => {
 	it("sets grouping keys, aggregate flags, and the first/last ordering column on DSS's values", () => {
 		const config = groupingPayloadConfig({
@@ -2000,6 +2015,48 @@ describe("recipe create payload builders", () => {
 			buildRecipeCreateRequest({ type: "grouping", outputDataset: "out", rename: ["a=b",], }, "P",)
 		)
 			.toThrow("--type prepare",);
+	});
+
+	it("orders prepare steps by stepOrder, appending groups it leaves out in the default order", () => {
+		expect(stepTypes(["formula", "rename",],),).toEqual([
+			"CreateColumnWithGREL",
+			"ColumnRenamer",
+			"ColumnsSelector",
+		],);
+		expect(stepTypes(["dropColumns",],),).toEqual([
+			"ColumnsSelector",
+			"ColumnRenamer",
+			"CreateColumnWithGREL",
+		],);
+		expect(() => stepTypes(["bogus",],)).toThrow("stepOrder",);
+	});
+
+	it("warns when a formula or filter running after a rename still names a renamed-away column", () => {
+		expect(warnings({ rename: ["old=new",], formula: "x=old * 2", },),).toMatchObject([
+			{
+				code: "recipe_formula_uses_renamed_column",
+				flag: "--formula",
+				columns: [{ renamed: "old", to: "new", },],
+			},
+		],);
+		expect(warnings({ rename: ["old=new",], formula: "x=val('old') * 2", },).length,).toBe(1,);
+		expect(warnings({ rename: ["old=new",], filter: "old > 1", },),).toMatchObject([
+			{ code: "recipe_formula_uses_renamed_column", flag: "--filter", },
+		],);
+		// Flag order puts the formula first: the old name is still valid.
+		expect(
+			warnings({ rename: ["old=new",], formula: "x=old * 2", stepOrder: ["formula", "rename",], },),
+		)
+			.toEqual([],);
+	});
+
+	it("does not warn for new names, substrings, string literals, method names, or swapped renames", () => {
+		expect(warnings({ rename: ["old=new",], formula: "x=new * 2", },),).toEqual([],);
+		expect(warnings({ rename: ["old=new",], formula: "x=older + gold + old_2", },),).toEqual([],);
+		expect(warnings({ rename: ["old=new",], formula: "x=concat(\"old\", 'old')", },),).toEqual([],);
+		expect(warnings({ rename: ["old=new",], formula: "x=name.old + old(1)", },),).toEqual([],);
+		expect(warnings({ rename: ["a=b", "b=a",], formula: "x=a + b", },),).toEqual([],);
+		expect(warnings({ formula: "x=old", },),).toEqual([],);
 	});
 
 	it("creates virtual-input recipes from creationSettings.virtualInputs, as dataikuapi does", () => {

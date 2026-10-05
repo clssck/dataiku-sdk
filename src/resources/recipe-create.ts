@@ -252,52 +252,162 @@ function processorStep(type: string, params: Record<string, unknown>,): Record<s
 	};
 }
 
+/** Prepare option groups, in the default step order. */
+export const PREPARE_STEP_KINDS = [
+	"rename",
+	"fillEmpty",
+	"formula",
+	"filter",
+	"dropColumns",
+	"keepColumns",
+] as const;
+export type PrepareStepKind = (typeof PREPARE_STEP_KINDS)[number];
+
+function isPrepareStepKind(value: string,): value is PrepareStepKind {
+	return (PREPARE_STEP_KINDS as readonly string[]).includes(value,);
+}
+
 /**
- * Prepare (shaker) steps from create options, in a fixed order: rename,
- * fill empty, formula column, row filter, drop columns, keep columns. Later
- * steps see renamed columns. Empty when no prepare option was given.
+ * Order the prepare option groups run in: `stepOrder` (the CLI passes the order
+ * the flags were typed in) first, then any group it leaves out in the default order.
+ */
+function prepareStepOrder(opts: RecipeCreateOptions,): PrepareStepKind[] {
+	const order: PrepareStepKind[] = [];
+	for (const kind of opts.stepOrder ?? []) {
+		if (!isPrepareStepKind(kind,)) {
+			throw new ClientValidationError(
+				`Unknown stepOrder entry "${kind}"; expected one of ${PREPARE_STEP_KINDS.join(", ",)}.`,
+				"invalid_flag_value",
+			);
+		}
+		if (!order.includes(kind,)) order.push(kind,);
+	}
+	for (const kind of PREPARE_STEP_KINDS) {
+		if (!order.includes(kind,)) order.push(kind,);
+	}
+	return order;
+}
+
+/** Prepare steps for one option group (empty when the option was not given). */
+function prepareStepsFor(
+	kind: PrepareStepKind,
+	opts: RecipeCreateOptions,
+): Record<string, unknown>[] {
+	switch (kind) {
+		case "rename": {
+			const renamings = (opts.rename ?? []).map((raw,) => {
+				const [from, to,] = splitPair(raw, "--rename",);
+				return { from, to, };
+			},);
+			return renamings.length > 0 ? [processorStep("ColumnRenamer", { renamings, },),] : [];
+		}
+		case "fillEmpty":
+			return (opts.fillEmpty ?? []).map((raw,) => {
+				const [column, value,] = splitPair(raw, "--fill-empty",);
+				return processorStep("FillEmptyWithValue", {
+					appliesTo: "SINGLE_COLUMN",
+					columns: [column,],
+					value,
+				},);
+			},);
+		case "formula": {
+			if (!opts.formula) return [];
+			const [column, expression,] = splitPair(opts.formula, "--formula",);
+			return [processorStep("CreateColumnWithGREL", { column, expression, },),];
+		}
+		case "filter":
+			return opts.filter
+				? [processorStep("FilterOnCustomFormula", { expression: opts.filter, action: "KEEP_ROW", },),]
+				: [];
+		case "dropColumns":
+			return opts.dropColumns?.length
+				? [processorStep("ColumnsSelector", {
+					appliesTo: "COLUMNS",
+					columns: opts.dropColumns,
+					keep: false,
+				},),]
+				: [];
+		case "keepColumns":
+			return opts.keepColumns?.length
+				? [processorStep("ColumnsSelector", {
+					appliesTo: "COLUMNS",
+					columns: opts.keepColumns,
+					keep: true,
+				},),]
+				: [];
+	}
+}
+
+/**
+ * Prepare (shaker) steps from create options: rename, fill empty, formula
+ * column, row filter, drop columns, keep columns. They run in `stepOrder`
+ * (flag order on the CLI), defaulting to that sequence, so a step sees the
+ * columns the steps before it produced. Empty when no prepare option was given.
  */
 export function prepareSteps(opts: RecipeCreateOptions,): Record<string, unknown>[] {
-	const steps: Record<string, unknown>[] = [];
-	const renamings = (opts.rename ?? []).map((raw,) => {
-		const [from, to,] = splitPair(raw, "--rename",);
-		return { from, to, };
-	},);
-	if (renamings.length > 0) steps.push(processorStep("ColumnRenamer", { renamings, },),);
-	for (const raw of opts.fillEmpty ?? []) {
-		const [column, value,] = splitPair(raw, "--fill-empty",);
-		steps.push(
-			processorStep("FillEmptyWithValue", { appliesTo: "SINGLE_COLUMN", columns: [column,], value, },),
-		);
+	return prepareStepOrder(opts,).flatMap((kind,) => prepareStepsFor(kind, opts,));
+}
+
+/**
+ * Columns an expression refers to, conservatively: `val('name')` arguments
+ * plus bare identifiers outside string literals (not method names, calls, or
+ * members of another object).
+ */
+function expressionColumnReferences(expression: string,): Set<string> {
+	const references = new Set<string>();
+	for (const match of expression.matchAll(/\bval\(\s*(['"])((?:\\.|(?!\1).)*)\1\s*\)/g,)) {
+		references.add(match[2]!,);
 	}
-	if (opts.formula) {
-		const [column, expression,] = splitPair(opts.formula, "--formula",);
-		steps.push(processorStep("CreateColumnWithGREL", { column, expression, },),);
+	const withoutStrings = expression.replace(/(['"])(?:\\.|(?!\1).)*\1/g, " ",);
+	for (const match of withoutStrings.matchAll(/(?<![\w.$])([A-Za-z_]\w*)(?!\w)(?!\s*\()/g,)) {
+		references.add(match[1]!,);
 	}
-	if (opts.filter) {
-		steps.push(
-			processorStep("FilterOnCustomFormula", { expression: opts.filter, action: "KEEP_ROW", },),
-		);
+	return references;
+}
+
+export interface RecipeCreateWarning {
+	code: string;
+	[key: string]: unknown;
+}
+
+/**
+ * Warnings about the prepare options that DSS cannot report itself: a
+ * `--formula`/`--filter` that runs after a `--rename` but still names a
+ * column that rename removed (it would fail or read an empty column).
+ */
+export function recipeCreateWarnings(opts: RecipeCreateOptions,): RecipeCreateWarning[] {
+	const warnings: RecipeCreateWarning[] = [];
+	const removed = new Map<string, string>();
+	for (const kind of prepareStepOrder(opts,)) {
+		if (kind === "rename") {
+			const renamings = (opts.rename ?? []).map((raw,) => splitPair(raw, "--rename",));
+			const targets = new Set(renamings.map(([, to,],) => to),);
+			for (const [from, to,] of renamings) {
+				if (!targets.has(from,)) removed.set(from, to,);
+			}
+		} else if ((kind === "formula" && opts.formula) || (kind === "filter" && opts.filter)) {
+			const expression = kind === "formula"
+				? splitPair(opts.formula!, "--formula",)[1]
+				: opts.filter!;
+			const stale = [...expressionColumnReferences(expression,),].filter((name,) =>
+				removed.has(name,)
+			);
+			if (stale.length === 0) continue;
+			const flag = kind === "formula" ? "--formula" : "--filter";
+			warnings.push({
+				code: "recipe_formula_uses_renamed_column",
+				flag,
+				columns: stale.map((name,) => ({ renamed: name, to: removed.get(name,), })),
+				message: `${flag} runs after --rename and refers to ${
+					stale.map((name,) => `"${name}"`).join(", ",)
+				}, which the rename removed.`,
+				hint: `Use the new name (${
+					stale.map((name,) => removed.get(name,)).join(", ",)
+				}), or put ${flag} before --rename on the command line: steps run in flag order.`,
+			},);
+		}
 	}
-	if (opts.dropColumns?.length) {
-		steps.push(
-			processorStep("ColumnsSelector", {
-				appliesTo: "COLUMNS",
-				columns: opts.dropColumns,
-				keep: false,
-			},),
-		);
-	}
-	if (opts.keepColumns?.length) {
-		steps.push(
-			processorStep("ColumnsSelector", {
-				appliesTo: "COLUMNS",
-				columns: opts.keepColumns,
-				keep: true,
-			},),
-		);
-	}
-	return steps;
+	return warnings;
 }
 
 /**
