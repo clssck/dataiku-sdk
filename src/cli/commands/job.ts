@@ -1,7 +1,8 @@
 import { mkdir, writeFile, } from "node:fs/promises";
 import { dirname, resolve, } from "node:path";
 import type { DataikuClient, } from "../../client.js";
-import type { BuildMode, JobSummary, } from "../../schemas.js";
+import { ClientValidationError, DataikuError, } from "../../errors.js";
+import type { BuildMode, DatasetSchema, JobSummary, } from "../../schemas.js";
 import { asRecord, } from "../../utils/records.js";
 import {
 	jobBuildTargetTypeFromFlags,
@@ -28,8 +29,20 @@ async function warnIfBuiltDatasetHasNoColumns(
 	projectKey: string | undefined,
 ): Promise<void> {
 	if (!success || targetType !== "DATASET") return;
-	const schema = await c.datasets.schema(target, projectKey,).catch((): undefined => undefined);
-	if (!schema || schema.columns.length > 0) return;
+	let schema: DatasetSchema;
+	try {
+		schema = await c.datasets.schema(target, projectKey,);
+	} catch (error) {
+		if (!(error instanceof DataikuError || error instanceof ClientValidationError)) throw error;
+		enqueueCliWarning({
+			code: "built_dataset_schema_unchecked",
+			dataset: target,
+			error: error.message.split("\n",)[0],
+			hint: "The build succeeded but the dataset schema could not be read to check it is not empty.",
+		},);
+		return;
+	}
+	if (schema.columns.length > 0) return;
 	enqueueCliWarning({
 		code: "built_dataset_has_no_columns",
 		dataset: target,
@@ -396,7 +409,7 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			return result;
 		},
 		description:
-			"Build a dataset or managed folder and wait for completion. --auto-update-schema lets DSS update each recipe's output schema before it runs; a successful dataset build that leaves an empty schema emits a built_dataset_has_no_columns warning.",
+			"Build a dataset or managed folder and wait for completion. --auto-update-schema lets DSS update each recipe's output schema before it runs; a successful dataset build that leaves an empty schema emits a built_dataset_has_no_columns warning. A managed dataset no recipe produces fails (exit 4).",
 		examples: [
 			"dss job build-and-wait orders",
 			"dss job build-and-wait orders --include-logs --log-filter stdout --summary",

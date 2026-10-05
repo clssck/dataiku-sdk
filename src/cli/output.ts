@@ -224,6 +224,11 @@ export class CommandResultFailure extends Error {
 export function commandFailureMessage(result: unknown,): string {
 	if (isFailedWaitResult(result,)) {
 		const record = result as Record<string, unknown>;
+		const failure = record.failure;
+		if (failure !== null && typeof failure === "object" && !Array.isArray(failure,)) {
+			const message = (failure as Record<string, unknown>).message;
+			if (typeof message === "string" && message.length > 0) return message;
+		}
 		const state = typeof record.state === "string"
 			? record.state
 			: typeof record.outcome === "string"

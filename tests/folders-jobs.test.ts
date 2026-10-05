@@ -1005,3 +1005,138 @@ describe("JobsResource.build", () => {
 		],);
 	});
 });
+
+describe("JobsResource.wait zero-activity builds", () => {
+	const FLOW_GRAPH = {
+		nodes: {
+			sync_out: {
+				type: "RUNNABLE_RECIPE",
+				ref: "sync_out",
+				predecessors: ["src",],
+				successors: ["built",],
+			},
+			src: { type: "COMPUTABLE_DATASET", ref: "src", predecessors: [], successors: ["sync_out",], },
+			built: {
+				type: "COMPUTABLE_DATASET",
+				ref: "built",
+				predecessors: ["sync_out",],
+				successors: [],
+			},
+			orphan: { type: "COMPUTABLE_DATASET", ref: "orphan", predecessors: [], successors: [], },
+		},
+	};
+
+	/**
+	 * DSS reports a DONE job that ran nothing identically (zero activities) for
+	 * an up-to-date build and for a target nothing can produce; only the flow
+	 * graph tells them apart.
+	 */
+	async function runZeroActivityBuild(
+		target: string,
+		opts: { managed: boolean | undefined; total?: number; datasetStatus?: number; },
+		check: (result: Record<string, unknown>, requests: string[],) => void,
+	): Promise<void> {
+		const requests: string[] = [];
+		await withDataikuServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/jobs/") {
+				sendJson(res, { id: "job-zero", }, 200,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/jobs/job-zero/") {
+				const total = opts.total ?? 0;
+				sendJson(res, {
+					baseStatus: {
+						def: {
+							id: "job-zero",
+							type: "RECURSIVE_FORCED_BUILD",
+							projectKey: "TEST",
+							outputs: [{
+								type: "DATASET",
+								targetDatasetProjectKey: "TEST",
+								targetDataset: target,
+								targetPartition: "NP",
+							},],
+						},
+						state: "DONE",
+					},
+					globalState: { done: total, failed: 0, running: 0, total, },
+				}, 200,);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === `/public/api/projects/TEST/datasets/${target}`) {
+				if (opts.datasetStatus !== undefined) {
+					sendJson(res, { message: "denied", }, opts.datasetStatus,);
+					return;
+				}
+				sendJson(
+					res,
+					{ name: target, ...(opts.managed === undefined ? {} : { managed: opts.managed, }), },
+					200,
+				);
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/flow/graph/") {
+				sendJson(res, FLOW_GRAPH, 200,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (client,) => {
+			const result = await client.jobs.buildAndWait(target, {
+				buildMode: "RECURSIVE_FORCED_BUILD",
+				pollIntervalMs: 1,
+				timeoutMs: 5_000,
+			},);
+			check(result as unknown as Record<string, unknown>, requests,);
+		},);
+	}
+
+	it("fails a DONE job that ran no activity for a managed dataset nothing produces", async () => {
+		await runZeroActivityBuild("orphan", { managed: true, }, (result, requests,) => {
+			expect(result["success"],).toBe(false,);
+			expect(result["state"],).toBe("DONE",);
+			expect(result["jobId"],).toBe("job-zero",);
+			const failure = result["failure"] as Record<string, unknown>;
+			expect(failure["code"],).toBe("nothing_to_build",);
+			expect(failure["message"],).toContain("TEST.orphan",);
+			expect(failure["targets"],).toEqual([
+				{ type: "DATASET", id: "orphan", projectKey: "TEST", reason: "no_producing_recipe", },
+			],);
+			expect(requests.includes("GET /public/api/projects/TEST/flow/graph/",),).toBe(true,);
+		},);
+	});
+
+	it("keeps an already-up-to-date build of a produced dataset successful", async () => {
+		await runZeroActivityBuild("built", { managed: true, }, (result,) => {
+			expect(result["success"],).toBe(true,);
+			expect(result["state"],).toBe("DONE",);
+			expect(result["failure"],).toBeUndefined();
+		},);
+	});
+
+	it("keeps a zero-activity build of an unmanaged source dataset successful", async () => {
+		await runZeroActivityBuild("src", { managed: false, }, (result, requests,) => {
+			expect(result["success"],).toBe(true,);
+			expect(result["failure"],).toBeUndefined();
+			expect(requests.includes("GET /public/api/projects/TEST/flow/graph/",),).toBe(false,);
+		},);
+	});
+
+	it("keeps the DONE outcome when the dataset cannot be inspected", async () => {
+		await runZeroActivityBuild("orphan", { managed: true, datasetStatus: 403, }, (result,) => {
+			expect(result["success"],).toBe(true,);
+			expect(result["failure"],).toBeUndefined();
+		},);
+	});
+
+	it("does not look up the flow when activities ran", async () => {
+		await runZeroActivityBuild("orphan", { managed: true, total: 1, }, (result, requests,) => {
+			expect(result["success"],).toBe(true,);
+			expect(result["failure"],).toBeUndefined();
+			expect(requests.some((request,) => request.includes("/datasets/",)),).toBe(false,);
+		},);
+	});
+});

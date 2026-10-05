@@ -7,6 +7,7 @@ import {
 	DEFAULT_TIMEOUT_MS,
 	isRequestDeadlineError,
 } from "../utils/polling.js";
+import { asRecord, } from "../utils/records.js";
 import { BaseResource, } from "./base.js";
 
 const DEFAULT_MAX_LOG_LINES = 500;
@@ -54,12 +55,32 @@ export interface JobLogSummary {
 /** Why a requested job log could not be retrieved. */
 export type JobLogUnavailableReason = "not_found" | "error";
 
+/**
+ * A requested build target that no flow object can ever produce: a managed
+ * dataset with no recipe writing it.
+ */
+export interface JobUnbuildableTarget {
+	type: "DATASET";
+	id: string;
+	projectKey: string;
+	reason: "no_producing_recipe";
+}
+
+/** Why a job that ended DONE is reported as failed because it built nothing. */
+export interface JobNothingToBuildFailure {
+	code: "nothing_to_build";
+	message: string;
+	targets: JobUnbuildableTarget[];
+}
+
 /** Result of a completed job wait, including log-unavailable metadata. */
 export type JobWaitOutcome = JobWaitResult & {
 	logSummary?: JobLogSummary;
 	logUnavailable?: JobLogUnavailableReason;
 	/** True when the job itself no longer exists on the server. */
 	removed?: boolean;
+	/** Set (with `success: false`) when a DONE job ran no activity and a target has no producer. */
+	failure?: JobNothingToBuildFailure;
 };
 
 export interface JobBuildTarget {
@@ -364,7 +385,7 @@ function summarizeJobLog(
 /** Shape of the job status payload returned by the jobs status endpoint. */
 interface JobStatusPayload {
 	baseStatus?: {
-		def?: { id?: string; type?: string; };
+		def?: { id?: string; type?: string; projectKey?: string; outputs?: unknown; };
 		state?: string;
 	};
 	globalState?: {
@@ -373,6 +394,15 @@ interface JobStatusPayload {
 		running?: number;
 		total?: number;
 	};
+}
+
+function nothingToBuildMessage(targets: JobUnbuildableTarget[],): string {
+	const names = targets.map((target,) => `${target.projectKey}.${target.id}`).join(", ",);
+	return `The job ran no activity: ${names} ${
+		targets.length === 1 ? "is a managed dataset" : "are managed datasets"
+	} that no recipe produces, so nothing was built. Create a recipe that writes ${
+		targets.length === 1 ? "it" : "them"
+	} or build the recipe's output instead.`;
 }
 
 export class JobsResource extends BaseResource {
@@ -527,6 +557,12 @@ export class JobsResource extends BaseResource {
 	 * confirmed gone. Explicit `includeLogs`/`summary` requests stay honest:
 	 * `log`/`logSummary` are only present when logs were actually retrieved.
 	 *
+	 * A DONE job that ran no activity (`progress.total === 0`) is also what DSS
+	 * reports for an already-up-to-date build, so it stays successful unless an
+	 * output is a managed dataset that no recipe writes: then nothing can ever
+	 * build it, and the outcome is `success: false` with
+	 * `failure.code === "nothing_to_build"`.
+	 *
 	 * On timeout, returns `{ success: false, ... }` rather than throwing.
 	 */
 	async wait(
@@ -667,8 +703,19 @@ export class JobsResource extends BaseResource {
 					}
 				}
 
+				const unbuildable = success && gs.total === 0
+					? await this.unbuildableTargets(def.outputs, def.projectKey ?? opts?.projectKey,)
+					: [];
+				const failure: JobNothingToBuildFailure | undefined = unbuildable.length > 0
+					? {
+						code: "nothing_to_build",
+						message: nothingToBuildMessage(unbuildable,),
+						targets: unbuildable,
+					}
+					: undefined;
+
 				return {
-					success,
+					success: success && failure === undefined,
 					jobId: def.id ?? jobId,
 					state,
 					type: def.type ?? "unknown",
@@ -680,6 +727,7 @@ export class JobsResource extends BaseResource {
 						running: gs.running ?? 0,
 						total: gs.total ?? null,
 					},
+					...(failure !== undefined ? { failure, } : {}),
 					...(log !== undefined ? { log, } : {}),
 					...(logSummary !== undefined ? { logSummary, } : {}),
 					...(logUnavailable !== undefined ? { logUnavailable, } : {}),
@@ -698,6 +746,51 @@ export class JobsResource extends BaseResource {
 			},);
 			await sleep(Math.min(nextDelayMs, timeout - elapsedMs,),);
 		}
+	}
+
+	/**
+	 * Dataset outputs of a job that ran no activity which nothing can produce.
+	 * DSS ends such a job DONE exactly like an already-up-to-date build, so the
+	 * job status cannot tell them apart; the flow graph can: a target is
+	 * unbuildable when it is a managed dataset (DSS owns its storage, so a
+	 * recipe is the only way to fill it) that no recipe writes. Unmanaged
+	 * datasets (uploads, external tables) are sources and legitimately build
+	 * nothing. Lookups that fail leave the DONE outcome untouched.
+	 */
+	private async unbuildableTargets(
+		outputs: unknown,
+		fallbackProjectKey: string | undefined,
+	): Promise<JobUnbuildableTarget[]> {
+		if (!Array.isArray(outputs,)) return [];
+		const writtenByProject = new Map<string, Set<string>>();
+		const unbuildable: JobUnbuildableTarget[] = [];
+		for (const output of outputs) {
+			const record = asRecord(output,);
+			if (record?.type !== "DATASET" || typeof record.targetDataset !== "string") continue;
+			const id = record.targetDataset;
+			const projectKey = typeof record.targetDatasetProjectKey === "string"
+				? record.targetDatasetProjectKey
+				: fallbackProjectKey;
+			if (projectKey === undefined) continue;
+			try {
+				const details = await this.client.datasets.get(id, projectKey,);
+				if (details.managed !== true) continue;
+				let written = writtenByProject.get(projectKey,);
+				if (written === undefined) {
+					const { graph, } = await this.client.projects.flowTopology(projectKey,);
+					written = new Set(
+						graph.edges.filter((edge,) => edge.relation === "writes").map((edge,) => edge.to),
+					);
+					writtenByProject.set(projectKey, written,);
+				}
+				if (!written.has(id,)) {
+					unbuildable.push({ type: "DATASET", id, projectKey, reason: "no_producing_recipe", },);
+				}
+			} catch (error) {
+				if (!(error instanceof DataikuError || error instanceof ClientValidationError)) throw error;
+			}
+		}
+		return unbuildable;
 	}
 
 	/**
