@@ -557,6 +557,50 @@ export function commandPlanShape(
 				endpoint: projectEndpoint(`/wiki/${encodeURIComponent(id,)}`,),
 				identifiers: { article: id, },
 			};
+		case "wiki.attach": {
+			const articleEndpoint = projectEndpoint(`/wiki/${encodeURIComponent(id,)}`,);
+			const upload = {
+				method: "POST",
+				endpoint: `${articleEndpoint}/upload`,
+				payload: uploadPayload(args[1],),
+			};
+			return {
+				...upload,
+				identifiers: { article: id, localPath: args[1], },
+				requests: [
+					{
+						sequence: 1,
+						method: "GET",
+						endpoint: articleEndpoint,
+						purpose: "read current attachments",
+					},
+					{ sequence: 2, ...upload, },
+					{
+						sequence: 3,
+						method: "GET",
+						endpoint: articleEndpoint,
+						assert: { newAttachments: 1, },
+					},
+				],
+			};
+		}
+		case "wiki.detach": {
+			const articleEndpoint = projectEndpoint(`/wiki/${encodeURIComponent(id,)}`,);
+			return {
+				method: "PUT",
+				endpoint: articleEndpoint,
+				identifiers: { article: id, smartId: args[1], },
+				requests: [
+					{ sequence: 1, method: "GET", endpoint: articleEndpoint, },
+					{
+						sequence: 2,
+						method: "PUT",
+						endpoint: articleEndpoint,
+						payload: "<article data without the attachment with the given smartId>",
+					},
+				],
+			};
+		}
 		case "dashboard.create": {
 			const data = jsonInput(flags,);
 			const flagName = flags["name"] as string | undefined;

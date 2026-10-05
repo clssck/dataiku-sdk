@@ -441,8 +441,10 @@ export const LIVE_COVERAGE_CATALOGUE: Record<
 		"reason":
 			"Project-scoped behavioral coverage requires a passing scenario; discovery and plans alone do not qualify.",
 		"actions": [
+			"attach",
 			"create",
 			"delete",
+			"detach",
 			"get",
 			"list",
 			"settings",

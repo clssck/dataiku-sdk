@@ -1,3 +1,9 @@
+import {
+	findWikiAttachment,
+	statWikiAttachmentFile,
+	wikiAttachmentNotFound,
+	wikiAttachments,
+} from "../../resources/wiki.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { jsonInput, textInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
@@ -122,6 +128,60 @@ export const wikiCommands: Record<string, CommandMeta> = withUsage("wiki", {
 		},
 		description: "Delete a wiki article.",
 		examples: ["dss wiki delete ARTICLE_ID --dry-run",],
+	},
+	attach: {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 2, commandUsage("wiki", "attach",),);
+			const pk = f["project-key"] as string | undefined;
+			const file = await statWikiAttachmentFile(a[1],);
+			if (executionMode(f,).dryRun) {
+				const current = await c.wiki.get(a[0], pk,);
+				return {
+					dryRun: true,
+					action: "attach",
+					resource: "wiki",
+					article: a[0],
+					file,
+					current: wikiAttachments(current,),
+				};
+			}
+			const result = await c.wiki.attach(a[0], a[1], pk,);
+			return { attached: result.attachment.smartId, resource: "wiki", ...result, };
+		},
+		description: "Upload a local file and attach it to a wiki article; returns its smartId.",
+		examples: ["dss wiki attach ARTICLE_ID ./diagram.png --dry-run",],
+	},
+	detach: {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 2, commandUsage("wiki", "detach",),);
+			const pk = f["project-key"] as string | undefined;
+			const ifExists = f["if-exists"] === true;
+			const dryRun = executionMode(f,).dryRun;
+			if (dryRun || ifExists) {
+				const current = ifExists
+					? await readIfExists(() => c.wiki.get(a[0], pk,))
+					: await c.wiki.get(a[0], pk,);
+				const attachment = current && findWikiAttachment(current, a[1],);
+				if (!current || !attachment) {
+					if (!ifExists && current) throw wikiAttachmentNotFound(current, a[1],);
+					return skipResult("wiki", a[1], "missing", { article: a[0], },);
+				}
+				if (dryRun) {
+					return {
+						dryRun: true,
+						action: "detach",
+						resource: "wiki",
+						article: a[0],
+						smartId: a[1],
+						current: attachment,
+					};
+				}
+			}
+			const result = await c.wiki.detach(a[0], a[1], pk,);
+			return { resource: "wiki", ...result, };
+		},
+		description: "Remove one attachment from a wiki article by smartId.",
+		examples: ["dss wiki detach ARTICLE_ID SMART_ID --if-exists",],
 	},
 	"update-settings": {
 		handler: async (c, _a, f,) => {

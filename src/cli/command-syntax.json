@@ -17193,6 +17193,36 @@
 				]
 			}
 		],
+		"wiki.attach": [
+			"dss",
+			"wiki",
+			"attach",
+			{
+				"arg": "id-or-name"
+			},
+			{
+				"arg": "localPath"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"wiki.create": [
 			"dss",
 			"wiki",
@@ -17262,6 +17292,45 @@
 			"delete",
 			{
 				"arg": "id-or-name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"wiki.detach": [
+			"dss",
+			"wiki",
+			"detach",
+			{
+				"arg": "id-or-name"
+			},
+			{
+				"arg": "smartId"
 			},
 			{
 				"optional": [

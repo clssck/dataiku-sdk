@@ -257,7 +257,7 @@ const SDK_SURFACE: Array<
 	{
 		key: "wiki",
 		ctor: WikiResource,
-		methods: ["settings", "list", "get", "create", "update", "delete",],
+		methods: ["settings", "list", "get", "create", "update", "delete", "attach", "detach",],
 	},
 	{
 		key: "analyses",

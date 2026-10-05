@@ -1,4 +1,7 @@
-import type { WikiArticleData, WikiSettings, } from "../schemas.js";
+import fs from "node:fs";
+import path from "node:path";
+import { ClientValidationError, } from "../errors.js";
+import type { WikiArticleAttachment, WikiArticleData, WikiSettings, } from "../schemas.js";
 import {
 	WikiArticleDataArraySchema,
 	WikiArticleDataSchema,
@@ -19,6 +22,81 @@ export interface WikiArticleUpdateOptions {
 	content?: string;
 	data?: Record<string, unknown>;
 	projectKey?: string;
+}
+
+export interface WikiAttachResult {
+	articleId: string;
+	projectKey: string;
+	fileName: string;
+	bytes: number;
+	/** The attachment DSS created, as re-read from the article. */
+	attachment: WikiArticleAttachment;
+	/** All attachments of the article after the upload. */
+	attachments: WikiArticleAttachment[];
+}
+
+export interface WikiDetachResult {
+	articleId: string;
+	projectKey: string;
+	/** The attachment that was removed. */
+	detached: WikiArticleAttachment;
+	/** Attachments left on the article. */
+	attachments: WikiArticleAttachment[];
+}
+
+export interface LocalWikiAttachmentFile {
+	path: string;
+	fileName: string;
+	bytes: number;
+}
+
+/** Attachments of an article; DSS omits the field when there are none. */
+export function wikiAttachments(data: WikiArticleData,): WikiArticleAttachment[] {
+	return data.article.attachments ?? [];
+}
+
+/** The attachment with exactly this smart id, or undefined. */
+export function findWikiAttachment(
+	data: WikiArticleData,
+	smartId: string,
+): WikiArticleAttachment | undefined {
+	return wikiAttachments(data,).find((attachment,) => attachment.smartId === smartId);
+}
+
+/** Coded not_found error for a smart id that is not attached to the article. */
+export function wikiAttachmentNotFound(
+	data: WikiArticleData,
+	smartId: string,
+): ClientValidationError {
+	const available = wikiAttachments(data,).flatMap((attachment,) =>
+		attachment.smartId === undefined ? [] : [attachment.smartId,]
+	);
+	return new ClientValidationError(
+		`Attachment ${smartId} not found on wiki article ${data.article.id}.`,
+		"not_found",
+		"List attachments with `dss wiki get ARTICLE_ID` (article.attachments[].smartId), or pass --if-exists to treat absence as success.",
+		{ articleId: data.article.id, smartId, availableSmartIds: available, },
+	);
+}
+
+/** Check that a local path is a readable regular file before any DSS call. */
+export async function statWikiAttachmentFile(localPath: string,): Promise<LocalWikiAttachmentFile> {
+	let stat: fs.Stats;
+	try {
+		stat = await fs.promises.stat(localPath,);
+	} catch (error) {
+		throw new ClientValidationError(
+			`Could not read attachment file ${localPath}: ${
+				error instanceof Error ? error.message : String(error,)
+			}.`,
+			"not_found",
+			"Verify the file path and that it is readable.",
+		);
+	}
+	if (!stat.isFile()) {
+		throw new ClientValidationError(`${localPath} is not a regular file.`,);
+	}
+	return { path: localPath, fileName: path.basename(localPath,), bytes: stat.size, };
 }
 
 const WIKI_LIST_CONCURRENCY = 4;
@@ -123,5 +201,98 @@ export class WikiResource extends BaseResource {
 		await this.client.del(
 			`/public/api/projects/${this.enc(projectKey,)}/wiki/${encodeURIComponent(current.article.id,)}`,
 		);
+	}
+
+	/**
+	 * Upload a local file and attach it to an article (multipart POST to
+	 * /wiki/{id}/upload). DSS names the attachment after the file's basename and
+	 * types it from the extension. The article is re-read to identify the new
+	 * attachment.
+	 */
+	async attach(
+		articleIdOrName: string,
+		localPath: string,
+		projectKey?: string,
+	): Promise<WikiAttachResult> {
+		const file = await statWikiAttachmentFile(localPath,);
+		const pk = this.resolveProjectKey(projectKey,);
+		const before = await this.get(articleIdOrName, pk,);
+		const articleId = before.article.id;
+		await this.client.uploadJson<unknown>(
+			`/public/api/projects/${encodeURIComponent(pk,)}/wiki/${encodeURIComponent(articleId,)}/upload`,
+			localPath,
+			file.fileName,
+		);
+		const after = await this.get(articleId, pk,);
+		const knownIds = new Set(wikiAttachments(before,).map((attachment,) => attachment.smartId),);
+		let created = wikiAttachments(after,).filter((attachment,) => !knownIds.has(attachment.smartId,));
+		if (created.length > 1) {
+			created = created.filter((attachment,) =>
+				attachment.details?.["objectDisplayName"] === file.fileName
+				&& attachment.details?.["size"] === file.bytes
+			);
+		}
+		const attachment = created[0];
+		if (created.length !== 1 || attachment === undefined || attachment.smartId === undefined) {
+			throw new ClientValidationError(
+				`DSS did not verify upload of ${file.fileName} to wiki article ${articleId}.`,
+				"ambiguous_outcome",
+				"The upload returned successfully, but the article did not show exactly one new attachment. Inspect the article (dss wiki get) before retrying.",
+				{ articleId, expectedBytes: file.bytes, newAttachments: created, },
+			);
+		}
+		return {
+			articleId,
+			projectKey: pk,
+			fileName: file.fileName,
+			bytes: file.bytes,
+			attachment,
+			attachments: wikiAttachments(after,),
+		};
+	}
+
+	/**
+	 * Remove exactly one attachment (by smart id) from an article: the article is
+	 * read, the entry filtered out of `article.attachments`, and the whole
+	 * article PUT back. Throws a coded `not_found` error when the smart id is not
+	 * attached.
+	 */
+	async detach(
+		articleIdOrName: string,
+		smartId: string,
+		projectKey?: string,
+	): Promise<WikiDetachResult> {
+		const pk = this.resolveProjectKey(projectKey,);
+		const current = await this.get(articleIdOrName, pk,);
+		const detached = findWikiAttachment(current, smartId,);
+		if (detached === undefined) throw wikiAttachmentNotFound(current, smartId,);
+		const remaining = wikiAttachments(current,).filter((attachment,) =>
+			attachment.smartId !== smartId
+		);
+		const raw = await this.client.put<unknown>(
+			`/public/api/projects/${encodeURIComponent(pk,)}/wiki/${
+				encodeURIComponent(current.article.id,)
+			}`,
+			{ ...current, article: { ...current.article, attachments: remaining, }, },
+		);
+		const saved = this.client.safeParse(WikiArticleDataSchema, raw, "wiki.detach",);
+		const after = wikiAttachments(saved,);
+		if (
+			findWikiAttachment(saved, smartId,) !== undefined
+			|| after.length !== remaining.length
+		) {
+			throw new ClientValidationError(
+				`DSS did not verify removal of attachment ${smartId} from wiki article ${current.article.id}.`,
+				"ambiguous_outcome",
+				"The save returned successfully, but the article's attachments are not the expected remainder. Inspect the article (dss wiki get) before retrying.",
+				{
+					articleId: current.article.id,
+					smartId,
+					expectedRemaining: remaining.length,
+					actualRemaining: after.length,
+				},
+			);
+		}
+		return { articleId: current.article.id, projectKey: pk, detached, attachments: after, };
 	}
 }

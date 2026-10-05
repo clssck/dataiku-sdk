@@ -905,7 +905,7 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	}
 	if (READ_ACTIONS.has(action,)) return "read";
 	if (
-		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove|publish|activate|deploy|import|export|preload|upgrade|start|stop|restart|duplicate|put|rename|reply|compute|organize)/
+		/^(create|clone|restore|update|delete|set|save|upload|run|build|abort|move|refresh|clear|unload|install|login|logout|add|remove|publish|activate|deploy|import|export|preload|upgrade|start|stop|restart|duplicate|put|rename|reply|compute|organize|attach|detach)/
 			.test(action,)
 		// Compound actions whose mutating verb is a suffix (e.g. permissions-set,
 		// dataset-compute, saved-model external-metadata-put).
@@ -1069,6 +1069,8 @@ export function supportsCleanupLedger(resource: string, action: string,): boolea
 const EXPLICIT_DESTRUCTIVE_KEYS: Record<string, true> = {
 	"dataset.upload-file": true,
 	"sql.query": true,
+	// Detaching drops the attachment from the article; no public route restores it.
+	"wiki.detach": true,
 	// Plugin dev-Git and content deletions discard work with no undo route.
 	"plugin.delete": true,
 	"plugin.delete-git-remote": true,
@@ -1161,7 +1163,12 @@ function inferIdempotency(
 	if (action.startsWith("create",) && syntaxHasFlag(syntax, "if-not-exists",)) {
 		return "if-not-exists";
 	}
-	if (action.startsWith("delete",) && syntaxHasFlag(syntax, "if-exists",)) return "if-exists";
+	if (
+		(action.startsWith("delete",) || `${resource}.${action}` === "wiki.detach")
+		&& syntaxHasFlag(syntax, "if-exists",)
+	) {
+		return "if-exists";
+	}
 	if (`${resource}.${action}` === "app.set-manifest-version") return "none";
 	// `app delete-instance` converges without an `--if-exists` flag: an absent
 	// target project is reported as an already-absent success instead of an

@@ -801,10 +801,20 @@ export const WikiSettingsSchema = Type.Object({
 }, { additionalProperties: true, },);
 export type WikiSettings = Static<typeof WikiSettingsSchema>;
 
+/** One entry of a wiki article's `attachments` (uploaded FILE or linked DSS object). */
+export const WikiArticleAttachmentSchema = Type.Object({
+	attachmentType: Type.Optional(Type.String(),),
+	smartId: Type.Optional(Type.String(),),
+	taggableType: Type.Optional(Type.String(),),
+	details: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
+}, { additionalProperties: true, },);
+export type WikiArticleAttachment = Static<typeof WikiArticleAttachmentSchema>;
+
 export const WikiArticleMetadataSchema = Type.Object({
 	id: Type.String(),
 	name: Type.Optional(Type.String(),),
 	projectKey: Type.Optional(Type.String(),),
+	attachments: Type.Optional(Type.Array(WikiArticleAttachmentSchema,),),
 }, { additionalProperties: true, },);
 export type WikiArticleMetadata = Static<typeof WikiArticleMetadataSchema>;
 

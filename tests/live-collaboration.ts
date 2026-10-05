@@ -1,4 +1,7 @@
 import { expect, } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync, } from "node:fs";
+import { tmpdir, } from "node:os";
+import { join, } from "node:path";
 import { LiveCapabilityError, type LiveContext, } from "./live-context.js";
 
 /**
@@ -570,6 +573,8 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 		"wiki.create",
 		"wiki.get",
 		"wiki.update",
+		"wiki.attach",
+		"wiki.detach",
 		"wiki.delete",
 	], async () => {
 		const name = uniq(ctx, "live_collab_wiki",);
@@ -595,6 +600,38 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 			expect(updated.article.id,).toBe(id,);
 			const after = await ctx.run<{ payload?: string; }>(["wiki", "get", id,],);
 			expect(after.payload,).toBe(WIKI_TRANSIENT_CONTENT_V2,);
+			const attachDir = mkdtempSync(join(tmpdir(), "dss-live-wiki-attach-",),);
+			try {
+				const attachPath = join(attachDir, "live-attachment.txt",);
+				writeFileSync(attachPath, "live wiki attachment\n",);
+				const attached = await ctx.run<{ attached: string; attachment: { smartId: string; }; }>([
+					"wiki",
+					"attach",
+					id,
+					attachPath,
+				],);
+				const smartId = requireString(attached.attached, "wiki attachment smartId",);
+				const withAttachment = await ctx.run<
+					{ article: { attachments?: Array<{ smartId: string; }>; }; }
+				>([
+					"wiki",
+					"get",
+					id,
+				],);
+				expect(withAttachment.article.attachments?.map((entry,) => entry.smartId),).toContain(smartId,);
+				await ctx.run(["wiki", "detach", id, smartId,],);
+				const withoutAttachment = await ctx.run<
+					{ article: { attachments?: Array<{ smartId: string; }>; }; }
+				>([
+					"wiki",
+					"get",
+					id,
+				],);
+				expect(withoutAttachment.article.attachments?.map((entry,) => entry.smartId) ?? [],)
+					.not.toContain(smartId,);
+			} finally {
+				rmSync(attachDir, { recursive: true, force: true, },);
+			}
 		} finally {
 			const deleted = await ctx.run<{ deleted: string; }>(["wiki", "delete", id,],);
 			expect(deleted.deleted,).toBe(id,);
