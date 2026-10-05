@@ -365,14 +365,39 @@ export function isNegativeNumberToken(value: string,): boolean {
 	return value.startsWith("-",) && Number.isFinite(Number(value,),);
 }
 
+/** `--name` or `--name=value`: a token that parses as a long flag. */
+const LONG_FLAG_SHAPE = /^--[A-Za-z][A-Za-z0-9-]*(?:=|$)/;
+
+/**
+ * Whether the token after a value flag is that flag's value rather than the
+ * next flag. `-` (stdin), negative numbers, and anything not flag-shaped
+ * qualify, so a SQL value beginning with a `-- comment` is a value; `--` alone
+ * and `--flag`/`--flag=x` are not.
+ */
+export function isFlagValueToken(token: string,): boolean {
+	if (token === "-" || isNegativeNumberToken(token,)) return true;
+	if (!token.startsWith("-",)) return true;
+	return token.startsWith("--",) && token !== "--" && !LONG_FLAG_SHAPE.test(token,);
+}
+
 export function requireFlagValue(
 	flagLabel: string,
 	next: string | undefined,
 ): string {
-	if (
-		next === undefined || (next !== "-" && next.startsWith("-",) && !isNegativeNumberToken(next,))
-	) {
-		throw new UsageError(`Flag ${flagLabel} requires a value.`, "missing_required_flag",);
+	if (next === undefined || !isFlagValueToken(next,)) {
+		const inlineForm = flagLabel.startsWith("--",) ? `${flagLabel}=VALUE` : undefined;
+		const hint = next === undefined || !next.startsWith("-",)
+			? undefined
+			: flagLabel === "--sql"
+			? 'A SQL value that starts with `--` (a comment) can be passed as --sql="-- ...", from a file with --sql-file PATH, or on stdin with --stdin.'
+			: inlineForm
+			? `If the value itself starts with \`-\`, pass it as ${inlineForm}.`
+			: undefined;
+		throw new UsageError(
+			`Flag ${flagLabel} requires a value.`,
+			"missing_required_flag",
+			hint,
+		);
 	}
 	return next;
 }

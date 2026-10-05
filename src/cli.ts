@@ -10,7 +10,7 @@ import { ambientProjectKey, loadEnvFile, } from "./cli/env.js";
 import {
 	executionMode,
 	FLAG_ALIASES,
-	isNegativeNumberToken,
+	isFlagValueToken,
 	parseArgs,
 	rawPositionals,
 } from "./cli/flags.js";
@@ -701,10 +701,7 @@ function redactArgv(argv: string[],): string[] {
 				} else {
 					redacted.push(arg,);
 					const next = argv[index + 1];
-					if (
-						next !== undefined
-						&& (next === "-" || !next.startsWith("-",) || isNegativeNumberToken(next,))
-					) {
+					if (next !== undefined && isFlagValueToken(next,)) {
 						redacted.push("***",);
 						index++;
 					}

@@ -1,4 +1,5 @@
 import { describe, expect, it, } from "bun:test";
+import type { IncomingMessage, ServerResponse, } from "node:http";
 import {
 	cliEnv,
 	dss,
@@ -6,6 +7,7 @@ import {
 	exec,
 	join,
 	mkdirSync,
+	readBody,
 	readFileSync,
 	rmSync,
 	SDK_ROOT,
@@ -169,6 +171,33 @@ describe("CLI boolean flag does not swallow next positional", () => {
 	});
 });
 
+const sqlServer = (seen: { sql?: string; },) =>
+async (
+	req: IncomingMessage,
+	res: ServerResponse,
+) => {
+	const url = new URL(req.url ?? "/", "http://localhost",);
+	if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+		const body: unknown = JSON.parse(await readBody(req,),);
+		if (body && typeof body === "object" && "query" in body && typeof body.query === "string") {
+			seen.sql = body.query;
+		}
+		sendJson(res, { queryId: "q1", schema: [{ name: "one", type: "int", },], },);
+		return;
+	}
+	if (url.pathname === "/public/api/sql/queries/q1/stream") {
+		res.setHeader("Content-Type", "application/json",);
+		res.end("[[1]]",);
+		return;
+	}
+	if (url.pathname === "/public/api/sql/queries/q1/finish-streaming") {
+		res.end("",);
+		return;
+	}
+	res.statusCode = 404;
+	res.end("not found",);
+};
+
 describe("CLI flag value parsing", () => {
 	it("missing value for --target fails fast", async () => {
 		const failure = await dssFailure(["install-skill", "--target",],);
@@ -181,6 +210,57 @@ describe("CLI flag value parsing", () => {
 			category: "usage",
 			exitCode: 1,
 		},);
+	});
+
+	describe("SQL values starting with a -- comment", () => {
+		const comment = "-- fetch one row\nselect 1 as one";
+
+		it("accepts --sql VALUE when the value is a -- comment, not a flag", async () => {
+			const seen: { sql?: string; } = {};
+			await withCliServer(sqlServer(seen,), async (url,) => {
+				const { stdout, } = await dss(["sql", "query", "--sql", comment, "--connection", "CONN",], {
+					env: cliEnv(url,),
+				},);
+				expect((JSON.parse(stdout,) as { rows: unknown[][]; }).rows,).toEqual([[1,],],);
+				expect(seen.sql,).toBe(comment,);
+			},);
+		});
+
+		it("accepts --sql=VALUE when the value starts with --", async () => {
+			const seen: { sql?: string; } = {};
+			await withCliServer(sqlServer(seen,), async (url,) => {
+				await dss(["sql", "query", `--sql=${comment}`, "--connection", "CONN",], {
+					env: cliEnv(url,),
+				},);
+				expect(seen.sql,).toBe(comment,);
+			},);
+		});
+
+		it("still treats a flag-shaped token as a missing value and points to --sql=, --sql-file, --stdin", async () => {
+			const failure = await dssFailure(["sql", "query", "--sql", "--connection", "CONN",],);
+			expect(failure.code,).toBe(1,);
+			const report = JSON.parse(failure.stdout,) as { error: string; code: string; hint: string; };
+			expect(report.error,).toBe("Flag --sql requires a value.",);
+			expect(report.code,).toBe("missing_required_flag",);
+			expect(report.hint,).toContain("--sql=",);
+			expect(report.hint,).toContain("--sql-file",);
+			expect(report.hint,).toContain("--stdin",);
+		});
+
+		it("keeps rejecting unknown long flags after a value flag", async () => {
+			const failure = await dssFailure(["sql", "query", "SELECT 1", "--bogus-flag", "x",],);
+			expect(failure.code,).toBe(1,);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				error: "Unknown flag: --bogus-flag",
+				code: "unknown_flag",
+			},);
+		});
+
+		it("points to --flag=VALUE for other value flags whose value starts with -", async () => {
+			const failure = await dssFailure(["install-skill", "--target", "--agent=x",],);
+			const report = JSON.parse(failure.stdout,) as { hint?: string; };
+			expect(report.hint,).toContain("--target=VALUE",);
+		});
 	});
 
 	it("--max-lines -1 is consumed as an option value", async () => {
