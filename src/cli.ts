@@ -1710,6 +1710,7 @@ function buildErrorReport(
 				idempotency: "none",
 				...dssErrorDetails(err,),
 				...dssDiagnosticDetails(err,),
+				...err.details,
 				...(err.retry ? { retry: err.retry, } : {}),
 			},
 			...context,
@@ -1717,7 +1718,11 @@ function buildErrorReport(
 	}
 	if (err instanceof DataikuError) {
 		const { dssMessage, dssErrorType, } = dssDiagnosticDetails(err,);
-		const details = { ...dssErrorDetails(err,), ...(dssErrorType ? { dssErrorType, } : {}), };
+		const details = {
+			...dssErrorDetails(err,),
+			...(dssErrorType ? { dssErrorType, } : {}),
+			...err.details,
+		};
 		// Generic hints name what the command targeted. DSS answers 403 (not
 		// 404) for a project that does not exist: "Failed to read project
 		// permissions". A 403 about something else keeps the generic hint.

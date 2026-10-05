@@ -99,7 +99,7 @@ export function canonicalStatusText(status: number,): string {
 export class ClientValidationError extends Error {
 	readonly code: StableErrorCode;
 	readonly hint?: string;
-	readonly details?: Record<string, unknown>;
+	details?: Record<string, unknown>;
 
 	constructor(
 		message: string,
@@ -496,6 +496,8 @@ export class DataikuError extends Error {
 	public readonly trustedTarget?: string;
 	public readonly trustedElapsedMs?: number;
 	public readonly bodyTruncated?: boolean;
+	/** Client-side outcome context (e.g. rollback of partial mutations), surfaced in CLI `details`. */
+	public details?: Record<string, unknown>;
 
 	constructor(
 		public status: number,

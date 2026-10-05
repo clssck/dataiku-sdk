@@ -360,6 +360,21 @@ function shouldRetryRecipeCreateWithOutputProvisioning(error: unknown,): error i
 // Resource
 // ---------------------------------------------------------------------------
 
+// DSS renames some recipe types server-side (e.g. prediction_scoring becomes
+// "score_<inputDataset>") and documents the creation response as the final
+// unique name: Body {"name": "recipe1"} ("Returns the final unique name of the
+// recipe"). The response name is the contract — falling back to the requested
+// name would mask a missing/invalid receipt, so a body without it is an error.
+function requireRecipeName(created: Record<string, unknown> | undefined,): string {
+	const name = asString(created?.["name"],);
+	if (!name) {
+		throw unexpectedResponseError(
+			'DSS create-recipe response did not include the final recipe name (documented body: {"name": ...}).',
+		);
+	}
+	return name;
+}
+
 export class RecipesResource extends BaseResource {
 	/** List all recipes in a project. */
 	async list(projectKey?: string,): Promise<RecipeSummary[]> {
@@ -735,36 +750,73 @@ export class RecipesResource extends BaseResource {
 		};
 		let finalRecipeName!: string;
 
-		// DSS renames some recipe types server-side (e.g. prediction_scoring
-		// becomes "score_<inputDataset>") and documents the creation response as
-		// the final unique name: Body {"name": "recipe1"} ("Returns the final
-		// unique name of the recipe"). The response name is the contract —
-		// falling back to the requested name would mask a missing/invalid
-		// receipt, so a body without it is an error.
+		// Datasets this call provisioned must not outlive a failed create: the
+		// failure is rethrown unchanged, with the rollback outcome in `details`.
+		// A failure can be ambiguous (timeout, 5xx after DSS committed, a body
+		// without the name), so a dataset some recipe already writes is kept:
+		// deleting it would break that recipe. DSS may rename the recipe, so the
+		// check reads the flow graph rather than the requested recipe name.
+		const rollbackProvisionedDatasets = async (error: unknown,): Promise<never> => {
+			if (createdDatasets.length === 0) throw error;
+			const deleted: string[] = [];
+			const failed: Array<{ name: string; error: string; }> = [];
+			const kept: Array<{ name: string; reason: string; }> = [];
+			let producers: Map<string, string> | undefined;
+			try {
+				const { graph, } = await this.client.projects.flowTopology(pk,);
+				producers = new Map(
+					graph.edges.filter((edge,) => edge.relation === "writes").map((
+						edge,
+					) => [edge.to, edge.from,]),
+				);
+			} catch (graphError) {
+				const reason = `could not read the flow graph to check for a recipe writing it (${
+					graphError instanceof Error ? graphError.message : String(graphError,)
+				})`;
+				for (const name of createdDatasets) kept.push({ name, reason, },);
+			}
+			for (const name of createdDatasets) {
+				if (!producers) break;
+				const producer = producers.get(name,);
+				if (producer !== undefined) {
+					kept.push({ name, reason: `written by recipe ${producer}`, },);
+					continue;
+				}
+				try {
+					await this.client.del(`/public/api/projects/${enc}/datasets/${encodeURIComponent(name,)}`,);
+					deleted.push(name,);
+				} catch (deleteError) {
+					failed.push({
+						name,
+						error: deleteError instanceof Error ? deleteError.message : String(deleteError,),
+					},);
+				}
+			}
+			if (error instanceof DataikuError || error instanceof ClientValidationError) {
+				error.details = {
+					...error.details,
+					createdDatasetsDeleted: deleted,
+					createdDatasetsNotDeleted: failed,
+					...(kept.length > 0 ? { createdDatasetsKept: kept, } : {}),
+				};
+			}
+			throw error;
+		};
+
 		try {
-			if (rawConnection) await provisionOutputDatasets();
-			const created = await createRecipe();
-			const receivedName = asString(created?.["name"],);
-			if (!receivedName) {
-				throw unexpectedResponseError(
-					'DSS create-recipe response did not include the final recipe name (documented body: {"name": ...}).',
-				);
+			try {
+				if (rawConnection) await provisionOutputDatasets();
+				finalRecipeName = requireRecipeName(await createRecipe(),);
+			} catch (error) {
+				if (!shouldRetryRecipeCreateWithOutputProvisioning(error,)) {
+					throw error;
+				}
+				usedOutputProvisioningFallback = true;
+				await provisionOutputDatasets();
+				finalRecipeName = requireRecipeName(await createRecipe(),);
 			}
-			finalRecipeName = receivedName;
 		} catch (error) {
-			if (!shouldRetryRecipeCreateWithOutputProvisioning(error,)) {
-				throw error;
-			}
-			usedOutputProvisioningFallback = true;
-			await provisionOutputDatasets();
-			const retryCreated = await createRecipe();
-			const retryName = asString(retryCreated?.["name"],);
-			if (!retryName) {
-				throw unexpectedResponseError(
-					'DSS create-recipe response did not include the final recipe name (documented body: {"name": ...}).',
-				);
-			}
-			finalRecipeName = retryName;
+			await rollbackProvisionedDatasets(error,);
 		}
 
 		// For join recipes: configure join conditions after creation

@@ -694,6 +694,205 @@ describe("RecipesResource", () => {
 		},);
 	});
 
+	describe("failed create rolls back provisioned outputs", () => {
+		const datasetsPath = "/public/api/projects/TEST/datasets/";
+		const createOpts = {
+			type: "python",
+			inputDatasets: ["input_ds",],
+			outputDataset: "output_ds",
+			outputConnection: "s3_conn",
+		} as const;
+
+		function rollbackHandler(
+			state: {
+				requests: string[];
+				existing: string[];
+				recipeBody: string;
+				failDelete?: boolean;
+				/** Recipe that DSS committed despite the error, writing `output_ds`. */
+				committedRecipe?: string;
+				failGraph?: boolean;
+			},
+		) {
+			return async (req: IncomingMessage, res: ServerResponse,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				state.requests.push(`${req.method} ${url.pathname}`,);
+				if (req.method === "GET" && url.pathname === "/public/api/projects/TEST/flow/graph/") {
+					if (state.failGraph) {
+						res.statusCode = 403;
+						res.end(JSON.stringify({ message: "graph forbidden", },),);
+						return;
+					}
+					const nodes: Record<string, unknown> = {
+						input_ds: { type: "COMPUTABLE_DATASET", name: "input_ds", },
+						output_ds: { type: "COMPUTABLE_DATASET", name: "output_ds", },
+					};
+					if (state.committedRecipe) {
+						nodes[state.committedRecipe] = {
+							type: "RECIPE",
+							name: state.committedRecipe,
+							predecessors: ["input_ds",],
+							successors: ["output_ds",],
+						};
+					}
+					sendJson(res, { nodes, },);
+					return;
+				}
+				if (req.method === "GET" && url.pathname === datasetsPath) {
+					sendJson(
+						res,
+						state.existing.map((name,) => ({ name, managed: true, params: { connection: "s3_conn", }, })),
+					);
+					return;
+				}
+				if (req.method === "POST" && url.pathname === `${datasetsPath}managed`) {
+					await readBody(req,);
+					res.statusCode = 204;
+					res.end();
+					return;
+				}
+				if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/recipes/") {
+					await readBody(req,);
+					res.statusCode = 500;
+					res.setHeader("content-type", "application/json",);
+					res.end(JSON.stringify({ message: state.recipeBody, },),);
+					return;
+				}
+				if (req.method === "DELETE" && url.pathname.startsWith(datasetsPath,)) {
+					if (state.failDelete) {
+						res.statusCode = 403;
+						res.end(JSON.stringify({ message: "delete forbidden", },),);
+						return;
+					}
+					res.statusCode = 204;
+					res.end();
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			};
+		}
+
+		it("deletes the dataset it created and rethrows the original error with the rollback outcome", async () => {
+			const state = {
+				requests: [] as string[],
+				existing: ["input_ds",],
+				recipeBody: "Recipe exploded",
+			};
+			let caught: unknown;
+			await withRecipeServer(rollbackHandler(state,), async (url,) => {
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+			},);
+
+			expect(caught,).toBeInstanceOf(DataikuError,);
+			const error = caught as DataikuError;
+			expect(error.status,).toBe(500,);
+			expect(error.message,).toContain("Recipe exploded",);
+			expect(state.requests,).toContain("DELETE /public/api/projects/TEST/datasets/output_ds",);
+			expect(state.requests.filter((r,) => r.startsWith("DELETE",)).length,).toBe(1,);
+			expect(error.details?.["createdDatasetsDeleted"],).toEqual(["output_ds",],);
+			expect(error.details?.["createdDatasetsNotDeleted"],).toEqual([],);
+		});
+
+		it("rolls back after the output-provisioning retry also fails", async () => {
+			const state = {
+				requests: [] as string[],
+				existing: ["input_ds",],
+				recipeBody: "Root path of the dataset input_ds does not exist",
+			};
+			let caught: unknown;
+			await withRecipeServer(rollbackHandler(state,), async (url,) => {
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+			},);
+
+			expect(caught,).toBeInstanceOf(DataikuError,);
+			expect(
+				state.requests.filter((r,) => r === "DELETE /public/api/projects/TEST/datasets/output_ds")
+					.length,
+			)
+				.toBe(1,);
+			expect((caught as DataikuError).details?.["createdDatasetsDeleted"],).toEqual(["output_ds",],);
+		});
+
+		it("reports datasets whose rollback deletion failed", async () => {
+			const state = {
+				requests: [] as string[],
+				existing: ["input_ds",],
+				recipeBody: "Recipe exploded",
+				failDelete: true,
+			};
+			let caught: unknown;
+			await withRecipeServer(rollbackHandler(state,), async (url,) => {
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+			},);
+
+			const error = caught as DataikuError;
+			expect(error.status,).toBe(500,);
+			expect(error.details?.["createdDatasetsDeleted"],).toEqual([],);
+			const notDeleted = error.details?.["createdDatasetsNotDeleted"] as Array<
+				{ name: string; error: string; }
+			>;
+			expect(notDeleted.map((entry,) => entry.name),).toEqual(["output_ds",],);
+			expect(notDeleted[0]?.error,).toContain("delete forbidden",);
+		});
+
+		it("never deletes a pre-existing output dataset", async () => {
+			const state = {
+				requests: [] as string[],
+				existing: ["input_ds", "output_ds",],
+				recipeBody: "Recipe exploded",
+			};
+			let caught: unknown;
+			await withRecipeServer(rollbackHandler(state,), async (url,) => {
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+			},);
+
+			expect(caught,).toBeInstanceOf(DataikuError,);
+			expect(state.requests.some((r,) => r.startsWith("DELETE",)),).toBe(false,);
+			expect((caught as DataikuError).details,).toBeUndefined();
+		});
+
+		it("keeps a created output that a recipe already writes, since DSS may have committed it", async () => {
+			const state = {
+				requests: [] as string[],
+				existing: ["input_ds",],
+				recipeBody: "Recipe exploded",
+				committedRecipe: "python_renamed",
+			};
+			let caught: unknown;
+			await withRecipeServer(rollbackHandler(state,), async (url,) => {
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+			},);
+
+			if (!(caught instanceof DataikuError)) throw caught;
+			expect(state.requests.some((r,) => r.startsWith("DELETE",)),).toBe(false,);
+			expect(caught.details?.["createdDatasetsDeleted"],).toEqual([],);
+			expect(caught.details?.["createdDatasetsKept"],).toEqual([
+				{ name: "output_ds", reason: "written by recipe python_renamed", },
+			],);
+		});
+
+		it("keeps created outputs when the flow graph cannot be read", async () => {
+			const state = {
+				requests: [] as string[],
+				existing: ["input_ds",],
+				recipeBody: "Recipe exploded",
+				failGraph: true,
+			};
+			let caught: unknown;
+			await withRecipeServer(rollbackHandler(state,), async (url,) => {
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+			},);
+
+			if (!(caught instanceof DataikuError)) throw caught;
+			expect(caught.status,).toBe(500,);
+			expect(state.requests.some((r,) => r.startsWith("DELETE",)),).toBe(false,);
+			const kept = caught.details?.["createdDatasetsKept"];
+			expect(Array.isArray(kept,) && kept.length === 1 && kept[0].name === "output_ds",).toBe(true,);
+			expect(JSON.stringify(kept,),).toContain("graph forbidden",);
+		});
+	});
+
 	const computedColumns = [
 		{ name: "id", type: "bigint", },
 		{ name: "category", type: "string", },

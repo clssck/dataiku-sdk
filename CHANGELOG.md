@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix: `recipe create --output-connection` no longer leaves orphaned output datasets behind when DSS rejects the recipe (e.g. `500 Root path of the dataset ... does not exist` for an unbuilt input). The datasets the command created are deleted before the original error is rethrown, and the error `details` list `createdDatasetsDeleted` and `createdDatasetsNotDeleted` (with the delete error) so a failed cleanup is visible. Because a failure can be ambiguous (DSS may have committed the recipe, possibly under another name), a created dataset that a recipe already writes in the flow graph, or every created dataset when the graph cannot be read, is kept and listed in `createdDatasetsKept` with the reason. Pre-existing datasets are never touched.
 ## 3.7.0
 
 - Fix: `recipe create --output-connection` creates missing outputs through DSS's managed-dataset endpoint (`POST /datasets/managed`, as the UI and dataikuapi do), so DSS picks the dataset type, storage path, and format from the connection. Before, the CLI guessed: an S3 connection with no existing dataset got a `Filesystem` dataset (builds failed with `Unexpected connection type ... EC2`), and once one S3 dataset existed the next output got SQL-table params with no `path` (`Placing a managed dataset at the root of a connection is not permitted`; DSS then answered `recipe create --type shaker` and `dataset refresh-schema` with an empty-body `500`).
