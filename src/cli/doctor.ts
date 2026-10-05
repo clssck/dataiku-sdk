@@ -120,6 +120,8 @@ export function errorDetails(error: unknown,): Record<string, unknown> {
 			retryable: error.retryable,
 			status: error.status,
 			statusText: error.statusText,
+			message: error.message,
+			retryHint: error.retryHint,
 		};
 	}
 	return { message: error instanceof Error ? error.message : String(error,), };

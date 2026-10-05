@@ -224,6 +224,8 @@ function isCertificateTrustFailure(lowerBody: string,): boolean {
 		|| lowerBody.includes("unable to get local issuer certificate",)
 		|| lowerBody.includes("unable to verify leaf signature",)
 		|| lowerBody.includes("self-signed certificate",)
+		|| lowerBody.includes("self signed certificate",)
+		|| lowerBody.includes("depth_zero_self_signed_cert",)
 		|| lowerBody.includes("certificate has expired",)
 		|| lowerBody.includes("cert_has_expired",)
 		|| lowerBody.includes("self_signed_cert_in_chain",)
