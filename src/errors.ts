@@ -63,6 +63,12 @@ export interface DataikuErrorTrustedMetadata {
 	elapsedMs?: number;
 	/** Set by the transport when the retained response body is only a bounded prefix. */
 	bodyTruncated?: boolean;
+	/**
+	 * Set by a resource that recognized DSS's answer as a definite failure of the
+	 * whole operation: nothing took effect, so a non-idempotent mutation is not
+	 * ambiguous.
+	 */
+	definiteFailure?: boolean;
 }
 
 const CANONICAL_STATUS_TEXT: Record<number, string> = {
@@ -143,6 +149,9 @@ export function unexpectedResponseError(detail: string, status = 200,): DataikuE
 	);
 }
 
+/** Hint for a DSS answer that definitively failed the request (e.g. the database rejected the SQL). */
+const DEFINITE_FAILURE_HINT =
+	"DSS reported that the request failed (for SQL: syntax error, missing object, or missing privileges of the connection's role). Fix the request or grants; do not retry unchanged.";
 /** Prefix for a SQL query failure reported by DSS on a 2xx finish-streaming response. */
 export const SQL_QUERY_FAILED_MARKER = "SQL query failed in DSS";
 
@@ -498,6 +507,8 @@ export class DataikuError extends Error {
 	public readonly trustedTarget?: string;
 	public readonly trustedElapsedMs?: number;
 	public readonly bodyTruncated?: boolean;
+	/** DSS definitively failed the whole operation; see `DataikuErrorTrustedMetadata.definiteFailure`. */
+	public readonly definiteFailure?: boolean;
 	/** Client-side outcome context (e.g. rollback of partial mutations), surfaced in CLI `details`. */
 	public details?: Record<string, unknown>;
 
@@ -512,14 +523,21 @@ export class DataikuError extends Error {
 		const details = DataikuError.buildDetails(status, body,);
 		super(details.message,);
 		this.name = "DataikuError";
-		this.category = details.category;
-		this.retryable = details.retryable;
-		this.retryHint = details.retryHint;
+		const definite = trustedMetadata?.definiteFailure === true;
+		// A definite DSS refusal is not a transport/server fault: replaying it
+		// unchanged cannot succeed. Keep a more specific forbidden/not_found class.
+		const reclassify = definite
+			&& (details.category === "transient" || details.category === "unknown"
+				|| details.category === "unexpected_response");
+		this.category = reclassify ? "validation" : details.category;
+		this.retryable = reclassify ? false : details.retryable;
+		this.retryHint = reclassify ? DEFINITE_FAILURE_HINT : details.retryHint;
 		this.retry = retry;
 		this.requestId = requestId;
 		this.trustedTarget = trustedMetadata?.target;
 		this.trustedElapsedMs = trustedMetadata?.elapsedMs;
 		this.bodyTruncated = trustedMetadata?.bodyTruncated === true ? true : undefined;
+		this.definiteFailure = definite ? true : undefined;
 	}
 	/** Status line only: never echoes response body text. */
 	public get safeMessage(): string {

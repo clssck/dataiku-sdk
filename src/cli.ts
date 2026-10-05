@@ -1585,6 +1585,9 @@ function isAmbiguousMutationFailure(
 	context: { resource?: string; action?: string; },
 ): err is DataikuError {
 	if (!(err instanceof DataikuError)) return false;
+	// DSS definitively refused the operation (e.g. the database rejected the SQL):
+	// nothing took effect, so there is no outcome to verify.
+	if (err.definiteFailure) return false;
 	const method = err.retry?.method.toUpperCase();
 	if (!method || method === "GET" || method === "HEAD") return false;
 	if (err.status !== 0 && err.status < 500) return false;

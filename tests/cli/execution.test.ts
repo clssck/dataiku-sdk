@@ -742,13 +742,140 @@ describe("CLI execution behavior", () => {
 				expect(startAttempts,).toBe(1,);
 				expect(failure.code,).toBe(2,);
 				expect(JSON.parse(failure.stdout,),).toMatchObject({
-					code: "ambiguous_outcome",
+					code: "validation_failed",
 					retryable: false,
-					details: { dssMessage: expect.stringContaining(detail,), },
+					error: expect.stringContaining(detail,),
 				},);
+				expect(JSON.parse(failure.stdout,).code,).not.toBe("ambiguous_outcome",);
 			},);
 		}
 	});
+
+	it("reports a database-rejected SQL start as a definite validation failure, not an ambiguous write", async () => {
+		const message =
+			"SQL compilation error: Schema 'DF_CMC_PROD.CMP_ULM' does not exist or not authorized.";
+		let startAttempts = 0;
+		await withCliServer((req, res,) => {
+			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+				startAttempts++;
+				sendJson(res, {
+					errorType: "net.snowflake.client.jdbc.SnowflakeSQLException",
+					message,
+				}, 500,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end();
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"sql",
+				"query",
+				"select * from DF_CMC_PROD.CMP_ULM.T",
+				"--connection",
+				"CONN",
+			], { env: cliEnv(url,), },);
+			expect(startAttempts,).toBe(1,);
+			expect(failure.code,).toBe(2,);
+			const report = JSON.parse(failure.stdout,) as {
+				code: string;
+				error: string;
+				retryable: boolean;
+				hint: string;
+				status: number;
+				details?: { dssErrorType?: string; };
+			};
+			expect(report.code,).toBe("validation_failed",);
+			expect(report.retryable,).toBe(false,);
+			expect(report.status,).toBe(500,);
+			expect(report.error,).toContain("DF_CMC_PROD.CMP_ULM",);
+			expect(report.error,).toContain("not authorized",);
+			expect(report.hint,).not.toContain("verify whether the mutation took effect",);
+			expect(report.details?.dssErrorType,).toBe("net.snowflake.client.jdbc.SnowflakeSQLException",);
+		},);
+	});
+
+	it("reports a SQL permission error without SQL wording in the message as definite", async () => {
+		await withCliServer((req, res,) => {
+			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+				sendJson(res, {
+					errorType: "org.postgresql.util.PSQLException",
+					message: "ERROR: permission denied for schema cmp_ulm",
+				}, 500,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end();
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"sql",
+				"query",
+				"DELETE FROM cmp_ulm.t",
+				"--connection",
+				"CONN",
+			], { env: cliEnv(url,), },);
+			const report = JSON.parse(failure.stdout,) as { code: string; error: string; };
+			expect(report.code,).not.toBe("ambiguous_outcome",);
+			expect(report.error,).toContain("permission denied for schema cmp_ulm",);
+		},);
+	});
+
+	it("keeps ambiguous_outcome when the SQL start connection drops after dispatch", async () => {
+		let startAttempts = 0;
+		await withCliServer((req, res,) => {
+			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+				startAttempts++;
+				req.socket.destroy();
+				return;
+			}
+			res.statusCode = 404;
+			res.end();
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"sql",
+				"query",
+				"DELETE FROM t",
+				"--connection",
+				"CONN",
+			], { env: cliEnv(url,), },);
+			expect(startAttempts,).toBe(1,);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				code: "ambiguous_outcome",
+				retryable: false,
+			},);
+		},);
+	});
+
+	for (
+		const [errorType, message,] of [
+			["java.sql.SQLRecoverableException", "Closed Connection",],
+			["java.sql.SQLTimeoutException", "Query execution was interrupted",],
+			["org.postgresql.util.PSQLException", "An I/O error occurred while sending to the backend.",],
+			[
+				"net.snowflake.client.jdbc.SnowflakeSQLException",
+				"JDBC driver encountered communication error.",
+			],
+		] as const
+	) {
+		it(`keeps ambiguous_outcome for a lost database connection (${errorType}: ${message})`, async () => {
+			await withCliServer((req, res,) => {
+				if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
+					sendJson(res, { errorType, message, }, 500,);
+					return;
+				}
+				res.statusCode = 404;
+				res.end();
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"sql",
+					"query",
+					"DELETE FROM t",
+					"--connection",
+					"CONN",
+				], { env: cliEnv(url,), },);
+				expect(JSON.parse(failure.stdout,),).toMatchObject({ code: "ambiguous_outcome", },);
+			},);
+		});
+	}
 
 	it("retries transient SQL start failures only with --start-retries", async () => {
 		let startAttempts = 0;

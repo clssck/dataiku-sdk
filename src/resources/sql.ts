@@ -102,24 +102,59 @@ function sqlErrorDetailFromBody(body: string,): string | undefined {
 	return match?.[0] ?? (isLikelySqlErrorDetail(trimmed,) ? trimmed.slice(0, 500,) : undefined);
 }
 
+/**
+ * JDBC/driver failures that mean the connection to the database broke or timed
+ * out mid-statement: a DML statement may already have committed, so these stay
+ * an unknown outcome even though they are SQL/JDBC-flavored.
+ */
+const SQL_CONNECTION_LOSS_TYPE = /transient|recoverable|timeout/i;
+const SQL_CONNECTION_LOSS_TEXT =
+	/i\/o error|communication (?:link|error|failure)|connection (?:reset|closed|refused|lost|abort)|broken pipe|socket|timed out|network/i;
+
+/**
+ * Whether DSS answered with a definite refusal of the statement, as opposed to
+ * an unknown outcome (transport reset, timeout, bare gateway error). DSS runs the
+ * statement before answering the start POST, so a SQL-flavored error body (JDBC
+ * error, or an error type from a SQL/JDBC class) or a body DSS itself classifies
+ * as permission/not-found means the database rejected the statement — unless
+ * the error reports a lost or timed-out database connection.
+ */
+function isDefiniteSqlRejection(error: DataikuError, sqlDetail: string | undefined,): boolean {
+	if (error.status < 400) return false;
+	let errorType: unknown;
+	try {
+		errorType = asRecord(JSON.parse(error.body,) as unknown,)?.errorType;
+	} catch {
+		errorType = undefined;
+	}
+	if (typeof errorType === "string" && SQL_CONNECTION_LOSS_TYPE.test(errorType,)) return false;
+	if (SQL_CONNECTION_LOSS_TEXT.test(error.body,)) return false;
+	if (sqlDetail) return true;
+	if (error.category === "forbidden" || error.category === "not_found") return true;
+	return typeof errorType === "string" && /sql|jdbc/i.test(errorType,);
+}
+
 function withSqlErrorContext(error: unknown,): never {
 	if (error instanceof DataikuError) {
 		const detail = sqlErrorDetailFromBody(error.body,);
-		if (detail) {
+		const definiteFailure = isDefiniteSqlRejection(error, detail,);
+		if (detail || definiteFailure) {
 			let body = error.body;
-			try {
-				const parsed = JSON.parse(error.body,) as unknown;
-				if (parsed && typeof parsed === "object" && !Array.isArray(parsed,)) {
-					body = JSON.stringify({
-						...(parsed as Record<string, unknown>),
-						message: `SQL query failed: ${detail}`,
-						sqlError: detail,
-					},);
-				} else {
+			if (detail) {
+				try {
+					const parsed = JSON.parse(error.body,) as unknown;
+					if (parsed && typeof parsed === "object" && !Array.isArray(parsed,)) {
+						body = JSON.stringify({
+							...(parsed as Record<string, unknown>),
+							message: `SQL query failed: ${detail}`,
+							sqlError: detail,
+						},);
+					} else {
+						body = `SQL query failed: ${detail}\n${error.body}`;
+					}
+				} catch {
 					body = `SQL query failed: ${detail}\n${error.body}`;
 				}
-			} catch {
-				body = `SQL query failed: ${detail}\n${error.body}`;
 			}
 			throw new DataikuError(
 				error.status,
@@ -131,6 +166,7 @@ function withSqlErrorContext(error: unknown,): never {
 					target: error.trustedTarget,
 					elapsedMs: error.trustedElapsedMs,
 					bodyTruncated: error.bodyTruncated,
+					definiteFailure,
 				},
 			);
 		}
