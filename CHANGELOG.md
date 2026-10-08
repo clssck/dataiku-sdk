@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 3.9.0
+
 - Agent contract v4: `job get`, `dataset info`, `dataset get`, and `project get` print compact results by default; `--full` returns the DSS object and `--fields` still projects from it. `job get` keeps state, outputs, progress, the error, and per-activity status, and never the log tail: a failed job is 240 tokens instead of 15,908, a finished one 173 instead of 1,170. `dataset info` keeps type, connection, format, schema, recipes, buildability, data quality, and freshness (1,464 → 131). `dataset get` and `project get` keep the settings structure (so get → edit → `update` still works) without metrics/checks configuration, version stamps, checklists, and empty values; `project get` lists only the permissions you lack in `deniedPermissions` instead of ~20 `can*` booleans (770 → 358, 551 → 149). Discovery output schemas describe the compact shapes; `stdio.stdout.lists` is now `compactResults`.
 - `job log` prints the last 100 lines by default and emits a `log_truncated` warning with the total; `--max-lines N` sets the tail, `0` prints everything, `--output PATH` is unchanged. A finished one-recipe job's log is 4,460 tokens instead of 9,950.
 - Fix: job logs no longer expose secrets. DSS writes the job ticket secret (`"jobTicketSecret":"..."`) into every job log; `job log`, `job summary`, `job log-url`, and `--include-logs` builds/waits (SDK `jobs.log`) now redact credential-like JSON values as `[redacted]`.
