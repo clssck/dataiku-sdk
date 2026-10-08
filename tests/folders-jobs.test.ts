@@ -443,6 +443,43 @@ describe("JobsResource.log", () => {
 			],);
 		},);
 	});
+
+	it("ignores error words inside embedded JSON payloads in the errors filter", async () => {
+		const dssLog = [
+			'[2026/10/08-15:19:47.001] [ActivityExecutor-12] [INFO] [dku.recipes.visualsql] running grouping - SQL status {"canAnalyticalFunctions":false,"statusWarnLevel":"ERROR","statusMessage":"Dataset \'customers\' is not a SQL dataset"}',
+			"[2026/10/08-15:19:48.002] [ActivityExecutor-12] [ERROR] [dku.flow.jobrunner] running grouping - Activity failed",
+			'[2026/10/08-15:19:48.003] [ActivityExecutor-12] [INFO] [dku.x] running grouping - java.lang.IllegalStateException {"detail":"x"}',
+		].join("\n",);
+		await withDataikuServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(dssLog,);
+		}, async (client,) => {
+			expect((await client.jobs.log("job-json", { logFilter: "errors", },)).split("\n",),).toEqual([
+				"[2026/10/08-15:19:48.002] [ActivityExecutor-12] [ERROR] [dku.flow.jobrunner] running grouping - Activity failed",
+				'[2026/10/08-15:19:48.003] [ActivityExecutor-12] [INFO] [dku.x] running grouping - java.lang.IllegalStateException {"detail":"x"}',
+			],);
+		},);
+	});
+
+	it("redacts credential pairs from every log download path", async () => {
+		const secretLine =
+			'[2026/10/08-15:19:46.100] [main] [INFO] [dku.start] - start_session {"jobProjectKey":"P","jobTicketSecret":"5kdUjgGp3cOO0DEU7UOP"}';
+		await withDataikuServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(`${secretLine}\nplain line\n`,);
+		}, async (client,) => {
+			const direct = await client.jobs.log("job-secret",);
+			expect(direct,).not.toContain("5kdUjgGp3cOO0DEU7UOP",);
+			expect(direct,).toContain('"jobTicketSecret":"[redacted]"',);
+			expect(direct,).toContain('"jobProjectKey":"P"',);
+			const fromUrl = await client.jobs.logFromUrl(
+				"https://dss/dip/api/flow/jobs/cat-activity-log?projectKey=TEST&jobId=job-secret&activityId=a",
+			);
+			expect(fromUrl,).not.toContain("5kdUjgGp3cOO0DEU7UOP",);
+		},);
+	});
 });
 
 describe("JobsResource.wait", () => {

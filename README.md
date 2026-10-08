@@ -520,8 +520,10 @@ UI-click smoke test. The CLI does not guess private endpoints for those operatio
 
 `project map` returns one agent-oriented JSON view of the Flow: normalized nodes and edges,
 joined zone metadata, cycle-safe topological layers, weakly connected components, diagnostics, and
-a stable `topologyFingerprint`. Zone joins add `zoneId`/`zoneName` to each node; the top-level
-`zones` array preserves zone color, position, item count, and visible node IDs.
+a stable `topologyFingerprint`. Output is deduplicated: node `name` appears only when it differs from
+`id`; each node carries `zoneId`/`componentId` (zone names live in `zones[]`, membership is derived
+from those ids, so `zones[]`/`components[]` omit `nodeIds`); `warnings` appears only when non-empty and
+`truncation` only when the map was cut. `zones` preserves zone color, position, and item count.
 
 ```bash
 dss project map --project-key MYPROJ

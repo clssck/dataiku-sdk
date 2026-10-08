@@ -227,25 +227,42 @@ describe("CLI dataset create-managed", () => {
 });
 
 describe("CLI dataset info", () => {
-	it("returns the full opaque info object", async () => {
-		const info = {
-			name: "orders",
-			type: "Filesystem",
-			schema: { columns: [{ name: "id", type: "bigint", },], },
-			lastBuild: { state: "OK", },
-		};
+	const info = {
+		name: "orders",
+		type: "Filesystem",
+		schema: { columns: [{ name: "id", type: "bigint", },], },
+		lastBuild: { state: "OK", },
+	};
+	async function datasetInfo(args: string[],): Promise<string> {
+		let stdout = "";
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);
 			expect(req.method,).toBe("GET",);
 			expect(url.pathname,).toBe("/public/api/projects/TEST/datasets/orders/info",);
 			sendJson(res, info,);
 		}, async (url,) => {
-			const { stdout, stderr, } = await dss(["dataset", "info", "orders",], {
-				env: cliEnv(url,),
-			},);
-			expect(stderr,).toBe("",);
-			expect(JSON.parse(stdout,),).toEqual(info,);
+			const result = await dss(["dataset", "info", "orders", ...args,], { env: cliEnv(url,), },);
+			expect(result.stderr,).toBe("",);
+			stdout = result.stdout;
 		},);
+		return stdout;
+	}
+
+	it("returns the full opaque info object with --full", async () => {
+		expect(JSON.parse(await datasetInfo(["--full",],),),).toEqual(info,);
+	});
+
+	it("returns the compact summary by default", async () => {
+		expect(JSON.parse(await datasetInfo([],),),).toEqual({ name: "orders", type: "Filesystem", },);
+	});
+
+	it("projects DSS paths from the raw object with --fields", async () => {
+		expect(JSON.parse(await datasetInfo(["--fields", "lastBuild.state,schema.columns",],),),).toEqual(
+			{
+				"lastBuild.state": "OK",
+				"schema.columns": [{ name: "id", type: "bigint", },],
+			},
+		);
 	});
 });
 

@@ -4517,6 +4517,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -4530,6 +4539,15 @@
 			"info",
 			{
 				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			},
 			{
 				"optional": [
@@ -7107,6 +7125,15 @@
 			"get",
 			{
 				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			},
 			{
 				"optional": [
@@ -12890,6 +12917,15 @@
 			"dss",
 			"project",
 			"get",
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
 			{
 				"optional": [
 					[

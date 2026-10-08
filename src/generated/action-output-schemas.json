@@ -363,6 +363,107 @@
 				}
 			}
 		},
+		"dataset.info": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"name"
+			],
+			"properties": {
+				"name": {
+					"type": "string"
+				},
+				"type": {
+					"type": "string"
+				},
+				"managed": {
+					"type": "boolean"
+				},
+				"connection": {
+					"type": "string"
+				},
+				"formatType": {
+					"type": "string"
+				},
+				"partitioned": {
+					"type": "boolean"
+				},
+				"schema": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"name",
+							"type"
+						],
+						"properties": {
+							"name": {
+								"type": "string"
+							},
+							"type": {
+								"type": "string"
+							},
+							"meaning": {
+								"type": "string"
+							},
+							"comment": {
+								"type": "string"
+							}
+						}
+					}
+				},
+				"recipes": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"buildable": {
+					"type": "boolean"
+				},
+				"upstreamBuildable": {
+					"type": "boolean"
+				},
+				"downstreamBuildable": {
+					"type": "boolean"
+				},
+				"tags": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"dataQuality": {
+					"type": "object",
+					"additionalProperties": true
+				},
+				"lastBuild": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"jobId": {
+							"type": "string"
+						},
+						"success": {
+							"type": "boolean"
+						},
+						"startTime": {
+							"type": "number"
+						},
+						"endTime": {
+							"type": "number"
+						}
+					}
+				},
+				"lastModifiedOn": {
+					"type": "number"
+				},
+				"lastModifiedBy": {
+					"type": "string"
+				}
+			}
+		},
 		"dataset.list": {
 			"type": "array",
 			"items": {
@@ -821,6 +922,121 @@
 							"boolean",
 							"null"
 						]
+					}
+				}
+			}
+		},
+		"job.get": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"id",
+				"state"
+			],
+			"properties": {
+				"id": {
+					"type": "string"
+				},
+				"name": {
+					"type": "string"
+				},
+				"type": {
+					"type": "string"
+				},
+				"state": {
+					"type": "string"
+				},
+				"initiator": {
+					"type": "string"
+				},
+				"triggeredFrom": {
+					"type": "string"
+				},
+				"startTime": {
+					"type": "number"
+				},
+				"endTime": {
+					"type": "number"
+				},
+				"outputs": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"properties": {
+							"type": {
+								"type": "string"
+							},
+							"id": {
+								"type": "string"
+							},
+							"projectKey": {
+								"type": "string"
+							},
+							"partition": {
+								"type": "string"
+							}
+						}
+					}
+				},
+				"progress": {
+					"type": "object",
+					"additionalProperties": {
+						"type": "number"
+					}
+				},
+				"error": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"type": {
+							"type": "string"
+						},
+						"message": {
+							"type": "string"
+						}
+					}
+				},
+				"activities": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"properties": {
+							"id": {
+								"type": "string"
+							},
+							"recipe": {
+								"type": "string"
+							},
+							"recipeType": {
+								"type": "string"
+							},
+							"state": {
+								"type": "string"
+							},
+							"totalTime": {
+								"type": "number"
+							},
+							"warnings": {
+								"type": "number"
+							},
+							"error": {
+								"type": "object",
+								"additionalProperties": false,
+								"properties": {
+									"type": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									}
+								}
+							},
+							"message": {
+								"type": "string"
+							}
+						}
 					}
 				}
 			}
@@ -1519,7 +1735,8 @@
 			"type": "object",
 			"required": [
 				"projectKey",
-				"name"
+				"name",
+				"deniedPermissions"
 			],
 			"properties": {
 				"projectKey": {
@@ -1537,25 +1754,6 @@
 				"projectAppType": {
 					"type": "string"
 				},
-				"creationTag": {
-					"additionalProperties": true,
-					"type": "object",
-					"properties": {
-						"versionNumber": {
-							"type": "number"
-						},
-						"lastModifiedOn": {
-							"anyOf": [
-								{
-									"type": "number"
-								},
-								{
-									"type": "string"
-								}
-							]
-						}
-					}
-				},
 				"ownerLogin": {
 					"type": "string"
 				},
@@ -1565,21 +1763,12 @@
 						"type": "string"
 					}
 				},
-				"versionTag": {
-					"additionalProperties": true,
-					"type": "object",
-					"required": [
-						"versionNumber",
-						"lastModifiedOn"
-					],
-					"properties": {
-						"versionNumber": {
-							"type": "number"
-						},
-						"lastModifiedOn": {
-							"type": "number"
-						}
-					}
+				"deniedPermissions": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"description": "Permission flags DSS reports as false; absent flags are granted."
 				}
 			}
 		},

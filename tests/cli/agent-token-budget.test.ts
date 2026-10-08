@@ -44,11 +44,12 @@ const TOKEN_BUDGETS = {
 	scopedBootstrap: { baseline: 278, maxTokens: 300, },
 	actionSummary: { baseline: 1_805, maxTokens: 1_900, },
 	fourFieldProjection: { baseline: 356, maxTokens: 390, },
-	fieldsUsageFailure: { baseline: 92, maxTokens: 110, },
+	// Error envelopes no longer repeat `ok:false` or echo `resource`/`action` (was 92 / 71 / 242).
+	fieldsUsageFailure: { baseline: 87, maxTokens: 105, },
 	// The usage line in the hint replaces a ~850-token `commands run --fields` round trip.
-	unknownFlag: { baseline: 71, maxTokens: 90, },
+	unknownFlag: { baseline: 59, maxTokens: 75, },
 	// validResources lists every resource; flow and mlflow add two names.
-	unknownResourceRecovery: { baseline: 242, maxTokens: 270, },
+	unknownResourceRecovery: { baseline: 228, maxTokens: 255, },
 	doctorFailure: { baseline: 105, maxTokens: 130, },
 	batchFailure: { baseline: 188, maxTokens: 220, },
 	cleanupFailure: { baseline: 99, maxTokens: 130, },
@@ -76,14 +77,15 @@ describe("agent-facing token budgets", () => {
 		// authentication, coding, troubleshooting: raised for the subprocess CA / connection
 		// identity, visual recipe payload, output schema, Inline dataset, and error envelope guidance;
 		// coding again for the grouping/prepare flags, troubleshooting for flow propagate-schema.
+		// discovery and troubleshooting: compact get defaults and the 100-line `job log` tail.
 		const baselines = {
 			authentication: 504,
-			discovery: 594,
+			discovery: 621,
 			mutations: 602,
 			"app-releases": 872,
 			"flow-maps": 159,
 			coding: 362,
-			troubleshooting: 1_002,
+			troubleshooting: 1_044,
 		};
 		for (const [name, baseline,] of Object.entries(baselines,)) {
 			const text = readFileSync(
@@ -391,11 +393,8 @@ describe("agent-facing token budgets", () => {
 			);
 			expect(JSON.parse(failure.stdout,) as Record<string, unknown>,).toMatchObject({
 				type: "error",
-				ok: false,
 				code: "usage_error",
 				exitCode: 1,
-				resource: "commands",
-				action: "run",
 			},);
 		}
 

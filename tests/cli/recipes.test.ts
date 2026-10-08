@@ -124,8 +124,6 @@ describe("recipe create join flags", () => {
 		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			code: "invalid_enum",
-			resource: "recipe",
-			action: "create",
 		},);
 		expect(report.error,).toContain("DAMERAU_LEVENSHTEIN",);
 	});
@@ -156,8 +154,6 @@ describe("recipe create join flags", () => {
 				flag: "--fuzzy-threshold",
 				value: "not-a-number",
 			},
-			resource: "recipe",
-			action: "create",
 		},);
 	});
 });

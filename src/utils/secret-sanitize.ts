@@ -7,8 +7,10 @@
  * - optionally redacts userinfo embedded in HTTP(S) URL authorities
  *   (`https://user:pass@host/...` -> `https://[redacted]@host/...`).
  *
- * The SDK resource layer forwards values verbatim to DSS over TLS; sanitization
- * is a CLI presentation concern and must never leak secret material instead.
+ * The SDK resource layer forwards values verbatim to DSS over TLS; sanitizing
+ * structured output is a CLI presentation concern and must never leak secret
+ * material instead. DSS-produced read text that consumers never need secrets
+ * from (job logs) is scrubbed at the SDK download via `redactCredentialPairs`.
  */
 
 /** Marker replacing every redacted value or secret occurrence. */
@@ -115,6 +117,30 @@ const CREDENTIAL_KEY_FRAGMENTS = [
 /** Keys naming how credentials work (`credentialsMode`, `passwordType`), not secrets. */
 const CREDENTIAL_SETTING_SUFFIXES = ["mode", "type", "policy",] as const;
 
+/** Credential-like key (normalized fragment match, minus credential settings). */
+function isCredentialKey(key: string,): boolean {
+	const normalized = normalizeSecretKey(key,);
+	if (CREDENTIAL_SETTING_SUFFIXES.some((suffix,) => normalized.endsWith(suffix,))) return false;
+	return CREDENTIAL_KEY_FRAGMENTS.some((fragment,) => normalized.includes(fragment,));
+}
+
+/** JSON-style `"key": "value"` pair with escape-aware string bodies. */
+const JSON_STRING_PAIR = /"((?:[^"\\\n]|\\.)*)"(\s*:\s*)"((?:[^"\\\n]|\\.)*)"/g;
+
+/**
+ * Redact the string value of every JSON-style `"key":"value"` pair in free
+ * text whose key is credential-like (e.g. the `jobTicketSecret` DSS writes
+ * into job logs). Bare `key` fields are not redacted here: in log text they
+ * name ordinary identifiers far more often than secrets.
+ */
+export function redactCredentialPairs(text: string,): string {
+	return text.replace(
+		JSON_STRING_PAIR,
+		(pair, key: string, separator: string, value: string,) =>
+			value.length > 0 && isCredentialKey(key,) ? `"${key}"${separator}"${SECRET_REDACTED}"` : pair,
+	);
+}
+
 /**
  * Every string value under a credential-like key (any depth), plus bare
  * `key` fields such as `authRealm.key`. Collected from a command's own JSON
@@ -134,13 +160,7 @@ export function credentialValues(value: unknown,): string[] {
 		}
 		if (node === null || typeof node !== "object") return;
 		for (const [key, item,] of Object.entries(node,)) {
-			const normalized = normalizeSecretKey(key,);
-			const setting = CREDENTIAL_SETTING_SUFFIXES.some((suffix,) => normalized.endsWith(suffix,));
-			visit(
-				item,
-				sensitive || (!setting && (normalized === "key"
-					|| CREDENTIAL_KEY_FRAGMENTS.some((fragment,) => normalized.includes(fragment,)))),
-			);
+			visit(item, sensitive || isCredentialKey(key,) || normalizeSecretKey(key,) === "key",);
 		}
 	};
 	visit(value, false,);

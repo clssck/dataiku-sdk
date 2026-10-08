@@ -75,6 +75,10 @@ describe("generated discovery output schemas", () => {
 				join(SDK_ROOT, "src", "cli", "list-shapes.ts",),
 				join(tree, "src", "cli", "list-shapes.ts",),
 			);
+			copyFileSync(
+				join(SDK_ROOT, "src", "cli", "read-shapes.ts",),
+				join(tree, "src", "cli", "read-shapes.ts",),
+			);
 			copyFileSync(join(SDK_ROOT, "src", "schemas.ts",), join(tree, "src", "schemas.ts",),);
 			copyFileSync(
 				join(SDK_ROOT, "packages", "types", "src", "index.ts",),

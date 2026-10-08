@@ -33,8 +33,6 @@ describe("CLI missing credentials", () => {
 				code: "missing_required_flag",
 				category: "usage",
 				error: "Missing Dataiku URL.",
-				resource: "project",
-				action: "list",
 				exitCode: 1,
 			},);
 		} finally {
@@ -57,8 +55,6 @@ describe("CLI missing credentials", () => {
 		expect(report,).toMatchObject({
 			code: "unknown_flag",
 			category: "usage",
-			resource: "flow-zone",
-			action: "list",
 			projectKey: "TEST",
 		},);
 		expect(report.error,).toContain("Unknown flag: --wat",);
@@ -79,8 +75,6 @@ describe("CLI missing credentials", () => {
 		expect(report,).toMatchObject({
 			code: "missing_required_arg",
 			category: "usage",
-			resource: "scenario",
-			action: "delete",
 			projectKey: "TEST",
 		},);
 		expect(report.error,).toContain("Expected 1 argument(s), got 0",);
@@ -100,8 +94,6 @@ describe("CLI missing credentials", () => {
 			expect(report,).toMatchObject({
 				code: "permission_denied",
 				category: "dss",
-				resource: "scenario",
-				action: "list",
 				projectKey: "TEST",
 				requestId: "req-123",
 				status: 403,
@@ -139,11 +131,8 @@ describe("CLI missing credentials", () => {
 			expect(failure.stderr,).toBe("",);
 			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
-				ok: false,
 				code: "transient",
 				category: "dss",
-				resource: "project",
-				action: "list",
 				requestId: "rid-header-only",
 				status: 500,
 				retryable: true,
@@ -265,11 +254,8 @@ describe("CLI credential provenance binding", () => {
 				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 				expect(report,).toMatchObject({
 					type: "error",
-					ok: false,
 					code: "conflicting_input_sources",
 					category: "usage",
-					resource: "project",
-					action: "list",
 					exitCode: 1,
 				},);
 			},);
@@ -426,12 +412,9 @@ describe("CLI explicit empty credential errors", () => {
 			expect(failure.stderr,).toBe("",);
 			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
-				ok: false,
 				code: "missing_required_flag",
 				error: "Missing Dataiku URL.",
 				exitCode: 1,
-				resource: "project",
-				action: "list",
 			},);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);
@@ -467,12 +450,9 @@ describe("CLI explicit empty credential errors", () => {
 			expect(failure.stderr,).toBe("",);
 			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
-				ok: false,
 				code: "missing_required_flag",
 				error: "Missing API key.",
 				exitCode: 1,
-				resource: "project",
-				action: "list",
 			},);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);

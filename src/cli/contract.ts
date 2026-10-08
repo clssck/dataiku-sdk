@@ -1632,11 +1632,10 @@ function commandRegistryJsonSchema(): Record<string, unknown> {
 function errorEnvelopeJsonSchema(): Record<string, unknown> {
 	return {
 		type: "object",
-		required: ["type", "ok", "error", "code", "category", "exitCode",],
+		required: ["type", "error", "code", "category", "exitCode",],
 		additionalProperties: true,
 		properties: {
 			type: { const: "error", },
-			ok: { const: false, },
 			error: { type: "string", },
 			code: { type: "string", },
 			category: { enum: ["usage", "permission_or_environment", "dss", "internal",], },
@@ -1646,8 +1645,6 @@ function errorEnvelopeJsonSchema(): Record<string, unknown> {
 			retryable: { type: "boolean", },
 			requestId: { type: "string", },
 			details: { type: "object", additionalProperties: true, },
-			resource: { type: "string", },
-			action: { type: "string", },
 			projectKey: { type: "string", },
 		},
 	};
@@ -1764,8 +1761,8 @@ export function buildAgentContract(): Record<string, unknown> {
 				failure: "structured-error-object",
 				failureResultDetailLimitBytes: 65_536,
 				fieldProjection: "Missing --fields paths: null on stdout; field_projection_missing on stderr.",
-				lists:
-					"*.list: compact items; --full/--fields use DSS objects; --contains/--limit filter (list_truncated warning).",
+				compactResults:
+					"*.list, job get, dataset get/info, project get: compact; --full/--fields use DSS objects; lists take --contains/--limit (list_truncated warning).",
 				richFailureResults:
 					"doctor/batch/cleanup failures: own compact {ok:false,...} result on stdout and command exit code; no wrapper.",
 			},

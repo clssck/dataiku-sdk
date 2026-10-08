@@ -192,7 +192,8 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 			requireArgs(a, 1, commandUsage("dataset", "get",),);
 			return c.datasets.get(a[0], f["project-key"] as string | undefined,);
 		},
-		description: "Get full settings for a dataset.",
+		description:
+			"Get the settings for a dataset (compact by default: empty values and metrics/version metadata are dropped, structure kept for get-edit-update; --full returns the raw DSS object).",
 		examples: ["dss dataset get orders", "dss dataset get orders --project-key MYPROJ",],
 	},
 	schema: {
@@ -599,7 +600,7 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 			return c.datasets.info(a[0], f["project-key"] as string | undefined,);
 		},
 		description:
-			"Get the full info object for a dataset (type, parameters, last build information, schema, etc.).",
+			"Get dataset info: type, connection, format, schema columns, flow recipes, buildability, data quality, and last modification (compact by default; --full returns the raw DSS info object).",
 		examples: ["dss dataset info orders", "dss dataset info orders --project-key MYPROJ",],
 	},
 	"column-lineage": {

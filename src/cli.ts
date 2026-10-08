@@ -15,7 +15,6 @@ import {
 	rawPositionals,
 } from "./cli/flags.js";
 import { cleanupLedgerEntry, } from "./cli/helpers/cleanup.js";
-import { shapeListResult, } from "./cli/list-output.js";
 import {
 	commandFailureExitCode,
 	CommandResultFailure,
@@ -27,6 +26,7 @@ import {
 	setOutputFieldProjection,
 	writeCommandResult,
 } from "./cli/output.js";
+import { shapeCommandResult, } from "./cli/result-shapes.js";
 import {
 	currentCommandContext,
 	resolveCredentials,
@@ -1308,7 +1308,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 					await preflightCleanupLedgerForFlags(client, stepFlags,);
 					const stepArgs = positional.slice(2,);
 					result = await meta.handler(client, stepArgs, stepFlags,);
-					if (action === "list") result = shapeListResult(resource, result, stepFlags,);
+					result = shapeCommandResult(resource, action, result, stepFlags,);
 					await recordCleanupLedgerEntry(
 						client,
 						resource,
@@ -1362,14 +1362,11 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 
 interface ErrorReportEnvelope {
 	type: "error";
-	ok: false;
 	error: string;
 	code: StableErrorCode;
 	category: "usage" | "permission_or_environment" | "dss" | "internal";
 	exitCode: number;
 	hint?: string;
-	resource?: string;
-	action?: string;
 	projectKey?: string;
 	requestId?: string;
 	status?: number;
@@ -1643,6 +1640,8 @@ function buildErrorReport(
 	contextOverride?: { resource?: string; action?: string; projectKey?: string; },
 ): ErrorReportEnvelope {
 	const context = contextOverride ?? rawCommandContext();
+	// The envelope echoes only the resolved project; resource/action are known to the caller.
+	const scope = context.projectKey ? { projectKey: context.projectKey, } : {};
 	const exitCode = errorExitCode(err,);
 	if (
 		err instanceof ClientValidationError
@@ -1651,7 +1650,6 @@ function buildErrorReport(
 	) {
 		return {
 			type: "error",
-			ok: false,
 			error: err.message,
 			code: err.code,
 			category: "dss",
@@ -1659,13 +1657,12 @@ function buildErrorReport(
 			retryable: false,
 			...(err.hint ? { hint: err.hint, } : {}),
 			...(err.details ? { details: err.details, } : {}),
-			...context,
+			...scope,
 		};
 	}
 	if (err instanceof UsageError || err instanceof ClientValidationError) {
 		return {
 			type: "error",
-			ok: false,
 			error: err.message,
 			code: err.code,
 			category: err.code === "target_absence_unverifiable"
@@ -1677,26 +1674,24 @@ function buildErrorReport(
 			...(err.code === "target_absence_unverifiable" ? { retryable: false, } : {}),
 			...(err.hint ? { hint: err.hint, } : {}),
 			...(err.details ? { details: err.details, } : {}),
-			...context,
+			...scope,
 		};
 	}
 	if (err instanceof CommandResultFailure) {
 		return {
 			type: "error",
-			ok: false,
 			error: err.message,
 			code: err.code,
 			category: "dss",
 			exitCode: err.exitCode,
 			details: boundedFailureResult(err.result,),
-			...context,
+			...scope,
 		};
 	}
 	if (isAmbiguousMutationFailure(err, context,)) {
 		const method = err.retry?.method.toUpperCase() ?? "mutation";
 		return {
 			type: "error",
-			ok: false,
 			error: `The ${method} request failed after dispatch; the mutation outcome is unknown.`,
 			code: "ambiguous_outcome",
 			category: "dss",
@@ -1713,7 +1708,7 @@ function buildErrorReport(
 				...err.details,
 				...(err.retry ? { retry: err.retry, } : {}),
 			},
-			...context,
+			...scope,
 		};
 	}
 	if (err instanceof DataikuError) {
@@ -1737,7 +1732,6 @@ function buildErrorReport(
 			: err.retryHint;
 		return {
 			type: "error",
-			ok: false,
 			error: dssMessage ? `${err.safeMessage}: ${dssMessage}` : err.safeMessage,
 			code: dataikuErrorCode(err.category,),
 			category: "dss",
@@ -1747,18 +1741,17 @@ function buildErrorReport(
 			retryable: err.retryable,
 			requestId: err.requestId ?? requestIdFromBody(err.body,),
 			...(Object.keys(details,).length > 0 ? { details, } : {}),
-			...context,
+			...scope,
 		};
 	}
 	const message = err instanceof Error ? err.message : String(err,);
 	return {
 		type: "error",
-		ok: false,
 		error: message,
 		code: "internal_error",
 		category: "internal",
 		exitCode,
-		...context,
+		...scope,
 	};
 }
 function writeErrorReport(err: unknown,): void {
@@ -1896,7 +1889,7 @@ async function main(): Promise<void> {
 	assertCleanupLedgerSupported(resource, action, flags,);
 	await preflightCleanupLedgerForFlags(client, flags,);
 	const handled = await actionMeta.handler(client, args, flags,);
-	const result = action === "list" ? shapeListResult(resource, handled, flags,) : handled;
+	const result = shapeCommandResult(resource, action, handled, flags,);
 	await recordCleanupLedgerEntry(client, resource, action, args, flags, result, projectKey,);
 	const failureExitCode = commandFailureExitCode(result,);
 	if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);

@@ -13,6 +13,11 @@
  * Imported by the generator and the discovery parity test only.
  */
 import { compactListOutputSchemas, } from "./list-shapes.js";
+import {
+	compactReadOutputSchemas,
+	DATASET_GET_DROPPED_KEYS,
+	PROJECT_GET_DROPPED_KEYS,
+} from "./read-shapes.js";
 
 const PROJECT_LIBRARY_ITEM_OUTPUT_SCHEMA: Record<string, unknown> = {
 	type: "object",
@@ -53,6 +58,32 @@ const NOTEBOOK_SAVE_SQL_OUTPUT_SCHEMA: Record<string, unknown> = {
 		requested: { type: "string", },
 	},
 };
+
+/**
+ * Discovery schema of a compact settings object (`dataset get`, `project get`):
+ * the SDK TypeBox schema minus the keys the CLI drops, with only the
+ * identifiers that survive pruning required. SDK validation keeps the
+ * unmodified TypeBox schema.
+ */
+function settingsOutputSchema(
+	schema: Record<string, unknown>,
+	droppedKeys: readonly string[],
+	extraProperties: Record<string, unknown> = {},
+): Record<string, unknown> {
+	const properties = Object.fromEntries(
+		Object.entries(schema["properties"] as Record<string, unknown>,).filter(([key,],) =>
+			!droppedKeys.includes(key,)
+		),
+	);
+	const required = (schema["required"] as string[] | undefined ?? []).filter((key,) =>
+		!droppedKeys.includes(key,)
+	);
+	return {
+		...schema,
+		properties: { ...properties, ...extraProperties, },
+		required: [...required, ...Object.keys(extraProperties,),],
+	};
+}
 
 let commandOutputSchemas: Record<string, Record<string, unknown>> | undefined;
 /**
@@ -220,9 +251,15 @@ export function typeBoxCommandOutputSchemas(): Record<string, Record<string, unk
 				maxLines: { type: "integer", minimum: 0, },
 			},
 		},
-		"project.get": ProjectDetailsSchema,
+		"project.get": settingsOutputSchema(ProjectDetailsSchema, PROJECT_GET_DROPPED_KEYS, {
+			deniedPermissions: {
+				type: "array",
+				items: { type: "string", },
+				description: "Permission flags DSS reports as false; absent flags are granted.",
+			},
+		},),
 		"project.metadata": ProjectMetadataSchema,
-		"dataset.get": DatasetDetailsSchema,
+		"dataset.get": settingsOutputSchema(DatasetDetailsSchema, DATASET_GET_DROPPED_KEYS,),
 		"dataset.schema": DatasetSchemaSchema,
 		"job.wait": JobWaitResultSchema,
 		"job.monitor": JobWaitResultSchema,
@@ -248,7 +285,9 @@ export function typeBoxCommandOutputSchemas(): Record<string, Record<string, unk
 				},
 			],
 		},
-		// `*.list` defaults to compact items; `--full` returns the DSS objects.
+		// `*.list` and the four large reads default to compact shapes; `--full`
+		// returns the DSS objects.
 		...compactListOutputSchemas(),
+		...compactReadOutputSchemas(),
 	};
 }

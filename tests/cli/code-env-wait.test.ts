@@ -184,8 +184,6 @@ describe("CLI code-env management commands", () => {
 			expect(JSON.parse(failure.stdout,) as Record<string, unknown>,).toMatchObject({
 				code: "usage_error",
 				category: "usage",
-				resource: "code-env",
-				action: "set-packages",
 				exitCode: 1,
 			},);
 		},);
@@ -354,12 +352,9 @@ describe("CLI wait command exit codes", () => {
 			expect(failure.stderr,).toBe("",);
 			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
-				ok: false,
 				code: "long_running_failure",
 				category: "dss",
 				exitCode: 4,
-				resource: "job",
-				action: "wait",
 			},);
 			const details = report.details as { result: Record<string, unknown>; };
 			expect(details.result.success,).toBe(false,);

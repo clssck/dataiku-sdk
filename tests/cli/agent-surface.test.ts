@@ -9,7 +9,6 @@ describe("CLI agent-only command surface", () => {
 		expect(failure.stderr,).toBe("",);
 		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
-			ok: false,
 			error: expect.any(String,),
 			code: "usage_error",
 			category: "usage",
@@ -27,7 +26,6 @@ describe("CLI agent-only command surface", () => {
 			expect(failure.stderr,).toBe("",);
 			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
-				ok: false,
 				error: "Help screens are not supported.",
 				code: "usage_error",
 				category: "usage",
@@ -76,7 +74,7 @@ describe("CLI agent-only command surface", () => {
 			resource: "agent",
 			action: "contract",
 			requiresAuth: false,
-			agentContractVersion: 3,
+			agentContractVersion: 4,
 		},);
 		expect(registry.recipe["get-payload"],).toHaveProperty("unsafeOutputs",);
 	});
@@ -87,7 +85,7 @@ describe("CLI agent-only command surface", () => {
 		const contract = JSON.parse(stdout,) as Record<string, unknown>;
 		expect(contract,).toMatchObject({
 			protocol: "dataiku-sdk-agent",
-			agentContractVersion: 3,
+			agentContractVersion: 4,
 		},);
 		expect(contract,).toHaveProperty("commands.actions.agent",);
 		expect(contract,).toHaveProperty("schemas.agentContract",);
@@ -132,7 +130,6 @@ describe("CLI agent-only command surface", () => {
 		expect(failure.stderr,).toBe("",);
 		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
-			ok: false,
 			error: "Unknown flag: --report-json",
 			code: "unknown_flag",
 			category: "usage",
@@ -168,11 +165,8 @@ describe("CLI agent-only command surface", () => {
 		expect(failure.stderr,).toBe("",);
 		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
-			ok: false,
 			code: "missing_required_flag",
 			exitCode: 1,
-			resource: "project",
-			action: "list",
 		},);
 	});
 
@@ -182,11 +176,9 @@ describe("CLI agent-only command surface", () => {
 		expect(unknownResource.stderr,).toBe("",);
 		const resourceReport = JSON.parse(unknownResource.stdout,) as Record<string, unknown>;
 		expect(resourceReport,).toMatchObject({
-			ok: false,
 			error: expect.any(String,),
 			code: "usage_error",
 			category: "usage",
-			resource: "not-a-resource",
 			exitCode: 1,
 		},);
 		expect((resourceReport.details as Record<string, unknown>).validResources,).toEqual(
@@ -198,12 +190,9 @@ describe("CLI agent-only command surface", () => {
 		expect(unknownAction.stderr,).toBe("",);
 		const actionReport = JSON.parse(unknownAction.stdout,) as Record<string, unknown>;
 		expect(actionReport,).toMatchObject({
-			ok: false,
 			error: expect.any(String,),
 			code: "usage_error",
 			category: "usage",
-			resource: "project",
-			action: "not-an-action",
 			exitCode: 1,
 		},);
 		expect((actionReport.details as Record<string, unknown>).validActions,).toEqual(
@@ -215,12 +204,9 @@ describe("CLI agent-only command surface", () => {
 		expect(specialRunAction.stderr,).toBe("",);
 		const specialReport = JSON.parse(specialRunAction.stdout,) as Record<string, unknown>;
 		expect(specialReport,).toMatchObject({
-			ok: false,
 			error: expect.any(String,),
 			code: "usage_error",
 			category: "usage",
-			resource: "version",
-			action: "bogus",
 			exitCode: 1,
 		},);
 		expect((specialReport.details as Record<string, unknown>).validActions,).toEqual(["run",],);
@@ -256,7 +242,7 @@ describe("CLI command registry discovery", () => {
 		);
 		expect(registry.recipe["get-payload"].action,).toBe("get-payload",);
 		expect(registry.recipe["set-payload"].action,).toBe("set-payload",);
-		expect(registry.agent.contract.agentContractVersion,).toBe(3,);
+		expect(registry.agent.contract.agentContractVersion,).toBe(4,);
 	});
 });
 

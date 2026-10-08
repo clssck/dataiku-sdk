@@ -32,8 +32,6 @@ describe("CLI auth commands", () => {
 			expect(report,).toMatchObject({
 				code: "missing_required_flag",
 				category: "usage",
-				resource: "auth",
-				action: "login",
 				exitCode: 1,
 			},);
 			expect((report.details as Record<string, unknown>).requiredFlags,).toEqual(["url", "api-key",],);
@@ -108,8 +106,7 @@ describe("CLI auth commands", () => {
 			expect(report,).toMatchObject({
 				code: "usage_error",
 				category: "usage",
-				resource: "auth",
-				action,
+				details: { resource: "auth", action, },
 				exitCode: 1,
 			},);
 			expect((report.details as Record<string, unknown>).validActions,).toEqual(["login",],);
@@ -219,8 +216,6 @@ describe("CLI auth commands", () => {
 				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 				expect(report,).toMatchObject({
 					category: "dss",
-					resource: "auth",
-					action: "login",
 					status: 401,
 					exitCode: 2,
 				},);
@@ -257,11 +252,8 @@ describe("CLI auth login credential provenance", () => {
 				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 				expect(report,).toMatchObject({
 					type: "error",
-					ok: false,
 					code: "conflicting_input_sources",
 					category: "usage",
-					resource: "auth",
-					action: "login",
 					exitCode: 1,
 				},);
 				expect(readFileExists(join(tmpDir, "credentials.json",),),).toBe(false,);

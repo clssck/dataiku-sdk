@@ -112,6 +112,52 @@ describe("CLI execution behavior", () => {
 		},);
 	});
 
+	it("tails job log stdout to 100 lines with a log_truncated warning", async () => {
+		const lines = Array.from({ length: 250, }, (_, i,) => `line ${i + 1}`,);
+		await withCliServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(`${lines.join("\n",)}\n`,);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss(["job", "log", "job-1",], { env: cliEnv(url,), },);
+			const shown = (JSON.parse(stdout,) as string).split("\n",).filter(Boolean,);
+			expect(shown,).toHaveLength(100,);
+			expect(shown[0],).toBe("line 151",);
+			expect(shown[99],).toBe("line 250",);
+			const warning = JSON.parse(stderr,) as { warnings: Array<Record<string, unknown>>; };
+			expect(warning.warnings,).toContainEqual(expect.objectContaining({
+				code: "log_truncated",
+				shown: 100,
+				total: 250,
+			},),);
+
+			const explicit = await dss(["job", "log", "job-1", "--max-lines", "5",], {
+				env: cliEnv(url,),
+			},);
+			expect((JSON.parse(explicit.stdout,) as string).split("\n",).filter(Boolean,),).toEqual(
+				lines.slice(-5,),
+			);
+			expect(explicit.stderr,).toContain("log_truncated",);
+
+			const all = await dss(["job", "log", "job-1", "--max-lines", "0",], { env: cliEnv(url,), },);
+			expect((JSON.parse(all.stdout,) as string).split("\n",).filter(Boolean,),).toEqual(lines,);
+			expect(all.stderr,).toBe("",);
+		},);
+	});
+
+	it("does not warn when the job log fits in 100 lines", async () => {
+		const body = `${Array.from({ length: 100, }, (_, i,) => `l${i}`,).join("\n",)}\n`;
+		await withCliServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(body,);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss(["job", "log", "job-1",], { env: cliEnv(url,), },);
+			expect(JSON.parse(stdout,),).toBe(body,);
+			expect(stderr,).toBe("",);
+		},);
+	});
+
 	it("writes the log to --output and returns the path", async () => {
 		const tmpFile = join(tmpdir(), `dss-cli-job-log-${Date.now()}.txt`,);
 		await withCliServer((req, res,) => {
@@ -243,8 +289,6 @@ describe("CLI execution behavior", () => {
 				code: "validation_failed",
 				category: "dss",
 				status: 400,
-				resource: "scenario",
-				action: "update",
 			},);
 			expect(report.error,).toBe(
 				"400 Bad Request: Scenario update did not persist requested fields after refetch: params.steps",
@@ -349,8 +393,6 @@ describe("CLI execution behavior", () => {
 				code: "validation_failed",
 				category: "usage",
 				exitCode: 1,
-				resource: "sql",
-				action: "query",
 			},);
 			expect(report.error,).toContain('Dataset "TEST.orders" uses a connection',);
 		},);
@@ -381,8 +423,6 @@ describe("CLI execution behavior", () => {
 				category: "dss",
 				status: 404,
 				exitCode: 2,
-				resource: "sql",
-				action: "query",
 			},);
 			// The DSS message says what failed; the hint says what to check.
 			expect(report.error,).toBe("404 Not Found: dataset lookup failed",);
@@ -414,8 +454,6 @@ describe("CLI execution behavior", () => {
 				category: "dss",
 				status: 403,
 				exitCode: 2,
-				resource: "sql",
-				action: "query",
 			},);
 			expect(report.error,).toBe("403 Forbidden: dataset access denied",);
 		},);
@@ -1195,13 +1233,10 @@ describe("CLI execution behavior", () => {
 		expect(failure.stderr,).toBe("",);
 		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
-			ok: false,
 			error: "Unknown flag: --json",
 			code: "unknown_flag",
 			category: "usage",
 			exitCode: 1,
-			resource: "project",
-			action: "list",
 		},);
 	});
 
@@ -1707,8 +1742,6 @@ describe("CLI execution behavior", () => {
 			expect(failure.stderr,).toBe("",);
 			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report.code,).toBe("not_found",);
-			expect(report.resource,).toBe("business-app",);
-			expect(report.action,).toBe("list",);
 			const hint = String(report.hint,);
 			expect(hint,).toContain("Business Apps API is not available",);
 			expect(hint,).toContain("classic app commands",);

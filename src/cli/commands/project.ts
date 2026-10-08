@@ -7,6 +7,7 @@ import { projectIncarnationHash, } from "../../utils/project-incarnation.js";
 import { jsonInput, num, requiredJsonInput, requiredStringFlag, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { CommandResultFailure, } from "../output.js";
+import { compactProjectMapOutput, } from "../project-map-output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -33,7 +34,8 @@ export const projectCommands: Record<string, CommandMeta> = withUsage("project",
 	},
 	get: {
 		handler: (c, _a, f,) => c.projects.get(f["project-key"] as string | undefined,),
-		description: "Get project settings and metadata.",
+		description:
+			"Get project settings and metadata (compact by default: empty values, metrics/version/image metadata dropped, permission flags collapsed to deniedPermissions; --full returns the raw DSS object).",
 		examples: ["dss project get", "dss project get --project-key MYPROJ",],
 	},
 	metadata: {
@@ -47,14 +49,16 @@ export const projectCommands: Record<string, CommandMeta> = withUsage("project",
 		examples: ["dss project flow", "dss project flow --project-key MYPROJ",],
 	},
 	map: {
-		handler: (c, _a, f,) =>
-			c.projects.map({
-				projectKey: f["project-key"] as string | undefined,
-				maxNodes: num(f["max-nodes"], "--max-nodes",),
-				maxEdges: num(f["max-edges"], "--max-edges",),
-				includeRaw: f["include-raw"] === true,
-				render: flowRenderFormat(f["render"],),
-			},),
+		handler: async (c, _a, f,) =>
+			compactProjectMapOutput(
+				await c.projects.map({
+					projectKey: f["project-key"] as string | undefined,
+					maxNodes: num(f["max-nodes"], "--max-nodes",),
+					maxEdges: num(f["max-edges"], "--max-edges",),
+					includeRaw: f["include-raw"] === true,
+					render: flowRenderFormat(f["render"],),
+				},),
+			),
 		validate: (_a, f,) => {
 			flowRenderFormat(f["render"],);
 			num(f["max-nodes"], "--max-nodes",);

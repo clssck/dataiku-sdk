@@ -3,7 +3,7 @@
 ## Platform, builds, data
 
 - Code/SQL: use `--file`/`--sql-file`; shells, especially PowerShell, mangle quotes, `$`, and multiline text. Non-UTF-8 consoles (e.g. Windows cp1252): write non-ASCII results to UTF-8 files or `--output PATH`, not the console.
-- Build errors: `dss job log <id> --errors-only` selects errors/tracebacks. For full logs, use `--output PATH` without `--errors-only`. Logs may arrive as one JVM-noisy line; `Error in Python process: At line <N>` identifies the payload source line.
+- Build errors: `dss job log <id> --errors-only` selects errors/tracebacks. Plain `job log` prints the last 100 lines (`log_truncated`); for full logs, use `--output PATH` without `--errors-only`. Logs may arrive as one JVM-noisy line; `Error in Python process: At line <N>` identifies the payload source line.
 - Schemas: code recipes set output schemas at run time. Visual/SQL query recipes: `recipe create` fills created or empty outputs (`outputSchemaUpdated`); `recipe set-payload` updates empty or DSS-derived ones, warns `recipe_output_schema_outdated` for hand-edited ones. Apply with `dss recipe update-schema NAME` (one recipe), `dss flow propagate-schema DATASET --wait` (every downstream recipe), or build `--auto-update-schema`. `built_dataset_has_no_columns`: the DONE build wrote nothing. `nothing_to_build` (exit 4): no recipe writes the managed target. Manual columns: `dss dataset refresh-schema NAME --data-file columns.json`. `dss dataset validate-build` catches file-backed misconfiguration.
 - `Inline` (editable) datasets: the public API cannot write rows, so `dataset create` rejects them; use `UploadedFiles` + `dataset upload-file`, or a python recipe output. `code run` is a scenario step; some DSS versions refuse dataset writes there.
 - `dss dataset download`: default 100k rows; result `{ path, rows, truncated, limit }`. If truncated, raise `--limit`. Specify `--output` or read the `dataset_download_default_location` path warning. CSV is spreadsheet-safe; `--raw-data` retains formula prefixes. For large tables, aggregate in SQL or use a recipe.
@@ -22,7 +22,7 @@
 
 Dispatch/runtime failure: one compact stdout error:
 ```json
-{"type":"error","ok":false,"error":"Missing API key.","code":"missing_required_flag","category":"usage","exitCode":1,"resource":"dataset","action":"list"}
+{"type":"error","error":"Missing API key.","code":"missing_required_flag","category":"usage","exitCode":1}
 ```
 
 `doctor`/`batch`/`cleanup` command failures return direct stdout result objects; check nonzero exit before interpreting. Recover from structured `code`, `category`, `exitCode`, `retryable`, `status`, `details`, never message scraping.

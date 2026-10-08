@@ -8,6 +8,7 @@ import {
 	isRequestDeadlineError,
 } from "../utils/polling.js";
 import { asRecord, } from "../utils/records.js";
+import { redactCredentialPairs, } from "../utils/secret-sanitize.js";
 import { BaseResource, } from "./base.js";
 
 const DEFAULT_MAX_LOG_LINES = 500;
@@ -216,6 +217,37 @@ function isErrorContent(line: string,): boolean {
 	return ERROR_KEYWORDS.test(line,) || ERROR_CLASS_NAME.test(line,) || PY_FILE_FRAME.test(line,);
 }
 
+/**
+ * Remove embedded JSON object payloads (`{"...": ...}`) from a DSS record
+ * line. Structured payloads such as `SQL status {"statusWarnLevel":"ERROR",...}`
+ * carry level/class words as data, not as a failure of the record itself.
+ * An unbalanced payload (truncated line) is dropped to the end of the line.
+ */
+function stripJsonPayloads(line: string,): string {
+	let out = "";
+	let from = 0;
+	for (let start = line.indexOf('{"',); start !== -1; start = line.indexOf('{"', from,)) {
+		out += line.slice(from, start,);
+		let depth = 0;
+		let inString = false;
+		let end = line.length;
+		for (let i = start; i < line.length; i++) {
+			const ch = line[i];
+			if (inString) {
+				if (ch === "\\") i++;
+				else if (ch === '"') inString = false;
+			} else if (ch === '"') inString = true;
+			else if (ch === "{") depth++;
+			else if (ch === "}" && --depth === 0) {
+				end = i + 1;
+				break;
+			}
+		}
+		from = end;
+	}
+	return out + line.slice(from,);
+}
+
 function lineMatchesLogFilter(line: string, filter: JobLogFilter,): boolean {
 	const normalized = line.toLowerCase();
 	switch (filter) {
@@ -270,7 +302,7 @@ function filterJobLogToErrors(lines: string[],): string {
 			pyTraceback = false;
 		}
 		if (isHeader) {
-			recordMatches = isErrorContent(line,) || PY_FILE_FRAME.test(message,);
+			recordMatches = isErrorContent(stripJsonPayloads(line,),) || PY_FILE_FRAME.test(message,);
 			if (recordMatches && (PY_TRACEBACK_HEAD.test(message,) || PY_FILE_FRAME.test(message,))) {
 				pyTraceback = true;
 			}
@@ -286,7 +318,7 @@ function filterJobLogToErrors(lines: string[],): string {
 			recordMatches
 			&& !JVM_STACK_FRAME.test(line,)
 			&& !JVM_MORE_FRAMES.test(line,)
-			&& isErrorContent(line,)
+			&& isErrorContent(stripJsonPayloads(line,),)
 		) kept.push(line,);
 	}
 	return kept.join("\n",);
@@ -426,7 +458,8 @@ export class JobsResource extends BaseResource {
 	/**
 	 * Retrieve job log text.
 	 * Returns the last `maxLogLines` lines (default 500) from the tail.
-	 * Use `0` or `-1` to return the log without line truncation.
+	 * Use `0` or `-1` to return the log without line truncation. Credential-like
+	 * JSON pairs (`"jobTicketSecret":"..."`) are redacted.
 	 *
 	 * The download is byte-bounded and deadline-covered: at most `maxLogBytes`
 	 * (default 10 MiB) of the *most recent* log output is retained, so a
@@ -451,7 +484,12 @@ export class JobsResource extends BaseResource {
 		const path = `/public/api/projects/${this.enc(opts?.projectKey,)}/jobs/${jobEnc}/log/${query}`;
 		const maxLogBytes = Math.max(1, opts?.maxLogBytes ?? DEFAULT_MAX_LOG_BYTES,);
 		const { text, } = await this.client.getTextTailLimited(path, maxLogBytes,);
-		return limitJobLog(filterJobLog(text, opts?.logFilter,), opts?.maxLogLines,);
+		// Single download choke point (logFromUrl and wait/summary go through here):
+		// DSS logs embed the job ticket secret in start_session JSON.
+		return limitJobLog(
+			filterJobLog(redactCredentialPairs(text,), opts?.logFilter,),
+			opts?.maxLogLines,
+		);
 	}
 
 	async logFromUrl(

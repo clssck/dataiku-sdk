@@ -145,9 +145,10 @@ describe("CLI regression fixes", () => {
 				expect(failure.code,).toBe(1,);
 				expect(failure.stderr,).toBe("",);
 				expect(JSON.parse(failure.stdout,),).toMatchObject({
+					type: "error",
+					code: "unknown_flag",
 					error: "Unknown flag: --record-cleanup",
-					resource: "project",
-					action: argv[1],
+					hint: expect.stringContaining(`dss project ${argv[1]} `,),
 				},);
 			}
 		},);
@@ -495,11 +496,8 @@ describe("CLI regression fixes", () => {
 				exportPlanFailure.stdout,
 			) as Record<string, unknown>;
 			expect(exportPlanReport,).toMatchObject({
-				ok: false,
 				code: "usage_error",
 				category: "usage",
-				resource: "project",
-				action: "export",
 				exitCode: 1,
 			},);
 			expect(String(exportPlanReport.error,),).toContain(
@@ -601,10 +599,7 @@ describe("CLI regression fixes", () => {
 				expect(failure.code,).toBe(2,);
 				const result = JSON.parse(failure.stdout,) as Record<string, unknown>;
 				expect(result,).toMatchObject({
-					ok: false,
 					code: "command_result_failure",
-					resource: "project",
-					action: "import",
 					details: {
 						result: {
 							success: false,
@@ -628,8 +623,6 @@ describe("CLI regression fixes", () => {
 			code: "unknown_flag",
 			category: "usage",
 			exitCode: 1,
-			resource: "project",
-			action: "list",
 		},);
 		expect(report.error,).toBe("Unknown flag: --name",);
 
@@ -757,8 +750,6 @@ describe("CLI regression fixes", () => {
 				code: "usage_error",
 				category: "usage",
 				exitCode: 1,
-				resource: "job",
-				action: "log-url",
 			},);
 			expect(report.error,).toContain("projectKey, jobId, and activityId",);
 		},);
@@ -779,8 +770,6 @@ describe("CLI regression fixes", () => {
 			code: "usage_error",
 			category: "usage",
 			exitCode: 1,
-			resource: "app",
-			action: "instance-manifest",
 		},);
 		expect(report.error,).toContain("Unexpected argument(s)",);
 	});
@@ -822,8 +811,6 @@ describe("CLI regression fixes", () => {
 				code: "validation_failed",
 				category: "usage",
 				exitCode: 1,
-				resource: "app",
-				action: "save-instance-manifest",
 				details: { projectAppType: "APP_INSTANCE", projectKey: "INST", },
 			},);
 		},);
@@ -955,8 +942,6 @@ describe("CLI regression fixes", () => {
 				code: "not_found",
 				category: "dss",
 				exitCode: 2,
-				resource: "api-service",
-				action: "list-packages",
 				projectKey: "TEST",
 				status: 404,
 			},);
@@ -1072,8 +1057,6 @@ describe("CLI regression fixes", () => {
 				code: "missing_required_flag",
 				category: "usage",
 				exitCode: 1,
-				resource: "recipe",
-				action: "clone",
 			},);
 			expect(report.error,).toContain("--copy-output-settings",);
 		},);
@@ -1322,13 +1305,18 @@ describe("meta command flag validation", () => {
 			env: hermeticEnv,
 		},);
 		const report = JSON.parse(failure.stdout,) as {
-			steps: Array<{ resource: string; error?: { resource?: string; }; }>;
+			steps: Array<{ resource: string; error?: { error?: string; resource?: string; }; }>;
 		};
+		expect(report.steps.map((step,) => step.resource),).toEqual(["dataset", "recipe", "scenario",],);
 		expect(report.steps.map((step,) => step.error?.resource),).toEqual([
-			"dataset",
-			"recipe",
-			"scenario",
+			undefined,
+			undefined,
+			undefined,
 		],);
+		expect(
+			report.steps.map((step,) => step.error?.error?.includes(`Usage: dss ${step.resource} get`,)),
+		)
+			.toEqual([true, true, true,],);
 	});
 
 	it("batch --dry-run accepts the flag alternative to required positionals", async () => {

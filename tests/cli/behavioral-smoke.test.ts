@@ -416,8 +416,12 @@ describe("CLI command behavioral smoke coverage", () => {
 					),
 				)
 					.toEqual({ deleted: "compute_orders", resource: "recipe", },);
-				expect(JSON.parse((await dss(["job", "get", "job-1",], { env: cliEnv(url,), },)).stdout,),)
+				expect(
+					JSON.parse((await dss(["job", "get", "job-1", "--full",], { env: cliEnv(url,), },)).stdout,),
+				)
 					.toHaveProperty("baseStatus.state", "DONE",);
+				expect(JSON.parse((await dss(["job", "get", "job-1",], { env: cliEnv(url,), },)).stdout,),)
+					.toHaveProperty("state", "DONE",);
 				expect(JSON.parse((await dss(["job", "abort", "job-1",], { env: cliEnv(url,), },)).stdout,),)
 					.toEqual({ aborted: "job-1", resource: "job", },);
 				expect(JSON.parse((await dss(["connection", "list",], { env: cliEnv(url,), },)).stdout,),)

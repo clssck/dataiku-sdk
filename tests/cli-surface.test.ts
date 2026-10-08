@@ -730,7 +730,7 @@ describe("CLI command surface", () => {
 				expect(typeof meta?.dryRun, `${resource} ${action} dryRun`,).toBe("boolean",);
 				expect(Array.isArray(meta?.requiredFlags,), `${resource} ${action} requiredFlags`,).toBe(true,);
 				expect(Array.isArray(meta?.optionalFlags,), `${resource} ${action} optionalFlags`,).toBe(true,);
-				expect(meta?.agentContractVersion, `${resource} ${action} agentContractVersion`,).toBe(3,);
+				expect(meta?.agentContractVersion, `${resource} ${action} agentContractVersion`,).toBe(4,);
 				expect(Array.isArray(meta?.structuredExamples,), `${resource} ${action} structuredExamples`,)
 					.toBe(
 						true,

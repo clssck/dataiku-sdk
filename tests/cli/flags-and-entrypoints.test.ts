@@ -52,7 +52,6 @@ describe("CLI bin entrypoints", () => {
 			expect(failure.stderr ?? "",).toBe("",);
 			expect(JSON.parse(failure.stdout ?? "",),).toMatchObject({
 				type: "error",
-				ok: false,
 				code: "env_autoload_enabled",
 				category: "usage",
 				exitCode: 1,
@@ -107,12 +106,9 @@ describe("CLI bin entrypoints", () => {
 			expect(failure.stderr ?? "",).toBe("",);
 			const report = JSON.parse(failure.stdout ?? "",) as Record<string, unknown>;
 			expect(report,).toMatchObject({
-				ok: false,
 				error: "Missing Dataiku URL.",
 				code: "missing_required_flag",
 				exitCode: 1,
-				resource: "project",
-				action: "list",
 			},);
 		} finally {
 			rmSync(tmpDir, { recursive: true, force: true, },);

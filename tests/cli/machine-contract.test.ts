@@ -102,7 +102,6 @@ describe("machine contract: stdio streams and failure codes", () => {
 				const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 				expect(report,).toMatchObject({
 					type: "error",
-					ok: false,
 					code: "assertion_failed",
 					category: "dss",
 					exitCode: 4,
@@ -224,7 +223,6 @@ describe("machine contract: stdio streams and failure codes", () => {
 		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		expect(report,).toMatchObject({
 			type: "error",
-			ok: false,
 			code: "missing_required_arg",
 			category: "usage",
 			exitCode: 1,
@@ -240,7 +238,6 @@ describe("machine contract: stdio streams and failure codes", () => {
 			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
 				type: "error",
-				ok: false,
 				error: `Unknown flag: ${flag}`,
 				code: "unknown_flag",
 				category: "usage",

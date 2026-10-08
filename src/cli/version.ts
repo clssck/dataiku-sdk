@@ -233,10 +233,10 @@ export function buildVersionPayload(input: {
 export const PACKAGE_ROOT = findPackageRoot();
 export const CLI_VERSION = packageVersion(PACKAGE_ROOT,);
 export const CLI_GIT_REVISION = gitRevision(PACKAGE_ROOT,);
-export const AGENT_CONTRACT_VERSION = 3;
+export const AGENT_CONTRACT_VERSION = 4;
 export const JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema";
 export const AGENT_CONTRACT_SCHEMA_ID =
-	"https://clssck.github.io/dataiku-sdk/schemas/agent-contract-v3.json";
+	"https://clssck.github.io/dataiku-sdk/schemas/agent-contract-v4.json";
 
 export function cliVersionResult(): CliVersionPayload {
 	// Only code actually loaded from dist/ may report dist provenance; an

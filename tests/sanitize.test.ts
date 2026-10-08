@@ -1,6 +1,10 @@
 import { describe, expect, it, } from "bun:test";
 import { sanitizeFileName, } from "../src/utils/sanitize.js";
-import { credentialValues, } from "../src/utils/secret-sanitize.js";
+import {
+	credentialValues,
+	redactCredentialPairs,
+	SECRET_REDACTED,
+} from "../src/utils/secret-sanitize.js";
 
 describe("credentialValues", () => {
 	it("collects secrets but not credential settings", () => {
@@ -10,6 +14,25 @@ describe("credentialValues", () => {
 			authRealm: { key: "realm-key-9f8e7d", },
 			params: { credentialsMode: "STS_ASSUME_ROLE", passwordType: "PLAIN", apiKey: "ak-123456", },
 		},),).toEqual(["S3cret-p4ss!", "realm-key-9f8e7d", "ak-123456",],);
+	});
+});
+
+describe("redactCredentialPairs", () => {
+	it("redacts credential-like JSON string pairs and keeps settings and plain fields", () => {
+		const line =
+			'{"jobId":"Build_x","jobTicketSecret":"5kdUjgGp3cOO0DEU7UOP","password" : "p4ss \\" word",'
+			+ '"apiKey":"ak-123456","credentialsMode":"STS_ASSUME_ROLE","passwordType":"PLAIN","key":"plain-key",'
+			+ '"nested":{"accessToken":"tok-1"},"emptySecret":"","count":3}';
+		expect(redactCredentialPairs(line,),).toBe(
+			`{"jobId":"Build_x","jobTicketSecret":"${SECRET_REDACTED}","password" : "${SECRET_REDACTED}",`
+				+ `"apiKey":"${SECRET_REDACTED}","credentialsMode":"STS_ASSUME_ROLE","passwordType":"PLAIN","key":"plain-key",`
+				+ `"nested":{"accessToken":"${SECRET_REDACTED}"},"emptySecret":"","count":3}`,
+		);
+	});
+
+	it("leaves text without credential pairs untouched", () => {
+		const text = '[INFO] [dku] - Building {"jobId":"x"} secret handling ok';
+		expect(redactCredentialPairs(text,),).toBe(text,);
 	});
 });
 

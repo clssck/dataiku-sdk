@@ -194,6 +194,23 @@ describe("agent contract accuracy", () => {
 		}
 	});
 
+	it("emits only schema-published fields in the dispatch error envelope, without ok/resource/action", async () => {
+		const schema = (buildAgentContract().schemas as Record<string, Schema>).errorEnvelope;
+		const properties = schema.properties as Record<string, Schema>;
+		const required = schema.required as string[];
+		for (const redundant of ["ok", "resource", "action",]) {
+			expect(properties,).not.toHaveProperty(redundant,);
+			expect(required,).not.toContain(redundant,);
+		}
+		const failure = await dssFailure(["dataset", "get",],);
+		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+		for (const field of required) expect(report,).toHaveProperty(field,);
+		expect(Object.keys(report,).filter((key,) => !(key in properties)),).toEqual([],);
+		// The usage line appears once, in the message only.
+		expect(String(report.error,).split("Usage:",).length - 1,).toBe(1,);
+		expect(report.hint,).toBeUndefined();
+	});
+
 	it("reports agent, version, and batch among valid resources", async () => {
 		expect(RESOURCE_NAMES,).toEqual(expect.arrayContaining([
 			"agent",
@@ -261,7 +278,6 @@ describe("agent contract accuracy", () => {
 			expect(failure.stderr,).toBe("",);
 			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report,).toMatchObject({
-				ok: false,
 				error:
 					"--fields requires at least one selector. Expected RESOURCE or RESOURCE.ACTION[.FIELD...].",
 				code: "usage_error",
@@ -270,8 +286,6 @@ describe("agent contract accuracy", () => {
 				hint:
 					"Use `dss commands run --fields RESOURCE.ACTION` for scoped command discovery; use `dss commands run` for the action summary or `--output PATH` to export the full registry.",
 				details: { fields: value, },
-				resource: "commands",
-				action: "run",
 			},);
 		}
 	});
@@ -333,8 +347,6 @@ describe("agent contract accuracy", () => {
 			error: "Unknown flag: --name",
 			code: "unknown_flag",
 			hint: "Usage: dss project list [--contains TEXT] [--limit N] [--full]",
-			resource: "project",
-			action: "list",
 		},);
 	});
 

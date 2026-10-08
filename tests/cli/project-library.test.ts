@@ -313,7 +313,7 @@ describe("project-library CLI end-to-end against a fake DSS", () => {
 			);
 			expect(failure.code,).toBe(1,);
 			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
-			expect(report.ok,).toBe(false,);
+			expect(report.type,).toBe("error",);
 			expect(String(report.error,),).toContain("must not contain '.' or '..'",);
 		},);
 		expect(sawRequest,).toBe(false,);

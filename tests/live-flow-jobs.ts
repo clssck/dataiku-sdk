@@ -728,6 +728,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 				"job",
 				"get",
 				jobId,
+				"--full",
 			],);
 			expect(details.baseStatus?.def?.id,).toBe(jobId,);
 			expect(details.baseStatus?.state,).toBe("DONE",);
@@ -767,7 +768,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 				const details = await run<{
 					activityIdsByRecipeName?: Record<string, string[]>;
 					baseStatus?: { activities?: Record<string, { activityId?: string; }>; };
-				}>(["job", "get", jobId,],);
+				}>(["job", "get", jobId, "--full",],);
 				const activityId = Object.values(details.activityIdsByRecipeName ?? {},).flat()[0]
 					?? Object.values(details.baseStatus?.activities ?? {},)[0]?.activityId;
 				if (!activityId) {

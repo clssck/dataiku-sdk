@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Agent contract v4: `job get`, `dataset info`, `dataset get`, and `project get` print compact results by default; `--full` returns the DSS object and `--fields` still projects from it. `job get` keeps state, outputs, progress, the error, and per-activity status, and never the log tail: a failed job is 240 tokens instead of 15,908, a finished one 173 instead of 1,170. `dataset info` keeps type, connection, format, schema, recipes, buildability, data quality, and freshness (1,464 → 131). `dataset get` and `project get` keep the settings structure (so get → edit → `update` still works) without metrics/checks configuration, version stamps, checklists, and empty values; `project get` lists only the permissions you lack in `deniedPermissions` instead of ~20 `can*` booleans (770 → 358, 551 → 149). Discovery output schemas describe the compact shapes; `stdio.stdout.lists` is now `compactResults`.
+- `job log` prints the last 100 lines by default and emits a `log_truncated` warning with the total; `--max-lines N` sets the tail, `0` prints everything, `--output PATH` is unchanged. A finished one-recipe job's log is 4,460 tokens instead of 9,950.
+- Fix: job logs no longer expose secrets. DSS writes the job ticket secret (`"jobTicketSecret":"..."`) into every job log; `job log`, `job summary`, `job log-url`, and `--include-logs` builds/waits (SDK `jobs.log`) now redact credential-like JSON values as `[redacted]`.
+- Fix: `job log --errors-only` and `--log-filter errors` no longer keep INFO records whose JSON payload merely contains a level word, such as the visual recipe `SQL status {"statusWarnLevel":"ERROR",...}` line logged by every successful grouping job.
+- `project map` stops repeating itself: node `name` is omitted when it equals `id`, per-node `zoneName` and the `nodeIds` lists of `zones` and `components` are gone (membership is each node's `zoneId`/`componentId`), and empty `warnings` and an untruncated `truncation` block are omitted. `topologyFingerprint` is unchanged. A 7-node map is 513 tokens instead of 701.
+- Error envelopes drop `ok:false` (same as `type:"error"`) and the echoed `resource`/`action`; batch steps keep them at step level.
+
 ## 3.8.0
 
 - Fix: `recipe create --type vstack` (and `join`, `geojoin`, `generate_features`) sends the inputs as DSS `creationSettings.virtualInputs`, as dataikuapi does. DSS builds these recipes' inputs and payload only from virtual inputs, so a Stack recipe was created with `inputs: {}`, an empty payload, and `outputSchemaUpdateError: 500 Internal Error`; it now has every input, a UNION payload, and a computed output schema.

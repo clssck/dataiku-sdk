@@ -92,6 +92,17 @@ describe("CLI flow visualization", () => {
 				"default_zone_items",
 			],);
 			expect(result.map.topologyFingerprint,).toMatch(/^[0-9a-f]{64}$/,);
+			// Deduplicated output: names equal to ids, zoneName, nodeIds, empty warnings and an uncut truncation are omitted.
+			expect(result.map.nodes.some((node,) => "zoneName" in node),).toBe(false,);
+			expect(result.map.nodes.every((node,) => !("name" in node) || node.name !== node.id),).toBe(
+				true,
+			);
+			expect(result.map.zones.some((zone,) => "nodeIds" in zone),).toBe(false,);
+			expect(result.map.components.some((component,) => "nodeIds" in (component as object)),).toBe(
+				false,
+			);
+			expect(result.map,).not.toHaveProperty("warnings",);
+			expect(result,).not.toHaveProperty("truncation",);
 			expect(result.rendering,).toMatchObject({ format: "mermaid", },);
 			expect(result.rendering.content,).toContain("Raw &amp; Sources",);
 			expect(result.rendering.content,).toContain("style z0 fill:#64748b22,stroke:#64748b",);

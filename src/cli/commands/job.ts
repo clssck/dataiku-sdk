@@ -16,6 +16,31 @@ import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
+/** Lines `job log` prints to stdout when no `--max-lines` is given. */
+const DEFAULT_STDOUT_LOG_LINES = 100;
+
+/**
+ * Tail a (filtered) job log for stdout. `0`/`-1` return everything; a
+ * truncated tail enqueues a `log_truncated` warning carrying the shown and
+ * total line counts.
+ */
+function tailJobLogForStdout(log: string, limit: number,): string {
+	if (!log || limit === 0 || limit === -1) return log;
+	const lines = log.split(/\r?\n/,);
+	const hasTrailingLineBreak = lines[lines.length - 1] === "";
+	if (hasTrailingLineBreak) lines.pop();
+	const shown = Math.max(1, limit,);
+	if (lines.length <= shown) return log;
+	enqueueCliWarning({
+		code: "log_truncated",
+		shown,
+		total: lines.length,
+		hint: "Raise --max-lines (0 = all), add --errors-only, or use --output PATH.",
+	},);
+	const tail = lines.slice(-shown,).join("\n",);
+	return hasTrailingLineBreak ? `${tail}\n` : tail;
+}
+
 /**
  * With an empty output schema DSS ends a dataset build DONE after writing no
  * columns and no rows, without an error. Flag that after a successful build so
@@ -276,7 +301,8 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			requireArgs(a, 1, commandUsage("job", "get",),);
 			return c.jobs.get(a[0], f["project-key"] as string | undefined,);
 		},
-		description: "Get job details.",
+		description:
+			"Get job state, outputs, progress, error, and per-activity status (compact by default; --full returns the raw DSS job object). The log tail is never included: use `dss job log ID --errors-only`.",
 		examples: ["dss job get JOB_ID",],
 	},
 	summary: {
@@ -293,23 +319,25 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			const logFilter = f["errors-only"] === true
 				? "errors"
 				: jobLogFilterFromFlag(f["log-filter"],);
+			const outputFile = (f["output"] as string | undefined)
+				?? (f["output-file"] as string | undefined);
+			const requestedLines = maxLogLinesFromFlags(f,);
+			// Stdout is tailed here (not in the SDK) so the total can be reported.
 			const log = await c.jobs.log(a[0], {
 				activity: f["activity"] as string | undefined,
 				logId: f["log-id"] as string | undefined,
 				logFilter,
-				maxLogLines: maxLogLinesFromFlags(f,),
+				maxLogLines: outputFile ? requestedLines : -1,
 				projectKey: f["project-key"] as string | undefined,
 			},);
-			const outputFile = (f["output"] as string | undefined)
-				?? (f["output-file"] as string | undefined);
-			if (!outputFile) return log;
+			if (!outputFile) return tailJobLogForStdout(log, requestedLines ?? DEFAULT_STDOUT_LOG_LINES,);
 			const outputPath = resolve(outputFile,);
 			await mkdir(dirname(outputPath,), { recursive: true, },);
 			await writeFile(outputPath, log.endsWith("\n",) ? log : `${log}\n`, "utf-8",);
 			return outputPath;
 		},
 		description:
-			"Get public API job log output; find why a job failed. Use --errors-only (or --log-filter errors) to surface just error/traceback lines, and --output PATH to write the log to a file (stdout returns the path). --log-id is accepted for UI parity but DSS API-key auth cannot select browser-only cat-activity-log files.",
+			"Get public API job log output (last 100 lines by default; --max-lines N, 0 = all); find why a job failed. Use --errors-only for error/traceback lines and --output PATH to write it to a file (stdout returns the path). --log-id is accepted for UI parity; API keys cannot read browser-only cat-activity-log files.",
 		examples: [
 			"dss job log JOB_ID",
 			"dss job log JOB_ID --activity main --max-log-lines 200",
