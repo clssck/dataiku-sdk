@@ -42,15 +42,21 @@ it("waits for both metadata and the canonical tarball before confirming publicat
 	const fixture = candidate();
 	let metadataReads = 0;
 	let tarballReads = 0;
+	// Like npm's CDN: a tarball 404 stays cached for its exact URL after the
+	// tarball replicates, so only a different URL reaches the published file.
+	const cachedNotFound = new Set<string>();
 	const server = Bun.serve({
 		hostname: "127.0.0.1",
 		port: 0,
 		fetch(request,) {
-			if (request.url.endsWith(".tgz",)) {
+			if (new URL(request.url,).pathname.endsWith(".tgz",)) {
 				tarballReads++;
-				return tarballReads === 1
-					? new Response(null, { status: 404, },)
-					: new Response(fixture.bytes,);
+				if (cachedNotFound.has(request.url,)) return new Response(null, { status: 404, },);
+				if (tarballReads === 1) {
+					cachedNotFound.add(request.url,);
+					return new Response(null, { status: 404, },);
+				}
+				return new Response(fixture.bytes,);
 			}
 			metadataReads++;
 			return metadataReads === 1
@@ -81,7 +87,9 @@ for (const mismatch of ["metadata", "download-url", "tarball",] as const) {
 			port: 0,
 			fetch(request,) {
 				requests++;
-				if (request.url.endsWith(".tgz",)) return new Response(Buffer.alloc(fixture.bytes.length, 0,),);
+				if (new URL(request.url,).pathname.endsWith(".tgz",)) {
+					return new Response(Buffer.alloc(fixture.bytes.length, 0,),);
+				}
 				const value = metadata(fixture, `${new URL(request.url,).origin}/`,);
 				if (mismatch === "metadata") value.dist.integrity = `sha512-${"0".repeat(86,)}==`;
 				if (mismatch === "download-url") value.dist.tarball = "https://untrusted.invalid/package.tgz";

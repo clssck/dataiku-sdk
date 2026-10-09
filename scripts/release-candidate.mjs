@@ -177,7 +177,13 @@ export async function verifyPublishedCandidate(directory, {
 					"Published version has different content or source identity; do not republish",
 				);
 			}
-			const tarball = await fetch(tarballUrl, options,);
+			// npm's CDN caches a tarball 404 for 300 s; a fresh query per attempt
+			// skips a 404 cached before the tarball replicated. Integrity is
+			// still checked against the candidate, and dist.tarball against the
+			// canonical URL.
+			const attemptUrl = new URL(tarballUrl,);
+			attemptUrl.searchParams.set("attempt", `${Date.now()}`,);
+			const tarball = await fetch(attemptUrl, options,);
 			if (!tarball.ok) {
 				await tarball.body?.cancel();
 				throw new Error(`Tarball HTTP ${tarball.status}`,);
