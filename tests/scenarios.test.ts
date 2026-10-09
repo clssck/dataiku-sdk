@@ -89,7 +89,7 @@ describe("ScenariosResource.runAndWait", () => {
 		}, async (client,) => {
 			const result = await client.scenarios.runAndWait("nightly", {
 				pollIntervalMs: 1,
-				timeoutMs: 50,
+				timeoutMs: 5_000,
 			},);
 
 			expect(result,).toMatchObject({
@@ -144,7 +144,7 @@ describe("ScenariosResource.runAndWait", () => {
 		}, async (client,) => {
 			const result = await client.scenarios.runAndWait("legacy", {
 				pollIntervalMs: 1,
-				timeoutMs: 50,
+				timeoutMs: 5_000,
 			},);
 
 			expect(result,).toMatchObject({
@@ -214,7 +214,7 @@ describe("ScenariosResource.runAndWait", () => {
 		}, async (client,) => {
 			const result = await client.scenarios.runAndWait("nightly", {
 				pollIntervalMs: 1,
-				timeoutMs: 50,
+				timeoutMs: 5_000,
 			},);
 
 			expect(result,).toMatchObject({
@@ -296,7 +296,7 @@ describe("ScenariosResource.runAndWait", () => {
 		}, async (client,) => {
 			const result = await client.scenarios.runAndWait("sanitized", {
 				pollIntervalMs: 1,
-				timeoutMs: 50,
+				timeoutMs: 5_000,
 			},);
 
 			expect(result.steps,).toEqual([
@@ -360,7 +360,7 @@ describe("ScenariosResource.runAndWait", () => {
 		}, async (client,) => {
 			const result = await client.scenarios.runAndWait("report-down", {
 				pollIntervalMs: 1,
-				timeoutMs: 50,
+				timeoutMs: 5_000,
 			},);
 
 			expect(result,).toMatchObject({
@@ -424,7 +424,7 @@ describe("ScenariosResource.runAndWait", () => {
 		}, async (client,) => {
 			const result = await client.scenarios.runAndWait("successful", {
 				pollIntervalMs: 1,
-				timeoutMs: 50,
+				timeoutMs: 5_000,
 			},);
 
 			expect(result,).toMatchObject({

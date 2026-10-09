@@ -48,9 +48,12 @@ describe("CLI archive downloads", () => {
 				res.writeHead(200, { "Content-Type": "application/zip", },);
 				res.write("one",);
 				if (stall) return;
-				await Bun.sleep(120,);
+				// Real gaps: the idle timeout runs in the spawned CLI process, which fake
+				// timers cannot reach. Gaps stay 200 ms inside the 500 ms timeout so a
+				// loaded machine (bun test --parallel) cannot trip it.
+				await Bun.sleep(300,);
 				res.write("two",);
-				await Bun.sleep(120,);
+				await Bun.sleep(300,);
 				res.end("three",);
 			}, async (url,) => {
 				const output = join(root, "project.zip",);
@@ -61,7 +64,7 @@ describe("CLI archive downloads", () => {
 					"--output",
 					output,
 					"--request-timeout",
-					"200",
+					"500",
 					"--retries",
 					"1",
 				];

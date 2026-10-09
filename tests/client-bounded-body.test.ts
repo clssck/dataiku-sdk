@@ -152,7 +152,7 @@ describe("DataikuClient bounded response bodies", () => {
 		}, async (client,) => {
 			expect(await client.get("/retry-stalled-error",),).toEqual({ recovered: true, },);
 			expect(attempts,).toBe(2,);
-		}, { requestTimeoutMs: 80, },);
+		}, { requestTimeoutMs: 500, },);
 	});
 
 	it("reports the real status when an error body stalls past the deadline", async () => {
@@ -163,7 +163,7 @@ describe("DataikuClient bounded response bodies", () => {
 			const failure = await client.post("/stalled-mutation", {},).catch((error: unknown,) => error);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).status,).toBe(503,);
-		}, { requestTimeoutMs: 80, },);
+		}, { requestTimeoutMs: 500, },);
 	});
 
 	it("getText rejects a body exceeding maxResponseBodyBytes", async () => {
