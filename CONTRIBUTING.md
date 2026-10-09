@@ -32,7 +32,7 @@ bun install --frozen-lockfile
 | Build                   | `bun run build`                                            |
 | Lint                    | `bun run lint` — autofix with `bun run lint:fix`            |
 | Format                  | `bun run format` — verify with `bun run format:check`       |
-| Test                    | `bun test`                                                 |
+| Test                    | `bun run test` (all files in parallel); `bun test PATH` for one file |
 | Packaged platform smoke | `bun run test:platform`                                    |
 
 ## Checks your change must pass
@@ -42,7 +42,7 @@ Before opening a pull request, all of these must be green:
 1. `bun run check` — TypeScript is clean (no errors)
 2. `bun run format:check` — dprint formatting is applied
 3. `bun run lint` — oxlint reports no errors
-4. `bun test` — the unit suite passes
+4. `bun run test` — the unit suite passes
 5. `bun run test:platform` — the packed artifact runs under Bun, preserves JSON errors, and installs the skill
 
 ## Tests

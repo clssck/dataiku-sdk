@@ -33,7 +33,7 @@
 		"lint:fix": "oxlint --fix src/ tools/oxlint/ scripts/ tests/",
 		"format": "dprint fmt",
 		"format:check": "dprint check",
-		"test": "bun test",
+		"test": "bun test --parallel --timeout 30000",
 		"test:live": "bun --no-env-file scripts/live-suite.ts",
 		"check:live": "tsc --noEmit -p tsconfig.live.json",
 		"test:tokens": "bun test tests/cli/agent-token-budget.test.ts",
