@@ -2,16 +2,45 @@
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
 	"plugins": ["typescript", "import", "unicorn", "oxc"],
 	"ignorePatterns": ["dist/"],
+	"jsPlugins": [{ "name": "dss", "specifier": "./tools/oxlint/index.ts" }],
 	"overrides": [
 		{
-			"files": ["tests/**", "scripts/**"],
+			"files": ["src/**", "tools/**"],
 			"rules": {
-				"dss/no-chained-type-assertions": "off",
+				"dss/no-chained-type-assertions": "error",
+				"dss/no-widen-then-assert": "error",
+				"dss/no-reduce-accumulator-copy": "error"
+			}
+		},
+		{
+			"files": ["scripts/**"],
+			"rules": {
+				"dss/no-widen-then-assert": "error",
+				"dss/no-reduce-accumulator-copy": "error",
+				"no-restricted-imports": "off"
+			}
+		},
+		{
+			"files": ["src/**"],
+			"rules": {
+				"dss/no-uncoded-errors": "error",
+				"dss/no-usage-literals": "error",
+				"dss/no-direct-process-env": "error"
+			}
+		},
+		{
+			"files": ["src/resources/**"],
+			"rules": {
+				"dss/no-raw-json-parse-in-resources": "error"
+			}
+		},
+		{
+			"files": ["tests/**"],
+			"rules": {
 				"no-restricted-imports": "off"
 			}
 		}
 	],
-	"jsPlugins": [{ "name": "dss", "specifier": "./tools/oxlint/index.ts" }],
 	"categories": {
 		"correctness": "error",
 		"suspicious": "warn",
@@ -22,19 +51,27 @@
 	"rules": {
 		"oxc/no-map-spread": "off",
 		"oxc/no-accumulating-spread": "error",
-		"dss/no-reduce-accumulator-copy": "error",
-		"dss/no-chained-type-assertions": "error",
-		"dss/no-widen-then-assert": "error",
-		"dss/no-uncoded-errors": "error",
-		"dss/no-raw-json-parse-in-resources": "error",
-		"dss/no-usage-literals": "error",
-		"dss/no-direct-process-env": "error",
 		"no-restricted-imports": ["error", {
-			"paths": [{
-				"name": "node:crypto",
-				"importNames": ["createHash"],
-				"message": "Use sha256Hex from src/utils/stable-hash.ts."
-			}]
+			"paths": [
+				{
+					"name": "node:crypto",
+					"importNames": ["createHash"],
+					"message": "Use sha256Hex from src/utils/stable-hash.ts or Bun.CryptoHasher."
+				},
+				{
+					"name": "node:string_decoder",
+					"message": "Use a streaming TextDecoder (decode(chunk, { stream: true }))."
+				},
+				{
+					"name": "node:child_process",
+					"message": "Use Bun.spawn / Bun.spawnSync."
+				},
+				{
+					"name": "node:url",
+					"importNames": ["fileURLToPath"],
+					"message": "Use import.meta.dir / import.meta.path, or Bun.fileURLToPath."
+				}
+			]
 		}],
 		"no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
 		"no-var": "error",
