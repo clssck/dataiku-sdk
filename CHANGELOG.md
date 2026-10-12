@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 4.0.0
+
 - **Breaking:** agent contract v5 (`agentContractVersion: 5`), for the corrected `outputShape`s and error classifications below.
 - **Breaking:** Bun 1.4.3 is now the minimum supported version (`engines.bun >=1.4.3`); CI and release run 1.4.3. On an older Bun, `dss` exits 2 with a JSON error that tells you to run `bun upgrade`.
 - **Breaking:** dataset TSV cell/row limits (a single cell over 16 MiB, a row over 64 MiB) fail as `validation_failed` (exit 1, not retryable) naming the column and pointing to `--columns`. They used to surface as a retryable `transient` "0 Network Error" (exit 3) that no retry could fix. SDK: these are now `ClientValidationError`, not `DataikuError`.
