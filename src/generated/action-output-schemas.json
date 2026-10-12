@@ -2128,6 +2128,10 @@
 							"type": "string"
 						}
 					}
+				},
+				"hint": {
+					"type": "string",
+					"description": "Edit-and-rerun commands when the failed recipe is known."
 				}
 			}
 		},

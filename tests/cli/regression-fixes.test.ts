@@ -952,39 +952,42 @@ describe("CLI regression fixes", () => {
 
 	it("commands run exposes alias, usage, and cleanup hint regressions", async () => {
 		const { stdout, stderr, } = await dss(
-			["commands", "run", "--fields", "dataset,job,project-library",],
+			[
+				"commands",
+				"run",
+				"--fields",
+				"dataset.preview,dataset.get,dataset.create,job.wait,project-library.create-file",
+			],
 			{ env: hermeticEnv, },
 		);
 		expect(stderr,).toBe("",);
 		const registry = JSON.parse(stdout,) as Record<
 			string,
-			Record<string, {
+			{
 				cleanupHint?: string;
 				flags: Array<{ name: string; kind: string; aliases?: string[]; }>;
 				usage: string;
-			}>
+			}
 		>;
 
-		expect(registry.dataset?.preview?.usage,).toContain("[--rows N]",);
-		expect(registry.dataset?.preview?.flags,).toContainEqual(
+		expect(registry["dataset.preview"]?.usage,).toContain("[--rows N]",);
+		expect(registry["dataset.preview"]?.flags,).toContainEqual(
 			expect.objectContaining({
 				name: "max-rows",
 				kind: "value",
 				aliases: expect.arrayContaining(["rows",],),
 			},),
 		);
-		const datasetGetProjectKey = registry.dataset?.get?.flags.find((flag,) =>
+		const datasetGetProjectKey = registry["dataset.get"]?.flags.find((flag,) =>
 			flag.name === "project-key"
 		);
 		expect(datasetGetProjectKey,).toEqual(
 			expect.objectContaining({ name: "project-key", kind: "value", },),
 		);
 		expect(datasetGetProjectKey,).not.toHaveProperty("aliases",);
-		expect(registry.job?.wait?.usage,).toContain("[--project-key KEY]",);
-		expect(registry["project-library"]?.["create-file"]?.cleanupHint ?? "",).not.toContain(
-			"--if-exists",
-		);
-		expect(registry.dataset?.create?.cleanupHint ?? "",).toContain("--if-exists",);
+		expect(registry["job.wait"]?.usage,).toContain("[--project-key KEY]",);
+		expect(registry["project-library.create-file"]?.cleanupHint ?? "",).not.toContain("--if-exists",);
+		expect(registry["dataset.create"]?.cleanupHint ?? "",).toContain("--if-exists",);
 	});
 
 	it("meaning delete --if-exists skips Unknown meaning 400 without deleting", async () => {

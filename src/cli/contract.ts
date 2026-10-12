@@ -1759,7 +1759,7 @@ export function buildAgentContract(): Record<string, unknown> {
 					"dss commands run --fields dataset.create",
 				],
 				scopedDiscoveryHint:
-					"Default: resource/action summary. --contains TEXT: top 5 actions by concept. --fields RESOURCE: all resource entries; RESOURCE.ACTION: one entry keyed by that path; append .FIELD for nested metadata. Comma-separate paths. --output PATH exports the full registry.",
+					"Default: resource/action summary. --contains TEXT: top 5 actions by concept. --fields RESOURCE: each action's usage, description, and side effect; RESOURCE.ACTION: one full entry keyed by that path; append .FIELD for nested metadata. Comma-separate paths. --output PATH exports full entries (the full registry without --fields).",
 				// Accepted by every command and absent from per-entry `flags`; the
 				// connection flags matter only for commands that call DSS.
 				globalFlags: [...GLOBAL_AGENT_FLAGS, ...AUTHENTICATED_AGENT_FLAGS,].map((name,) => {

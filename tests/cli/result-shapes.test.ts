@@ -650,6 +650,8 @@ describe("CLI scenario get-run / last-runs output", () => {
 				["dss", "dataset", "schema", "OTHER.rates", "--project-key", "TEST",],
 				["dss", "job", "log", FAILED_JOB_ID, "--errors-only", "--project-key", "TEST",],
 			],
+			hint:
+				"To fix: dss recipe get-payload python_report --output FILE --project-key TEST, edit FILE, dss recipe set-payload python_report --file FILE --project-key TEST; rerun: dss scenario run-and-wait nightly --project-key TEST.",
 		},);
 		expect(await scenarioCli([...args, "--full",], scenarioRunReport(), path,),).toEqual(
 			scenarioRunReport(),
@@ -666,6 +668,7 @@ describe("CLI scenario get-run / last-runs output", () => {
 			failure: { message: KEY_ERROR, jobId: FAILED_JOB_ID, },
 			next: [["dss", "job", "log", FAILED_JOB_ID, "--errors-only", "--project-key", "TEST",],],
 		},);
+		expect(compact,).not.toHaveProperty("hint",);
 	});
 
 	it("last-runs is compact by default and raw with --full", async () => {

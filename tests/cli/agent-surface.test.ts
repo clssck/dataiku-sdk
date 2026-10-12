@@ -47,36 +47,41 @@ describe("CLI agent-only command surface", () => {
 
 	it("commands run --fields prints scoped machine-readable registry metadata", async () => {
 		const { stdout, stderr, } = await dss(
-			["commands", "run", "--fields", "version,auth,dataset,agent,recipe",],
+			[
+				"commands",
+				"run",
+				"--fields",
+				"version.run,auth,dataset.list,agent.contract,recipe.get-payload",
+			],
 		);
 		expect(stderr,).toBe("",);
 		const registry = JSON.parse(stdout,) as Record<string, Record<string, unknown>>;
-		expect(registry.version.run,).toMatchObject({
+		expect(registry["version.run"],).toMatchObject({
 			resource: "version",
 			action: "run",
 			usage: "dss version",
 			requiresAuth: false,
 			outputShape: "object",
 		},);
-		expect(registry.auth.login,).toMatchObject({
-			resource: "auth",
-			action: "login",
-			requiredFlags: ["url", "api-key",],
-			outputShape: "object",
+		// A bare resource lists its actions, not their full entries.
+		expect(registry.auth,).toEqual({
+			login: {
+				usage: expect.stringMatching(/^dss auth login /,),
+				description: expect.any(String,),
+				sideEffect: "auth",
+			},
 		},);
-		expect(registry.auth,).not.toHaveProperty("status",);
-		expect(registry.auth,).not.toHaveProperty("logout",);
-		expect(registry.dataset.list,).toMatchObject({
+		expect(registry["dataset.list"],).toMatchObject({
 			resource: "dataset",
 			action: "list",
 		},);
-		expect(registry.agent.contract,).toMatchObject({
+		expect(registry["agent.contract"],).toMatchObject({
 			resource: "agent",
 			action: "contract",
 			requiresAuth: false,
 			agentContractVersion: 6,
 		},);
-		expect(registry.recipe["get-payload"],).toHaveProperty("unsafeOutputs",);
+		expect(registry["recipe.get-payload"],).toHaveProperty("unsafeOutputs",);
 	});
 
 	it("agent contract prints the versioned agent protocol", async () => {
@@ -216,19 +221,24 @@ describe("CLI agent-only command surface", () => {
 describe("CLI command registry discovery", () => {
 	it("registry exposes flags and recipe actions instead of help text", async () => {
 		const { stdout, stderr, } = await dss(
-			["commands", "run", "--fields", "agent,project,recipe",],
+			[
+				"commands",
+				"run",
+				"--fields",
+				"agent.contract,project.list,recipe.get-payload,recipe.set-payload",
+			],
 		);
 		expect(stderr,).toBe("",);
 		const registry = JSON.parse(stdout,) as Record<
 			string,
-			Record<string, {
+			{
 				flags?: Array<{ name: string; kind: string; }>;
 				action?: string;
 				agentContractVersion?: number;
-			}>
+			}
 		>;
 		// Global flags are listed once in the agent contract, not in every entry.
-		const projectFlags = registry.project.list.flags?.map((flag,) => flag.name) ?? [];
+		const projectFlags = registry["project.list"]!.flags?.map((flag,) => flag.name) ?? [];
 		expect(projectFlags,).not.toContain("verbose",);
 		expect(projectFlags,).not.toContain("help",);
 		expect(projectFlags,).not.toContain("report-json",);
@@ -240,21 +250,18 @@ describe("CLI command registry discovery", () => {
 		expect(contract["commands.globalFlags"].map((flag,) => flag.name),).toEqual(
 			expect.arrayContaining(["verbose", "fields", "url", "api-key",],),
 		);
-		expect(registry.recipe["get-payload"].action,).toBe("get-payload",);
-		expect(registry.recipe["set-payload"].action,).toBe("set-payload",);
-		expect(registry.agent.contract.agentContractVersion,).toBe(6,);
+		expect(registry["recipe.get-payload"]!.action,).toBe("get-payload",);
+		expect(registry["recipe.set-payload"]!.action,).toBe("set-payload",);
+		expect(registry["agent.contract"]!.agentContractVersion,).toBe(6,);
 	});
 });
 
 describe("CLI command registry short flags", () => {
 	it("registry exposes supported short-alias-backed flags without help metadata", async () => {
-		const { stdout, stderr, } = await dss(["commands", "run", "--fields", "project",],);
+		const { stdout, stderr, } = await dss(["commands", "run", "--fields", "project.get",],);
 		expect(stderr,).toBe("",);
-		const registry = JSON.parse(stdout,) as Record<
-			string,
-			Record<string, { flags?: Array<{ name: string; }>; }>
-		>;
-		const projectFlags = registry.project.get.flags?.map((flag,) => flag.name) ?? [];
+		const registry = JSON.parse(stdout,) as Record<string, { flags?: Array<{ name: string; }>; }>;
+		const projectFlags = registry["project.get"]!.flags?.map((flag,) => flag.name) ?? [];
 		expect(projectFlags,).toContain("project-key",);
 		expect(projectFlags,).not.toContain("help",);
 	});

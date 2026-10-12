@@ -273,6 +273,21 @@ describe("agent contract accuracy", () => {
 		}
 	});
 
+	it("indents stdout results and errors under DSS_PRETTY=1 without changing the value", async () => {
+		const pretty = { env: { ...process.env, DATAIKU_DISABLE_ENV: "1", DSS_PRETTY: "1", }, };
+		const args = ["commands", "run", "--fields", "dataset.list",];
+		const compact = await dss(args,);
+		const indented = await dss(args, pretty,);
+		expect(compact.stdout.trimEnd(),).not.toContain("\n",);
+		expect(indented.stdout.split("\n",).length,).toBeGreaterThan(10,);
+		expect(JSON.parse(indented.stdout,),).toEqual(JSON.parse(compact.stdout,),);
+
+		const failure = await dssFailure(["flow", "map",], pretty,);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stdout,).toStartWith('{\n  "type": "error",',);
+		expect(JSON.parse(failure.stdout,),).toMatchObject({ type: "error", code: "usage_error", },);
+	});
+
 	it("returns the known --fields selectors and warns about unknown ones with suggestions", async () => {
 		const result = await dss([
 			"commands",

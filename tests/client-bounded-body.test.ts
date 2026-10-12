@@ -348,7 +348,8 @@ describe("DataikuClient bounded response bodies", () => {
 					expect(error,).toBeInstanceOf(DataikuError,);
 					expect((error as DataikuError).status,).toBe(0,);
 				}
-			}, { requestTimeoutMs: 100, },);
+				// Real socket: at 100 ms a loaded parallel run timed out before the headers arrived.
+			}, { requestTimeoutMs: 500, },);
 		});
 	}
 

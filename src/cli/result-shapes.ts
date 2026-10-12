@@ -370,12 +370,13 @@ function runTrigger(run: Item,): Item | undefined {
 /**
  * Failure diagnosis of a raw `scenario get-run` report: the first failure
  * (`{ stepId, jobId, dataset, message }`) and the next command(s) to run as
- * argv arrays. Empty when the run did not fail.
+ * argv arrays. With the failed recipe known, `hint` names the edit-and-rerun
+ * loop, so the agent does not look up the write commands. Empty when the run did not fail.
  */
 export function scenarioRunDiagnosis(
 	details: unknown,
 	activity?: FailedActivity,
-): { failure?: Item; next?: string[][]; } {
+): { failure?: Item; next?: string[][]; hint?: string; } {
 	const fields = record(details,);
 	const run = record(fields["scenarioRun"],);
 	const result = record(run["result"],);
@@ -387,11 +388,21 @@ export function scenarioRunDiagnosis(
 		|| steps.some((step,) => isFailedOutcome(step["outcome"],));
 	const failure = failed ? firstScenarioFailure(steps, result["thrown"],) : undefined;
 	if (!failure) return {};
-	const located = activity
-		? { ...failure, recipe: activity.recipe, inputs: activity.inputs, }
-		: failure;
+	if (!activity) {
+		const next = failureNextSteps(failure, scenarioId, run["runId"], projectKey, undefined,);
+		return next ? { failure, next, } : { failure, };
+	}
+	const located = { ...failure, recipe: activity.recipe, inputs: activity.inputs, };
 	const next = failureNextSteps(located, scenarioId, run["runId"], projectKey, activity,);
-	return next ? { failure: located, next, } : { failure: located, };
+	const pk = projectKeyArgs(projectKey,).join(" ",);
+	const suffix = pk === "" ? "" : ` ${pk}`;
+	const rerun = typeof scenarioId === "string"
+		? `; rerun: dss scenario run-and-wait ${scenarioId}${suffix}`
+		: "";
+	const hint =
+		`To fix: dss recipe get-payload ${activity.recipe} --output FILE${suffix}, edit FILE, `
+		+ `dss recipe set-payload ${activity.recipe} --file FILE${suffix}${rerun}.`;
+	return next ? { failure: located, next, hint, } : { failure: located, hint, };
 }
 
 /**

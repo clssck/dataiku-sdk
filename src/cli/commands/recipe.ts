@@ -498,10 +498,31 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 					hint: `Fix the recipe settings, then run dss recipe update-schema ${createdName}.`,
 				},);
 			}
-			return { created: createdName, resource: "recipe", ...created, ...moved, };
+			// A visual recipe whose payload came from flags is ready to run: point at the build
+			// (recursive, so outputs of recipes created just before are built too).
+			const output = f["output"];
+			const next = typeof output === "string" && (created.payloadConfigured || created.joinConfigured)
+				? [[
+					"dss",
+					"job",
+					"build-and-wait",
+					output,
+					"--build-mode",
+					"RECURSIVE_BUILD",
+					"--summary",
+					...(pk ? ["--project-key", pk,] : []),
+				],]
+				: undefined;
+			return {
+				created: createdName,
+				resource: "recipe",
+				...created,
+				...moved,
+				...(next ? { next, } : {}),
+			};
 		},
 		description:
-			"Create a recipe with optional inputs and a dataset or managed-folder output. Missing outputs are created on --output-connection as DSS managed datasets. Join, grouping (--group-by/--aggregate) and prepare (--rename/--formula/--filter/...) payloads come from flags. Visual recipe outputs get the DSS-computed schema (outputSchemaUpdated).",
+			"Create a recipe; missing outputs become managed datasets on --output-connection. Join, grouping (--group-by/--aggregate: keys plus those aggregates, no implicit count) and prepare (--rename/--formula/--filter/...) payloads come from flags, then `next` is the build. Visual outputs get the DSS-computed schema.",
 		examples: [
 			"dss recipe create --type python --input raw_orders,lookup --output orders_clean",
 			"dss recipe create --type grouping --input orders --output orders_by_cat --group-by category --aggregate amount:sum+avg,name:first --order-by day",

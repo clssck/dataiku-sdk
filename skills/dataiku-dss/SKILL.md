@@ -22,7 +22,8 @@ Reads (`list`, `get`, `preview`, `schema`, `cat`, `log`, `last-runs`): run them 
 name or flag fails before any DSS call, and the error carries the usage line or a "Did you mean".
 Before the first write of an action, fetch its entry once (syntax, payload schema, side effects,
 dry-run, cleanup), several in one request: `dss commands run --fields recipe.set-payload,recipe.update`.
-Unknown names: `dss commands run` lists every resource and action. Contract version, if you depend
+Unknown names: `dss commands run` lists every resource and action; `--fields recipe` gives each
+recipe action's usage line. Contract version, if you depend
 on stable fields: `dss agent contract --fields agentContractVersion`. Never load the full registry
 into context; export it if needed: `dss commands run --output commands.json`.
 
@@ -36,9 +37,9 @@ into context; export it if needed: `dss commands run --output commands.json`.
   Preview: `dss cleanup --file cleanup.jsonl`; add `--apply` to delete recorded resources.
 - Check exits: 0 success, 1 input/configuration, 2 DSS/internal, 3 transient, 4 failed long-running
   result/assertion. Never blindly retry ambiguous mutation failures.
-- Stdout: one compact JSON value. Stderr: JSONL diagnostics. Dispatch errors carry
-  `type:"error"`, `code`, `category`, `exitCode`; doctor/batch/cleanup may return direct failure
-  results. Branch on structured fields, not message text.
+- Stdout: one compact JSON value (`DSS_PRETTY=1` indents it, if your shell cuts long lines).
+  Stderr: JSONL diagnostics. Dispatch errors carry `type:"error"`, `code`, `category`, `exitCode`;
+  doctor/batch/cleanup may return direct failure results. Branch on structured fields, not message text.
 - Bound exploration with advertised `--fields`, `--preview`, row limits, or `--output PATH`.
 - Reads are compact; `--full` returns the DSS object. Results and errors may carry `next`
   (argv arrays) or a `hint`: run those before exploring. Failed scenario/job: `scenario last-runs ID`

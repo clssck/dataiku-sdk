@@ -1,5 +1,6 @@
 import type { DataikuClient, } from "../client.js";
 import { DataikuError, type StableErrorCode, } from "../errors.js";
+import { prettyOutputEnabled, } from "./env.js";
 
 let outputFieldProjection: string[] | undefined;
 
@@ -124,14 +125,17 @@ export function projectResultFields(
 	return pickResultFields(result, fields,);
 }
 
+/** One JSON value plus newline for stdout; indented when `DSS_PRETTY=1`. */
+export function stdoutJson(value: unknown,): string {
+	return `${JSON.stringify(value, null, prettyOutputEnabled() ? 2 : undefined,)}\n`;
+}
+
 export function writeCommandResult(result: unknown,): void {
 	const projected = outputFieldProjection
 		? projectResultFields(result, outputFieldProjection,)
 		: result;
 	flushCliWarnings();
-	process.stdout.write(
-		`${JSON.stringify(projected ?? { ok: true, },)}\n`,
-	);
+	process.stdout.write(stdoutJson(projected ?? { ok: true, },),);
 }
 
 export function addTransientTargetContext(

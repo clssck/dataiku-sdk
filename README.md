@@ -291,6 +291,7 @@ Use environment variables for ephemeral runs. For disposable agent tests, set `D
 Credential precedence is flags first, then `DATAIKU_*` environment variables, then saved credentials in `DSS_CONFIG_DIR` or the platform config directory.
 Set `DATAIKU_DISABLE_ENV=1` when a test must ignore both `.env` files and `DATAIKU_*` environment variables.
 When `.env` loading is enabled, the CLI reads `.env` from the CLI build/root directory and from the command's current working directory; put test-specific `.env` files in the directory where you invoke `dss`. Only `DATAIKU_*`, `NODE_TLS_REJECT_UNAUTHORIZED`, and `NODE_EXTRA_CA_CERTS` are read from `.env`; other keys are ignored.
+Set `DSS_PRETTY=1` to indent stdout JSON (still one JSON value). Use it when the shell or agent harness cuts long lines (omp's bash tool cuts each line at 768 bytes), so a one-line result is not truncated. It is read from the process environment only, not from `.env`.
 
 POSIX shell:
 

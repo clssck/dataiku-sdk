@@ -671,16 +671,6 @@ async function exportedCommandRegistry(): Promise<CommandRegistry> {
 	}
 }
 
-/**
- * Scoped metadata for whole resources; resource-level selectors keep the nested
- * `registry[resource][action]` shape.
- */
-async function scopedCommandRegistry(resources: string[],): Promise<CommandRegistry> {
-	const { stdout, stderr, } = await dss(["commands", "run", "--fields", resources.join(",",),],);
-	expect(stderr,).toBe("",);
-	return JSON.parse(stdout,) as CommandRegistry;
-}
-
 describe("CLI command surface", () => {
 	it("exposes every supported resource/action in the machine-readable registry", async () => {
 		const summary = await readActionSummary();
@@ -1127,14 +1117,7 @@ describe("CLI command surface", () => {
 	});
 
 	it("classifies compound-name mutations and getters by side effect", async () => {
-		const registry = await scopedCommandRegistry([
-			"api-deployer",
-			"continuous-activity",
-			"flow-zone",
-			"metrics",
-			"project",
-			"project-deployer",
-		],);
+		const registry = await exportedCommandRegistry();
 		const writes = [
 			["project", "permissions-set",],
 			["continuous-activity", "start",],

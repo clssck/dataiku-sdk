@@ -29,6 +29,7 @@ import {
 	planResult,
 	projectResultFields,
 	setOutputFieldProjection,
+	stdoutJson,
 	writeCommandResult,
 } from "./cli/output.js";
 import { shapeCommandResult, } from "./cli/result-shapes.js";
@@ -1044,13 +1045,32 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 				"Unknown selectors were skipped; the result holds the known ones. Run `dss commands run` for resource/action names.",
 		},);
 	}
-	const selectedRegistry = selectors.length === 0
-		? registry
-		: projectResultFields(
-			registry,
-			knownSelectors,
-			() => Object.keys(contract.commandActionSummary(),).sort(),
+	// On stdout a bare RESOURCE selector lists its actions (usage, description, side effect):
+	// the full entries (flags, schemas, examples) run 30-55 KB per resource, more than an agent
+	// can read in one result. RESOURCE.ACTION and --output keep the full entries.
+	const fullSelectors = typeof outputPath === "string"
+		? knownSelectors
+		: knownSelectors.filter((selector,) => selector.includes(".",));
+	const selectedRegistry: Record<string, unknown> = selectors.length === 0 ? registry : {};
+	if (fullSelectors.length > 0) {
+		Object.assign(
+			selectedRegistry,
+			projectResultFields(
+				registry,
+				fullSelectors,
+				() => Object.keys(contract.commandActionSummary(),).sort(),
+			),
 		);
+	}
+	for (const resource of knownSelectors) {
+		if (fullSelectors.includes(resource,)) continue;
+		selectedRegistry[resource] = Object.fromEntries(
+			Object.entries(registry[resource]!,).map(([action, entry,],) => [
+				action,
+				{ usage: entry.usage, description: entry.description, sideEffect: entry.sideEffect, },
+			]),
+		);
+	}
 	if (typeof outputPath === "string") {
 		const exported = selectedRegistry;
 		await Bun.write(outputPath, `${JSON.stringify(exported,)}\n`,);
@@ -1859,7 +1879,7 @@ function buildErrorReport(
 }
 function writeErrorReport(err: unknown,): void {
 	flushCliWarnings();
-	process.stdout.write(`${JSON.stringify(buildErrorReport(err,),)}\n`,);
+	process.stdout.write(stdoutJson(buildErrorReport(err,),),);
 }
 /** Only ambiguous mutation failures require full contract metadata. */
 function errorReportNeedsCommandRuntime(err: unknown,): boolean {

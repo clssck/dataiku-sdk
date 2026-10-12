@@ -181,6 +181,10 @@ export function compactReadOutputSchemas(): Record<string, Record<string, unknow
 				},
 				failure: failureSchema,
 				next: nextSchema,
+				hint: {
+					type: "string",
+					description: "Edit-and-rerun commands when the failed recipe is known.",
+				},
 			},
 		},
 		"scenario.last-runs": {

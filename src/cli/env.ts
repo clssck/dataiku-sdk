@@ -28,6 +28,15 @@ export function ambientProjectKey(): string | undefined {
 	return dataikuEnvironmentEnabled() ? process.env.DATAIKU_PROJECT_KEY : undefined;
 }
 
+/**
+ * `DSS_PRETTY=1` indents stdout JSON. Agent shells that cut long lines (omp at
+ * 768 bytes) truncate a one-line result; indented output keeps each line short.
+ * Read from the process environment only, never from a `.env` file.
+ */
+export function prettyOutputEnabled(): boolean {
+	return process.env.DSS_PRETTY === "1";
+}
+
 const allowedEnvKeys = new Set<string>(["NODE_EXTRA_CA_CERTS", "NODE_TLS_REJECT_UNAUTHORIZED",],);
 
 /**
