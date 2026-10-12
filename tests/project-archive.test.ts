@@ -559,6 +559,200 @@ describe("inspectProjectArchive", () => {
 		expect(residueIssues[0].message,).toMatch(/identity metadata field-like/,);
 	});
 
+	describe("structural credential detection", () => {
+		const SECRETS = [
+			"sk-live-ARRAYSECRET0001",
+			"pairsecret-0002",
+			"dhl-object-secret!3",
+			"db-pw-0004",
+			"dhl-list-secret-5",
+			"webapp-nested-key-6",
+		];
+
+		function fixture(): Promise<string> {
+			return writeZip([
+				{ name: "export-manifest.json", data: manifestJson(), },
+				{
+					name: "project_config/apikeys.json",
+					data: encodeUtf8(JSON.stringify([
+						{ id: "k1", label: "primary", key: SECRETS[0], },
+						{ name: "DHL", key: SECRETS[1], },
+					],),),
+				},
+				{
+					name: "project_config/variables.json",
+					data: encodeUtf8(JSON.stringify({
+						standard: { DHL_API_KEY: SECRETS[2], PAGE_SIZE: "50", },
+						local: { DB_PASSWORD: SECRETS[3], },
+					},),),
+				},
+				{
+					name: "project_config/extra/vars-list.json",
+					data: encodeUtf8(JSON.stringify({
+						variables: [
+							{ name: "DHL_API_KEY", value: SECRETS[4], },
+							{ name: "REGION", value: "eu", },
+						],
+					},),),
+				},
+				{
+					name: "project_config/web_apps/app1.json",
+					data: encodeUtf8(JSON.stringify({
+						name: "app1",
+						config: { settings: { service: { apiKey: SECRETS[5], }, }, },
+					},),),
+				},
+			],);
+		}
+
+		it("builds an inventory of member paths and key paths without values", async () => {
+			const report = await inspectProjectArchive(await fixture(),);
+
+			expect(report.valid,).toBe(true,);
+			const inventory = report.credentialFindings.map((finding,) => ({
+				member: finding.member,
+				rule: finding.rule,
+				keyPath: finding.keyPath,
+				field: finding.field,
+			}));
+			expect(inventory,).toEqual([
+				{
+					member: "project_config/apikeys.json",
+					rule: "member_name",
+					keyPath: undefined,
+					field: undefined,
+				},
+				{
+					member: "project_config/extra/vars-list.json",
+					rule: "list_variable",
+					keyPath: "$.variables[0]",
+					field: "DHL_API_KEY",
+				},
+				{
+					member: "project_config/variables.json",
+					rule: "json_key",
+					keyPath: "$.local.DB_PASSWORD",
+					field: "DB_PASSWORD",
+				},
+				{
+					member: "project_config/variables.json",
+					rule: "json_key",
+					keyPath: "$.standard.DHL_API_KEY",
+					field: "DHL_API_KEY",
+				},
+				{
+					member: "project_config/web_apps/app1.json",
+					rule: "json_key",
+					keyPath: "$.config.settings.service.apiKey",
+					field: "apiKey",
+				},
+			],);
+			const warnings = report.issues.filter((issue,) => issue.code === "credential_structure");
+			expect(warnings.map((issue,) => issue.member),).toEqual([
+				"project_config/apikeys.json",
+				"project_config/extra/vars-list.json",
+				"project_config/variables.json",
+				"project_config/web_apps/app1.json",
+			],);
+			expect(warnings.every((issue,) => issue.severity === "warning"),).toBe(true,);
+			const serialized = JSON.stringify(report,);
+			for (const secret of SECRETS) expect(serialized,).not.toContain(secret,);
+		});
+
+		it("flags a non-empty apikeys.json by member name even when its shape has no credential keys", async () => {
+			const filePath = await writeZip([
+				{ name: "export-manifest.json", data: manifestJson(), },
+				{
+					name: "project_config/apikeys.json",
+					data: encodeUtf8(JSON.stringify([{ name: "DHL", key: "pairsecret-0002", },],),),
+				},
+			],);
+			const report = await inspectProjectArchive(filePath,);
+
+			expect(report.credentialFindings,).toEqual([
+				{ member: "project_config/apikeys.json", rule: "member_name", },
+			],);
+			expect(JSON.stringify(report,),).not.toContain("pairsecret-0002",);
+		});
+
+		it("does not flag empty credential stores, benign key fields or secret references", async () => {
+			const filePath = await writeZip([
+				{ name: "export-manifest.json", data: manifestJson(), },
+				{ name: "project_config/apikeys.json", data: encodeUtf8("[]",), },
+				{
+					name: "project_config/secrets.json",
+					data: encodeUtf8('{"items": [{"name": "", "value": ""}]}',),
+				},
+				{
+					name: "project_config/web_apps/benign.json",
+					data: encodeUtf8(JSON.stringify({
+						keyColumn: "customer_id",
+						primaryKey: "id",
+						sortKey: "created_at",
+						tokenizer: "whitespace",
+						author: "analytics-team",
+						authType: "BASIC",
+						tokenType: "bearer",
+						secretName: "vault/entry",
+						apiKey: "",
+						apiKeyRef: "${DHL_API_KEY}",
+						password: "${DB_PASSWORD}",
+						variables: [{ name: "REGION", value: "eu", },],
+					},),),
+				},
+			],);
+			const report = await inspectProjectArchive(filePath,);
+
+			expect(report.valid,).toBe(true,);
+			expect(report.credentialFindings,).toEqual([],);
+			expect(issueCodes(report,),).not.toContain("credential_structure",);
+		});
+
+		it("emits a visible residue_scan_skipped warning for members over the scan cap", async () => {
+			const filePath = await writeZip([
+				{ name: "export-manifest.json", data: manifestJson(), },
+				{
+					name: "project_config/variables.json",
+					data: concatBytes(
+						encodeUtf8('{"standard":{"DHL_API_KEY":"oversized-secret-7"}}',),
+						new Uint8Array(1024 * 1024 + 16,).fill(0x20,),
+					),
+				},
+			],);
+			const report = await inspectProjectArchive(filePath,);
+
+			expect(report.valid,).toBe(true,);
+			const skipped = report.issues.filter((issue,) => issue.code === "residue_scan_skipped");
+			expect(skipped.map((issue,) => issue.member),).toEqual(["project_config/variables.json",],);
+			expect(skipped[0]!.severity,).toBe("warning",);
+			expect(JSON.stringify(report,),).not.toContain("oversized-secret-7",);
+		});
+
+		it("emits residue_scan_skipped when the actual bytes exceed a declared small size", async () => {
+			const filePath = await writeZip([
+				{ name: "export-manifest.json", data: manifestJson(), },
+				{
+					name: "project_config/tags.json",
+					data: new Uint8Array(2 * 1024 * 1024,).fill(0x61,),
+					size: 10,
+				},
+			],);
+			const report = await inspectProjectArchive(filePath,);
+
+			expect(issueCodes(report,),).toContain("residue_scan_skipped",);
+		});
+
+		it("does not warn about scan skips for members outside the scan prefixes", async () => {
+			const filePath = await writeZip([
+				{ name: "export-manifest.json", data: manifestJson(), },
+				{ name: "other/large.bin", data: new Uint8Array(1024 * 1024 + 16,).fill(0x61,), },
+			],);
+			const report = await inspectProjectArchive(filePath,);
+
+			expect(issueCodes(report,),).not.toContain("residue_scan_skipped",);
+		});
+	});
+
 	it("produces deterministic sorted issues across repeated inspections", async () => {
 		const filePath = await writeZip([
 			{ name: "export-manifest.json", data: manifestJson(), },

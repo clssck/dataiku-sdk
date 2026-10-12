@@ -377,6 +377,7 @@ describe("SDK public surface", () => {
 			memberCount: 0,
 			valid: false,
 			issues: [issue,],
+			credentialFindings: [],
 		};
 		expect(severities,).toContain(inspection.issues[0]?.severity,);
 	});

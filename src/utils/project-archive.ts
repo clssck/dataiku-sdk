@@ -97,6 +97,26 @@ export interface ProjectArchiveIssue {
 	member?: string;
 }
 
+/**
+ * One credential-bearing structure found in an archive member. Carries the
+ * member path and the JSON key path / field name only, never the value.
+ * - `member_name`: the member itself is a credential store (for example
+ *   `project_config/apikeys.json`) and is not empty.
+ * - `json_key`: a credential-named JSON key holds a non-empty string value
+ *   (or a container of them), e.g. `$.standard.DHL_API_KEY` or a nested
+ *   web-app `apiKey`.
+ * - `list_variable`: a list-form `{name, value}` entry whose `name` is
+ *   credential-named, e.g. `{name: "X_API_KEY", value: "..."}`.
+ */
+export interface ProjectArchiveCredentialFinding {
+	member: string;
+	rule: "member_name" | "json_key" | "list_variable";
+	/** JSON path of the credential value inside the member (absent for `member_name`). */
+	keyPath?: string;
+	/** Credential-named key or list-form variable name (absent for `member_name`). */
+	field?: string;
+}
+
 export interface ProjectArchiveInspection {
 	filePath: string;
 	sizeBytes: number;
@@ -104,6 +124,12 @@ export interface ProjectArchiveInspection {
 	sourceProjectKey?: string;
 	valid: boolean;
 	issues: ProjectArchiveIssue[];
+	/**
+	 * Credential inventory: member paths and key paths/field names of
+	 * credential-bearing structures. Values are never included. Each finding
+	 * is also summarized by a `credential_structure` warning issue.
+	 */
+	credentialFindings: ProjectArchiveCredentialFinding[];
 }
 
 interface OpenArchive {
@@ -445,6 +471,202 @@ function residueIssue(member: string, counts: ResidueCounts,): ProjectArchiveIss
 	};
 }
 
+/** Cap on credential findings recorded per member, bounding inventory size. */
+const MAX_CREDENTIAL_FINDINGS_PER_MEMBER = 200;
+/** Deepest JSON nesting the credential walker follows. */
+const MAX_CREDENTIAL_WALK_DEPTH = 32;
+const PROJECT_CONFIG_ROOT = "project_config";
+/** Credential-store member names under `project_config/` (api keys, secrets, credentials files). */
+const CREDENTIAL_MEMBER_RE = /^(?:api[-_]?keys?|secrets?|credentials?)\.json$/i;
+const CREDENTIAL_SINGLE_TOKENS: Record<string, true> = {
+	secret: true,
+	secrets: true,
+	token: true,
+	tokens: true,
+	password: true,
+	passwords: true,
+	passwd: true,
+	passphrase: true,
+	credential: true,
+	credentials: true,
+	apikey: true,
+	apikeys: true,
+	auth: true,
+	oauth: true,
+	authorization: true,
+};
+/**
+ * Trailing key words that describe a credential rather than hold one
+ * (`tokenType`, `authMode`, `secretName`, `passwordColumn`, ...).
+ */
+const NON_SECRET_SUFFIX_TOKENS: Record<string, true> = {
+	type: true,
+	mode: true,
+	method: true,
+	kind: true,
+	provider: true,
+	column: true,
+	columns: true,
+	field: true,
+	fields: true,
+	name: true,
+	names: true,
+	label: true,
+	description: true,
+	url: true,
+	uri: true,
+	path: true,
+	scope: true,
+	scopes: true,
+	format: true,
+	policy: true,
+	enabled: true,
+	required: true,
+};
+
+/** Split `DHL_API_KEY`, `apiKey`, `x-api-key` and `APIKey` into lower-case words. */
+function keyTokens(key: string,): string[] {
+	return key
+		.replace(/([a-z0-9])([A-Z])/g, "$1 $2",)
+		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2",)
+		.split(/[^A-Za-z0-9]+/,)
+		.filter((token,) => token.length > 0)
+		.map((token,) => token.toLowerCase());
+}
+
+function isCredentialName(key: string,): boolean {
+	const tokens = keyTokens(key,);
+	const last = tokens.at(-1,);
+	if (last !== undefined && NON_SECRET_SUFFIX_TOKENS[last] === true) return false;
+	for (let i = 0; i < tokens.length; i++) {
+		const token = tokens[i]!;
+		if (CREDENTIAL_SINGLE_TOKENS[token] === true) return true;
+		const next = tokens[i + 1];
+		if (
+			(token === "api" || token === "private") && (next === "key" || next === "keys")
+		) return true;
+	}
+	return false;
+}
+
+/** Non-empty string that is not a pure `${VARIABLE}` reference. */
+function isLiteralSecretValue(value: unknown,): boolean {
+	if (typeof value !== "string") return false;
+	const trimmed = value.trim();
+	return trimmed.length > 0 && !/^\$\{[^}]*\}$/.test(trimmed,);
+}
+
+/** True for null, empty strings and containers holding only such values. */
+function isEmptyJsonValue(value: unknown,): boolean {
+	if (value === null || value === undefined) return true;
+	if (typeof value === "string") return value.trim().length === 0;
+	if (Array.isArray(value,)) return value.every(isEmptyJsonValue,);
+	if (typeof value === "object") return Object.values(value,).every(isEmptyJsonValue,);
+	return false;
+}
+
+function jsonPathSegment(key: string,): string {
+	const safe = key.length > 80 ? `${key.slice(0, 80,)}...` : key;
+	return /^[A-Za-z_$][\w$]*$/.test(safe,) ? `.${safe}` : `[${JSON.stringify(safe,)}]`;
+}
+
+/**
+ * Structural credential detection for one `project_config/` member: the
+ * member-name rule plus a JSON-aware key walk. Only member paths and key
+ * paths/field names are returned, never values.
+ */
+function collectCredentialFindings(
+	member: string,
+	text: string,
+): ProjectArchiveCredentialFinding[] {
+	const findings: ProjectArchiveCredentialFinding[] = [];
+	const full = () => findings.length >= MAX_CREDENTIAL_FINDINGS_PER_MEMBER;
+	let parsed: unknown;
+	let isJson = false;
+	try {
+		parsed = JSON.parse(text,);
+		isJson = true;
+	} catch {
+		// Not JSON: only the member-name rule can apply.
+	}
+	const basename = member.slice(member.lastIndexOf("/",) + 1,);
+	if (CREDENTIAL_MEMBER_RE.test(basename,)) {
+		const empty = isJson ? isEmptyJsonValue(parsed,) : text.trim().length === 0;
+		if (!empty) findings.push({ member, rule: "member_name", },);
+	}
+	if (!isJson) return findings;
+
+	const visit = (
+		node: unknown,
+		path: string,
+		inCredential: boolean,
+		field: string,
+		depth: number,
+	) => {
+		if (full() || depth > MAX_CREDENTIAL_WALK_DEPTH) return;
+		if (typeof node === "string") {
+			if (inCredential && isLiteralSecretValue(node,)) {
+				findings.push({ member, rule: "json_key", keyPath: path, field, },);
+			}
+			return;
+		}
+		if (Array.isArray(node,)) {
+			node.forEach((item, index,) =>
+				visit(item, `${path}[${index}]`, inCredential, field, depth + 1,)
+			);
+			return;
+		}
+		if (node === null || typeof node !== "object") return;
+		const record = node as Record<string, unknown>;
+		const name = record["name"];
+		if (
+			typeof name === "string"
+			&& isCredentialName(name,)
+			&& isLiteralSecretValue(record["value"],)
+			&& !full()
+		) {
+			const shownName = name.length > 80 ? `${name.slice(0, 80,)}...` : name;
+			findings.push({ member, rule: "list_variable", keyPath: path, field: shownName, },);
+		}
+		for (const [key, value,] of Object.entries(record,)) {
+			if (full()) return;
+			const childPath = `${path}${jsonPathSegment(key,)}`;
+			const credentialKey = isCredentialName(key,);
+			const leafInContext = inCredential
+				&& NON_SECRET_SUFFIX_TOKENS[keyTokens(key,).at(-1,) ?? ""] !== true;
+			if (typeof value === "string") {
+				if ((credentialKey || leafInContext) && isLiteralSecretValue(value,)) {
+					findings.push({ member, rule: "json_key", keyPath: childPath, field: key, },);
+				}
+			} else {
+				visit(value, childPath, inCredential || credentialKey, key, depth + 1,);
+			}
+		}
+	};
+	visit(parsed, "$", false, "", 0,);
+	return findings;
+}
+
+/** Visible warning for a scannable member that could not be scanned for residue and credentials. */
+function residueScanSkippedIssue(member: string,): ProjectArchiveIssue {
+	return {
+		severity: "warning",
+		code: "residue_scan_skipped",
+		message: `member exceeds the ${MAX_RESIDUE_SCAN_BYTES}-byte residue scan limit and was not`
+			+ " scanned for credentials, identity or machine-specific residue",
+		member,
+	};
+}
+
+/** Deterministic inventory ordering: member, then key path. */
+function sortCredentialFindings(findings: ProjectArchiveCredentialFinding[],): void {
+	findings.sort((a, b,) =>
+		a.member.localeCompare(b.member,)
+		|| (a.keyPath ?? "").localeCompare(b.keyPath ?? "",)
+		|| a.rule.localeCompare(b.rule,)
+	);
+}
+
 /** Deterministic issue ordering: severity, then code, member, message. */
 function sortIssues(issues: ProjectArchiveIssue[],): ProjectArchiveIssue[] {
 	issues.sort((a, b,) => {
@@ -518,6 +740,7 @@ export async function inspectProjectArchive(
 			memberCount: 0,
 			valid: false,
 			issues,
+			credentialFindings: [],
 		};
 	}
 
@@ -539,6 +762,7 @@ export async function inspectProjectArchive(
 			memberCount: 0,
 			valid: false,
 			issues,
+			credentialFindings: [],
 		};
 	}
 
@@ -559,6 +783,7 @@ export async function inspectProjectArchive(
 				memberCount: records.length,
 				valid: false,
 				issues,
+				credentialFindings: [],
 			};
 		}
 		const memberCounts = new Map<string, number>();
@@ -589,6 +814,7 @@ export async function inspectProjectArchive(
 		const recipes = new Map<string, unknown>();
 		const tally = { expandedBytes: 0, };
 		let aggregateAborted = false;
+		const credentialFindings: ProjectArchiveCredentialFinding[] = [];
 		for (const entry of records) {
 			if (!entry.isFile) continue;
 			const name = entry.name;
@@ -611,11 +837,14 @@ export async function inspectProjectArchive(
 				},);
 			}
 			const parseCandidate = (isManifest || isRecipeJson) && entry.size <= MAX_JSON_MEMBER_BYTES;
-			const scanCandidate = (isManifest
-				|| name.startsWith("project_config/",)
+			const matchesScanPrefix = isManifest
+				|| name.startsWith(`${PROJECT_CONFIG_ROOT}/`,)
 				|| name.startsWith(`${BUNDLED_DATA_ROOT}/`,)
-				|| name.startsWith(`${UPLOADS_ROOT}/`,))
-				&& entry.size <= MAX_RESIDUE_SCAN_BYTES;
+				|| name.startsWith(`${UPLOADS_ROOT}/`,);
+			const scanCandidate = matchesScanPrefix && entry.size <= MAX_RESIDUE_SCAN_BYTES;
+			if (matchesScanPrefix && !scanCandidate) {
+				issues.push(residueScanSkippedIssue(name,),);
+			}
 			// Budgets computed from the central-directory record abort before
 			// any decompression work: a member whose declared compressed size
 			// or expanded/compressed ratio is above budget is never streamed.
@@ -739,6 +968,7 @@ export async function inspectProjectArchive(
 						`member ${name}: data exceeds the inspection byte limit and was not buffered for parsing`,
 					member: name,
 				},);
+				if (scanCandidate) issues.push(residueScanSkippedIssue(name,),);
 			}
 			const content = streamed.content;
 			if (!content) continue;
@@ -767,9 +997,23 @@ export async function inspectProjectArchive(
 				}
 			}
 			if (scanCandidate && buffer.length <= MAX_RESIDUE_SCAN_BYTES) {
-				const counts = countResidue(buffer.toString("utf8",),);
+				const text = buffer.toString("utf8",);
+				const counts = countResidue(text,);
 				if (counts.credential + counts.email + counts.homePath + counts.metadataField > 0) {
 					issues.push(residueIssue(name, counts,),);
+				}
+				if (name.startsWith(`${PROJECT_CONFIG_ROOT}/`,)) {
+					const found = collectCredentialFindings(name, text,);
+					if (found.length > 0) {
+						credentialFindings.push(...found,);
+						issues.push({
+							severity: "warning",
+							code: "credential_structure",
+							message: `member contains ${found.length} credential-bearing structure(s);`
+								+ " see the credential inventory for key paths (values are never reported)",
+							member: name,
+						},);
+					}
 				}
 			}
 		}
@@ -778,6 +1022,7 @@ export async function inspectProjectArchive(
 		// manifest/graph conclusion is drawn from the partial inspection.
 		if (aggregateAborted) {
 			sortIssues(issues,);
+			sortCredentialFindings(credentialFindings,);
 			return {
 				filePath,
 				sizeBytes,
@@ -785,6 +1030,7 @@ export async function inspectProjectArchive(
 				sourceProjectKey: undefined,
 				valid: false,
 				issues,
+				credentialFindings,
 			};
 		}
 		let sourceProjectKey: string | undefined;
@@ -843,6 +1089,7 @@ export async function inspectProjectArchive(
 		checkOrphanMembers(records, recipeNames, anchored, issues,);
 
 		sortIssues(issues,);
+		sortCredentialFindings(credentialFindings,);
 
 		return {
 			filePath,
@@ -851,6 +1098,7 @@ export async function inspectProjectArchive(
 			sourceProjectKey,
 			valid: !issues.some((issue,) => issue.severity === "error"),
 			issues,
+			credentialFindings,
 		};
 	} finally {
 		if (zip) {

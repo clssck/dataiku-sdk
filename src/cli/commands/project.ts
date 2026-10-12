@@ -6,13 +6,15 @@ import type { ProjectArchiveInspection, } from "../../utils/project-archive.js";
 import { projectIncarnationHash, } from "../../utils/project-incarnation.js";
 import { jsonInput, num, requiredJsonInput, requiredStringFlag, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
-import { CommandResultFailure, } from "../output.js";
+import { CommandResultFailure, enqueueCliWarning, } from "../output.js";
 import { compactProjectMapOutput, } from "../project-map-output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
 const INSPECT_ARCHIVE_USAGE = commandUsage("project", "inspect-archive",);
+/** Maximum credential inventory entries echoed in the export warning. */
+const EXPORT_CREDENTIAL_INVENTORY_LIMIT = 100;
 
 function flowRenderFormat(value: string | boolean | undefined,): FlowRenderFormat | undefined {
 	if (value === undefined) return undefined;
@@ -192,9 +194,27 @@ export const projectCommands: Record<string, CommandMeta> = withUsage("project",
 			const out = f["output"] as string | undefined;
 			if (!out) throw new UsageError("--output PATH is required.", "missing_required_flag",);
 			await c.projects.exportArchive(a[0], out, jsonInput(f,),);
-			return { path: out, };
+			const inspection = await inspectProjectArchive(out,);
+			const findings = inspection.credentialFindings;
+			if (findings.length > 0) {
+				enqueueCliWarning({
+					code: "export_contains_credentials",
+					message:
+						`The exported archive '${out}' contains ${findings.length} credential-bearing structure(s) `
+						+ "(member paths and key names only; values are never printed). "
+						+ "DSS exports credentials, API keys and secret-named variables verbatim.",
+					hint:
+						"Sanitize the archive before sharing or uploading it. Overwriting an object in versioned storage does not erase its retained versions: "
+						+ "once an unsanitized archive is uploaded, rotate the exposed credentials.",
+					total: findings.length,
+					shown: Math.min(findings.length, EXPORT_CREDENTIAL_INVENTORY_LIMIT,),
+					findings: findings.slice(0, EXPORT_CREDENTIAL_INVENTORY_LIMIT,),
+				},);
+			}
+			return { path: out, credentialFindings: findings.length, };
 		},
-		description: "Export a project to a local archive (.zip).",
+		description:
+			"Export a project to a local archive (.zip). The written archive is inspected locally; credential-bearing structures (apikeys.json, secret-named variables, apiKey/token/password fields) raise an export_contains_credentials warning listing member paths and key names only, and the result reports credentialFindings. The archive is not redacted.",
 		examples: ["dss project export MY_PROJ --output ./my_proj.zip",],
 	},
 	import: {
@@ -248,7 +268,7 @@ export const projectCommands: Record<string, CommandMeta> = withUsage("project",
 		handler: async (_c, a,) => inspectArchiveCommand(a,),
 		localHandler: inspectArchiveCommand,
 		description:
-			"Read-only local inspection of a project export archive: member names, sizes, manifest validity, archive issues, and the source project key. Never contacts DSS.",
+			"Read-only local inspection of a project export archive: member names, sizes, manifest validity, archive issues (including credential_structure and residue_scan_skipped warnings), a credentialFindings inventory of credential-bearing member paths and key names (values are never reported), and the source project key. Never contacts DSS.",
 		examples: ["dss project inspect-archive ./my_proj.zip",],
 	},
 	"permissions-set": {

@@ -75,7 +75,8 @@ export function buildStoredZip(files: Record<string, string | Uint8Array>,): Uin
 		centralView.setUint16(32, 0, true,);
 		centralView.setUint16(34, 0, true,);
 		centralView.setUint16(36, 0, true,);
-		centralView.setUint32(38, entry.offset, true,);
+		// Offset 38 is the external-attributes field; the local-header offset is at 42.
+		centralView.setUint32(42, entry.offset, true,);
 		centralParts.push(central, entry.name,);
 		cdSize += central.length + entry.name.length;
 	}
@@ -112,4 +113,32 @@ export function writeProjectArchive(filePath: string, originalProjectKey: string
 		"export-manifest.json": JSON.stringify({ originalProjectKey, },),
 	},);
 	fs.writeFileSync(filePath, Buffer.from(zip,),);
+}
+
+/** Secret values embedded by {@link credentialBearingArchive}; tests assert none reaches CLI output. */
+export const ARCHIVE_FIXTURE_SECRETS = [
+	"sk-live-FIXTURE-APIKEYS-0001",
+	"fixture-dhl-variable-secret-2",
+	"fixture-webapp-config-secret-3",
+] as const;
+
+/**
+ * A project export archive that passes every fatal check but carries the
+ * credential structures DSS exports verbatim: `project_config/apikeys.json`,
+ * a secret-named project variable and a nested web-app `apiKey`.
+ */
+export function credentialBearingArchive(originalProjectKey: string,): Uint8Array {
+	const [apiKey, variable, webAppKey,] = ARCHIVE_FIXTURE_SECRETS;
+	return buildStoredZip({
+		"export-manifest.json": JSON.stringify({ originalProjectKey, },),
+		"project_config/apikeys.json": JSON.stringify([{ name: "DHL", key: apiKey, },],),
+		"project_config/variables.json": JSON.stringify({
+			standard: { DHL_API_KEY: variable, PAGE_SIZE: "50", },
+			local: {},
+		},),
+		"project_config/web_apps/app1.json": JSON.stringify({
+			name: "app1",
+			config: { service: { apiKey: webAppKey, }, keyColumn: "customer_id", },
+		},),
+	},);
 }

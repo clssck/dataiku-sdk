@@ -1,7 +1,11 @@
 import { describe, expect, it, } from "bun:test";
 import { cleanupLedgerEntry, } from "../../src/cli/helpers/cleanup.js";
 import { projectIncarnationHash, } from "../../src/utils/project-incarnation.js";
-import { writeProjectArchive, } from "./_archive-fixtures.js";
+import {
+	ARCHIVE_FIXTURE_SECRETS,
+	credentialBearingArchive,
+	writeProjectArchive,
+} from "./_archive-fixtures.js";
 import {
 	cliEnv,
 	dss,
@@ -506,6 +510,127 @@ describe("Project import CLI wiring", () => {
 				},);
 			},);
 			expect(requests,).toEqual([],);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+});
+
+async function runExport(
+	archive: Uint8Array,
+): Promise<{ stdout: string; stderr: string; dir: string; out: string; }> {
+	const dir = join(tmpdir(), `dss-project-export-creds-${Date.now()}-${Math.random()}`,);
+	mkdirSync(dir, { recursive: true, },);
+	const out = join(dir, "export.zip",);
+	let captured = { stdout: "", stderr: "", };
+	await withCliServer((req, res,) => {
+		if (req.method === "POST" && req.url === "/public/api/projects/SRC/export") {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "application/zip",);
+			res.end(Buffer.from(archive,),);
+			return;
+		}
+		res.statusCode = 404;
+		res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+	}, async (url,) => {
+		captured = await dss(["project", "export", "SRC", "--output", out,], {
+			env: cliEnv(url,),
+		},);
+	},);
+	return { ...captured, dir, out, };
+}
+
+describe("Project export credential warning", () => {
+	it("warns with a path/field inventory and never prints secret values", async () => {
+		const { stdout, stderr, dir, out, } = await runExport(credentialBearingArchive("SRC",),);
+		try {
+			expect(JSON.parse(stdout,),).toEqual({ path: out, credentialFindings: 3, },);
+			const warningEvent = JSON.parse(stderr.trim().split("\n",).at(-1,)!,) as {
+				type: string;
+				warnings: Array<Record<string, unknown>>;
+			};
+			expect(warningEvent.type,).toBe("warning",);
+			const warning = warningEvent.warnings.find((entry,) =>
+				entry.code === "export_contains_credentials"
+			)!;
+			expect(warning,).toBeDefined();
+			expect(warning.total,).toBe(3,);
+			expect(String(warning.hint,),).toMatch(/sanitize/i,);
+			expect(String(warning.hint,),).toMatch(/retained versions/i,);
+			expect(warning.findings,).toEqual([
+				{ member: "project_config/apikeys.json", rule: "member_name", },
+				{
+					member: "project_config/variables.json",
+					rule: "json_key",
+					keyPath: "$.standard.DHL_API_KEY",
+					field: "DHL_API_KEY",
+				},
+				{
+					member: "project_config/web_apps/app1.json",
+					rule: "json_key",
+					keyPath: "$.config.service.apiKey",
+					field: "apiKey",
+				},
+			],);
+			for (const secret of ARCHIVE_FIXTURE_SECRETS) {
+				expect(stdout,).not.toContain(secret,);
+				expect(stderr,).not.toContain(secret,);
+			}
+			// The archive is written verbatim: export performs no redaction.
+			expect(readFileSync(out,).includes(ARCHIVE_FIXTURE_SECRETS[0],),).toBe(true,);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("stays silent and reports zero findings for an archive without credentials", async () => {
+		const dir = join(tmpdir(), `dss-project-export-clean-${Date.now()}`,);
+		mkdirSync(dir, { recursive: true, },);
+		const clean = join(dir, "clean-source.zip",);
+		writeProjectArchive(clean, "SRC",);
+		const out = join(dir, "export.zip",);
+		try {
+			await withCliServer((req, res,) => {
+				if (req.method === "POST" && req.url === "/public/api/projects/SRC/export") {
+					res.statusCode = 200;
+					res.setHeader("Content-Type", "application/zip",);
+					res.end(readFileSync(clean,),);
+					return;
+				}
+				res.statusCode = 404;
+				res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+			}, async (url,) => {
+				const { stdout, stderr, } = await dss(
+					["project", "export", "SRC", "--output", out,],
+					{ env: cliEnv(url,), },
+				);
+				expect(stderr,).toBe("",);
+				expect(JSON.parse(stdout,),).toEqual({ path: out, credentialFindings: 0, },);
+			},);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("inspect-archive reports the same inventory locally without secret values", async () => {
+		const dir = join(tmpdir(), `dss-project-inspect-creds-${Date.now()}`,);
+		mkdirSync(dir, { recursive: true, },);
+		const archivePath = join(dir, "archive.zip",);
+		writeFileSync(archivePath, credentialBearingArchive("SRC",),);
+		try {
+			const { stdout, stderr, } = await dss(["project", "inspect-archive", archivePath,], {
+				env: { ...hermeticEnv, },
+			},);
+			expect(stderr,).toBe("",);
+			const report = JSON.parse(stdout,) as {
+				valid: boolean;
+				credentialFindings: Array<Record<string, unknown>>;
+				issues: Array<{ code: string; }>;
+			};
+			expect(report.valid,).toBe(true,);
+			expect(report.credentialFindings,).toHaveLength(3,);
+			expect(report.issues.map((issue,) => issue.code),).toContain("credential_structure",);
+			for (const secret of ARCHIVE_FIXTURE_SECRETS) expect(stdout,).not.toContain(secret,);
 		} finally {
 			rmSync(dir, { recursive: true, force: true, },);
 		}
