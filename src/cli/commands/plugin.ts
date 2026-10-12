@@ -374,7 +374,7 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 		description:
 			"Create the code env of a plugin. Returns the DSS future (jobId); --wait polls it to completion.",
 		examples: [
-			"dss plugin code-env-create my-plugin --python-interpreter PYTHON36",
+			"dss plugin code-env-create my-plugin --python-interpreter PYTHON311",
 			"dss plugin code-env-create my-plugin --conda --wait --timeout 300000",
 		],
 	},

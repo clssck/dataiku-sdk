@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fix: `job list` shows in-progress jobs as `state: "RUNNING"`, and `job list --state RUNNING` finds them. DSS (verified on 15.0.1) lists a job that is computing dependencies or running with `stableState: false` and no `state`, so these jobs printed without a state and the filter matched nothing. `--full` still returns the DSS objects; `job get` reports the exact phase.
+- Fix: `plugin list` keeps `isDev` in its compact items, so development plugins (editable with `contents-*`, Git actions) are distinguishable from installed ones without `--full`.
+- `project import` reports the DSS `status` and sanitized `details.dssMessage`/`dssErrorType` behind an `ambiguous_outcome` failure (process step or post-import re-read). DSS 15.0.1 answers an import into a taken project key with `500 Project key KEY is already used`; before, only "the project may or may not have been created" was shown. Any `ambiguous_outcome`/`assertion_failed`/`long_running_failure` error that carries a DSS response as its cause now shows the same fields.
+- Fix: `dataset preview`, `dataset download`, and `dataset assert-count` verify that a data stream which ended before the row cap was complete, as dataikuapi does: each read sends a `readSessionId` and then asks DSS `finish-streaming`; a server-side read failure now fails the command (and removes the partial download) instead of returning silently short data. Streams stopped at the row cap are not checked.
+- Fix: `job log --errors-only` (and `--log-filter errors`) keeps DSS's job-level outcome line, e.g. `Job is incompatible with build state: [...]` when another running job already builds the target. It has no level word, so the filter used to drop the only reason DSS gives.
+- The `plugin code-env-create` example uses `PYTHON311`: DSS 15 rejects new Python 3.6–3.8 code envs.
+
 ## 3.9.0
 
 - Agent contract v4: `job get`, `dataset info`, `dataset get`, and `project get` print compact results by default; `--full` returns the DSS object and `--fields` still projects from it. `job get` keeps state, outputs, progress, the error, and per-activity status, and never the log tail: a failed job is 240 tokens instead of 15,908, a finished one 173 instead of 1,170. `dataset info` keeps type, connection, format, schema, recipes, buildability, data quality, and freshness (1,464 → 131). `dataset get` and `project get` keep the settings structure (so get → edit → `update` still works) without metrics/checks configuration, version stamps, checklists, and empty values; `project get` lists only the permissions you lack in `deniedPermissions` instead of ~20 `can*` booleans (770 → 358, 551 → 149). Discovery output schemas describe the compact shapes; `stdio.stdout.lists` is now `compactResults`.

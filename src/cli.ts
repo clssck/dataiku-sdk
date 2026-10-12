@@ -1648,15 +1648,21 @@ function buildErrorReport(
 		&& (err.code === "ambiguous_outcome" || err.code === "assertion_failed"
 			|| err.code === "long_running_failure")
 	) {
+		// The DSS response behind an indeterminate outcome stays visible (status,
+		// sanitized message), e.g. a 500 that names the conflicting project key.
+		const cause = err.cause instanceof DataikuError ? err.cause : undefined;
+		const diagnostics = cause ? dssDiagnosticDetails(cause,) : {};
+		const details = { ...diagnostics, ...err.details, };
 		return {
 			type: "error",
 			error: err.message,
 			code: err.code,
 			category: "dss",
 			exitCode,
+			...(cause ? { status: cause.status, } : {}),
 			retryable: false,
 			...(err.hint ? { hint: err.hint, } : {}),
-			...(err.details ? { details: err.details, } : {}),
+			...(Object.keys(details,).length > 0 ? { details, } : {}),
 			...scope,
 		};
 	}

@@ -150,11 +150,23 @@ export function shortProcessLogLine(msg: string,): string {
 	return `[t] [Exec] [INFO] [process]  - ${msg}`;
 }
 
+const FINISH_STREAMING_PATH = /\/finish-streaming\/\?readSessionId=[0-9a-f-]{36}$/;
+
+/**
+ * Starts a mock DSS server. Dataset finish-streaming checks (sent after a
+ * dataset data stream is read to its natural end) answer 200 with an empty
+ * body without reaching `handler`.
+ */
 export async function withCliServer(
 	handler: (req: IncomingMessage, res: ServerResponse,) => Promise<void> | void,
 	run: (url: string,) => Promise<void>,
 ): Promise<void> {
 	const server = createServer((req, res,) => {
+		if (FINISH_STREAMING_PATH.test(req.url ?? "",)) {
+			res.statusCode = 200;
+			res.end();
+			return;
+		}
 		void Promise.resolve(handler(req, res,),).catch((error: unknown,) => {
 			res.statusCode = 500;
 			res.end(error instanceof Error ? error.message : String(error,),);

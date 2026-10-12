@@ -190,6 +190,13 @@ const LEGACY_STDERR_RECORD = /^\s*stderr:/i;
  * continuation of that record (exception chain, JVM frames, ...).
  */
 const DSS_RECORD_HEADER = /^\[\d{4}\/\d{2}\/\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}\]/;
+/**
+ * Job-level outcome line the job engine writes outside any record, e.g.
+ * `2026-10-12T09:13:22.189: Job is incompatible with build state: [...]` when
+ * another running job already builds the target. It carries no level word but
+ * is the only reason DSS gives for such a failure.
+ */
+const JOB_OUTCOME_LINE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}: \S/;
 const ERROR_KEYWORDS = /\b(error|failed|failure|exception|traceback)\b/i;
 /**
  * Exception class names ending in the `Exception`/`Error` suffix (e.g.
@@ -300,6 +307,11 @@ function filterJobLogToErrors(lines: string[],): string {
 				continue;
 			}
 			pyTraceback = false;
+		}
+		if (JOB_OUTCOME_LINE.test(line,)) {
+			kept.push(line,);
+			recordMatches = false;
+			continue;
 		}
 		if (isHeader) {
 			recordMatches = isErrorContent(stripJsonPayloads(line,),) || PY_FILE_FRAME.test(message,);

@@ -15,11 +15,23 @@ import {
 import { buildDatasetCloneSettings, DatasetsResource, } from "../src/resources/datasets.js";
 import { stableHash, } from "../src/utils/stable-hash.js";
 
+const FINISH_STREAMING_PATH = /\/finish-streaming\/\?readSessionId=[0-9a-f-]{36}$/;
+
+/**
+ * Starts a mock DSS server. Dataset finish-streaming checks answer 200 with an
+ * empty body unless `handleFinishStreaming` routes them to the handler.
+ */
 async function withTestServer(
 	handler: (req: IncomingMessage, res: ServerResponse,) => Promise<void> | void,
 	run: (url: string,) => Promise<void>,
+	options: { handleFinishStreaming?: boolean; } = {},
 ): Promise<void> {
 	const server = createServer((req, res,) => {
+		if (!options.handleFinishStreaming && FINISH_STREAMING_PATH.test(req.url ?? "",)) {
+			res.statusCode = 200;
+			res.end();
+			return;
+		}
 		void Promise.resolve(handler(req, res,),).catch((error: unknown,) => {
 			res.statusCode = 500;
 			res.end(error instanceof Error ? error.message : String(error,),);
@@ -281,12 +293,13 @@ describe("DatasetsResource.download", () => {
 						},),
 					};
 				},
+				getTextLimited: async () => "",
 			} as unknown as DataikuClient,);
 
 			const result = await resource.download("sample", { outputPath, projectKey: "TEST", },);
 
-			expect(observedUrl,).toBe(
-				"/public/api/projects/TEST/datasets/sample/data/?format=tsv-excel-header&limit=100001",
+			expect(observedUrl,).toMatch(
+				/^\/public\/api\/projects\/TEST\/datasets\/sample\/data\/\?format=tsv-excel-header&limit=100001&readSessionId=[0-9a-f-]{36}$/,
 			);
 			expect(result,).toEqual({
 				path: path.resolve(outputPath,),
@@ -298,6 +311,60 @@ describe("DatasetsResource.download", () => {
 		} finally {
 			fs.rmSync(tempDir, { recursive: true, force: true, },);
 		}
+	});
+
+	it("fails when the server rejects finish-streaming after a complete stream", async () => {
+		const dataSessionIds: string[] = [];
+		const finishSessionIds: string[] = [];
+		await withTestServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			const sessionId = url.searchParams.get("readSessionId",) ?? "";
+			if (url.pathname === "/public/api/projects/TEST/datasets/sample/finish-streaming/") {
+				finishSessionIds.push(sessionId,);
+				res.statusCode = 500;
+				res.setHeader("Content-Type", "application/json",);
+				res.end(JSON.stringify({ message: "Stream was interrupted on the server", },),);
+				return;
+			}
+			expect(url.pathname,).toBe("/public/api/projects/TEST/datasets/sample/data/",);
+			dataSessionIds.push(sessionId,);
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+			res.end("name\tcity\nAlice\tParis\nBob\tBerlin\n",);
+		}, async (url,) => {
+			const client = new DataikuClient({
+				url,
+				apiKey: "test-key",
+				projectKey: "TEST",
+				retryMaxAttempts: 1,
+			},);
+			const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+			const outputPath = path.join(tempDir, "sample.csv",);
+			try {
+				await expect(client.datasets.preview("sample", { maxRows: 5, },),).rejects.toBeInstanceOf(
+					DataikuError,
+				);
+				await expect(client.datasets.assertRowCount("sample", 2,),).rejects.toBeInstanceOf(
+					DataikuError,
+				);
+				await expect(client.datasets.download("sample", { outputPath, },),).rejects.toBeInstanceOf(
+					DataikuError,
+				);
+				expect(fs.existsSync(outputPath,),).toBe(false,);
+
+				// A preview truncated at its cap never reaches the natural end, so
+				// no finish-streaming check is sent and the preview succeeds.
+				const truncated = await client.datasets.preview("sample", { maxRows: 1, },);
+				expect(truncated.truncated,).toBe(true,);
+			} finally {
+				fs.rmSync(tempDir, { recursive: true, force: true, },);
+			}
+		}, { handleFinishStreaming: true, },);
+
+		expect(dataSessionIds,).toHaveLength(4,);
+		expect(finishSessionIds,).toEqual(dataSessionIds.slice(0, 3,),);
+		for (const id of dataSessionIds) expect(id,).toMatch(/^[0-9a-f-]{36}$/,);
+		expect(new Set(dataSessionIds,).size,).toBe(4,);
 	});
 });
 
@@ -556,6 +623,7 @@ describe("DatasetsResource TSV stream bounds", () => {
 					},
 				},),
 			}),
+			getTextLimited: async () => "",
 		} as unknown as DataikuClient,);
 
 		const preview = await resource.preview("sample", { maxRows: 1, projectKey: "TEST", },);
@@ -582,6 +650,7 @@ describe("DatasetsResource TSV stream bounds", () => {
 					},
 				},),
 			}),
+			getTextLimited: async () => "",
 		} as unknown as DataikuClient,);
 		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
 		const outputPath = path.join(tempDir, "sample.csv",);

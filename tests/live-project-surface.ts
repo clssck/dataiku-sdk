@@ -1,11 +1,8 @@
 import { expect, } from "bun:test";
 import type { DoctorResult, FixtureDiscoveryResult, } from "../src/cli/doctor.js";
+import type { CompactFlowMapResult, } from "../src/cli/project-map-output.js";
 import type { Discussion, } from "../src/resources/discussions.js";
-import type {
-	FlowMapResult,
-	ProjectPermissionRule,
-	ProjectPermissions,
-} from "../src/resources/projects.js";
+import type { ProjectPermissionRule, ProjectPermissions, } from "../src/resources/projects.js";
 import type {
 	DataQualityComputeResult,
 	FutureState,
@@ -151,14 +148,15 @@ async function exerciseProjectReads(ctx: LiveContext,): Promise<void> {
 		expect(typeof flow,).toBe("object",);
 		expect(flow.nodes,).toBeDefined();
 		const datasets = Object.keys(ctx.fixtures.datasets,);
-		const mapped = await ctx.run<FlowMapResult>(["project", "map",],);
-		expect(mapped.truncation.truncated,).toBe(false,);
+		const mapped = await ctx.run<CompactFlowMapResult>(["project", "map",],);
+		// Compact map output omits `truncation` when nothing was cut.
+		expect(mapped.truncation,).toBeUndefined();
 		expect(mapped.map.nodes.length,).toBeGreaterThanOrEqual(datasets.length,);
 		for (const dataset of datasets) {
 			expect(mapped.map.nodes.some(node => node.id === dataset || node.id.endsWith(`.${dataset}`,)),)
 				.toBe(true,);
 		}
-		const rendered = await ctx.run<FlowMapResult>([
+		const rendered = await ctx.run<CompactFlowMapResult>([
 			"project",
 			"map",
 			"--render",
@@ -168,9 +166,12 @@ async function exerciseProjectReads(ctx: LiveContext,): Promise<void> {
 		],);
 		expect(rendered.rendering?.format,).toBe("mermaid",);
 		expect(rendered.rendering?.content,).toContain("flowchart",);
-		expect(rendered.truncation.truncated,).toBe(mapped.map.nodes.length > 1,);
-		expect(rendered.truncation.nodeCountBefore,).toBe(mapped.map.nodes.length,);
-		expect(rendered.truncation.nodeCountAfter,).toBe(Math.min(1, mapped.map.nodes.length,),);
+		expect(mapped.map.nodes.length,).toBeGreaterThan(1,);
+		expect(rendered.truncation,).toMatchObject({
+			truncated: true,
+			nodeCountBefore: mapped.map.nodes.length,
+			nodeCountAfter: 1,
+		},);
 	},);
 }
 

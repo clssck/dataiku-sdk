@@ -11,6 +11,8 @@ import {
 	num,
 } from "../coerce.js";
 import { executionMode, } from "../flags.js";
+import { compactValue, } from "../list-output.js";
+import { COMPACT_LIST_FIELDS, } from "../list-shapes.js";
 import { encodedProjectEndpoint, enqueueCliWarning, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
@@ -145,8 +147,9 @@ function jobSummaryType(job: JobSummary | Record<string, unknown>,): string {
 }
 
 function jobSummaryState(job: JobSummary | Record<string, unknown>,): string {
+	const listState = compactValue(job, COMPACT_LIST_FIELDS["job"]!["state"]!,);
 	return stringPath(job, ["baseStatus", "state",],)
-		?? stringPath(job, ["state",],)
+		?? (typeof listState === "string" ? listState : undefined)
 		?? "unknown";
 }
 
@@ -293,7 +296,8 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 	list: {
 		handler: async (c, _a, f,) =>
 			filteredJobList(await c.jobs.list(f["project-key"] as string | undefined,), f,),
-		description: "List recent jobs, optionally filtered for automation.",
+		description:
+			"List recent jobs, optionally filtered for automation. In-progress jobs, which DSS lists without a state, show RUNNING; `job get` has the exact phase.",
 		examples: ["dss job list --state DONE --latest", "dss job list --contains WLM225S --limit 10",],
 	},
 	get: {

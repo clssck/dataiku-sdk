@@ -405,6 +405,7 @@ export class ProjectsResource extends BaseResource {
 							? { targetProjectKey: settings.targetProjectKey, }
 							: {}),
 					},
+					{ cause: error, },
 				);
 			}
 			throw error;
@@ -487,6 +488,7 @@ export class ProjectsResource extends BaseResource {
 					"ambiguous_outcome",
 					PROJECT_IMPORT_AMBIGUOUS_REMEDIATION,
 					{ importId, usedProjectKey, },
+					{ cause: error, },
 				);
 			}
 			throw error;

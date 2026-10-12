@@ -912,26 +912,54 @@ export class DatasetsResource extends BaseResource {
 	/**
 	 * TSV data stream of at most `limit` rows. A column or partition selection
 	 * uses the documented POST variant of the data endpoint (body `columns`,
-	 * `partitions`, `format`, `sampling`); otherwise the GET endpoint.
+	 * `partitions`, `format`, `sampling`); otherwise the GET endpoint. Both carry
+	 * a client-generated `readSessionId` for {@link verifyStreamComplete}.
 	 */
 	private async dataStream(
 		datasetName: string,
 		limit: number,
 		projectKey: string | undefined,
 		selection: DatasetDataSelection | undefined,
-	): Promise<Response> {
+	): Promise<{ res: Response; readSessionId: string; }> {
+		const readSessionId = crypto.randomUUID();
 		const path = `/public/api/projects/${this.enc(projectKey,)}/datasets/${
 			encodeURIComponent(datasetName,)
 		}/data/`;
 		if (!selection?.columns?.length && !selection?.partitions) {
-			return this.client.stream(`${path}?format=tsv-excel-header&limit=${limit}`,);
+			const res = await this.client.stream(
+				`${path}?format=tsv-excel-header&limit=${limit}&readSessionId=${readSessionId}`,
+			);
+			return { res, readSessionId, };
 		}
-		return this.client.postStream(path, {
+		const res = await this.client.postStream(path, {
 			format: "tsv-excel-header",
 			...(selection.columns?.length ? { columns: selection.columns, } : {}),
 			...(selection.partitions ? { partitions: selection.partitions, } : {}),
 			sampling: { samplingMethod: "HEAD_SEQUENTIAL", maxRecords: limit, },
+			readSessionId,
 		},);
+		return { res, readSessionId, };
+	}
+
+	/**
+	 * A data stream that ended normally may still be incomplete: DSS sends 200
+	 * headers before reading the data, so a server-side read failure only cuts
+	 * the body short. As dataikuapi does, ask DSS whether the read session
+	 * finished; it answers non-2xx (DataikuError) when it did not. Only called
+	 * after the body was read to its end — a stream the client cancelled at
+	 * its row cap is not complete by design.
+	 */
+	private async verifyStreamComplete(
+		datasetName: string,
+		projectKey: string | undefined,
+		readSessionId: string,
+	): Promise<void> {
+		await this.client.getTextLimited(
+			`/public/api/projects/${this.enc(projectKey,)}/datasets/${
+				encodeURIComponent(datasetName,)
+			}/finish-streaming/?readSessionId=${readSessionId}`,
+			64 * 1024,
+		);
 	}
 
 	/**
@@ -965,7 +993,12 @@ export class DatasetsResource extends BaseResource {
 		const timeoutMs = Math.max(1, opts?.timeoutMs ?? this.client.getRequestTimeoutMs(),);
 		// Probe one row past the cap so callers learn whether the dataset holds
 		// more rows than requested without materializing the full dataset.
-		const res = await this.dataStream(datasetName, maxRows + 1, opts?.projectKey, opts,);
+		const { res, readSessionId, } = await this.dataStream(
+			datasetName,
+			maxRows + 1,
+			opts?.projectKey,
+			opts,
+		);
 		const onHeader = opts?.validateColumns
 			? (headerRow: string[],) => {
 				const warnings = validateStreamColumns(headerRow, opts.validateColumns!,);
@@ -983,6 +1016,7 @@ export class DatasetsResource extends BaseResource {
 			timeoutMs,
 			onHeader,
 		);
+		if (!truncated) await this.verifyStreamComplete(datasetName, opts?.projectKey, readSessionId,);
 		return {
 			columns: columns.map((name,) => ({ name, })),
 			rows,
@@ -1017,12 +1051,7 @@ export class DatasetsResource extends BaseResource {
 		const target = expected;
 		const probe = target + 1;
 		const timeoutMs = Math.max(1, this.client.getRequestTimeoutMs(),);
-		const dsEnc = encodeURIComponent(datasetName,);
-		const res = await this.client.stream(
-			`/public/api/projects/${
-				this.enc(projectKey,)
-			}/datasets/${dsEnc}/data/?format=tsv-excel-header&limit=${probe}`,
-		);
+		const { res, readSessionId, } = await this.dataStream(datasetName, probe, projectKey, undefined,);
 		if (!res.body) {
 			return { expected: target, count: 0, exact: true, satisfied: target === 0, };
 		}
@@ -1031,6 +1060,7 @@ export class DatasetsResource extends BaseResource {
 			probe,
 			timeoutMs,
 		);
+		if (!bounded) await this.verifyStreamComplete(datasetName, projectKey, readSessionId,);
 		return { expected: target, count, exact: !bounded, satisfied: !bounded && count === target, };
 	}
 
@@ -1231,7 +1261,12 @@ export class DatasetsResource extends BaseResource {
 		} & DatasetDataSelection,
 	): Promise<{ path: string; rows: number; truncated: boolean; limit: number; }> {
 		const limit = Math.max(1, opts?.limit ?? 100_000,);
-		const res = await this.dataStream(datasetName, limit + 1, opts?.projectKey, opts,);
+		const { res, readSessionId, } = await this.dataStream(
+			datasetName,
+			limit + 1,
+			opts?.projectKey,
+			opts,
+		);
 
 		const safeDatasetName = sanitizeFileName(datasetName, "dataset",);
 		const filePath = opts?.outputPath?.endsWith(".gz",) || opts?.outputPath?.endsWith(".csv",)
@@ -1258,6 +1293,9 @@ export class DatasetsResource extends BaseResource {
 		try {
 			// Native streaming write with backpressure; no Node stream layer.
 			await Bun.write(filePath, new Response(csv,),);
+			if (!stats.truncated) {
+				await this.verifyStreamComplete(datasetName, opts?.projectKey, readSessionId,);
+			}
 		} catch (error) {
 			// A failed export (byte-limit overflow, network error) must never
 			// leave a partial file that looks like a complete download.

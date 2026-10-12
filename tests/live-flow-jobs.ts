@@ -570,7 +570,12 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 					recipes: [SYNC_RECIPE,],
 				},],
 			};
-			const dryRun = await run<{ dryRun: boolean; zoneCount: number; itemCount: number; }>([
+			const dryRun = await run<{
+				dryRun: boolean;
+				zoneCount: number;
+				itemCount: number;
+				planned: Array<{ impliedItems?: Array<{ objectId: string; objectType: string; }>; }>;
+			}>([
 				"flow-zone",
 				"organize",
 				"--data",
@@ -578,7 +583,12 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 				"--validate-objects",
 				"--dry-run",
 			],);
-			expect(dryRun,).toMatchObject({ dryRun: true, zoneCount: 1, itemCount: 2, },);
+			// The sync recipe's output shares its zone, so organize places it too (impliedItems).
+			expect(dryRun,).toMatchObject({ dryRun: true, zoneCount: 1, itemCount: 3, },);
+			expect(dryRun.planned[0]?.impliedItems,).toEqual([{
+				objectId: SYNCED,
+				objectType: "DATASET",
+			},],);
 
 			const organized = await run<{
 				organized: boolean;

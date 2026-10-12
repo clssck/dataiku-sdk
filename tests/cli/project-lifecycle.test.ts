@@ -430,6 +430,56 @@ describe("Project import CLI wiring", () => {
 		}
 	});
 
+	it("keeps the DSS status and message of an indeterminate import process failure", async () => {
+		const dir = join(tmpdir(), `dss-project-import-conflict-${Date.now()}`,);
+		mkdirSync(dir, { recursive: true, },);
+		const archivePath = join(dir, "archive.zip",);
+		writeProjectArchive(archivePath, "ARCHIVE_KEY",);
+		try {
+			await withCliServer(async (req, res,) => {
+				if (req.url === "/public/api/projects/import/upload") {
+					await readBody(req,);
+					res.statusCode = 200;
+					res.setHeader("Content-Type", "application/json",);
+					res.end(JSON.stringify({ id: "tmp-import-1", },),);
+					return;
+				}
+				if (req.url === "/public/api/projects/import/tmp-import-1/process") {
+					// DSS 15.0.1 answers a taken target key with a 500.
+					res.statusCode = 500;
+					res.setHeader("Content-Type", "application/json",);
+					res.end(JSON.stringify({
+						errorType: "com.dataiku.dip.exceptions.CodedException",
+						message:
+							"Project key TAKEN is already used. Please check that you have not already imported this project.",
+					},),);
+					return;
+				}
+				res.statusCode = 404;
+				res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
+			}, async (url,) => {
+				const failure = await dssFailure(
+					["project", "import", archivePath, "--target-project-key", "TAKEN",],
+					{ env: cliEnv(url,), },
+				);
+				expect(failure.code,).toBe(2,);
+				expect(JSON.parse(failure.stdout,),).toMatchObject({
+					code: "ambiguous_outcome",
+					status: 500,
+					details: {
+						dssMessage:
+							"Project key TAKEN is already used. Please check that you have not already imported this project.",
+						dssErrorType: "com.dataiku.dip.exceptions.CodedException",
+						importId: "tmp-import-1",
+						targetProjectKey: "TAKEN",
+					},
+				},);
+			},);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
 	it("inspect-archive returns the local report without contacting DSS", async () => {
 		const dir = join(tmpdir(), `dss-project-inspect-${Date.now()}`,);
 		mkdirSync(dir, { recursive: true, },);

@@ -462,6 +462,23 @@ describe("JobsResource.log", () => {
 		},);
 	});
 
+	it("keeps the job-level outcome line that explains a build-state conflict", async () => {
+		const outcome =
+			'2026-10-12T09:13:22.189: Job is incompatible with build state: [{"datasetName":"orders_py","jobId":"Build_orders_py__NP__2026-10-12T09-11-19.898","running":true}]';
+		const dssLog = [
+			"[2026/10/12-09:13:22.104] [qtp-52] [INFO] [dku.job.slave]  - Trying to obtain grant: objectreaduse::P.orders_joined::P",
+			outcome,
+			"[2026/10/12-09:13:22.196] [qtp-54] [INFO] [dku.jobs]  - Received command : /pintercom/stop_session",
+		].join("\n",);
+		await withDataikuServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(dssLog,);
+		}, async (client,) => {
+			expect(await client.jobs.log("job-conflict", { logFilter: "errors", },),).toBe(outcome,);
+		},);
+	});
+
 	it("redacts credential pairs from every log download path", async () => {
 		const secretLine =
 			'[2026/10/08-15:19:46.100] [main] [INFO] [dku.start] - start_session {"jobProjectKey":"P","jobTicketSecret":"5kdUjgGp3cOO0DEU7UOP"}';

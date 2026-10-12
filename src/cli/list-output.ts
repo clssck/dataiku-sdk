@@ -8,9 +8,21 @@ function record(value: unknown,): Item {
 	return value && typeof value === "object" && !Array.isArray(value,) ? value as Item : {};
 }
 
-function compactValue(item: Item, spec: CompactListField,): unknown {
+function valueAt(item: Item, path: string,): unknown {
 	let value: unknown = item;
-	for (const key of spec.path.split(".",)) value = record(value,)[key];
+	for (const key of path.split(".",)) value = record(value,)[key];
+	return value;
+}
+
+/** One compact field of a DSS list item, as `RESOURCE.list` prints it. */
+export function compactValue(item: Item, spec: CompactListField,): unknown {
+	const value = valueAt(item, spec.path,);
+	if (
+		value === undefined && spec.fallback
+		&& valueAt(item, spec.fallback.when,) === spec.fallback.equals
+	) {
+		return spec.fallback.value;
+	}
 	if (spec.roleRefs !== true) return value;
 	// Dataset refs across every role of recipe inputs/outputs (`{main:{items:[{ref}]}}`).
 	return Object.values(record(value,),).flatMap((role,) => {

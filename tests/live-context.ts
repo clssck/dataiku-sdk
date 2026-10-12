@@ -166,7 +166,8 @@ export interface OwnedGlobal {
 	kind: OwnedGlobalKind;
 	name: string;
 	id?: string;
-	state: "pending" | "bound" | "conflict" | "unconfirmed" | "deleted";
+	/** `refused`: DSS answered the create with a definitive 403, so nothing was created. */
+	state: "pending" | "bound" | "conflict" | "unconfirmed" | "refused" | "deleted";
 	/** Reservation nonce; the lab-written marker proves create receipt ownership. */
 	nonce?: string;
 	identity?: string;
@@ -2283,6 +2284,9 @@ export class LiveRunContext implements LiveContext {
 			if (error instanceof LiveCommandError && this.isConflictResult(error,)) {
 				entry.state = "conflict";
 				entry.reason = this.redact(error,).slice(0, 300,);
+			} else if (error instanceof LiveCommandError && this.isRefusedResult(error,)) {
+				entry.state = "refused";
+				entry.reason = this.redact(error,).slice(0, 300,);
 			} else {
 				entry.state = "unconfirmed";
 				entry.reason = this.redact(error,).slice(0, 300,);
@@ -2651,6 +2655,11 @@ export class LiveRunContext implements LiveContext {
 				return this.client.projectDeployer.getInfra(id,);
 		}
 	}
+	/** A 403 permission refusal is definitive: DSS rejected the create before storing anything. */
+	private isRefusedResult(error: LiveCommandError,): boolean {
+		const payload = asRecord(error.result,);
+		return payload?.["code"] === "permission_denied" && payload["status"] === 403;
+	}
 	private isConflictResult(error: LiveCommandError,): boolean {
 		const payload = error.result as { status?: number; errorType?: string; message?: string; } | null;
 		if (payload && typeof payload === "object") {
@@ -2673,6 +2682,8 @@ export class LiveRunContext implements LiveContext {
 					note(entry, "left in place: creation was never confirmed",);
 				} else if (entry.state === "pending") {
 					note(entry, "left in place: reservation was never used",);
+				} else if (entry.state === "refused") {
+					// DSS refused the create (403): there is nothing to delete.
 				} else {
 					await this.deleteGlobal(entry.kind, entry.id ?? entry.name,);
 				}

@@ -10,6 +10,8 @@ export interface CompactListField {
 	path: string;
 	/** Flatten recipe roles (`{main:{items:[{ref}]}}`) to the dataset refs. */
 	roleRefs?: true;
+	/** Value when `path` is absent and the item's `when` path equals `equals`. */
+	fallback?: { when: string; equals: unknown; value: unknown; };
 	schema: Record<string, unknown>;
 }
 
@@ -63,7 +65,12 @@ export const COMPACT_LIST_FIELDS: Record<string, Record<string, CompactListField
 		id: field("def.id", STRING,),
 		name: field("def.name", STRING,),
 		type: field("def.type", STRING,),
-		state: field("state", STRING,),
+		// DSS lists in-progress jobs with `stableState: false` and no `state`
+		// (COMPUTING_DEPS or RUNNING); `job get` reports the exact phase.
+		state: {
+			...field("state", STRING,),
+			fallback: { when: "stableState", equals: false, value: "RUNNING", },
+		},
 		startTime: field("startTime", NUMBER,),
 		endTime: field("endTime", NUMBER,),
 	},
@@ -95,6 +102,7 @@ export const COMPACT_LIST_FIELDS: Record<string, Record<string, CompactListField
 		id: field("id", STRING,),
 		version: field("version", STRING,),
 		label: field("meta.label", STRING,),
+		isDev: field("isDev", BOOLEAN,),
 	},
 	macro: {
 		runnableType: field("runnableType", STRING,),
