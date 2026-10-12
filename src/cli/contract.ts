@@ -391,6 +391,13 @@ const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
 	"project-library delete",
 	"streaming-endpoint delete",
 	"workspace delete",
+	"saved-model delete",
+	"project-folder delete",
+	"data-collection delete",
+	"plugin delete",
+	"connection delete",
+	"user delete",
+	"group delete",
 ],);
 
 export function isAllowedCleanupAction(resource: string, action: string,): boolean {
@@ -950,6 +957,21 @@ const STRING_OUTPUT_ACTIONS = new Set([
 	"log-url",
 ],);
 
+/**
+ * `resource.action` shapes that differ from the bare-action-name sets above:
+ * `contents`/`usages`/`project-timeline` are array-named elsewhere, and
+ * `download`/`diff` are string-named elsewhere, but these handlers return the
+ * opposite shape. Pinned by tests/cli/output-shapes.test.ts.
+ */
+const SCOPED_OUTPUT_SHAPES: Readonly<Record<string, CommandOutputShape>> = {
+	"folder.contents": "array",
+	"plugin.usages": "object",
+	"plugin.download": "object",
+	"dataset.download": "object",
+	"project-library.get": "string",
+	"project-library.diff": "object",
+};
+
 function inferOutputShape(resource: string, action: string,): CommandOutputShape {
 	if (resource === "project-git") {
 		if (action === "branches" || action === "tags" || action === "list-libraries") return "array";
@@ -963,10 +985,12 @@ function inferOutputShape(resource: string, action: string,): CommandOutputShape
 	) {
 		return "object";
 	}
+	// Resource-scoped rules come first: the bare-name sets below classify by
+	// action alone and would otherwise misfile same-named actions elsewhere.
+	const scoped = SCOPED_OUTPUT_SHAPES[`${resource}.${action}`];
+	if (scoped !== undefined) return scoped;
 	if (/^list(-|$)/.test(action,)) return "array";
 	if (ARRAY_OUTPUT_ACTIONS.has(action,)) return "array";
-	if (resource === "dataset" && action === "download") return "object";
-	if (resource === "project-library" && action === "get") return "string";
 	if (STRING_OUTPUT_ACTIONS.has(action,)) return "string";
 	return "object";
 }
