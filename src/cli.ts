@@ -2,7 +2,13 @@
 
 import { homedir, } from "node:os";
 import { resolve, } from "node:path";
-import { num, seenJsonInputCredentials, unknownJsonInput, } from "./cli/coerce.js";
+import {
+	num,
+	resultRecord,
+	seenJsonInputCredentials,
+	stringField,
+	unknownJsonInput,
+} from "./cli/coerce.js";
 import { commands, } from "./cli/commands/index.js";
 import type { CommandRegistryEntry, } from "./cli/contract.js";
 import { ambientProjectKey, loadEnvFile, } from "./cli/env.js";
@@ -13,7 +19,7 @@ import {
 	parseArgs,
 	rawPositionals,
 } from "./cli/flags.js";
-import { cleanupLedgerEntry, } from "./cli/helpers/cleanup.js";
+import { cleanupInputIdentifierField, cleanupLedgerEntry, } from "./cli/helpers/cleanup.js";
 import {
 	commandFailureExitCode,
 	CommandResultFailure,
@@ -1029,11 +1035,12 @@ function assertCleanupLedgerSupported(
 	if (!contract.supportsCleanupLedger(resource, action,)) {
 		throw new UsageError(`--record-cleanup is not supported for ${resource} ${action}.`,);
 	}
-	if (resource === "workspace" && action === "create" && flags["stdin"] === true) {
+	const pinnedField = cleanupInputIdentifierField(resource, action,);
+	if (pinnedField !== undefined && flags["stdin"] === true) {
 		throw new UsageError(
-			"workspace create cannot combine --record-cleanup with --stdin because the cleanup identifier cannot be replayed from a consumed stream.",
+			`${resource} ${action} cannot combine --record-cleanup with --stdin because the cleanup identifier cannot be replayed from a consumed stream.`,
 			"conflicting_input_sources",
-			"Use --data or --data-file so the workspaceKey remains available for the cleanup ledger.",
+			`Use --data or --data-file so the ${pinnedField} remains available for the cleanup ledger.`,
 		);
 	}
 }
@@ -1096,11 +1103,40 @@ async function preflightCleanupLedgerForFlags(
 }
 
 /**
- * Append the cleanup entry for a completed handler result. Callers must pass the
- * raw, unprojected result and must call this before any failure exit code is
- * raised: an indeterminate post-POST outcome stays addressable only when the
- * ledger records it first. Eligibility (dry runs, skipped work, an explicit
- * `cleanupEligible:false`) is decided by `cleanupLedgerEntry`, never here.
+ * What the command result already says about the created object, so a failed
+ * ledger write never hides it: the `created`/`saved` receipt, the object `id`
+ * and `name`, and the project key DSS landed it in. Fields stay distinct (a
+ * name is not an id) and absent ones are omitted rather than guessed.
+ */
+function createdObjectFromResult(
+	result: unknown,
+	fallbackProjectKey: string | undefined,
+): Record<string, string> {
+	const record = resultRecord(result,);
+	const created = stringField(record, ["created", "saved", "usedProjectKey",],);
+	const id = stringField(record, ["id",],);
+	const name = stringField(record, ["name",],);
+	const projectKey = stringField(record, ["projectKey", "usedProjectKey", "targetProjectKey",],)
+		?? fallbackProjectKey;
+	return {
+		...(created ? { created, } : {}),
+		...(id ? { id, } : {}),
+		...(name ? { name, } : {}),
+		...(projectKey ? { projectKey, } : {}),
+	};
+}
+
+/**
+ * Append the cleanup entry for a completed handler result. Callers must call
+ * this before any failure exit code is raised: an indeterminate post-POST
+ * outcome stays addressable only when the ledger records it first. Eligibility
+ * (dry runs, skipped work, an explicit `cleanupEligible:false`) is decided by
+ * `cleanupLedgerEntry`, never here.
+ *
+ * The mutation has already happened when this runs, so every failure here is
+ * an `ambiguous_outcome` that says so (`mutationSucceeded: true`,
+ * `cleanupRecorded: false`) and carries the created identifier/project key:
+ * callers must never retry the create, only clean up or record it themselves.
  */
 async function recordCleanupLedgerEntry(
 	client: DataikuClient,
@@ -1115,18 +1151,42 @@ async function recordCleanupLedgerEntry(
 	if (typeof ledgerPath !== "string" || executionMode(flags,).dryRun) return;
 	const entry = cleanupLedgerEntry(resource, action, args, flags, result, projectKey,);
 	if (entry) {
-		await appendCleanupLedgerEntry(ledgerPath, entry, client.getBaseUrl(),);
+		try {
+			await appendCleanupLedgerEntry(ledgerPath, entry, client.getBaseUrl(),);
+		} catch (error) {
+			throw new ClientValidationError(
+				`Mutation completed but the cleanup entry for ${resource} ${action} could not be recorded: ${
+					error instanceof Error ? error.message : String(error,)
+				}`,
+				"ambiguous_outcome",
+				"The mutation already succeeded: do not retry it. Remove the created object manually or append this cleanup entry to the ledger yourself.",
+				{
+					resource,
+					action,
+					ledgerPath,
+					mutationSucceeded: true,
+					cleanupRecorded: false,
+					...createdObjectFromResult(result, projectKey,),
+					cleanup: entry.cleanup,
+				},
+			);
+		}
 		return;
 	}
-	const record = result !== null && typeof result === "object" && !Array.isArray(result,)
-		? result as Record<string, unknown>
-		: {};
+	const record = resultRecord(result,);
 	if (record.skipped !== undefined || record.cleanupEligible === false) return;
 	throw new ClientValidationError(
 		`Mutation completed but no cleanup entry could be derived for ${resource} ${action}.`,
 		"ambiguous_outcome",
-		"Inspect the created object and remove it manually; do not assume the requested cleanup ledger contains it.",
-		{ resource, action, ledgerPath, },
+		"The mutation already succeeded: do not retry it. Inspect the created object and remove it manually; the requested cleanup ledger does not contain it.",
+		{
+			resource,
+			action,
+			ledgerPath,
+			mutationSucceeded: true,
+			cleanupRecorded: false,
+			...createdObjectFromResult(result, projectKey,),
+		},
 	);
 }
 

@@ -38,6 +38,36 @@ function createInputFromFlags(
 	}
 }
 
+/**
+ * Creates whose DSS response carries no identifier: the cleanup ledger pins the
+ * created object from this field of the `--data`/`--data-file` input instead.
+ * `--stdin` cannot be replayed, so the CLI rejects it with `--record-cleanup`
+ * before mutating.
+ */
+const CLEANUP_INPUT_IDENTIFIER_FIELDS: Readonly<Record<string, string>> = {
+	"workspace.create": "workspaceKey",
+	"connection.create": "name",
+	"user.create": "login",
+	"group.create": "name",
+};
+
+/** Input field that identifies the created object, when the result does not. */
+export function cleanupInputIdentifierField(resource: string, action: string,): string | undefined {
+	return CLEANUP_INPUT_IDENTIFIER_FIELDS[`${resource}.${action}`];
+}
+
+function inputIdentifier(
+	resource: string,
+	action: string,
+	flags: Record<string, string | boolean>,
+): { identifier: string; input: Record<string, unknown>; } | undefined {
+	const field = cleanupInputIdentifierField(resource, action,);
+	if (!field) return undefined;
+	const input = resultRecord(createInputFromFlags(flags,),);
+	const identifier = stringField(input, [field,],);
+	return identifier ? { identifier, input, } : undefined;
+}
+
 export function cleanupLedgerEntry(
 	resource: string,
 	action: string,
@@ -82,6 +112,21 @@ export function cleanupLedgerEntry(
 				...base,
 				name,
 				cleanup: { argv: ["dataset", "delete", name, "--if-exists", ...withProject,], },
+			};
+		}
+		case "dataset.create-managed": {
+			// The handler returns `created` as the dataset name and the project
+			// DSS created it in, which wins over the requested project key.
+			const name = stringField(record, ["created", "name",],) ?? flags["name"] as string | undefined;
+			if (!name) return undefined;
+			const landedProject = stringField(record, ["projectKey",],) ?? project;
+			return {
+				...base,
+				...(landedProject ? { projectKey: landedProject, } : {}),
+				name,
+				cleanup: {
+					argv: ["dataset", "delete", name, "--if-exists", ...projectArg(landedProject,),],
+				},
 			};
 		}
 		case "recipe.create": {
@@ -197,6 +242,72 @@ export function cleanupLedgerEntry(
 				cleanup: { argv: ["ml-task", "delete", analysisId, taskId, ...withProject,], },
 			};
 		}
+		case "ml-task.create-for-dataset": {
+			// This create opens a new visual analysis around the task, so cleanup
+			// removes the whole analysis rather than leaving an empty one behind.
+			const analysisId = stringField(record, ["analysisId",],);
+			if (!analysisId) return undefined;
+			return {
+				...base,
+				id: analysisId,
+				cleanup: { argv: ["analysis", "delete", analysisId, "--if-exists", ...withProject,], },
+			};
+		}
+		case "saved-model.create-external": {
+			const id = stringField(record, ["id",],);
+			if (!id) return undefined;
+			const landedProject = stringField(record, ["projectKey",],) ?? project;
+			return {
+				...base,
+				...(landedProject ? { projectKey: landedProject, } : {}),
+				id,
+				name: args[0],
+				cleanup: {
+					argv: ["saved-model", "delete", id, "--if-exists", ...projectArg(landedProject,),],
+				},
+			};
+		}
+		case "project-folder.create-child": {
+			// `created` falls back to the requested name when DSS omits the id,
+			// and a name cannot address a folder delete: only `id` pins it.
+			const id = stringField(record, ["id",],);
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				name: flags["name"] as string | undefined,
+				cleanup: { argv: ["project-folder", "delete", id, "--if-exists",], },
+			};
+		}
+		case "data-collection.create": {
+			const id = stringField(record, ["id",],);
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				cleanup: { argv: ["data-collection", "delete", id,], },
+			};
+		}
+		case "plugin.create-dev": {
+			const id = stringField(record, ["created",],) ?? args[0];
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				cleanup: { argv: ["plugin", "delete", id,], },
+			};
+		}
+		case "connection.create":
+		case "user.create":
+		case "group.create": {
+			const pinned = inputIdentifier(resource, action, flags,);
+			if (!pinned) return undefined;
+			return {
+				...base,
+				name: pinned.identifier,
+				cleanup: { argv: [resource, "delete", pinned.identifier, "--if-exists",], },
+			};
+		}
 		case "data-quality.create-rule": {
 			const ruleId = stringField(record, ["id", "created",],);
 			if (!ruleId) return undefined;
@@ -219,8 +330,10 @@ export function cleanupLedgerEntry(
 				cleanup: { argv: ["code-env", "delete", lang, name, "--if-exists",], },
 			};
 		}
-		case "streaming-endpoint.create": {
-			const id = args[0];
+		case "streaming-endpoint.create":
+		case "streaming-endpoint.create-managed": {
+			const id = stringField(record, ["created",],) ?? args[0];
+			if (!id) return undefined;
 			return {
 				...base,
 				id,
@@ -237,14 +350,13 @@ export function cleanupLedgerEntry(
 			};
 		}
 		case "workspace.create": {
-			const input = resultRecord(createInputFromFlags(flags,),);
-			const workspaceKey = stringField(input, ["workspaceKey",],);
-			if (!workspaceKey) return undefined;
+			const pinned = inputIdentifier(resource, action, flags,);
+			if (!pinned) return undefined;
 			return {
 				...base,
-				id: workspaceKey,
-				name: stringField(input, ["displayName",],),
-				cleanup: { argv: ["workspace", "delete", workspaceKey,], },
+				id: pinned.identifier,
+				name: stringField(pinned.input, ["displayName",],),
+				cleanup: { argv: ["workspace", "delete", pinned.identifier,], },
 			};
 		}
 		case "project-library.create-file":

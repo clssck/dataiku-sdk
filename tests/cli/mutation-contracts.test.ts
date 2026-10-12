@@ -498,6 +498,141 @@ describe("CLI agent-readiness mutation contracts", () => {
 		}
 	});
 
+	it("records a cleanup entry for dataset create-managed instead of failing ambiguous_outcome", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-create-managed-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		try {
+			await withCliServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/managed") {
+					res.statusCode = 204;
+					res.end();
+					return;
+				}
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${url.pathname}`,);
+			}, async (url,) => {
+				const { stdout, stderr, } = await dss([
+					"dataset",
+					"create-managed",
+					"--name",
+					"orders_copy",
+					"--connection",
+					"filesystem_managed",
+					"--record-cleanup",
+					ledgerPath,
+				], { env: cliEnv(url,), },);
+				expect(stderr,).toBe("",);
+				expect(JSON.parse(stdout,),).toMatchObject({ created: "orders_copy", projectKey: "TEST", },);
+			},);
+			const lines = readFileSync(ledgerPath, "utf-8",).trim().split("\n",);
+			expect(lines,).toHaveLength(1,);
+			expect(JSON.parse(lines[0],),).toMatchObject({
+				action: "create-managed",
+				resource: "dataset",
+				name: "orders_copy",
+				projectKey: "TEST",
+				cleanup: {
+					argv: ["dataset", "delete", "orders_copy", "--if-exists", "--project-key", "TEST",],
+				},
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("reports a created object whose cleanup entry cannot be derived as a succeeded mutation", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-underivable-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		try {
+			await withCliServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/flow/zones") {
+					sendJson(res, { name: "Raw", color: "#2ab1ac", },);
+					return;
+				}
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${url.pathname}`,);
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"flow-zone",
+					"create",
+					"--name",
+					"Raw",
+					"--record-cleanup",
+					ledgerPath,
+				], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(2,);
+				expect(JSON.parse(failure.stdout,),).toMatchObject({
+					code: "ambiguous_outcome",
+					retryable: false,
+					details: {
+						resource: "flow-zone",
+						action: "create",
+						mutationSucceeded: true,
+						cleanupRecorded: false,
+						projectKey: "TEST",
+					},
+				},);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("keeps the created identifier in the error when the ledger write fails after the mutation", async () => {
+		const tmpDir = join(tmpdir(), `dss-cleanup-append-failure-${Date.now()}`,);
+		mkdirSync(tmpDir, { recursive: true, },);
+		const ledgerPath = join(tmpDir, "cleanup.jsonl",);
+		try {
+			await withCliServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/datasets/managed") {
+					// The ledger passed preflight; make the post-mutation append fail.
+					mkdirSync(ledgerPath, { recursive: true, },);
+					res.statusCode = 204;
+					res.end();
+					return;
+				}
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method} ${url.pathname}`,);
+			}, async (url,) => {
+				const failure = await dssFailure([
+					"dataset",
+					"create-managed",
+					"--name",
+					"orders_copy",
+					"--connection",
+					"filesystem_managed",
+					"--record-cleanup",
+					ledgerPath,
+				], { env: cliEnv(url,), },);
+				expect(failure.code,).toBe(2,);
+				const report = JSON.parse(failure.stdout,) as {
+					code: string;
+					retryable: boolean;
+					details: Record<string, unknown>;
+				};
+				expect(report,).toMatchObject({ code: "ambiguous_outcome", retryable: false, },);
+				expect(report.details,).toMatchObject({
+					resource: "dataset",
+					action: "create-managed",
+					mutationSucceeded: true,
+					cleanupRecorded: false,
+					created: "orders_copy",
+					projectKey: "TEST",
+					cleanup: {
+						argv: ["dataset", "delete", "orders_copy", "--if-exists", "--project-key", "TEST",],
+					},
+				},);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
 	it("atomically reserves a new cleanup ledger for one DSS server", async () => {
 		const tmpDir = join(tmpdir(), `dss-cleanup-reservation-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);
