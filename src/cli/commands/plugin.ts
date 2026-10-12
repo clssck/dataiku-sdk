@@ -1,3 +1,4 @@
+import { readFile, } from "node:fs/promises";
 import {
 	validatedPluginGitUrl,
 	validatePluginDestinationPath,
@@ -682,7 +683,7 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 				},);
 			}
 			const content = typeof f["file"] === "string"
-				? Buffer.from(await Bun.file(f["file"] as string,).arrayBuffer(),)
+				? await readFile(f["file"] as string,)
 				: typeof f["content"] === "string"
 				? f["content"] as string
 				: await readStdinText();

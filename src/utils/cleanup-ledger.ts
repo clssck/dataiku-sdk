@@ -51,7 +51,7 @@ export async function preflightCleanupLedgerPath(filePath: string,): Promise<voi
 	await fs.mkdir(parent, { recursive: true, },);
 	let stats: Stats | undefined;
 	try {
-		stats = await Bun.file(resolved,).stat();
+		stats = await fs.stat(resolved,);
 	} catch (error) {
 		if ((error as { code?: string; }).code !== "ENOENT") {
 			throw new ClientValidationError(
@@ -134,7 +134,7 @@ export async function reserveCleanupLedgerDssUrl(
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 	}
-	const raw = await Bun.file(bindingPath,).text();
+	const raw = await fs.readFile(bindingPath, "utf-8",);
 	let found: string;
 	try {
 		found = canonicalDssUrl(raw.trim(),);
@@ -205,7 +205,7 @@ export async function appendCleanupLedgerEntry(
 }
 
 export async function readCleanupLedger(filePath: string,): Promise<CleanupLedgerEntry[]> {
-	const content = await Bun.file(path.resolve(filePath,),).text();
+	const content = await fs.readFile(path.resolve(filePath,), "utf-8",);
 	return content
 		.split(/\r?\n/,)
 		.map((line,) => line.trim())

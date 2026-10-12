@@ -1539,7 +1539,7 @@ export class DatasetsResource extends BaseResource {
 		if (fileName === "") {
 			throw new ClientValidationError("fileName must be a non-empty uploaded filename.",);
 		}
-		const localFile = await Bun.file(localPath,).stat();
+		const localFile = await fs.promises.stat(localPath,);
 		if (!localFile.isFile()) {
 			throw new ClientValidationError(`${localPath} is not a regular file.`,);
 		}

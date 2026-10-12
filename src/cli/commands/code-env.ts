@@ -1,6 +1,6 @@
 import { ClientValidationError, } from "../../errors.js";
 import { SHA256_HEX_PATTERN, stableHash, } from "../../utils/stable-hash.js";
-import { json, jsonInput, num, numFlag, parseBooleanOption, } from "../coerce.js";
+import { json, jsonInput, num, numFlag, parseBooleanOption, readTextFile, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { enqueueCliWarning, isNotFoundError, readIfExists, skipResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
@@ -77,7 +77,7 @@ function splitPackageSpec(raw: string,): string[] {
  */
 async function codeEnvPackageList(flags: Record<string, string | boolean>,): Promise<string[]> {
 	const file = flags["file"];
-	const packages = typeof file === "string" ? splitPackageSpec(await Bun.file(file,).text(),) : [];
+	const packages = typeof file === "string" ? splitPackageSpec(await readTextFile(file,),) : [];
 	if (typeof flags["packages"] === "string") {
 		packages.push(...splitPackageSpec(flags["packages"],),);
 	}

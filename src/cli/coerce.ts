@@ -1,4 +1,5 @@
 import { readFileSync, } from "node:fs";
+import { readFile, } from "node:fs/promises";
 import type { JobBuildTargetType, JobLogFilter, } from "../resources/jobs.js";
 import { credentialValues, } from "../utils/secret-sanitize.js";
 import { UsageError, } from "./usage.js";
@@ -260,13 +261,12 @@ export function readInputText(path: string, flag: string,): string {
 }
 
 /**
- * Async UTF-8 file read via Bun.file. Bun.file().text() strips a leading BOM, so decode
- * the bytes with `ignoreBOM` to return exactly what `readFileSync(path, "utf-8")` did.
+ * Async UTF-8 read of a user-supplied path (BOM kept, like `readFileSync`).
+ * Stays on node:fs: Bun 1.4.3 `Bun.file(path)` reads of a missing path ended the
+ * process on Windows CI instead of rejecting with ENOENT.
  */
 export async function readTextFile(path: string,): Promise<string> {
-	return new TextDecoder("utf-8", { ignoreBOM: true, },).decode(
-		await Bun.file(path,).arrayBuffer(),
-	);
+	return readFile(path, "utf-8",);
 }
 
 /**

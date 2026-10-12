@@ -242,7 +242,7 @@ export async function readAppPermissionsSnapshot(
 ): Promise<AppPermissionsSnapshot> {
 	let text: string;
 	try {
-		text = await Bun.file(filePath,).text();
+		text = await fs.promises.readFile(filePath, "utf-8",);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error,);
 		throw new UsageError(

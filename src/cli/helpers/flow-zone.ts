@@ -10,6 +10,7 @@ import {
 	jsonInput,
 	optionalStringField,
 	parseJsonObject,
+	readTextFile,
 	requiredStringArray,
 	splitCsvFlag,
 } from "../coerce.js";
@@ -372,7 +373,7 @@ export async function readFlowZoneOrganizePlan(
 	usage: string,
 ): Promise<FlowZoneOrganizePlan> {
 	const data = typeof flags["file"] === "string"
-		? parseJsonObject(await Bun.file(flags["file"],).text(), flags["file"],)
+		? parseJsonObject(await readTextFile(flags["file"],), flags["file"],)
 		: jsonInput(flags,);
 	if (!data) {
 		throw new UsageError(

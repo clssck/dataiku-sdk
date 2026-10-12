@@ -1,3 +1,4 @@
+import { stat as statFile, } from "node:fs/promises";
 import path from "node:path";
 import { ClientValidationError, } from "../errors.js";
 import type { WikiArticleAttachment, WikiArticleData, WikiSettings, } from "../schemas.js";
@@ -80,7 +81,7 @@ export function wikiAttachmentNotFound(
 
 /** Check that a local path is a readable regular file before any DSS call. */
 export async function statWikiAttachmentFile(localPath: string,): Promise<LocalWikiAttachmentFile> {
-	const stat = await Bun.file(localPath,).stat().catch((error: unknown,) => {
+	const stat = await statFile(localPath,).catch((error: unknown,) => {
 		throw new ClientValidationError(
 			`Could not read attachment file ${localPath}: ${
 				error instanceof Error ? error.message : String(error,)

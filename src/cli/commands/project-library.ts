@@ -237,7 +237,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = withUsage("pr
 			const content = typeof f["content"] === "string"
 				? f["content"] as string
 				: typeof f["file"] === "string"
-				? Buffer.from(await Bun.file(f["file"] as string,).arrayBuffer(),)
+				? await fs.promises.readFile(f["file"] as string,)
 				: await readStdinText();
 			const result = await c.projectLibrary.addOrUpdateFile(
 				a[0],
@@ -272,7 +272,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = withUsage("pr
 			const local: string | Uint8Array = typeof f["content"] === "string"
 				? f["content"] as string
 				: typeof f["file"] === "string"
-				? Buffer.from(await Bun.file(f["file"] as string,).arrayBuffer(),)
+				? await fs.promises.readFile(f["file"] as string,)
 				: await readStdinText();
 			return c.projectLibrary.diffFile(
 				a[0],
