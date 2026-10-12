@@ -1031,7 +1031,8 @@ export class DataikuClient {
 	 * When the response exceeds the cap, earlier bytes are discarded, only
 	 * the tail is kept and `truncated` is true — so callers that need the end
 	 * of a large document (e.g. job logs) stay bounded without losing the most
-	 * recent content. The read runs under the request deadline.
+	 * recent content. The request timeout applies per received chunk (a stall
+	 * deadline), not to the whole transfer.
 	 */
 	async getTextTailLimited(
 		path: string,
@@ -1488,6 +1489,11 @@ export class DataikuClient {
 	 * Returns `truncated: true` when bytes had to be dropped. Bytes that fall
 	 * in the middle of a UTF-8 character are dropped from both ends so the
 	 * decoded text never contains a replacement character.
+	 *
+	 * The request timeout applies per chunk (a stall deadline), like the
+	 * streaming path: a large body that keeps arriving is read to EOF however
+	 * long the whole transfer takes, while a body that stops sending for longer
+	 * than the timeout fails with the body-read timeout error.
 	 */
 	private async readBodyTextTail(
 		res: Response,
@@ -1501,15 +1507,12 @@ export class DataikuClient {
 		let writeOffset = 0;
 		let retainedBytes = 0;
 		let truncated = false;
-		const startedAt = Date.now();
 
 		try {
 			while (true) {
-				const remainingMs = this.requestTimeoutMs - (Date.now() - startedAt);
-				if (remainingMs <= 0) throw buildBodyReadTimeoutError(this.requestTimeoutMs,);
 				const { done, value, } = await readChunkWithDeadline(
 					reader,
-					remainingMs,
+					this.requestTimeoutMs,
 					this.requestTimeoutMs,
 				);
 				if (done) break;

@@ -369,6 +369,10 @@ export const JobWaitResultSchema = Type.Object({
 	pollCount: Type.Number(),
 	success: Type.Boolean(),
 	timedOut: Type.Optional(Type.Boolean(),),
+	/** Present on a wait timeout: the wait never cancels the job, so this is `false`. */
+	cancelled: Type.Optional(Type.Boolean(),),
+	/** CLI only, on a wait timeout: the command that resumes waiting for the still-running job. */
+	resume: Type.Optional(Type.String(),),
 	progress: Type.Object({
 		done: Type.Number(),
 		failed: Type.Number(),

@@ -229,6 +229,15 @@ export function commandFailureMessage(result: unknown,): string {
 			const message = (failure as Record<string, unknown>).message;
 			if (typeof message === "string" && message.length > 0) return message;
 		}
+		if (
+			record.timedOut === true && typeof record.jobId === "string"
+			&& typeof record.progress === "object" && typeof record.state === "string"
+		) {
+			// A job wait result: the timeout only stopped polling, the DSS job is
+			// still running (and was not cancelled).
+			const resume = typeof record.resume === "string" ? ` Resume with: ${record.resume}` : "";
+			return `Timed out waiting for job ${record.jobId} after ${record.elapsedMs}ms (last known state: ${record.state}); the job is still running in DSS and was not cancelled.${resume}`;
+		}
 		const state = typeof record.state === "string"
 			? record.state
 			: typeof record.outcome === "string"

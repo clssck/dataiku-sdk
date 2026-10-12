@@ -39,6 +39,21 @@ const TERMINAL_STATES = new Set([
 export type JobBuildTargetType = "DATASET" | "MANAGED_FOLDER" | "MODEL_EVALUATION_STORE";
 export type JobLogFilter = "stdout" | "stderr" | "user" | "errors";
 
+/** A retrieved job log plus what the byte-bounded download dropped or scanned. */
+export interface JobLogDetails {
+	/** Redacted, filtered and line-limited log text (what {@link JobsResource.log} returns). */
+	text: string;
+	/**
+	 * True when the log exceeded the byte cap and only its most recent bytes
+	 * were retained: earlier lines were never scanned or filtered.
+	 */
+	truncated: boolean;
+	/** Lines in the retained log before filtering and the line limit. */
+	scannedLines: number;
+	/** Byte cap applied to the download (the most recent this-many bytes are kept). */
+	maxLogBytes: number;
+}
+
 export interface JobLogProgress {
 	lastProgressLine?: string;
 	doneLine?: string;
@@ -173,6 +188,11 @@ function jobBuildDefinition(
 function jobLogLines(log: string,): string[] {
 	return log.split(/\r?\n/,).map((line,) => line.trimEnd());
 }
+function countLogLines(log: string,): number {
+	if (!log) return 0;
+	const lines = jobLogLines(log,);
+	return lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
+}
 
 /**
  * DSS tags recipe subprocess output by reader thread: `[null-out-N]` carries
@@ -264,7 +284,7 @@ function lineMatchesLogFilter(line: string, filter: JobLogFilter,): boolean {
 		case "stderr":
 			return normalized.includes("[null-err-",) || LEGACY_STDERR_RECORD.test(line,);
 		case "errors":
-			return isErrorContent(line,);
+			return isErrorContent(line,) || JOB_OUTCOME_LINE.test(line,);
 		case "user":
 			return !/^\d{4}[-/]\d{2}[-/]\d{2}/.test(line,)
 				&& !normalized.includes("backend-log",)
@@ -473,11 +493,14 @@ export class JobsResource extends BaseResource {
 	 * Use `0` or `-1` to return the log without line truncation. Credential-like
 	 * JSON pairs (`"jobTicketSecret":"..."`) are redacted.
 	 *
-	 * The download is byte-bounded and deadline-covered: at most `maxLogBytes`
-	 * (default 10 MiB) of the *most recent* log output is retained, so a
-	 * collaborator-influenced oversized log cannot exhaust client memory while
-	 * the line limit previously only applied after a full unbounded download.
-	 * Logs up to the cap are returned in full.
+	 * The download is byte-bounded: at most `maxLogBytes` (default 10 MiB) of
+	 * the *most recent* log output is retained, so a collaborator-influenced
+	 * oversized log cannot exhaust client memory while the line limit
+	 * previously only applied after a full unbounded download. The request
+	 * timeout is a stall deadline (per received chunk), so a large log that
+	 * keeps arriving is not cut off by a total-transfer budget. Logs up to the
+	 * cap are returned in full. Use {@link logDetails} to learn whether bytes
+	 * were dropped.
 	 */
 	async log(
 		jobId: string,
@@ -490,18 +513,40 @@ export class JobsResource extends BaseResource {
 			projectKey?: string;
 		},
 	): Promise<string> {
+		return (await this.logDetails(jobId, opts,)).text;
+	}
+
+	/**
+	 * Same retrieval as {@link log}, additionally reporting whether the
+	 * byte-bounded download dropped early log bytes (`truncated`) and how many
+	 * lines were scanned before filtering (`scannedLines`).
+	 */
+	async logDetails(
+		jobId: string,
+		opts?: {
+			activity?: string;
+			logId?: string;
+			logFilter?: JobLogFilter;
+			maxLogLines?: number;
+			maxLogBytes?: number;
+			projectKey?: string;
+		},
+	): Promise<JobLogDetails> {
 		const jobEnc = encodeURIComponent(jobId,);
 		const query = opts?.activity ? `?activity=${encodeURIComponent(opts.activity,)}` : "";
 		// DSS cat-activity-log URLs require a browser session; API-key callers must use the public log endpoint.
 		const path = `/public/api/projects/${this.enc(opts?.projectKey,)}/jobs/${jobEnc}/log/${query}`;
 		const maxLogBytes = Math.max(1, opts?.maxLogBytes ?? DEFAULT_MAX_LOG_BYTES,);
-		const { text, } = await this.client.getTextTailLimited(path, maxLogBytes,);
+		const { text, truncated, } = await this.client.getTextTailLimited(path, maxLogBytes,);
 		// Single download choke point (logFromUrl and wait/summary go through here):
 		// DSS logs embed the job ticket secret in start_session JSON.
-		return limitJobLog(
-			filterJobLog(redactCredentialPairs(text,), opts?.logFilter,),
-			opts?.maxLogLines,
-		);
+		const redacted = redactCredentialPairs(text,);
+		return {
+			text: limitJobLog(filterJobLog(redacted, opts?.logFilter,), opts?.maxLogLines,),
+			truncated,
+			scannedLines: countLogLines(redacted,),
+			maxLogBytes,
+		};
 	}
 
 	async logFromUrl(
@@ -639,6 +684,31 @@ export class JobsResource extends BaseResource {
 		const startedAt = Date.now();
 		let pollCount = 0;
 		let lastJ: JobStatusPayload | undefined;
+		// The wait only stops polling: the job keeps running in DSS and is never
+		// cancelled, so the result says so explicitly.
+		const timedOutResult = (
+			last: JobStatusPayload | undefined,
+			elapsedMs: number,
+		): JobWaitOutcome => {
+			const bs = last?.baseStatus ?? {};
+			const gs = last?.globalState ?? {};
+			return {
+				success: false,
+				jobId,
+				state: bs.state ?? "unknown",
+				type: bs.def?.type ?? "unknown",
+				elapsedMs,
+				pollCount,
+				timedOut: true,
+				cancelled: false,
+				progress: {
+					done: gs.done ?? 0,
+					failed: gs.failed ?? 0,
+					running: gs.running ?? 0,
+					total: gs.total ?? null,
+				},
+			};
+		};
 
 		while (true) {
 			const elapsedBeforeMs = Date.now() - startedAt;
@@ -647,24 +717,7 @@ export class JobsResource extends BaseResource {
 			// the loop reports the structured timeout from the last observed
 			// state instead of issuing a request the budget cannot cover.
 			if (lastJ !== undefined && elapsedBeforeMs >= timeout) {
-				const bs = lastJ.baseStatus ?? {};
-				const def = bs.def ?? {};
-				const gs = lastJ.globalState ?? {};
-				return {
-					success: false,
-					jobId,
-					state: bs.state ?? "unknown",
-					type: def.type ?? "unknown",
-					elapsedMs: elapsedBeforeMs,
-					pollCount,
-					timedOut: true,
-					progress: {
-						done: gs.done ?? 0,
-						failed: gs.failed ?? 0,
-						running: gs.running ?? 0,
-						total: gs.total ?? null,
-					},
-				};
+				return timedOutResult(lastJ, elapsedBeforeMs,);
 			}
 			pollCount += 1;
 
@@ -686,21 +739,8 @@ export class JobsResource extends BaseResource {
 				// structured timeout instead of letting the transport deadline
 				// error escape the loop.
 				if (!isRequestDeadlineError(error, startedAt + timeout,)) throw error;
-				return {
-					success: false,
-					jobId,
-					state: "unknown",
-					type: "unknown",
-					elapsedMs: Date.now() - startedAt,
-					pollCount,
-					timedOut: true,
-					progress: {
-						done: 0,
-						failed: 0,
-						running: 0,
-						total: null,
-					},
-				};
+				// A deadline mid-poll keeps the last state a previous poll observed.
+				return timedOutResult(lastJ, Date.now() - startedAt,);
 			}
 
 			lastJ = j;

@@ -479,6 +479,45 @@ describe("JobsResource.log", () => {
 		},);
 	});
 
+	it("keeps the job-level outcome line in a log without DSS record headers", async () => {
+		const outcome = "2026-10-12T09:13:22.189: Job is incompatible with build state: [running]";
+		const plainLog = ["starting build", "grant obtained", outcome, "stop_session received",].join(
+			"\n",
+		);
+		await withDataikuServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(plainLog,);
+		}, async (client,) => {
+			expect(await client.jobs.log("job-plain-outcome", { logFilter: "errors", },),).toBe(outcome,);
+		},);
+	});
+
+	it("logDetails reports byte-cap truncation and the scanned line count", async () => {
+		const lines = Array.from(
+			{ length: 50, },
+			(_, i,) => `plain line ${String(i,).padStart(2, "0",)}`,
+		);
+		const body = `${lines.join("\n",)}\n`;
+		await withDataikuServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/plain",);
+			res.end(body,);
+		}, async (client,) => {
+			const whole = await client.jobs.logDetails("job-details", { logFilter: "errors", },);
+			expect(whole,).toMatchObject({ text: "", truncated: false, scannedLines: 50, },);
+
+			const capped = await client.jobs.logDetails("job-details", {
+				maxLogBytes: 100,
+				maxLogLines: 0,
+			},);
+			expect(capped.truncated,).toBe(true,);
+			expect(capped.maxLogBytes,).toBe(100,);
+			expect(capped.scannedLines,).toBeLessThan(50,);
+			expect(capped.text.endsWith("plain line 49\n",),).toBe(true,);
+		},);
+	});
+
 	it("redacts credential pairs from every log download path", async () => {
 		const secretLine =
 			'[2026/10/08-15:19:46.100] [main] [INFO] [dku.start] - start_session {"jobProjectKey":"P","jobTicketSecret":"5kdUjgGp3cOO0DEU7UOP"}';
@@ -683,6 +722,7 @@ describe("JobsResource.wait", () => {
 					elapsedMs: 2,
 					pollCount: 1,
 					timedOut: true,
+					cancelled: false,
 					progress: { done: 0, failed: 0, running: 1, total: 1, },
 				},);
 			},);

@@ -615,6 +615,59 @@ describe("post-budget polling", () => {
 		}
 	});
 
+	it("jobs.wait keeps the last known state when the deadline hits mid-poll", async () => {
+		// One fast poll, then every later poll stalls: the 250ms budget runs out
+		// while the second request is in flight.
+		const respond = stallAfter(1, STALL_MS, {
+			baseStatus: { def: { id: "j-mid", type: "RECURSIVE_BUILD", }, state: "RUNNING", },
+			globalState: { done: 1, failed: 0, running: 2, total: 5, },
+		},);
+		const loopback = await startLoopback((_req, res,) => respond(res,));
+		try {
+			const started = Date.now();
+			const result = await new JobsResource(client(loopback.url,),).wait("j-mid", {
+				timeoutMs: BUDGET_MS,
+				pollIntervalMs: INTERVAL_MS,
+				projectKey: "DEFAULT",
+			},);
+			expect(Date.now() - started,).toBeLessThan(2_000,);
+			expect(result,).toMatchObject({
+				success: false,
+				jobId: "j-mid",
+				state: "RUNNING",
+				type: "RECURSIVE_BUILD",
+				timedOut: true,
+				cancelled: false,
+				progress: { done: 1, failed: 0, running: 2, total: 5, },
+			},);
+			// The wait only stops polling: it never issues an abort.
+			expect(loopback.requests.every((request,) => request.method === "GET"),).toBe(true,);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("jobs.wait reports unknown state only when no poll ever succeeded", async () => {
+		const respond = stallAfter(0, STALL_MS, { baseStatus: { state: "RUNNING", }, },);
+		const loopback = await startLoopback((_req, res,) => respond(res,));
+		try {
+			const result = await new JobsResource(client(loopback.url,),).wait("j-none", {
+				timeoutMs: BUDGET_MS,
+				pollIntervalMs: INTERVAL_MS,
+				projectKey: "DEFAULT",
+			},);
+			expect(result,).toMatchObject({
+				success: false,
+				jobId: "j-none",
+				state: "unknown",
+				timedOut: true,
+				cancelled: false,
+			},);
+		} finally {
+			await loopback.close();
+		}
+	});
+
 	it("ml-tasks.train stops polling at the deadline instead of stalling past it", async () => {
 		const respond = stallAfter(3, STALL_MS, { training: true, fullModelIds: [], },);
 		const loopback = await startLoopback((_req, res, path,) => {

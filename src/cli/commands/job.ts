@@ -1,6 +1,6 @@
 import { resolve, } from "node:path";
 import type { DataikuClient, } from "../../client.js";
-import { ClientValidationError, DataikuError, } from "../../errors.js";
+import { ClientValidationError, DataikuError, dataikuErrorCode, } from "../../errors.js";
 import type { BuildMode, DatasetSchema, JobSummary, } from "../../schemas.js";
 import { asRecord, } from "../../utils/records.js";
 import {
@@ -40,6 +40,32 @@ function tailJobLogForStdout(log: string, limit: number,): string {
 	},);
 	const tail = lines.slice(-shown,).join("\n",);
 	return hasTrailingLineBreak ? `${tail}\n` : tail;
+}
+
+const RESPONSE_TOO_LARGE_STATUS_TEXT = "Response Too Large";
+
+/** POSIX-shell quoting for a resume command argument. */
+function shellArg(value: string,): string {
+	return /^[\w.:@%+=,/-]+$/.test(value,) ? value : `'${value.replaceAll("'", "'\\''",)}'`;
+}
+
+/** Command that resumes waiting for a job whose wait timed out. */
+function jobWaitResumeCommand(jobId: string, projectKey: string | undefined,): string {
+	return `dss job wait ${shellArg(jobId,)}${
+		projectKey ? ` --project-key ${shellArg(projectKey,)}` : ""
+	}`;
+}
+
+/**
+ * A wait that timed out only stopped polling: the job is still running in DSS.
+ * Attach the command that resumes waiting; other results pass through.
+ */
+function withWaitResume<T extends { jobId: string; timedOut?: boolean; },>(
+	result: T,
+	projectKey: string | undefined,
+): T | (T & { resume: string; }) {
+	if (result.timedOut !== true) return result;
+	return { ...result, resume: jobWaitResumeCommand(result.jobId, projectKey,), };
 }
 
 /**
@@ -243,7 +269,18 @@ async function jobInspectionSummary(
 	flags: Record<string, string | boolean>,
 ): Promise<Record<string, unknown>> {
 	const projectKey = flags["project-key"] as string | undefined;
-	const details = await client.jobs.get(jobId, projectKey,);
+	// A job-detail body over the buffered response cap must not sink the whole
+	// summary: keep the log part and report the details failure structurally.
+	let details: Record<string, unknown> = {};
+	let detailsError: { code: string; message: string; } | undefined;
+	try {
+		details = await client.jobs.get(jobId, projectKey,);
+	} catch (error: unknown) {
+		if (!(error instanceof DataikuError && error.statusText === RESPONSE_TOO_LARGE_STATUS_TEXT)) {
+			throw error;
+		}
+		detailsError = { code: dataikuErrorCode(error.category,), message: error.message, };
+	}
 	let log: string | undefined;
 	let logError: string | undefined;
 	try {
@@ -273,6 +310,7 @@ async function jobInspectionSummary(
 		jobId: jobSummaryId(details, jobId,),
 		state: jobSummaryState(details,),
 		type: jobSummaryType(details,),
+		...(detailsError ? { detailsError, } : {}),
 		...(durationMs !== undefined ? { durationMs, } : {}),
 		...(outputs !== undefined ? { outputs, } : {}),
 		warnings: jobWarningSummary(details, log,),
@@ -326,13 +364,36 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 				?? (f["output-file"] as string | undefined);
 			const requestedLines = maxLogLinesFromFlags(f,);
 			// Stdout is tailed here (not in the SDK) so the total can be reported.
-			const log = await c.jobs.log(a[0], {
+			const details = await c.jobs.logDetails(a[0], {
 				activity: f["activity"] as string | undefined,
 				logId: f["log-id"] as string | undefined,
 				logFilter,
 				maxLogLines: outputFile ? requestedLines : -1,
 				projectKey: f["project-key"] as string | undefined,
 			},);
+			const log = details.text;
+			if (details.truncated) {
+				enqueueCliWarning({
+					code: "log_truncated",
+					reason: "byte_cap",
+					earlyLinesDropped: true,
+					maxLogBytes: details.maxLogBytes,
+					hint:
+						"Only the most recent part of the log was retrieved; early lines (and any earlier errors) were dropped. Use `dss job get` for job-level and per-activity errors.",
+				},);
+			}
+			if (logFilter === "errors" && log.length === 0) {
+				enqueueCliWarning({
+					code: "no_error_lines",
+					scannedLines: details.scannedLines,
+					hint:
+						`No error lines matched in ${details.scannedLines} scanned log lines. Run \`dss job get ${
+							a[0]
+						}\` for the job-level and per-activity errors, or \`dss job log ${
+							a[0]
+						}\` without --errors-only for the full log.`,
+				},);
+			}
 			if (!outputFile) return tailJobLogForStdout(log, requestedLines ?? DEFAULT_STDOUT_LOG_LINES,);
 			const outputPath = resolve(outputFile,);
 			await Bun.write(outputPath, log.endsWith("\n",) ? log : `${log}\n`,);
@@ -393,7 +454,10 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 				};
 			}
 			if (f["wait"] === true) {
-				const result = await c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },);
+				const result = withWaitResume(
+					await c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },),
+					pk,
+				);
 				await warnIfBuiltDatasetHasNoColumns(c, a[0], options.targetType, result.success, pk,);
 				return result;
 			}
@@ -434,7 +498,10 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 					method: "POST",
 				};
 			}
-			const result = await c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },);
+			const result = withWaitResume(
+				await c.jobs.buildAndWait(a[0], { ...options, projectKey: pk, },),
+				pk,
+			);
 			await warnIfBuiltDatasetHasNoColumns(c, a[0], options.targetType, result.success, pk,);
 			return result;
 		},
@@ -448,17 +515,19 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 		],
 	},
 	wait: {
-		handler: (c, a, f,) => {
+		handler: async (c, a, f,) => {
 			requireArgs(a, 1, commandUsage("job", "wait",),);
-			return c.jobs.wait(a[0], {
+			const projectKey = f["project-key"] as string | undefined;
+			const result = await c.jobs.wait(a[0], {
 				includeLogs: f["include-logs"] === true,
 				logFilter: jobLogFilterFromFlag(f["log-filter"],),
 				maxLogLines: maxLogLinesFromFlags(f,),
 				pollIntervalMs: num(f["poll-interval"], "--poll-interval",),
 				timeoutMs: num(f["timeout"], "--timeout",),
 				summary: f["summary"] === true,
-				projectKey: f["project-key"] as string | undefined,
+				projectKey,
 			},);
+			return withWaitResume(result, projectKey,);
 		},
 		description: "Wait for an existing job to complete.",
 		examples: [
@@ -478,7 +547,11 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 				summary: f["summary"] !== false,
 				projectKey: f["project-key"] as string | undefined,
 			};
-			const jobs = await Promise.all(a.map((jobId,) => c.jobs.wait(jobId, options,)),);
+			const jobs = await Promise.all(
+				a.map(async (jobId,) =>
+					withWaitResume(await c.jobs.wait(jobId, options,), options.projectKey,)
+				),
+			);
 			return aggregateJobWaitResults(jobs, String(f["until"] ?? "all-done",),);
 		},
 		description: "Monitor one or more existing jobs and summarize progress counters from logs.",
@@ -496,7 +569,11 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 				summary: true,
 				projectKey: f["project-key"] as string | undefined,
 			};
-			const jobs = await Promise.all(a.map((jobId,) => c.jobs.wait(jobId, options,)),);
+			const jobs = await Promise.all(
+				a.map(async (jobId,) =>
+					withWaitResume(await c.jobs.wait(jobId, options,), options.projectKey,)
+				),
+			);
 			return aggregateJobWaitResults(jobs, String(f["until"] ?? "all-done",),);
 		},
 		description: "Watch one or more existing jobs with progress extraction enabled.",

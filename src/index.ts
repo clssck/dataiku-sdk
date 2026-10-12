@@ -80,6 +80,7 @@ export {
 	type JobBuildOptions,
 	type JobBuildTarget,
 	type JobBuildTargetType,
+	type JobLogDetails,
 	type JobLogFilter,
 	type JobLogProgress,
 	type JobLogSummary,

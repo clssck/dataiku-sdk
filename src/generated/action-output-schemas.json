@@ -1119,6 +1119,12 @@
 				"timedOut": {
 					"type": "boolean"
 				},
+				"cancelled": {
+					"type": "boolean"
+				},
+				"resume": {
+					"type": "string"
+				},
 				"progress": {
 					"type": "object",
 					"required": [
@@ -1186,6 +1192,12 @@
 				},
 				"timedOut": {
 					"type": "boolean"
+				},
+				"cancelled": {
+					"type": "boolean"
+				},
+				"resume": {
+					"type": "string"
 				},
 				"progress": {
 					"type": "object",

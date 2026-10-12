@@ -368,4 +368,45 @@ describe("DataikuClient bounded response bodies", () => {
 			expect(await res.text(),).toBe("onetwothree",);
 		}, { requestTimeoutMs: 200, maxResponseBodyBytes: 1, },);
 	});
+
+	it("getTextTailLimited applies the timeout per chunk, not to the whole transfer", async () => {
+		// Real-socket integration (like the stall tests above): fake timers cannot
+		// model a trickling TCP body. Each chunk arrives well inside the 200ms
+		// stall budget, but the whole transfer takes ~480ms: a total-transfer
+		// deadline would fail it.
+		await withDataikuServer(async (_req, res,) => {
+			res.writeHead(200, { "Content-Type": "text/plain", },);
+			for (const chunk of ["aaaa", "bbbb", "cccc", "dddd",]) {
+				res.write(chunk,);
+				await Bun.sleep(120,);
+			}
+			res.end("eeee",);
+		}, async (client,) => {
+			const started = Date.now();
+			const { text, truncated, } = await client.getTextTailLimited("/slow-log", 10,);
+			expect(Date.now() - started,).toBeGreaterThan(200,);
+			expect(truncated,).toBe(true,);
+			expect(text,).toBe("ccddddeeee",);
+		}, { requestTimeoutMs: 200, },);
+	});
+
+	// Real-socket integration: the stall is a genuine idle TCP body.
+	it("getTextTailLimited still fails with the body-read timeout when the body stalls", async () => {
+		await withDataikuServer((_req, res,) => {
+			res.writeHead(200, { "Content-Type": "text/plain", },);
+			res.write("first",);
+			setTimeout(() => res.end("late",), 600,);
+		}, async (client,) => {
+			const started = Date.now();
+			const failure = await client.getTextTailLimited("/stalled-log", 64,).catch((
+				error: unknown,
+			) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as DataikuError).status,).toBe(0,);
+			expect((failure as Error).message,).toContain(
+				"timed out after 200ms while reading the response body",
+			);
+			expect(Date.now() - started,).toBeLessThan(500,);
+		}, { requestTimeoutMs: 200, },);
+	});
 });
