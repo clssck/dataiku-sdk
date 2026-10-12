@@ -218,7 +218,10 @@ export function groupingPayloadConfig(
 /**
  * Apply grouping keys and aggregates to the payload DSS created: `keys` lists
  * the group columns; each aggregated column's `values[]` entry gets its
- * aggregate flags (and `orderColumn` for first/last).
+ * aggregate flags (and `orderColumn` for first/last). With aggregates given,
+ * DSS's per-group row count (`globalCount`, a `count` column) is turned off so
+ * the output holds exactly the keys and the requested aggregates; `COL:count`
+ * asks for a count. Keys alone keep the count as the only aggregate.
  */
 export function applyGroupingPayload(
 	payload: Record<string, unknown>,
@@ -238,7 +241,13 @@ export function applyGroupingPayload(
 			entry.orderColumn = config.orderBy;
 		}
 	}
-	return { ...payload, keys: config.keys.map((column,) => ({ column, })), values, };
+	const hasAggregates = Object.keys(config.aggregates,).length > 0;
+	return {
+		...payload,
+		keys: config.keys.map((column,) => ({ column, })),
+		values,
+		...(hasAggregates ? { globalCount: false, } : {}),
+	};
 }
 
 function processorStep(type: string, params: Record<string, unknown>,): Record<string, unknown> {

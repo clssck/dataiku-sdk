@@ -2027,14 +2027,20 @@ describe("recipe create payload builders", () => {
 			globalCount: true,
 			values: [{ column: "amount", sum: false, avg: false, }, { column: "name", first: false, },],
 		}, config!,);
+		// Aggregates given: the output holds the keys and those aggregates, no implicit count.
 		expect(payload,).toEqual({
 			keys: [{ column: "category", },],
-			globalCount: true,
+			globalCount: false,
 			values: [
 				{ column: "amount", sum: true, avg: true, },
 				{ column: "name", first: true, orderColumn: "day", },
 			],
 		},);
+		const keysOnly = applyGroupingPayload(
+			{ keys: [], globalCount: true, values: [], },
+			groupingPayloadConfig({ type: "grouping", groupBy: ["category",], },)!,
+		);
+		expect(keysOnly.globalCount,).toBe(true,);
 	});
 
 	it("rejects unknown aggregates and first/last without an ordering column", () => {
