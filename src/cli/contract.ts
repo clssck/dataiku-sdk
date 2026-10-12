@@ -543,7 +543,7 @@ function structuredExamples(
  * (`dss commands run`, `dss agent contract`) never loads the TypeBox graph.
  * The content matches `typeBoxCommandOutputSchemas()` exactly; parity and
  * freshness are enforced by tests/cli/discovery-output-schemas.test.ts and
- * `bun run check`.
+ * `bun run verify`.
  */
 const actionOutputSchemas: Record<string, Record<string, unknown>> = actionOutputSchemasMetadata
 	.schemas;

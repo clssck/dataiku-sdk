@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Bun 1.4.3 is now the minimum supported version (`engines.bun >=1.4.3`); CI and release run 1.4.3. On an older Bun, `dss` exits 2 with a JSON error that tells you to run `bun upgrade`.
+- Contributors: type checking runs on Bun's built-in `bun check` (about 3x faster than `tsc --noEmit` here); the combined gate script is renamed `bun run check` → `bun run verify`, because a script named `check` shadows the built-in. `tsc` is still used to emit `dist/`. `cross-env` is removed (Bun's script runner sets inline env vars on every OS); `@types/bun` ^1.4.3, `dprint` ^0.63.0, `@dprint/json` 0.25.2.
+
 - Fix: `job list` shows in-progress jobs as `state: "RUNNING"`, and `job list --state RUNNING` finds them. DSS (verified on 15.0.1) lists a job that is computing dependencies or running with `stableState: false` and no `state`, so these jobs printed without a state and the filter matched nothing. `--full` still returns the DSS objects; `job get` reports the exact phase.
 - Fix: `plugin list` keeps `isDev` in its compact items, so development plugins (editable with `contents-*`, Git actions) are distinguishable from installed ones without `--full`.
 - `project import` reports the DSS `status` and sanitized `details.dssMessage`/`dssErrorType` behind an `ambiguous_outcome` failure (process step or post-import re-read). DSS 15.0.1 answers an import into a taken project key with `500 Project key KEY is already used`; before, only "the project may or may not have been created" was shown. Any `ambiguous_outcome`/`assertion_failed`/`long_running_failure` error that carries a DSS response as its cause now shows the same fields.

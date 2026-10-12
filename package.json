@@ -27,7 +27,7 @@
 		"build": "bun scripts/generate-action-output-schemas.mjs && tsc && bun scripts/generate-build-metadata.mjs",
 		"prepack": "bun scripts/sync-plugin-version.mjs --check && bun scripts/generate-action-output-schemas.mjs --check && tsc && bun scripts/generate-build-metadata.mjs",
 		"prepublishOnly": "bun run prepack",
-		"check": "tsc --noEmit && tsc -p tools/oxlint/tsconfig.json && bun run check:live && bun scripts/generate-action-output-schemas.mjs --check && bun scripts/sync-plugin-version.mjs --check && bun scripts/cut-changelog.mjs --check",
+		"verify": "bun check -p tsconfig.json && bun check -p tools/oxlint/tsconfig.json && bun run check:live && bun scripts/generate-action-output-schemas.mjs --check && bun scripts/sync-plugin-version.mjs --check && bun scripts/cut-changelog.mjs --check",
 		"version": "bun scripts/sync-plugin-version.mjs && bun scripts/cut-changelog.mjs && git add plugin.json CHANGELOG.md",
 		"lint": "oxlint src/ tools/oxlint/ scripts/ tests/",
 		"lint:fix": "oxlint --fix src/ tools/oxlint/ scripts/ tests/",
@@ -35,13 +35,13 @@
 		"format:check": "dprint check",
 		"test": "bun test --parallel --timeout 30000",
 		"test:live": "bun --no-env-file scripts/live-suite.ts",
-		"check:live": "tsc --noEmit -p tsconfig.live.json",
+		"check:live": "bun check -p tsconfig.live.json",
 		"test:tokens": "bun test tests/cli/agent-token-budget.test.ts",
 		"test:platform": "bun scripts/platform-smoke.mjs",
-		"test:integration": "cross-env RUN_DATAIKU_INTEGRATION=1 bun test tests/integration-playground.test.ts",
-		"test:integration:mutating": "cross-env RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 bun test tests/integration-playground.test.ts",
-		"test:integration:rigorous": "cross-env RUN_DATAIKU_INTEGRATION=1 bun test tests/integration-rigorous.test.ts",
-		"test:integration:rigorous:mutating": "cross-env RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 bun test tests/integration-rigorous.test.ts"
+		"test:integration": "RUN_DATAIKU_INTEGRATION=1 bun test tests/integration-playground.test.ts",
+		"test:integration:mutating": "RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 bun test tests/integration-playground.test.ts",
+		"test:integration:rigorous": "RUN_DATAIKU_INTEGRATION=1 bun test tests/integration-rigorous.test.ts",
+		"test:integration:rigorous:mutating": "RUN_DATAIKU_INTEGRATION=1 RUN_DATAIKU_INTEGRATION_MUTATING=1 bun test tests/integration-rigorous.test.ts"
 	},
 	"dependencies": {
 		"@sinclair/typebox": "^0.34.52",
@@ -49,9 +49,8 @@
 	},
 	"devDependencies": {
 		"@oxlint/plugins": "1.87.0",
-		"@types/bun": "^1.4.2",
-		"cross-env": "^10.1.0",
-		"dprint": "^0.61.1",
+		"@types/bun": "^1.4.3",
+		"dprint": "^0.63.0",
 		"js-tiktoken": "1.0.21",
 		"oxlint": "1.87.0",
 		"typescript": "^7.0.2"
@@ -60,7 +59,7 @@
 		"@sinclair/typebox"
 	],
 	"engines": {
-		"bun": ">=1.4.2"
+		"bun": ">=1.4.3"
 	},
 	"publishConfig": {
 		"access": "public"

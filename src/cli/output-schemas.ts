@@ -91,7 +91,7 @@ let commandOutputSchemas: Record<string, Record<string, unknown>> | undefined;
  * the single source of truth for `src/generated/action-output-schemas.json`,
  * which discovery reads as plain data so no TypeBox schema graph loads on the
  * discovery path. Regenerate with
- * `bun scripts/generate-action-output-schemas.mjs`; `bun run check` fails when
+ * `bun scripts/generate-action-output-schemas.mjs`; `bun run verify` fails when
  * the generated file is stale. SDK validation keeps using the TypeBox schema
  * objects from `packages/types` directly and never depends on the generated file.
  */

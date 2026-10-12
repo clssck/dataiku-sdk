@@ -13,7 +13,7 @@
 
 ## Checklist
 
-- [ ] `bun run check` is clean (TypeScript, no errors)
+- [ ] `bun run verify` is clean (TypeScript via `bun check`, generated files current)
 - [ ] `bun run format:check` passes (dprint)
 - [ ] `bun run lint` passes (oxlint, no errors)
 - [ ] `bun test` passes

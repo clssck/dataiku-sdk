@@ -4,7 +4,7 @@ Thanks for your interest in improving the Dataiku DSS SDK & CLI. This guide cove
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) >= 1.4.2 — primary package manager, source runtime, and test runner
+- [Bun](https://bun.sh) >= 1.4.3 — primary package manager, source runtime, and test runner
 - [Node.js](https://nodejs.org) 24 with npm — release tooling only; the SDK and CLI run under Bun
 - Git
 
@@ -21,14 +21,14 @@ bun install --frozen-lockfile
 - `src/` — the SDK client and resources (`src/resources/*`) plus the CLI (`src/cli/*`, entry `bin/dss.js`)
 - `packages/types/` — TypeBox schemas and their derived TypeScript types, compiled into the root build and re-exported through `src/schemas.ts`
 - `src/cli/command-syntax.json` — the hand-maintained syntax tree of every CLI command (`src/cli/syntax.ts` defines the node types). It is the single source for each command's `usage` line, which is rendered from it and never written by hand, and for the usage-level agent contract derived from it: flags, required flags and required choices, value hints and enums, positionals, stdin/data inputs, dry-run, local-file output, and aliases. Command modules export their definitions through `withUsage(resource, {...})`, which fails at load for a command without an entry. To add or change a command, edit its entry, then review the rendered `dss commands run --fields RESOURCE.ACTION` output: the entry is what agents may pass.
-- `src/generated/` — generator-owned `action-output-schemas.json` (discovery output schemas), from `bun scripts/generate-action-output-schemas.mjs`; `bun run check` fails when it is stale
+- `src/generated/` — generator-owned `action-output-schemas.json` (discovery output schemas), from `bun scripts/generate-action-output-schemas.mjs`; `bun run verify` fails when it is stale
 - `tests/` — unit and (gated) integration tests, run with `bun test`
 
 ## Everyday commands
 
 | Task                    | Command                                                    |
 | ----------------------- | ---------------------------------------------------------- |
-| Type-check              | `bun run check` (`tsc --noEmit`)                            |
+| Type-check + generated-file checks | `bun run verify` (`bun check` on every tsconfig); `bun check` alone type-checks `tsconfig.json` |
 | Build                   | `bun run build`                                            |
 | Lint                    | `bun run lint` — autofix with `bun run lint:fix`            |
 | Format                  | `bun run format` — verify with `bun run format:check`       |
@@ -39,7 +39,7 @@ bun install --frozen-lockfile
 
 Before opening a pull request, all of these must be green:
 
-1. `bun run check` — TypeScript is clean (no errors)
+1. `bun run verify` — TypeScript is clean (no errors) and generated files are current
 2. `bun run format:check` — dprint formatting is applied
 3. `bun run lint` — oxlint reports no errors
 4. `bun run test` — the unit suite passes
