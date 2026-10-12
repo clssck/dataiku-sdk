@@ -2,6 +2,7 @@ import {
 	ClientValidationError,
 	DataikuError,
 	nonJsonResponseBody,
+	RESPONSE_TOO_LARGE_STATUS_TEXT,
 	SQL_QUERY_FAILED_MARKER,
 } from "../errors.js";
 import type { SqlQueryResponse, SqlQueryResult, } from "../schemas.js";
@@ -231,7 +232,7 @@ export class SqlResource extends BaseResource {
 		if (truncated) {
 			throw new DataikuError(
 				0,
-				"Response Too Large",
+				RESPONSE_TOO_LARGE_STATUS_TEXT,
 				`SQL stream results exceeded the ${maxBytes}-byte response limit and were not parsed.`,
 			);
 		}
@@ -256,7 +257,7 @@ export class SqlResource extends BaseResource {
 		if (truncated) {
 			throw new DataikuError(
 				0,
-				"Response Too Large",
+				RESPONSE_TOO_LARGE_STATUS_TEXT,
 				`SQL finish-streaming response exceeded the ${maxBytes}-byte response limit.`,
 			);
 		}

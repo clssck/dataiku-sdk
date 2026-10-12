@@ -154,6 +154,10 @@ const DEFINITE_FAILURE_HINT =
 	"DSS reported that the request failed (for SQL: syntax error, missing object, or missing privileges of the connection's role). Fix the request or grants; do not retry unchanged.";
 /** Prefix for a SQL query failure reported by DSS on a 2xx finish-streaming response. */
 export const SQL_QUERY_FAILED_MARKER = "SQL query failed in DSS";
+/** statusText of a DataikuError raised when a response exceeds a client-side byte budget. */
+export const RESPONSE_TOO_LARGE_STATUS_TEXT = "Response Too Large";
+const RESPONSE_TOO_LARGE_HINT =
+	"The response exceeded a client-side size limit; retrying returns the same body. Narrow the request (fewer rows or columns, --preview, --output PATH) instead.";
 
 const TLS_CERTIFICATE_HINT =
 	"TLS certificate verification failed. Trust the DSS/corporate CA with --ca-cert PATH or NODE_EXTRA_CA_CERTS, or save it for every process and directory with `dss auth login --ca-cert PATH` (a project .env applies only when dss runs in that directory); use --insecure only for temporary troubleshooting.";
@@ -524,14 +528,21 @@ export class DataikuError extends Error {
 		super(details.message,);
 		this.name = "DataikuError";
 		const definite = trustedMetadata?.definiteFailure === true;
+		// A client-side byte budget tripped: the same request returns the same
+		// oversized body, so retrying cannot help (it is not a transport fault).
+		const overBudget = statusText === RESPONSE_TOO_LARGE_STATUS_TEXT;
 		// A definite DSS refusal is not a transport/server fault: replaying it
 		// unchanged cannot succeed. Keep a more specific forbidden/not_found class.
-		const reclassify = definite
-			&& (details.category === "transient" || details.category === "unknown"
-				|| details.category === "unexpected_response");
+		const reclassify = overBudget || definite
+				&& (details.category === "transient" || details.category === "unknown"
+					|| details.category === "unexpected_response");
 		this.category = reclassify ? "validation" : details.category;
 		this.retryable = reclassify ? false : details.retryable;
-		this.retryHint = reclassify ? DEFINITE_FAILURE_HINT : details.retryHint;
+		this.retryHint = overBudget
+			? RESPONSE_TOO_LARGE_HINT
+			: reclassify
+			? DEFINITE_FAILURE_HINT
+			: details.retryHint;
 		this.retry = retry;
 		this.requestId = requestId;
 		this.trustedTarget = trustedMetadata?.target;

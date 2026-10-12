@@ -409,4 +409,26 @@ describe("DataikuClient bounded response bodies", () => {
 			expect(Date.now() - started,).toBeLessThan(500,);
 		}, { requestTimeoutMs: 200, },);
 	});
+
+	// Real-socket integration (fake timers cannot model a trickling TCP body):
+	// each chunk beats the 150ms stall deadline by a wide margin, but the body
+	// keeps trickling past the 10x total budget (1500ms).
+	it("getTextTailLimited caps a body that never stops trickling and names the total limit", async () => {
+		await withDataikuServer(async (_req, res,) => {
+			res.writeHead(200, { "Content-Type": "text/plain", },);
+			while (!res.destroyed) {
+				res.write("x",);
+				await Bun.sleep(10,);
+			}
+		}, async (client,) => {
+			const started = Date.now();
+			const failure = await client.getTextTailLimited("/endless-log", 64,).catch((
+				error: unknown,
+			) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as Error).message,).toContain("still arriving after 1500ms",);
+			expect((failure as Error).message,).toContain("10x --request-timeout",);
+			expect(Date.now() - started,).toBeLessThan(3000,);
+		}, { requestTimeoutMs: 150, },);
+	});
 });

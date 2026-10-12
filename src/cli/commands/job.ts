@@ -1,6 +1,11 @@
 import { resolve, } from "node:path";
 import type { DataikuClient, } from "../../client.js";
-import { ClientValidationError, DataikuError, dataikuErrorCode, } from "../../errors.js";
+import {
+	ClientValidationError,
+	DataikuError,
+	dataikuErrorCode,
+	RESPONSE_TOO_LARGE_STATUS_TEXT,
+} from "../../errors.js";
 import type { BuildMode, DatasetSchema, JobSummary, } from "../../schemas.js";
 import { asRecord, } from "../../utils/records.js";
 import {
@@ -42,30 +47,29 @@ function tailJobLogForStdout(log: string, limit: number,): string {
 	return hasTrailingLineBreak ? `${tail}\n` : tail;
 }
 
-const RESPONSE_TOO_LARGE_STATUS_TEXT = "Response Too Large";
-
-/** POSIX-shell quoting for a resume command argument. */
+/** POSIX-shell quoting for the display form of a resume command. */
 function shellArg(value: string,): string {
 	return /^[\w.:@%+=,/-]+$/.test(value,) ? value : `'${value.replaceAll("'", "'\\''",)}'`;
 }
 
-/** Command that resumes waiting for a job whose wait timed out. */
-function jobWaitResumeCommand(jobId: string, projectKey: string | undefined,): string {
-	return `dss job wait ${shellArg(jobId,)}${
-		projectKey ? ` --project-key ${shellArg(projectKey,)}` : ""
-	}`;
-}
-
 /**
  * A wait that timed out only stopped polling: the job is still running in DSS.
- * Attach the command that resumes waiting; other results pass through.
+ * Attach the command that resumes waiting: `resumeArgv` (run it without a
+ * shell, on any OS) and `resume` (POSIX display form); other results pass through.
  */
 function withWaitResume<T extends { jobId: string; timedOut?: boolean; },>(
 	result: T,
 	projectKey: string | undefined,
-): T | (T & { resume: string; }) {
+): T | (T & { resume: string; resumeArgv: string[]; }) {
 	if (result.timedOut !== true) return result;
-	return { ...result, resume: jobWaitResumeCommand(result.jobId, projectKey,), };
+	const resumeArgv = [
+		"dss",
+		"job",
+		"wait",
+		result.jobId,
+		...(projectKey ? ["--project-key", projectKey,] : []),
+	];
+	return { ...result, resume: resumeArgv.map(shellArg,).join(" ",), resumeArgv, };
 }
 
 /**

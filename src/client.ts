@@ -11,6 +11,7 @@ import {
 	DataikuError,
 	type DataikuRetryMetadata,
 	nonJsonResponseBody,
+	RESPONSE_TOO_LARGE_STATUS_TEXT,
 } from "./errors.js";
 
 import type { AnalysesResource, } from "./resources/analyses.js";
@@ -75,7 +76,6 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
  * streaming methods (stream, postStream) are unaffected.
  */
 const DEFAULT_MAX_BUFFERED_BODY_BYTES = 50 * 1024 * 1024;
-const RESPONSE_TOO_LARGE_STATUS_TEXT = "Response Too Large";
 
 /** One part of a {@link DataikuClient.uploadForm} multipart/form-data body. */
 export interface UploadFormPart {
@@ -289,6 +289,9 @@ function buildBodyReadTimeoutError(timeoutMs: number,): DataikuError {
 		`Request timed out after ${timeoutMs}ms while reading the response body.`,
 	);
 }
+
+/** Total budget of a tail read (e.g. `job log`) as a multiple of the per-chunk stall timeout. */
+const TAIL_READ_TOTAL_BUDGET_FACTOR = 10;
 
 /**
  * Read the next chunk of a response body under a hard deadline.
@@ -1032,7 +1035,7 @@ export class DataikuClient {
 	 * the tail is kept and `truncated` is true — so callers that need the end
 	 * of a large document (e.g. job logs) stay bounded without losing the most
 	 * recent content. The request timeout applies per received chunk (a stall
-	 * deadline), not to the whole transfer.
+	 * deadline); the whole transfer is capped at 10x the request timeout.
 	 */
 	async getTextTailLimited(
 		path: string,
@@ -1491,9 +1494,10 @@ export class DataikuClient {
 	 * decoded text never contains a replacement character.
 	 *
 	 * The request timeout applies per chunk (a stall deadline), like the
-	 * streaming path: a large body that keeps arriving is read to EOF however
-	 * long the whole transfer takes, while a body that stops sending for longer
-	 * than the timeout fails with the body-read timeout error.
+	 * streaming path: a body that stops sending for longer than the timeout
+	 * fails with the body-read timeout error. A total budget of
+	 * {@link TAIL_READ_TOTAL_BUDGET_FACTOR} x the request timeout bounds a body
+	 * that keeps trickling, with an error naming that limit.
 	 */
 	private async readBodyTextTail(
 		res: Response,
@@ -1507,14 +1511,31 @@ export class DataikuClient {
 		let writeOffset = 0;
 		let retainedBytes = 0;
 		let truncated = false;
+		// Stall deadline per chunk, plus an overall cap so a body that trickles
+		// forever still ends; the error names which limit fired.
+		const totalBudgetMs = this.requestTimeoutMs * TAIL_READ_TOTAL_BUDGET_FACTOR;
+		const startedAt = Date.now();
 
 		try {
 			while (true) {
-				const { done, value, } = await readChunkWithDeadline(
-					reader,
-					this.requestTimeoutMs,
-					this.requestTimeoutMs,
-				);
+				const totalRemainingMs = totalBudgetMs - (Date.now() - startedAt);
+				const totalBound = totalRemainingMs < this.requestTimeoutMs;
+				let chunk: Bun.ReadableStreamDefaultReadResult<Uint8Array>;
+				try {
+					chunk = await readChunkWithDeadline(
+						reader,
+						Math.max(0, Math.min(this.requestTimeoutMs, totalRemainingMs,),),
+						this.requestTimeoutMs,
+					);
+				} catch (error) {
+					if (!totalBound || !(error instanceof DataikuError) || error.status !== 0) throw error;
+					throw new DataikuError(
+						0,
+						"Request Timeout",
+						`Response body was still arriving after ${totalBudgetMs}ms (the total read limit is ${TAIL_READ_TOTAL_BUDGET_FACTOR}x --request-timeout); raise --request-timeout to allow more time.`,
+					);
+				}
+				const { done, value, } = chunk;
 				if (done) break;
 				if (limit === 0) {
 					truncated = value.byteLength > 0;

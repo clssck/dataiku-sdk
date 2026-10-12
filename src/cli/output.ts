@@ -238,12 +238,22 @@ export function commandFailureMessage(result: unknown,): string {
 			const resume = typeof record.resume === "string" ? ` Resume with: ${record.resume}` : "";
 			return `Timed out waiting for job ${record.jobId} after ${record.elapsedMs}ms (last known state: ${record.state}); the job is still running in DSS and was not cancelled.${resume}`;
 		}
+		if (record.timedOut === true) {
+			// ML training, scenario runs and futures: the client stopped waiting; nothing was cancelled.
+			const known = typeof record.state === "string"
+				? record.state
+				: typeof record.outcome === "string"
+				? record.outcome
+				: undefined;
+			const elapsed = typeof record.elapsedMs === "number" ? ` after ${record.elapsedMs}ms` : "";
+			return `Timed out waiting${elapsed}${
+				known ? ` (last known state: ${known})` : ""
+			}; the operation was not cancelled and may still be running in DSS.`;
+		}
 		const state = typeof record.state === "string"
 			? record.state
 			: typeof record.outcome === "string"
 			? record.outcome
-			: typeof record.timedOut === "boolean"
-			? "timed out"
 			: undefined;
 		return `Command completed with failed long-running result${state ? `: ${state}` : ""}.`;
 	}

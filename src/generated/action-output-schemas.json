@@ -1125,6 +1125,12 @@
 				"resume": {
 					"type": "string"
 				},
+				"resumeArgv": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
 				"progress": {
 					"type": "object",
 					"required": [
@@ -1198,6 +1204,12 @@
 				},
 				"resume": {
 					"type": "string"
+				},
+				"resumeArgv": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
 				},
 				"progress": {
 					"type": "object",

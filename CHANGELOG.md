@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix: a response that exceeds a client-side size limit ("Response Too Large": buffered bodies over 50 MiB, SQL results over the stream cap) is a non-retryable `validation_failed` with a hint to narrow the request, not a retryable `transient` error.
+- Wait timeouts for ML training, scenario runs, and futures say the wait timed out with the last known state and that nothing was cancelled, instead of "failed long-running result: RUNNING".
+- Job wait timeouts add `resumeArgv` (the resume command as an argv array, runnable without shell quoting on Windows); `resume` stays as the POSIX display form.
+- `job log` keeps its per-chunk stall timeout and also caps the whole read at 10x `--request-timeout`, with an error naming that limit, so a log that never stops trickling cannot hang a caller.
+
 ## 4.0.0
 
 - **Breaking:** agent contract v5 (`agentContractVersion: 5`), for the corrected `outputShape`s and error classifications below.

@@ -1095,7 +1095,9 @@ describe("CLI agent-readiness mutation contracts", () => {
 					code: "long_running_failure",
 					category: "dss",
 					exitCode: 4,
-					error: expect.stringContaining("failed long-running result: FUTURE_STILL_RUNNING",),
+					error: expect.stringMatching(
+						/^Timed out waiting.*\(last known state: FUTURE_STILL_RUNNING\)/,
+					),
 				},);
 				const result = report.failures?.[0]?.error?.details?.result;
 				expect(result,).toMatchObject({
