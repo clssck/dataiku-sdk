@@ -258,6 +258,43 @@ describe("agent contract accuracy", () => {
 		expect((actionReport.details as Record<string, unknown>).validActions,).toContain("create",);
 	});
 
+	it("returns the known --fields selectors and warns about unknown ones with suggestions", async () => {
+		const result = await dss([
+			"commands",
+			"run",
+			"--fields",
+			"scenario.get.usage,flow.map.usage,datsaet.list.usage",
+		],);
+		expect(JSON.parse(result.stdout,),).toEqual({
+			"scenario.get.usage": "dss scenario get <id> [--full] [--project-key KEY]",
+		},);
+		expect(JSON.parse(result.stderr,),).toEqual({
+			type: "warning",
+			warnings: [{
+				code: "unknown_fields",
+				fields: ["flow.map.usage", "datsaet.list.usage",],
+				suggestions: {
+					"flow.map.usage": ["project.map.usage",],
+					"datsaet.list.usage": ["dataset.list.usage",],
+				},
+				hint: expect.any(String,),
+			},],
+		},);
+	});
+
+	it("fails with suggestions when no --fields selector is known", async () => {
+		const failure = await dssFailure(["commands", "run", "--fields", "flow.map.usage",],);
+		expect(failure.code,).toBe(1,);
+		expect(failure.stderr,).toBe("",);
+		expect(JSON.parse(failure.stdout,),).toMatchObject({
+			type: "error",
+			error: "Unknown action: flow map",
+			code: "usage_error",
+			exitCode: 1,
+			details: { resource: "flow", action: "map", suggestions: ["project.map.usage",], },
+		},);
+	});
+
 	it("rejects scoped discovery selectors with empty path components", async () => {
 		for (const selector of ["dataset.", "dataset..usage", ".dataset",]) {
 			const failure = await dssFailure(["commands", "run", "--fields", selector,],);

@@ -282,8 +282,8 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 				maxRows !== undefined && (!Number.isSafeInteger(maxRows,) || maxRows <= 0 || maxRows > 500)
 			) {
 				throw new UsageError(
-					`--max-rows must be a positive integer no greater than 500 (got "${String(f["max-rows"],)}"). `
-						+ `Usage: ${previewUsage}`,
+					`--max-rows must be a positive integer no greater than 500 (got "${String(f["max-rows"],)}"); `
+						+ `for more rows use \`dss dataset download NAME --limit N --output PATH\`. Usage: ${previewUsage}`,
 					"validation_failed",
 				);
 			}

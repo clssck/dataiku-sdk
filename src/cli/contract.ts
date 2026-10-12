@@ -965,6 +965,7 @@ const STRING_OUTPUT_ACTIONS = new Set([
  */
 const SCOPED_OUTPUT_SHAPES: Readonly<Record<string, CommandOutputShape>> = {
 	"folder.contents": "array",
+	"scenario.last-runs": "array",
 	"plugin.usages": "object",
 	"plugin.download": "object",
 	"dataset.download": "object",
@@ -1786,7 +1787,7 @@ export function buildAgentContract(): Record<string, unknown> {
 				failureResultDetailLimitBytes: 65_536,
 				fieldProjection: "Missing --fields paths: null on stdout; field_projection_missing on stderr.",
 				compactResults:
-					"*.list, job get, dataset get/info, project get: compact; --full/--fields use DSS objects; lists take --contains/--limit (list_truncated warning).",
+					"*.list, job get, dataset get/info, project get, scenario get-run/last-runs: compact; --full/--fields use DSS objects; lists take --contains/--limit (list_truncated warning).",
 				richFailureResults:
 					"doctor/batch/cleanup failures: own compact {ok:false,...} result on stdout and command exit code; no wrapper.",
 			},

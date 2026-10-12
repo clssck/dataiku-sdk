@@ -1,7 +1,8 @@
 /**
- * Compact default results of the four large read commands (`job get`,
- * `dataset info`, `dataset get`, `project get`), plus the single dispatch
- * point for compacting command results (`shapeCommandResult`).
+ * Compact default results of the large read commands (`job get`,
+ * `dataset info`, `dataset get`, `project get`, `scenario get-run`,
+ * `scenario last-runs`), plus the single dispatch point for compacting
+ * command results (`shapeCommandResult`).
  *
  * The SDK resources keep returning the raw DSS objects; only the CLI compacts.
  * `--full` returns the DSS object unchanged, and `--fields` projects DSS paths
@@ -226,17 +227,244 @@ function shapeProjectGet(result: unknown,): unknown {
 	return { ...pruned, deniedPermissions, };
 }
 
+/** Scenario/step/job outcomes that count as a failure worth diagnosing. */
+const FAILED_OUTCOMES: Record<string, true> = { FAILED: true, ABORTED: true, };
+
+function isFailedOutcome(value: unknown,): boolean {
+	return typeof value === "string" && FAILED_OUTCOMES[value] === true;
+}
+
+/** Message of a DSS `thrown` exception object (`{ clazz, message, ... }`). */
+function thrownMessage(value: unknown,): string | undefined {
+	const thrown = record(value,);
+	return nonEmptyString(thrown["message"],) ?? nonEmptyString(thrown["detailedMessage"],);
+}
+
+function reportItems(stepRun: Item, type: string,): Item[] {
+	const items = stepRun["additionalReportItems"];
+	return Array.isArray(items,)
+		? items.filter((item,): item is Item => isRecord(item,) && item["type"] === type)
+		: [];
+}
+
+/**
+ * One `stepRuns[]` entry: the step identity and outcome, the datasets it built
+ * (`BUILT_DATASET` report items) and the jobs it ran (`JOB_EXECUTED`, with the
+ * thrown message). The job log tail DSS embeds in the report is dropped.
+ */
+function shapeScenarioStep(stepRun: unknown, runProjectKey: unknown,): Item {
+	const fields = record(stepRun,);
+	const step = record(fields["step"],);
+	const result = record(fields["result"],);
+	const datasets = reportItems(fields, "BUILT_DATASET",).map((item,) => {
+		const target = record(item["target"],);
+		const partition = target["partition"];
+		return defined({
+			dataset: target["datasetName"],
+			projectKey: typeof target["projectKey"] === "string" && target["projectKey"] !== runProjectKey
+				? target["projectKey"]
+				: undefined,
+			partition: typeof partition === "string" && partition !== "NP" ? partition : undefined,
+			outcome: item["outcome"],
+		},);
+	},);
+	const jobs = reportItems(fields, "JOB_EXECUTED",).map((item,) =>
+		defined({
+			jobId: item["jobId"],
+			outcome: item["outcome"],
+			message: thrownMessage(item["thrown"],),
+		},)
+	);
+	return defined({
+		id: step["id"],
+		name: step["name"],
+		type: step["type"],
+		outcome: result["outcome"],
+		message: thrownMessage(result["thrown"],),
+		datasets: datasets.length > 0 ? datasets : undefined,
+		jobs: jobs.length > 0 ? jobs : undefined,
+	},);
+}
+
+/**
+ * First failure of a shaped run: the failed step, its failed job and dataset,
+ * and the most specific message (job, then step, then scenario).
+ */
+function firstScenarioFailure(steps: Item[], runThrown: unknown,): Item | undefined {
+	for (const step of steps) {
+		const jobs = (step["jobs"] as Item[] | undefined) ?? [];
+		const job = jobs.find((entry,) => isFailedOutcome(entry["outcome"],));
+		if (!isFailedOutcome(step["outcome"],) && !job) continue;
+		const datasets = (step["datasets"] as Item[] | undefined) ?? [];
+		const dataset = datasets.find((entry,) => isFailedOutcome(entry["outcome"],));
+		return defined({
+			stepId: step["id"],
+			jobId: job?.["jobId"],
+			dataset: dataset?.["dataset"],
+			message: nonEmptyString(job?.["message"],) ?? nonEmptyString(step["message"],)
+				?? thrownMessage(runThrown,),
+		},);
+	}
+	const message = thrownMessage(runThrown,);
+	return message === undefined ? undefined : { message, };
+}
+
+function projectKeyArgs(projectKey: unknown,): string[] {
+	return typeof projectKey === "string" && projectKey.length > 0
+		? ["--project-key", projectKey,]
+		: [];
+}
+
+/** Next-step argv for a failure: the job's error log, else the scenario run log. */
+function failureNextSteps(
+	failure: Item,
+	scenarioId: unknown,
+	runId: unknown,
+	projectKey: unknown,
+): string[][] | undefined {
+	if (typeof failure["jobId"] === "string") {
+		return [[
+			"dss",
+			"job",
+			"log",
+			failure["jobId"],
+			"--errors-only",
+			...projectKeyArgs(projectKey,),
+		],];
+	}
+	if (typeof scenarioId !== "string" || typeof runId !== "string") return undefined;
+	const stepArgs = typeof failure["stepId"] === "string" ? ["--step-id", failure["stepId"],] : [];
+	return [[
+		"dss",
+		"scenario",
+		"log",
+		scenarioId,
+		runId,
+		...stepArgs,
+		...projectKeyArgs(projectKey,),
+	],];
+}
+
+/** Scenario identity of a run object (`scenarioRun` or a last-runs item). */
+function runScenarioIdentity(run: Item,): { scenarioId: unknown; projectKey: unknown; } {
+	const scenario = record(run["scenario"],);
+	const target = record(record(run["result"],)["target"],);
+	return {
+		scenarioId: scenario["id"] ?? target["scenarioId"],
+		projectKey: scenario["projectKey"] ?? target["projectKey"],
+	};
+}
+
+function runTrigger(run: Item,): Item | undefined {
+	const trigger = record(record(run["trigger"],)["trigger"],);
+	const shaped = defined({
+		type: nonEmptyString(trigger["type"],),
+		name: nonEmptyString(trigger["name"],),
+	},);
+	return Object.keys(shaped,).length > 0 ? shaped : undefined;
+}
+
+/**
+ * Failure diagnosis of a raw `scenario get-run` report: the first failure
+ * (`{ stepId, jobId, dataset, message }`) and the next command(s) to run as
+ * argv arrays. Empty when the run did not fail.
+ */
+export function scenarioRunDiagnosis(details: unknown,): { failure?: Item; next?: string[][]; } {
+	const fields = record(details,);
+	const run = record(fields["scenarioRun"],);
+	const result = record(run["result"],);
+	const { scenarioId, projectKey, } = runScenarioIdentity(run,);
+	const steps = Array.isArray(fields["stepRuns"],)
+		? fields["stepRuns"].map((stepRun,) => shapeScenarioStep(stepRun, projectKey,))
+		: [];
+	const failed = isFailedOutcome(result["outcome"],)
+		|| steps.some((step,) => isFailedOutcome(step["outcome"],));
+	const failure = failed ? firstScenarioFailure(steps, result["thrown"],) : undefined;
+	if (!failure) return {};
+	const next = failureNextSteps(failure, scenarioId, run["runId"], projectKey,);
+	return next ? { failure, next, } : { failure, };
+}
+
+/**
+ * `scenario get-run`: run identity, outcome, timing, trigger, per-step
+ * datasets/jobs, the first failure, and next-step argv. Never the trigger
+ * auth context, run-as user, API key metadata, or job log tails.
+ */
+function shapeScenarioGetRun(result: unknown,): unknown {
+	if (!isRecord(result,) || !isRecord(result["scenarioRun"],)) return result;
+	const run = result["scenarioRun"];
+	const runResult = record(run["result"],);
+	const { scenarioId, projectKey, } = runScenarioIdentity(run,);
+	const start = typeof run["start"] === "number" ? run["start"] : undefined;
+	const end = typeof run["end"] === "number" ? run["end"] : undefined;
+	const steps = Array.isArray(result["stepRuns"],)
+		? result["stepRuns"].map((stepRun,) => shapeScenarioStep(stepRun, projectKey,))
+		: [];
+	const { failure, next, } = scenarioRunDiagnosis(result,);
+	return defined({
+		runId: run["runId"],
+		scenarioId,
+		projectKey,
+		outcome: runResult["outcome"],
+		start,
+		end,
+		durationMs: start !== undefined && end !== undefined && end >= start ? end - start : undefined,
+		trigger: runTrigger(run,),
+		steps,
+		failure,
+		next,
+	},);
+}
+
+/**
+ * One `scenario last-runs` item: identity, outcome, timing, trigger, failure
+ * message, and for a failed run the `scenario get-run` argv that shows why.
+ */
+function shapeScenarioRunSummary(item: unknown,): unknown {
+	if (!isRecord(item,)) return item;
+	const result = record(item["result"],);
+	const message = thrownMessage(result["thrown"],);
+	const { scenarioId, projectKey, } = runScenarioIdentity(item,);
+	const next = isFailedOutcome(result["outcome"],) && typeof scenarioId === "string"
+			&& typeof item["runId"] === "string"
+		? [[
+			"dss",
+			"scenario",
+			"get-run",
+			scenarioId,
+			item["runId"],
+			...(typeof projectKey === "string" ? ["--project-key", projectKey,] : []),
+		],]
+		: undefined;
+	return defined({
+		runId: item["runId"],
+		outcome: result["outcome"],
+		start: item["start"] ?? result["start"],
+		end: item["end"] ?? result["end"],
+		trigger: runTrigger(item,),
+		failure: message === undefined ? undefined : { message, },
+		next,
+	},);
+}
+
+/** `scenario last-runs`: one small object per run, newest first as DSS returns them. */
+function shapeScenarioLastRuns(result: unknown,): unknown {
+	return Array.isArray(result,) ? result.map(shapeScenarioRunSummary,) : result;
+}
+
 /** Compact read shapers by `resource.action`. */
 const READ_SHAPERS: Record<string, (result: unknown,) => unknown> = {
 	"job.get": shapeJobGet,
 	"dataset.info": shapeDatasetInfo,
 	"dataset.get": shapeDatasetGet,
 	"project.get": shapeProjectGet,
+	"scenario.get-run": shapeScenarioGetRun,
+	"scenario.last-runs": shapeScenarioLastRuns,
 };
 
 /**
  * Compact a command result for agents: `*.list` items (filter, cap, compact
- * fields) and the four large read commands. `--full` and `--fields` bypass
+ * fields) and the large read commands. `--full` and `--fields` bypass
  * the read shapers so the DSS object (or a projection of it) is returned.
  */
 export function shapeCommandResult(

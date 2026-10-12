@@ -78,6 +78,7 @@ describe("agent-facing token budgets", () => {
 		// identity, visual recipe payload, output schema, Inline dataset, and error envelope guidance;
 		// coding again for the grouping/prepare flags, troubleshooting for flow propagate-schema.
 		// discovery and troubleshooting: compact get defaults and the 100-line `job log` tail.
+		// troubleshooting again: one line for the compact `scenario get-run` failure/next fields.
 		const baselines = {
 			authentication: 504,
 			discovery: 621,
@@ -85,7 +86,7 @@ describe("agent-facing token budgets", () => {
 			"app-releases": 872,
 			"flow-maps": 159,
 			coding: 362,
-			troubleshooting: 1_044,
+			troubleshooting: 1_098,
 		};
 		for (const [name, baseline,] of Object.entries(baselines,)) {
 			const text = readFileSync(

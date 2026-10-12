@@ -1988,6 +1988,195 @@
 				}
 			}
 		},
+		"scenario.get-run": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"runId",
+				"steps"
+			],
+			"properties": {
+				"runId": {
+					"type": "string"
+				},
+				"scenarioId": {
+					"type": "string"
+				},
+				"projectKey": {
+					"type": "string"
+				},
+				"outcome": {
+					"type": "string"
+				},
+				"start": {
+					"type": "number"
+				},
+				"end": {
+					"type": "number"
+				},
+				"durationMs": {
+					"type": "number"
+				},
+				"trigger": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"type": {
+							"type": "string"
+						},
+						"name": {
+							"type": "string"
+						}
+					}
+				},
+				"steps": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"properties": {
+							"id": {
+								"type": "string"
+							},
+							"name": {
+								"type": "string"
+							},
+							"type": {
+								"type": "string"
+							},
+							"outcome": {
+								"type": "string"
+							},
+							"message": {
+								"type": "string"
+							},
+							"datasets": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"additionalProperties": false,
+									"properties": {
+										"dataset": {
+											"type": "string"
+										},
+										"projectKey": {
+											"type": "string"
+										},
+										"partition": {
+											"type": "string"
+										},
+										"outcome": {
+											"type": "string"
+										}
+									}
+								}
+							},
+							"jobs": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"additionalProperties": false,
+									"properties": {
+										"jobId": {
+											"type": "string"
+										},
+										"outcome": {
+											"type": "string"
+										},
+										"message": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"failure": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"stepId": {
+							"type": "string"
+						},
+						"jobId": {
+							"type": "string"
+						},
+						"dataset": {
+							"type": "string"
+						},
+						"message": {
+							"type": "string"
+						}
+					}
+				},
+				"next": {
+					"type": "array",
+					"description": "Next commands to run, each as an argv array.",
+					"items": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				}
+			}
+		},
+		"scenario.last-runs": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"runId"
+				],
+				"properties": {
+					"runId": {
+						"type": "string"
+					},
+					"outcome": {
+						"type": "string"
+					},
+					"start": {
+						"type": "number"
+					},
+					"end": {
+						"type": "number"
+					},
+					"trigger": {
+						"type": "object",
+						"additionalProperties": false,
+						"properties": {
+							"type": {
+								"type": "string"
+							},
+							"name": {
+								"type": "string"
+							}
+						}
+					},
+					"failure": {
+						"type": "object",
+						"additionalProperties": false,
+						"properties": {
+							"message": {
+								"type": "string"
+							}
+						}
+					},
+					"next": {
+						"type": "array",
+						"description": "Next commands to run, each as an argv array.",
+						"items": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
+					}
+				}
+			}
+		},
 		"scenario.list": {
 			"type": "array",
 			"items": {

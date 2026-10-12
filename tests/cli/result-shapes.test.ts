@@ -1,7 +1,7 @@
 import { describe, expect, it, } from "bun:test";
 import { typeBoxCommandOutputSchemas, } from "../../src/cli/output-schemas.js";
 import { shapeCommandResult, } from "../../src/cli/result-shapes.js";
-import { cliEnv, dss, sendJson, withCliServer, } from "./_harness.js";
+import { cliEnv, dss, dssFailure, sendJson, withCliServer, } from "./_harness.js";
 
 const NO_FLAGS: Record<string, string | boolean> = {};
 
@@ -379,5 +379,311 @@ describe("discovery output schemas of the compact reads", () => {
 		const dataset = schemas["dataset.get"] as { properties: Record<string, unknown>; };
 		expect("name" in dataset.properties,).toBe(true,);
 		expect("schema" in dataset.properties,).toBe(true,);
+	});
+});
+
+const RUN_ID = "2026-01-02-03-04-05-678";
+const FAILED_JOB_ID = "Scenario_build_report__NP__2026-01-02T03-04-05.700";
+const KEY_ERROR =
+	"Error in python process: At line 5: <class 'KeyError'>: Column not found: amount_euro";
+
+function builtDatasetItem(datasetName: string, outcome: string,): Record<string, unknown> {
+	return {
+		type: "BUILT_DATASET",
+		target: { type: "DATASET_PARTITION", projectKey: "TEST", datasetName, partition: "NP", },
+		start: 1_700_000_001_000,
+		end: 1_700_000_002_000,
+		outcome,
+		warnings: { warnings: {}, totalCount: 0, },
+	};
+}
+
+/**
+ * Mirrors the raw GET /scenarios/{id}/{runId}/ report of a build_flowitem step
+ * (fake ids). `jobs: false` drops the report items, as a failure before any job.
+ */
+function scenarioRunReport(
+	{ outcome = "FAILED", jobs = true, }: { outcome?: string; jobs?: boolean; } = {},
+): Record<string, unknown> {
+	const permissions = { admin: true, mayCreateProjects: true, mayWriteUnsafeCode: true, };
+	const reportItems = jobs
+		? [
+			builtDatasetItem("prep", "SUCCESS",),
+			builtDatasetItem("report", outcome,),
+			{
+				type: "JOB_EXECUTED",
+				jobId: FAILED_JOB_ID,
+				target: { type: "JOBS", },
+				outcome,
+				thrown: { message: KEY_ERROR, },
+				logTail: { lines: ["[INFO] a very long job log line",], status: [1,], maxLevel: 3, },
+			},
+		]
+		: [];
+	return {
+		scenarioRun: {
+			start: 1_700_000_000_000,
+			end: 1_700_000_036_000,
+			trigger: {
+				projectKey: "TEST",
+				scenarioId: "nightly",
+				trigger: { id: "manual", type: "manual", name: "API run", delay: 0, },
+				triggerAuthCtx: {
+					userGroupLevelPermissions: permissions,
+					authSource: "PERSONAL_API_KEY",
+					apiKey: { id: "FAKEKEYID", label: "Personal for tester", createdBy: "tester", },
+				},
+			},
+			result: {
+				type: "SCENARIO_DONE",
+				target: { type: "SCENARIO", projectKey: "TEST", scenarioId: "nightly", },
+				outcome,
+			},
+			runAsUser: { userGroupLevelPermissions: permissions, userProfile: "FULL_DESIGNER", },
+			scenario: { projectKey: "TEST", id: "nightly", type: "step_based", params: { steps: [], }, },
+			runId: RUN_ID,
+		},
+		stepRuns: [{
+			scenarioRun: { runId: RUN_ID, },
+			additionalReportItems: reportItems,
+			step: { id: "build", type: "build_flowitem", name: "Build report", params: { builds: [], }, },
+			runId: "2026-01-02-03-04-05-679",
+			result: { type: "STEP_DONE", outcome, },
+		},],
+	};
+}
+
+/** Raw get-last-runs items: the run's scenario snapshot and result, newest first. */
+function lastRunsFixture(thrownMessage?: string,): Array<Record<string, unknown>> {
+	return [
+		{
+			runId: RUN_ID,
+			start: 1_700_000_000_000,
+			end: 1_700_000_036_000,
+			trigger: { trigger: { type: "manual", name: "API run", }, },
+			scenario: { projectKey: "TEST", id: "nightly", },
+			result: {
+				type: "SCENARIO_DONE",
+				outcome: "FAILED",
+				...(thrownMessage === undefined ? {} : { thrown: { message: thrownMessage, }, }),
+			},
+		},
+		{
+			runId: "2026-01-01-03-04-05-000",
+			start: 1_699_900_000_000,
+			end: 1_699_900_010_000,
+			scenario: { projectKey: "TEST", id: "nightly", },
+			result: { type: "SCENARIO_DONE", outcome: "SUCCESS", },
+		},
+	];
+}
+
+describe("scenario get-run compact shape", () => {
+	it("surfaces the failure, per-step datasets and jobs, and next-step argv", () => {
+		const compact = shapeCommandResult("scenario", "get-run", scenarioRunReport(), NO_FLAGS,);
+		expect(compact,).toEqual({
+			runId: RUN_ID,
+			scenarioId: "nightly",
+			projectKey: "TEST",
+			outcome: "FAILED",
+			start: 1_700_000_000_000,
+			end: 1_700_000_036_000,
+			durationMs: 36_000,
+			trigger: { type: "manual", name: "API run", },
+			steps: [{
+				id: "build",
+				name: "Build report",
+				type: "build_flowitem",
+				outcome: "FAILED",
+				datasets: [{ dataset: "prep", outcome: "SUCCESS", }, {
+					dataset: "report",
+					outcome: "FAILED",
+				},],
+				jobs: [{ jobId: FAILED_JOB_ID, outcome: "FAILED", message: KEY_ERROR, },],
+			},],
+			failure: { stepId: "build", jobId: FAILED_JOB_ID, dataset: "report", message: KEY_ERROR, },
+			next: [["dss", "job", "log", FAILED_JOB_ID, "--errors-only", "--project-key", "TEST",],],
+		},);
+		const text = JSON.stringify(compact,);
+		for (
+			const noise of [
+				"apiKey",
+				"userGroupLevelPermissions",
+				"mayCreateProjects",
+				"logTail",
+				"runAsUser",
+			]
+		) {
+			expect(text.includes(noise,), `compact output must not contain ${noise}`,).toBe(false,);
+		}
+		expect(text.length,).toBeLessThan(1_500,);
+	});
+
+	it("omits failure and next for a successful run", () => {
+		const compact = shapeCommandResult(
+			"scenario",
+			"get-run",
+			scenarioRunReport({ outcome: "SUCCESS", },),
+			NO_FLAGS,
+		);
+		expect(compact,).not.toHaveProperty("failure",);
+		expect(compact,).not.toHaveProperty("next",);
+	});
+
+	it("points at the scenario run log when no job ran", () => {
+		const compact = shapeCommandResult(
+			"scenario",
+			"get-run",
+			scenarioRunReport({ jobs: false, },),
+			NO_FLAGS,
+		);
+		expect(compact,).toMatchObject({
+			failure: { stepId: "build", },
+			next: [[
+				"dss",
+				"scenario",
+				"log",
+				"nightly",
+				RUN_ID,
+				"--step-id",
+				"build",
+				"--project-key",
+				"TEST",
+			],],
+		},);
+	});
+
+	it("returns the DSS report for --full and --fields", () => {
+		const raw = scenarioRunReport();
+		expect(shapeCommandResult("scenario", "get-run", raw, { full: true, },),).toBe(raw,);
+		expect(shapeCommandResult("scenario", "get-run", raw, { fields: "stepRuns", },),).toBe(raw,);
+	});
+});
+
+describe("scenario last-runs compact shape", () => {
+	it("keeps one small object per run and points a failed run at get-run", () => {
+		expect(shapeCommandResult("scenario", "last-runs", lastRunsFixture(), NO_FLAGS,),).toEqual([
+			{
+				runId: RUN_ID,
+				outcome: "FAILED",
+				start: 1_700_000_000_000,
+				end: 1_700_000_036_000,
+				trigger: { type: "manual", name: "API run", },
+				next: [["dss", "scenario", "get-run", "nightly", RUN_ID, "--project-key", "TEST",],],
+			},
+			{
+				runId: "2026-01-01-03-04-05-000",
+				outcome: "SUCCESS",
+				start: 1_699_900_000_000,
+				end: 1_699_900_010_000,
+			},
+		],);
+	});
+
+	it("carries the failure message when DSS reports one and passes --full through", () => {
+		const runs = lastRunsFixture("boom",);
+		expect(shapeCommandResult("scenario", "last-runs", runs, NO_FLAGS,),).toMatchObject([
+			{ failure: { message: "boom", }, },
+			{},
+		],);
+		expect(shapeCommandResult("scenario", "last-runs", runs, { full: true, },),).toBe(runs,);
+	});
+});
+
+async function scenarioCli(args: string[], body: unknown, path: string,): Promise<unknown> {
+	let stdout = "";
+	await withCliServer((req, res,) => {
+		expect(new URL(req.url ?? "/", "http://localhost",).pathname,).toBe(path,);
+		sendJson(res, body,);
+	}, async (url,) => {
+		const result = await dss(["scenario", ...args,], { env: cliEnv(url,), },);
+		expect(result.stderr,).toBe("",);
+		stdout = result.stdout;
+	},);
+	return JSON.parse(stdout,);
+}
+
+describe("CLI scenario get-run / last-runs output", () => {
+	it("get-run is compact by default and raw with --full", async () => {
+		const path = `/public/api/projects/TEST/scenarios/nightly/${RUN_ID}/`;
+		const args = ["get-run", "nightly", RUN_ID,];
+		expect(await scenarioCli(args, scenarioRunReport(), path,),).toMatchObject({
+			failure: { message: KEY_ERROR, },
+		},);
+		expect(await scenarioCli([...args, "--full",], scenarioRunReport(), path,),).toEqual(
+			scenarioRunReport(),
+		);
+	});
+
+	it("last-runs is compact by default and raw with --full", async () => {
+		const path = "/public/api/projects/TEST/scenarios/nightly/get-last-runs/";
+		expect(await scenarioCli(["last-runs", "nightly",], lastRunsFixture(), path,),).toMatchObject([
+			{ outcome: "FAILED", },
+			{ outcome: "SUCCESS", },
+		],);
+		expect(await scenarioCli(["last-runs", "nightly", "--full",], lastRunsFixture(), path,),)
+			.toMatchObject([{ scenario: { id: "nightly", }, }, {},],);
+	});
+});
+
+describe("discovery output schemas of the scenario run reads", () => {
+	it("describes the compact scenario.get-run and scenario.last-runs", () => {
+		const schemas = typeBoxCommandOutputSchemas();
+		expect(schemas["scenario.get-run"],).toMatchObject({
+			properties: {
+				runId: {},
+				scenarioId: {},
+				outcome: {},
+				durationMs: {},
+				trigger: {},
+				steps: {},
+				failure: {},
+				next: {},
+			},
+		},);
+		expect(schemas["scenario.last-runs"],).toMatchObject({ type: "array", },);
+	});
+});
+
+describe("CLI scenario run-and-wait failure", () => {
+	it("adds the first failure and next command from one extra get-run read", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+			if (req.method === "POST") {
+				sendJson(res, { trigger: { id: "manual", }, runId: "trig-1", },);
+			} else if (url.pathname.endsWith("/get-run-for-trigger",)) {
+				sendJson(res, { scenarioRun: { runId: RUN_ID, result: { outcome: "FAILED", }, }, },);
+			} else {
+				sendJson(res, scenarioRunReport(),);
+			}
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"scenario",
+				"run-and-wait",
+				"nightly",
+				"--poll-interval",
+				"1",
+			], {
+				env: cliEnv(url,),
+			},);
+			expect(failure.code,).toBe(4,);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				error: KEY_ERROR,
+				code: "long_running_failure",
+				details: {
+					result: {
+						outcome: "FAILED",
+						failure: { stepId: "build", jobId: FAILED_JOB_ID, dataset: "report", message: KEY_ERROR, },
+						next: [["dss", "job", "log", FAILED_JOB_ID, "--errors-only", "--project-key", "TEST",],],
+					},
+				},
+			},);
+		},);
+		expect(
+			requests.filter((request,) => request.startsWith("GET",) && request.endsWith(`/${RUN_ID}/`,)),
+		)
+			.toHaveLength(2,);
 	});
 });

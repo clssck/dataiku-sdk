@@ -36,6 +36,21 @@ export function compactReadOutputSchemas(): Record<string, Record<string, unknow
 		additionalProperties: false,
 		properties: { type: STRING, message: STRING, },
 	};
+	const triggerSchema = {
+		type: "object",
+		additionalProperties: false,
+		properties: { type: STRING, name: STRING, },
+	};
+	const failureSchema = {
+		type: "object",
+		additionalProperties: false,
+		properties: { stepId: STRING, jobId: STRING, dataset: STRING, message: STRING, },
+	};
+	const nextSchema = {
+		type: "array",
+		description: "Next commands to run, each as an argv array.",
+		items: { type: "array", items: STRING, },
+	};
 	return {
 		"job.get": {
 			type: "object",
@@ -112,6 +127,70 @@ export function compactReadOutputSchemas(): Record<string, Record<string, unknow
 				},
 				lastModifiedOn: NUMBER,
 				lastModifiedBy: STRING,
+			},
+		},
+		"scenario.get-run": {
+			type: "object",
+			additionalProperties: false,
+			required: ["runId", "steps",],
+			properties: {
+				runId: STRING,
+				scenarioId: STRING,
+				projectKey: STRING,
+				outcome: STRING,
+				start: NUMBER,
+				end: NUMBER,
+				durationMs: NUMBER,
+				trigger: triggerSchema,
+				steps: {
+					type: "array",
+					items: {
+						type: "object",
+						additionalProperties: false,
+						properties: {
+							id: STRING,
+							name: STRING,
+							type: STRING,
+							outcome: STRING,
+							message: STRING,
+							datasets: {
+								type: "array",
+								items: {
+									type: "object",
+									additionalProperties: false,
+									properties: { dataset: STRING, projectKey: STRING, partition: STRING, outcome: STRING, },
+								},
+							},
+							jobs: {
+								type: "array",
+								items: {
+									type: "object",
+									additionalProperties: false,
+									properties: { jobId: STRING, outcome: STRING, message: STRING, },
+								},
+							},
+						},
+					},
+				},
+				failure: failureSchema,
+				next: nextSchema,
+			},
+		},
+		"scenario.last-runs": {
+			type: "array",
+			items: {
+				type: "object",
+				additionalProperties: false,
+				required: ["runId",],
+				properties: {
+					runId: STRING,
+					outcome: STRING,
+					start: NUMBER,
+					end: NUMBER,
+					trigger: triggerSchema,
+					failure: { type: "object", additionalProperties: false, properties: { message: STRING, }, },
+					next: nextSchema,
+				},
 			},
 		},
 	};

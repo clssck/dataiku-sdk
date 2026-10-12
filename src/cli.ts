@@ -37,6 +37,7 @@ import {
 	resolveCredentials,
 	resolveLoginCredentials,
 } from "./cli/runtime.js";
+import { suggestSelectors, } from "./cli/selector-suggestions.js";
 import { commandSyntaxTree, commandUsage, } from "./cli/syntax.js";
 import {
 	COMMANDS_RUN_HINT,
@@ -984,6 +985,8 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 		return contract.commandActionSummary();
 	}
 	const registry: CommandRegistry = selectors.length === 0 ? contract.buildCommandRegistry() : {};
+	const knownSelectors: string[] = [];
+	const unknownSelectors: Record<string, { error: UsageError; suggestions: string[]; }> = {};
 	for (const selector of selectors) {
 		const selectorParts = selector.split(".",);
 		if (selectorParts.some((part,) => part.length === 0)) {
@@ -996,21 +999,51 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 		}
 		const [selectedResource, selectedAction,] = selectorParts;
 		const resourceActions = cachedCommandRegistry(selectedResource,);
-		if (!resourceActions) throw unknownResourceError(selectedResource,);
-		registry[selectedResource] = resourceActions;
-		if (selectedAction && !resourceActions[selectedAction]) {
-			throw unknownActionError(
-				selectedResource,
-				selectedAction,
-				Object.keys(resourceActions,),
-			);
+		const error = !resourceActions
+			? unknownResourceError(selectedResource,)
+			: selectedAction && !resourceActions[selectedAction]
+			? unknownActionError(selectedResource, selectedAction, Object.keys(resourceActions,),)
+			: undefined;
+		if (resourceActions && !error) {
+			registry[selectedResource] = resourceActions;
+			knownSelectors.push(selector,);
+			continue;
 		}
+		unknownSelectors[selector] = {
+			error: error!,
+			suggestions: suggestSelectors(selector, contract.commandActionSummary(),),
+		};
+	}
+	const unknownNames = Object.keys(unknownSelectors,);
+	if (unknownNames.length > 0) {
+		if (knownSelectors.length === 0 && selectors.length > 0) {
+			const { error, suggestions, } = unknownSelectors[unknownNames[0]!]!;
+			throw suggestions.length === 0
+				? error
+				: new UsageError(error.message, error.code, error.hint, {
+					...error.details,
+					suggestions,
+				},);
+		}
+		enqueueCliWarning({
+			code: "unknown_fields",
+			fields: unknownNames,
+			suggestions: Object.fromEntries(
+				unknownNames.flatMap((name,) =>
+					unknownSelectors[name]!.suggestions.length > 0
+						? [[name, unknownSelectors[name]!.suggestions,],]
+						: []
+				),
+			),
+			hint:
+				"Unknown selectors were skipped; the result holds the known ones. Run `dss commands run` for resource/action names.",
+		},);
 	}
 	const selectedRegistry = selectors.length === 0
 		? registry
 		: projectResultFields(
 			registry,
-			selectors,
+			knownSelectors,
 			() => Object.keys(contract.commandActionSummary(),).sort(),
 		);
 	if (typeof outputPath === "string") {

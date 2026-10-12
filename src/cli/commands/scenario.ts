@@ -1,9 +1,34 @@
+import type { DataikuClient, } from "../../client.js";
+import type { ScenarioWaitResult, } from "../../schemas.js";
 import { jsonInput, num, parseBooleanOption, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
+import { scenarioRunDiagnosis, } from "../result-shapes.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
+
+/**
+ * Run a scenario and wait; a failed (not timed-out) run gains the first
+ * failure and the next command. One extra get-run read, only on failure; a
+ * read error leaves the wait result untouched so the outcome is never lost.
+ */
+async function runAndWaitWithFailure(
+	c: DataikuClient,
+	scenarioId: string,
+	options: { pollIntervalMs?: number; timeoutMs?: number; projectKey?: string; },
+) {
+	const result: ScenarioWaitResult = await c.scenarios.runAndWait(scenarioId, options,);
+	if (result.success || result.timedOut === true || !result.runId) return result;
+	try {
+		const details = await c.scenarios.getRunDetails(scenarioId, result.runId, {
+			projectKey: options.projectKey,
+		},);
+		return { ...result, ...scenarioRunDiagnosis(details,), };
+	} catch {
+		return result;
+	}
+}
 
 export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario", {
 	list: {
@@ -44,7 +69,7 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 				};
 			}
 			if (f["wait"] === true) {
-				return c.scenarios.runAndWait(a[0], { ...options, projectKey: pk, },);
+				return runAndWaitWithFailure(c, a[0], { ...options, projectKey: pk, },);
 			}
 			return c.scenarios.run(a[0], pk,);
 		},
@@ -74,7 +99,7 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 					method: "POST",
 				};
 			}
-			return c.scenarios.runAndWait(a[0], { ...options, projectKey: pk, },);
+			return runAndWaitWithFailure(c, a[0], { ...options, projectKey: pk, },);
 		},
 		description: "Run a scenario and wait for completion.",
 		examples: [
@@ -227,7 +252,8 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		description: "List the most recent runs of a scenario (run id, start/end, outcome).",
+		description:
+			"List the most recent runs of a scenario (compact by default: run id, outcome, start/end, trigger, failure message; --full returns the DSS run objects).",
 		examples: ["dss scenario last-runs my_scenario --limit 10",],
 	},
 	"get-run": {
@@ -237,7 +263,8 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 				projectKey: f["project-key"] as string | undefined,
 			},);
 		},
-		description: "Get the details of a specific scenario run, including per-step outcomes.",
+		description:
+			"Get a scenario run: outcome, timing, trigger, per-step datasets and jobs, plus `failure` {stepId, jobId, dataset, message} and `next` argv for the first failure (compact by default; --full returns the raw DSS run report).",
 		examples: ["dss scenario get-run my_scenario 2024-09-01-01-02-03-123",],
 	},
 	log: {

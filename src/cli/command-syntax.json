@@ -91,6 +91,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -1699,6 +1708,15 @@
 			"get",
 			{
 				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			}
 		],
 		"business-app.install-from-archive": [
@@ -1956,6 +1974,15 @@
 			},
 			{
 				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			}
 		],
 		"code-env.get-definition": [
@@ -3110,6 +3137,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -3320,6 +3356,15 @@
 			"get",
 			{
 				"arg": "dataCollectionId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			}
 		],
 		"data-collection.list": [
@@ -5037,6 +5082,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -5372,6 +5426,15 @@
 			"get",
 			{
 				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			},
 			{
 				"optional": [
@@ -6096,6 +6159,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -6409,6 +6481,15 @@
 			"get",
 			{
 				"arg": "name"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			}
 		],
 		"group.list": [
@@ -6633,6 +6714,15 @@
 			"get",
 			{
 				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			},
 			{
 				"optional": [
@@ -7904,6 +7994,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -8209,6 +8308,15 @@
 			"get",
 			{
 				"arg": "meaningId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			}
 		],
 		"meaning.list": [
@@ -9757,6 +9865,15 @@
 			"get",
 			{
 				"arg": "storeId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			},
 			{
 				"optional": [
@@ -11627,6 +11744,15 @@
 			"get",
 			{
 				"arg": "folderId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			}
 		],
 		"project-folder.move": [
@@ -13944,6 +14070,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -15062,6 +15197,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -15616,6 +15760,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -15632,6 +15785,15 @@
 			},
 			{
 				"arg": "runId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			},
 			{
 				"optional": [
@@ -15657,6 +15819,15 @@
 						{
 							"flag": "limit",
 							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
 						}
 					]
 				]
@@ -16529,6 +16700,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -16784,6 +16964,15 @@
 			"get",
 			{
 				"arg": "login"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			}
 		],
 		"user.list": [
@@ -16941,6 +17130,15 @@
 			"dss",
 			"variable",
 			"get",
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
 			{
 				"optional": [
 					[
@@ -17450,6 +17648,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "project-key",
 							"value": "KEY"
 						}
@@ -17697,6 +17904,15 @@
 			"get",
 			{
 				"arg": "workspaceKey"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
 			}
 		],
 		"workspace.list": [

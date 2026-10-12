@@ -111,14 +111,16 @@ export const codeEnvCommands: Record<string, CommandMeta> = withUsage("code-env"
 		examples: ["dss code-env list", "dss code-env list --lang PYTHON",],
 	},
 	get: {
-		handler: (c, a,) => {
+		handler: (c, a, f,) => {
 			const usage = commandUsage("code-env", "get",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
-			return c.codeEnvs.get(envLang, a[1],);
+			return f["full"] === true
+				? c.codeEnvs.getDefinition(envLang, a[1],)
+				: c.codeEnvs.get(envLang, a[1],);
 		},
 		description:
-			"Get code environment details: requested vs installed packages, Python interpreter, deployment mode, and the stable definition hash (definitionHash) used by set-definition --expect-hash.",
+			"Get code environment details: requested vs installed packages, Python interpreter, deployment mode, and the stable definition hash (definitionHash) used by set-definition --expect-hash. --full returns the raw DSS definition (same as get-definition).",
 		examples: ["dss code-env get PYTHON my_env",],
 	},
 	"get-definition": {

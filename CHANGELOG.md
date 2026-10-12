@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Breaking:** agent contract v6. `scenario get-run` and `scenario last-runs` print compact results by default (`--full`/`--fields` return the DSS objects). `get-run` keeps the run identity, outcome, timing, trigger, per-step built datasets and executed jobs with their error message, plus `failure` {stepId, jobId, dataset, message} and `next` argv (e.g. `dss job log JOB --errors-only`); the raw report's trigger auth context, permission flags, API-key metadata, and log tails are gone (a failed run went from ~5 KB of noise to ~1 KB). A failed `last-runs` item carries `next` pointing at `scenario get-run`. `scenario run-and-wait` / `run --wait` failures include `failure` and `next`.
+- `commands run --fields` returns the known selectors when some are unknown and warns `unknown_fields` with did-you-mean suggestions (`flow.map` → `project.map`); it fails only when none are known, now with `details.suggestions`.
+- `--full` is accepted on every `get` read whose output is already the DSS object (recipe, scenario, folder, wiki, …), so "--full returns the DSS object" holds everywhere agents try it; `code-env get --full` returns the raw definition. `connection get/info` (secrets redacted), `future get`, and `project-library get` do not take it.
+- `dataset preview --max-rows` above 500 points to `dss dataset download --limit N --output PATH`.
+- Contributors: `bun run eval:agents` runs headless coding agents (`omp -p`) against cases on a live DSS (scenario-fix, data-question, build-flow), verifies the outcome against DSS state, and reports success, tool calls, dss calls, failed dss calls (with argv and error code), and tokens per case in `.agent-eval/<run>/` — live feedback on how navigable the CLI is for agents.
+
 - Fix: a response that exceeds a client-side size limit ("Response Too Large": buffered bodies over 50 MiB, SQL results over the stream cap) is a non-retryable `validation_failed` with a hint to narrow the request, not a retryable `transient` error.
 - Wait timeouts for ML training, scenario runs, and futures say the wait timed out with the last known state and that nothing was cancelled, instead of "failed long-running result: RUNNING".
 - Job wait timeouts add `resumeArgv` (the resume command as an argv array, runnable without shell quoting on Windows); `resume` stays as the POSIX display form.

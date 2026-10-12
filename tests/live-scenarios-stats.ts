@@ -318,6 +318,7 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 				id,
 				"--limit",
 				"5",
+				"--full",
 			],);
 			expect(lastRuns.length,).toBeGreaterThan(0,);
 			const summary = lastRuns.find((entry,) => entry.runId === runId);
@@ -331,6 +332,7 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 				"get-run",
 				id,
 				runId,
+				"--full",
 			],);
 			expect(runDetails.scenarioRun?.runId,).toBe(runId,);
 			expect(runDetails.scenarioRun?.result?.outcome,).toBe("SUCCESS",);
@@ -470,6 +472,7 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 					id,
 					"--limit",
 					"1",
+					"--full",
 				],);
 				run = lastRuns[0];
 				outcome = typeof run?.result?.outcome === "string" ? run.result.outcome : undefined;
@@ -486,6 +489,7 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 				"get-run",
 				id,
 				runId,
+				"--full",
 			],);
 			expect(
 				details.scenarioRun?.result?.outcome,
