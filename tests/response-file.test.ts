@@ -59,12 +59,25 @@ it("cancels the response body when the output cannot be opened", async () => {
 		},),
 	);
 	try {
-		await expect(writeResponseToFile(join(dir, "missing", "result",), response,),).rejects
-			.toMatchObject({
-				code: "ENOENT",
-			},);
+		// The parent path is a regular file, so the output directory cannot be created.
+		await writeFile(join(dir, "blocker",), "x",);
+		const error = await writeResponseToFile(join(dir, "blocker", "result",), response,).catch((
+			caught: unknown,
+		) => caught);
+		expect(["ENOTDIR", "EEXIST",],).toContain((error as NodeJS.ErrnoException).code,);
 		expect(cancelled,).toBe(true,);
-		expect(await readdir(dir,),).toEqual([],);
+		expect(await readdir(dir,),).toEqual(["blocker",],);
+	} finally {
+		await rm(dir, { recursive: true, force: true, },);
+	}
+});
+
+it("creates missing parent directories for the output", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "dss-parents-",),);
+	try {
+		const path = join(dir, "a", "b", "result.bin",);
+		expect(await writeResponseToFile(path, new Response("payload",),),).toBe(7,);
+		expect(await readFile(path, "utf-8",),).toBe("payload",);
 	} finally {
 		await rm(dir, { recursive: true, force: true, },);
 	}
