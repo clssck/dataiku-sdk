@@ -35,19 +35,48 @@ export const BUN = process.execPath;
 export type CliExecOptions = { cwd?: string; env?: NodeJS.ProcessEnv; };
 export type CliFailure = { code: number | null; stdout: string; stderr: string; };
 
-const CLI_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 // Hermetic default: never let the checkout's .env supply live credentials.
 const DEFAULT_CLI_ENV: NodeJS.ProcessEnv = { ...process.env, DATAIKU_DISABLE_ENV: "1", };
+/** A CLI child that outlives this is killed so a hang fails with its partial output, not a bare test timeout. */
+const CLI_SPAWN_TIMEOUT_MS = 25_000;
+
+async function runCli(
+	args: string[],
+	opts: CliExecOptions,
+	stdin: Blob | "ignore",
+): Promise<{ stdout: string; stderr: string; }> {
+	const child = Bun.spawn([BUN, "--no-env-file", "run", CLI_PATH, ...args,], {
+		cwd: opts.cwd ?? SDK_ROOT,
+		env: opts.env ?? DEFAULT_CLI_ENV,
+		stdin,
+		stdout: "pipe",
+		stderr: "pipe",
+		timeout: CLI_SPAWN_TIMEOUT_MS,
+	},);
+	const [stdout, stderr, code,] = await Promise.all([
+		new Response(child.stdout,).text(),
+		new Response(child.stderr,).text(),
+		child.exited,
+	],);
+	if (code === 0 && child.signalCode === null) return { stdout, stderr, };
+	const timedOut = child.signalCode !== null && child.killed;
+	throw Object.assign(
+		new Error(
+			timedOut
+				? `CLI killed after ${CLI_SPAWN_TIMEOUT_MS}ms: dss ${args.join(" ",)}\nstdout: ${
+					stdout.slice(-2000,)
+				}\nstderr: ${stderr.slice(-2000,)}`
+				: `CLI exited with code ${String(code,)}`,
+		),
+		{ code: child.signalCode ? null : code, stdout, stderr, timedOut, },
+	);
+}
 
 export async function dss(
 	args: string[],
 	opts: CliExecOptions = {},
 ): Promise<{ stdout: string; stderr: string; }> {
-	return exec(BUN, ["--no-env-file", "run", CLI_PATH, ...args,], {
-		cwd: opts.cwd ?? SDK_ROOT,
-		env: opts.env ?? DEFAULT_CLI_ENV,
-		maxBuffer: CLI_MAX_BUFFER_BYTES,
-	},);
+	return runCli(args, opts, "ignore",);
 }
 
 export async function dssWithInput(
@@ -55,24 +84,7 @@ export async function dssWithInput(
 	input: string,
 	opts: CliExecOptions = {},
 ): Promise<{ stdout: string; stderr: string; }> {
-	const child = Bun.spawn([BUN, "--no-env-file", "run", CLI_PATH, ...args,], {
-		cwd: opts.cwd ?? SDK_ROOT,
-		env: opts.env ?? DEFAULT_CLI_ENV,
-		stdin: new Blob([input,],),
-		stdout: "pipe",
-		stderr: "pipe",
-	},);
-	const [stdout, stderr, code,] = await Promise.all([
-		new Response(child.stdout,).text(),
-		new Response(child.stderr,).text(),
-		child.exited,
-	],);
-	if (code === 0) return { stdout, stderr, };
-	throw Object.assign(new Error(`CLI exited with code ${String(code,)}`,), {
-		code: child.signalCode ? null : code,
-		stdout,
-		stderr,
-	},);
+	return runCli(args, opts, new Blob([input,],),);
 }
 
 export async function dssFailure(args: string[], opts: CliExecOptions = {},): Promise<CliFailure> {
@@ -80,7 +92,14 @@ export async function dssFailure(args: string[], opts: CliExecOptions = {},): Pr
 		await dss(args, opts,);
 		throw new Error("expected CLI command to fail",);
 	} catch (error: unknown) {
-		const failure = error as { code?: number | null; stdout?: string; stderr?: string; };
+		const failure = error as {
+			code?: number | null;
+			stdout?: string;
+			stderr?: string;
+			timedOut?: boolean;
+		};
+		// A hung CLI is a harness-level failure, not an expected command failure.
+		if (failure.timedOut === true) throw error;
 		return {
 			code: failure.code ?? null,
 			stdout: failure.stdout ?? "",

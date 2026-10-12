@@ -1,5 +1,4 @@
-import { closeSync, openSync, } from "node:fs";
-import { chmod, rename, rm, stat, } from "node:fs/promises";
+import { chmod, type FileHandle, open, rename, rm, stat, } from "node:fs/promises";
 import { basename, dirname, join, } from "node:path";
 
 /** Stream with backpressure; publish only a complete download, preserving existing output on failure. */
@@ -18,21 +17,28 @@ export async function writeResponseToFile(
 		}
 	}
 	const temporaryPath = join(dirname(path,), `.${basename(path,)}.tmp-${crypto.randomUUID()}`,);
-	// Exclusive, private temp file; Bun.write streams the body into it natively.
-	let fd: number;
+	// Exclusive, private temp file. The body is copied chunk by chunk with an
+	// awaited write per chunk (backpressure). Not Bun.write(Bun.file(fd), response):
+	// on Windows, Bun 1.4.3 let the process exit 0 mid-copy with nothing written.
+	let handle: FileHandle;
 	try {
-		fd = openSync(temporaryPath, "wx", 0o600,);
+		handle = await open(temporaryPath, "wx", 0o600,);
 	} catch (error) {
 		// Nothing will read the body; release the connection before surfacing the error.
 		await response.body?.cancel().catch(() => {},);
 		throw error;
 	}
 	try {
-		let bytes: number;
+		let bytes = 0;
 		try {
-			bytes = await Bun.write(Bun.file(fd,), response,);
+			if (response.body) {
+				for await (const chunk of response.body) {
+					await handle.write(chunk,);
+					bytes += chunk.byteLength;
+				}
+			}
 		} finally {
-			closeSync(fd,);
+			await handle.close();
 		}
 		// Keep partial contents private; restore publication permissions only after completion.
 		if (mode !== undefined) await chmod(temporaryPath, mode,);
