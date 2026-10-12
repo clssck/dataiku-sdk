@@ -19,6 +19,11 @@ import { withOwnedCodeEnv, withOwnedSqlConnection, } from "./live-infrastructure
  */
 const SQL_CONNECTION_ENV = "DATAIKU_SQL_CONNECTION";
 const SQL_DATASET_ENV = "DATAIKU_SQL_DATASET_FULL_NAME";
+/**
+ * Training normally finishes in 10–25 s, but the trial's shared Kubernetes
+ * compute sometimes queues it past the CLI's 120 s default wait.
+ */
+const ML_TRAIN_TIMEOUT_MS = "600000";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -240,6 +245,8 @@ async function exerciseMlLifecycle(ctx: LiveContext,): Promise<void> {
 			"--session-name",
 			`live_cap_${ctx.iteration}`,
 			"--wait",
+			"--timeout",
+			ML_TRAIN_TIMEOUT_MS,
 			"--project-key",
 			projectKey,
 		],);
@@ -656,6 +663,8 @@ export async function provisionMlFixtures(ctx: LiveContext,): Promise<void> {
 			"--session-name",
 			`live_ml_retained_${ctx.iteration}`,
 			"--wait",
+			"--timeout",
+			ML_TRAIN_TIMEOUT_MS,
 		],);
 		const modelIds = Array.isArray(trained["trainedModelIds"],)
 			? trained["trainedModelIds"].map((id,) => asString(id,)).filter((id,): id is string =>
@@ -820,6 +829,8 @@ async function trainPredictionTask(
 		"--session-name",
 		`live_ml_${ctx.iteration}`,
 		"--wait",
+		"--timeout",
+		ML_TRAIN_TIMEOUT_MS,
 		"--project-key",
 		projectKey,
 	],);
