@@ -2,6 +2,8 @@ import { afterAll, expect, it, } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { shapeListResult, } from "../src/cli/list-output.js";
+import { compactProjectMapOutput, } from "../src/cli/project-map-output.js";
 import type { DataikuClient, } from "../src/client.js";
 import type { JupyterNotebookContent, SqlNotebookContent, } from "../src/schemas.js";
 import type { DssRawResult, } from "./integration-harness.js";
@@ -265,7 +267,8 @@ async function sdkValue(kind: SdkParityKind, client: DataikuClient,): Promise<un
 		case "project-metadata":
 			return client.projects.metadata();
 		case "project-map":
-			return client.projects.map({ maxNodes: 25, maxEdges: 50, },);
+			// The CLI prints the compact map (derivable fields dropped); compare like with like.
+			return compactProjectMapOutput(await client.projects.map({ maxNodes: 25, maxEdges: 50, },),);
 		case "flow-zone-list":
 			return client.flowZones.list();
 		case "dataset-list":
@@ -273,7 +276,8 @@ async function sdkValue(kind: SdkParityKind, client: DataikuClient,): Promise<un
 		case "recipe-list":
 			return client.recipes.list();
 		case "job-list":
-			return client.jobs.list();
+			// `job list` prints compact items (`id` from `def.id`) unless --full.
+			return shapeListResult("job", await client.jobs.list(), {},);
 		case "scenario-list":
 			return client.scenarios.list();
 		case "folder-list":
