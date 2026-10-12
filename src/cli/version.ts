@@ -1,9 +1,8 @@
 import { readdirSync, readFileSync, statSync, } from "node:fs";
 import { dirname, resolve, } from "node:path";
-import { fileURLToPath, } from "node:url";
 
 export function findPackageRoot(): string | undefined {
-	let dir = dirname(fileURLToPath(import.meta.url,),);
+	let dir = import.meta.dir;
 	for (let i = 0; i < 5; i++) {
 		try {
 			readFileSync(resolve(dir, "package.json",), "utf-8",);
@@ -134,7 +133,7 @@ export function gitRevision(packageRoot: string | undefined,): string | undefine
 export type CliLoadSource = "source" | "dist";
 export type CliRuntime = "bun";
 
-export function detectLoadSource(modulePath = fileURLToPath(import.meta.url,),): CliLoadSource {
+export function detectLoadSource(modulePath = import.meta.path,): CliLoadSource {
 	return modulePath.replaceAll("\\", "/",).includes("/dist/",) ? "dist" : "source";
 }
 

@@ -1,6 +1,5 @@
 import { readFileSync, } from "node:fs";
-import { dirname, resolve, } from "node:path";
-import { fileURLToPath, } from "node:url";
+import { resolve, } from "node:path";
 
 const projectEnvVars = new Set<string>();
 const installEnvVars = new Set<string>();
@@ -48,7 +47,7 @@ export function loadEnvFile(): void {
 	// CLI. First writer wins below, so cwd must be listed first.
 	const dirs = [
 		process.cwd(),
-		resolve(dirname(fileURLToPath(import.meta.url,),), "..", "..",),
+		resolve(import.meta.dir, "..", "..",),
 	];
 	for (const [index, dir,] of dirs.entries()) {
 		try {

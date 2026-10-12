@@ -28,7 +28,7 @@ export {
 export type { AddressInfo, IncomingMessage, ServerResponse, };
 
 export const exec = promisify(execFile,);
-export const SDK_ROOT = resolve(dirname(fileURLToPath(import.meta.url,),), "..", "..",);
+export const SDK_ROOT = resolve(import.meta.dir, "..", "..",);
 export const CLI_PATH = join(SDK_ROOT, "src/cli.ts",);
 export const BUN = process.execPath;
 
@@ -55,38 +55,23 @@ export async function dssWithInput(
 	input: string,
 	opts: CliExecOptions = {},
 ): Promise<{ stdout: string; stderr: string; }> {
-	return new Promise((resolvePromise, rejectPromise,) => {
-		const child = spawn(BUN, ["--no-env-file", "run", CLI_PATH, ...args,], {
-			cwd: opts.cwd ?? SDK_ROOT,
-			env: opts.env ?? DEFAULT_CLI_ENV,
-		},);
-		let stdout = "";
-		let stderr = "";
-
-		child.stdout.setEncoding("utf8",);
-		child.stderr.setEncoding("utf8",);
-		child.stdout.on("data", (chunk: string,) => {
-			stdout += chunk;
-		},);
-		child.stderr.on("data", (chunk: string,) => {
-			stderr += chunk;
-		},);
-		child.stdin.on("error", () => {
-			// Ignore EPIPE if the process exits before consuming all input.
-		},);
-		child.on("error", rejectPromise,);
-		child.on("close", (code,) => {
-			if (code === 0) {
-				resolvePromise({ stdout, stderr, },);
-				return;
-			}
-			rejectPromise(Object.assign(new Error(`CLI exited with code ${String(code,)}`,), {
-				code,
-				stdout,
-				stderr,
-			},),);
-		},);
-		child.stdin.end(input,);
+	const child = Bun.spawn([BUN, "--no-env-file", "run", CLI_PATH, ...args,], {
+		cwd: opts.cwd ?? SDK_ROOT,
+		env: opts.env ?? DEFAULT_CLI_ENV,
+		stdin: new Blob([input,],),
+		stdout: "pipe",
+		stderr: "pipe",
+	},);
+	const [stdout, stderr, code,] = await Promise.all([
+		new Response(child.stdout,).text(),
+		new Response(child.stderr,).text(),
+		child.exited,
+	],);
+	if (code === 0) return { stdout, stderr, };
+	throw Object.assign(new Error(`CLI exited with code ${String(code,)}`,), {
+		code: child.signalCode ? null : code,
+		stdout,
+		stderr,
 	},);
 }
 

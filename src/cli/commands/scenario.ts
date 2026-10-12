@@ -251,11 +251,9 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 			const outputFile = (f["output"] as string | undefined)
 				?? (f["output-file"] as string | undefined);
 			if (outputFile) {
-				const { mkdir, writeFile, } = await import("node:fs/promises");
-				const { dirname, resolve, } = await import("node:path");
+				const { resolve, } = await import("node:path");
 				const outputPath = resolve(outputFile,);
-				await mkdir(dirname(outputPath,), { recursive: true, },);
-				await writeFile(outputPath, result.text, "utf-8",);
+				await Bun.write(outputPath, result.text,);
 				return { path: outputPath, truncated: result.truncated, };
 			}
 			return result.text;

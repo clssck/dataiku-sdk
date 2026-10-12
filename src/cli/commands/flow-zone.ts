@@ -331,7 +331,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zon
 		handler: async (c, _a, f,) => {
 			const usage = commandUsage("flow-zone", "organize",);
 			const pk = f["project-key"] as string | undefined;
-			const parsed = readFlowZoneOrganizePlan(f, usage,);
+			const parsed = await readFlowZoneOrganizePlan(f, usage,);
 			const sync = f["sync"] === true;
 			const validateObjects = f["validate-objects"] === true;
 			const recreateOnMove = f["recreate-on-move"] === true;

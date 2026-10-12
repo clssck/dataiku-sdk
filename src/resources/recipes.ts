@@ -1,4 +1,3 @@
-import { writeFile, } from "node:fs/promises";
 import { resolve, } from "node:path";
 import {
 	ClientValidationError,
@@ -1257,7 +1256,7 @@ export class RecipesResource extends BaseResource {
 			process.cwd(),
 			`${safeRecipeName}${inferRecipeCodeExtension(result.recipe.type,)}`,
 		);
-		await writeFile(filePath, result.payload, "utf-8",);
+		await Bun.write(filePath, result.payload,);
 		return filePath;
 	}
 
@@ -1319,7 +1318,7 @@ export class RecipesResource extends BaseResource {
 		);
 		const safeRecipeName = sanitizeFileName(recipeName, "recipe",);
 		const filePath = opts?.outputPath ?? resolve(process.cwd(), `${safeRecipeName}.json`,);
-		await writeFile(filePath, JSON.stringify(recipe, null, 2,), "utf-8",);
+		await Bun.write(filePath, JSON.stringify(recipe, null, 2,),);
 		return filePath;
 	}
 }

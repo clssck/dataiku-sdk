@@ -10,7 +10,7 @@
 //
 // Modes:
 //   (default)  regenerate the committed file from the canonical builder
-//   --check    fail when the committed file is stale (`bun run check`, publish)
+//   --check    fail when the committed file is stale (`bun run verify`, publish)
 //
 // Determinism: the output depends only on the schemas in that module — no
 // timestamps, no ambient state, action ids sorted, per-schema key order
@@ -24,12 +24,9 @@
 // build shipping silently stale bytes. `bun run build` regenerates before
 // compiling and `prepack`/`prepublishOnly` run `--check`, so a stale committed
 // file can neither be compiled nor published.
-import { existsSync, mkdirSync, readFileSync, writeFileSync, } from "node:fs";
-import { dirname, join, resolve, } from "node:path";
-import { fileURLToPath, } from "node:url";
+import { join, resolve, } from "node:path";
 
-const here = dirname(fileURLToPath(import.meta.url,),);
-const root = resolve(here, "..",);
+const root = resolve(import.meta.dir, "..",);
 const outputPath = join(root, "src", "generated", "action-output-schemas.json",);
 
 const { typeBoxCommandOutputSchemas, } = await import(
@@ -46,7 +43,8 @@ const metadata = {
 const serialized = `${JSON.stringify(metadata, null, "\t",)}\n`;
 
 if (process.argv.includes("--check",)) {
-	if (!existsSync(outputPath,) || readFileSync(outputPath, "utf-8",) !== serialized) {
+	const existing = Bun.file(outputPath,);
+	if (!(await existing.exists()) || await existing.text() !== serialized) {
 		process.stderr.write(
 			"src/generated/action-output-schemas.json is stale. Run `bun scripts/generate-action-output-schemas.mjs` and commit the result.\n",
 		);
@@ -55,8 +53,7 @@ if (process.argv.includes("--check",)) {
 		process.stdout.write("action-output-schemas.json is up to date\n",);
 	}
 } else {
-	mkdirSync(dirname(outputPath,), { recursive: true, },);
-	writeFileSync(outputPath, serialized, "utf-8",);
+	await Bun.write(outputPath, serialized,);
 	process.stdout.write(
 		`Wrote ${outputPath} (${Object.keys(metadata.schemas,).length} actions)\n`,
 	);

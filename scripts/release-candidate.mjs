@@ -1,9 +1,7 @@
-import { createHash, } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath, } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url,),), "..",);
+const root = path.resolve(import.meta.dir, "..",);
 const packageName = "dataiku-sdk";
 
 function run(argv, cwd = root,) {
@@ -14,7 +12,7 @@ function run(argv, cwd = root,) {
 	return result.stdout.toString().trim();
 }
 function integrity(bytes,) {
-	return `sha512-${createHash("sha512",).update(bytes,).digest("base64",)}`;
+	return `sha512-${new Bun.CryptoHasher("sha512",).update(bytes,).digest("base64",)}`;
 }
 
 export function readCandidate(directory,) {
@@ -47,7 +45,7 @@ export function verifyCandidate(directory,) {
 	return manifest;
 }
 
-function prepareCandidate(bump, directory,) {
+async function prepareCandidate(bump, directory,) {
 	if (!["patch", "minor", "major",].includes(bump,)) {
 		throw new Error("Expected patch, minor, or major",);
 	}
@@ -58,7 +56,7 @@ function prepareCandidate(bump, directory,) {
 	if (fs.readdirSync(directory,).length) throw new Error("Candidate directory must be empty",);
 	const baseRevision = run(["git", "rev-parse", "HEAD",],);
 	run(["npm", "version", bump, "-m", "v%s",],);
-	const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json",), "utf8",),);
+	const pkg = await Bun.file(path.join(root, "package.json",),).json();
 	if (pkg.name !== packageName) throw new Error("Unexpected package name",);
 	const commit = run(["git", "rev-parse", "HEAD",],);
 	run([process.execPath, "run", "build",],);
@@ -67,7 +65,7 @@ function prepareCandidate(bump, directory,) {
 	const packed = path.join(directory, `${packageName}-${pkg.version}.tgz`,);
 	const tarball = path.join(directory, "package.tgz",);
 	fs.renameSync(packed, tarball,);
-	const bytes = fs.readFileSync(tarball,);
+	const bytes = await Bun.file(tarball,).bytes();
 	const manifest = {
 		name: packageName,
 		version: pkg.version,
@@ -76,7 +74,7 @@ function prepareCandidate(bump, directory,) {
 		bytes: bytes.length,
 		integrity: integrity(bytes,),
 	};
-	fs.writeFileSync(path.join(directory, "manifest.json",), `${JSON.stringify(manifest,)}\n`,);
+	await Bun.write(path.join(directory, "manifest.json",), `${JSON.stringify(manifest,)}\n`,);
 	run([
 		"git",
 		"bundle",
@@ -189,7 +187,7 @@ export async function verifyPublishedCandidate(directory, {
 				throw new Error(`Tarball HTTP ${tarball.status}`,);
 			}
 			if (!tarball.body) throw new PublicationMismatch("Published tarball body is missing",);
-			const hash = createHash("sha512",);
+			const hash = new Bun.CryptoHasher("sha512",);
 			let size = 0;
 			for await (const chunk of tarball.body) {
 				size += chunk.length;
@@ -215,8 +213,9 @@ export async function verifyPublishedCandidate(directory, {
 
 if (import.meta.main) {
 	const [command, first, second,] = process.argv.slice(2,);
-	if (command === "prepare" && first && second) prepareCandidate(first, path.resolve(second,),);
-	else if (command === "restore" && first) restoreCandidate(path.resolve(first,),);
+	if (command === "prepare" && first && second) {
+		await prepareCandidate(first, path.resolve(second,),);
+	} else if (command === "restore" && first) restoreCandidate(path.resolve(first,),);
 	else if (command === "verify" && first) {
 		process.stdout.write(
 			`${JSON.stringify(await verifyPublishedCandidate(path.resolve(first,),),)}\n`,

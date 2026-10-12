@@ -926,7 +926,7 @@ export const appCommands: Record<string, CommandMeta> = withUsage("app", {
 			const usage = commandUsage("app", "permissions-diff",);
 			requireNoArgs(_a, usage,);
 			const file = requiredStringFlag(f, "file", usage,);
-			const snapshot = readAppPermissionsSnapshot(file,);
+			const snapshot = await readAppPermissionsSnapshot(file,);
 			const projectKey = c.resolveProjectKey(f["project-key"] as string | undefined,);
 			assertAppPermissionsSnapshotBinding(snapshot, projectKey, c.getBaseUrl(),);
 			const currentProjectIncarnationHash = await requireProjectIncarnationHash(c, projectKey,);
@@ -957,7 +957,7 @@ export const appCommands: Record<string, CommandMeta> = withUsage("app", {
 			const usage = commandUsage("app", "permissions-restore",);
 			requireNoArgs(_a, usage,);
 			const file = requiredStringFlag(f, "file", usage,);
-			const snapshot = readAppPermissionsSnapshot(file,);
+			const snapshot = await readAppPermissionsSnapshot(file,);
 			const projectKey = c.resolveProjectKey(f["project-key"] as string | undefined,);
 			assertAppPermissionsSnapshotBinding(snapshot, projectKey, c.getBaseUrl(),);
 			const currentProjectIncarnationHash = await requireProjectIncarnationHash(c, projectKey,);

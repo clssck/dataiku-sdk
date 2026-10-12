@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Bun 1.4.3 is now the minimum supported version (`engines.bun >=1.4.3`); CI and release run 1.4.3. On an older Bun, `dss` exits 2 with a JSON error that tells you to run `bun upgrade`.
+- A client configured with `--insecure` or `--ca-cert` sends its requests through its own `Bun.FetchSession`, so its relaxed or custom TLS connections are never pooled with plain `fetch` or another client's.
+- More Bun-native I/O: file reads/writes use `Bun.file`/`Bun.write` (output paths such as `job log --output`, `recipe get-payload --output`, `commands run --output` now create missing parent directories), dataset TSV decoding uses streaming `TextDecoder`, hashing uses `Bun.CryptoHasher`, and scripts use `import.meta.dir`.
 - Contributors: type checking runs on Bun's built-in `bun check` (about 3x faster than `tsc --noEmit` here); the combined gate script is renamed `bun run check` → `bun run verify`, because a script named `check` shadows the built-in. `tsc` is still used to emit `dist/`. `cross-env` is removed (Bun's script runner sets inline env vars on every OS); `@types/bun` ^1.4.3, `dprint` ^0.63.0, `@dprint/json` 0.25.2.
 
 - Fix: `job list` shows in-progress jobs as `state: "RUNNING"`, and `job list --state RUNNING` finds them. DSS (verified on 15.0.1) lists a job that is computing dependencies or running with `stableState: false` and no `state`, so these jobs printed without a state and the filter matched nothing. `--full` still returns the DSS objects; `job get` reports the exact phase.

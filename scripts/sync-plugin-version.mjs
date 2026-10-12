@@ -1,9 +1,7 @@
-import * as fs from "node:fs";
-
 const packageUrl = new URL("../package.json", import.meta.url,);
 const pluginUrl = new URL("../plugin.json", import.meta.url,);
-const packageJson = JSON.parse(fs.readFileSync(packageUrl, "utf-8",),);
-const plugin = JSON.parse(fs.readFileSync(pluginUrl, "utf-8",),);
+const packageJson = await Bun.file(packageUrl,).json();
+const plugin = await Bun.file(pluginUrl,).json();
 const expectedVersion = packageJson.version;
 
 if (typeof expectedVersion !== "string" || expectedVersion.length === 0) {
@@ -21,5 +19,5 @@ if (process.argv.includes("--check",)) {
 	}
 } else {
 	plugin.version = expectedVersion;
-	fs.writeFileSync(pluginUrl, `${JSON.stringify(plugin, null, "\t",)}\n`, "utf-8",);
+	await Bun.write(Bun.file(pluginUrl,), `${JSON.stringify(plugin, null, "\t",)}\n`,);
 }

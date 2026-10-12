@@ -1,6 +1,5 @@
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
-import { StringDecoder, } from "node:string_decoder";
 import { ClientValidationError, DataikuError, } from "../errors.js";
 import {
 	DatasetDetailsSchema,
@@ -445,7 +444,7 @@ async function collectPreviewRows(
 	onHeader?: (headerRow: string[],) => void,
 ): Promise<{ columns: string[]; rows: string[][]; truncated: boolean; }> {
 	const state = createTsvStreamState();
-	const decoder = new StringDecoder("utf-8",);
+	const decoder = new TextDecoder("utf-8", { ignoreBOM: true, },);
 	let columns: string[] | undefined;
 	const rows: string[][] = [];
 	let done = false;
@@ -482,11 +481,11 @@ async function collectPreviewRows(
 			if (remainingMs <= 0) throw buildStreamTimeoutError(timeoutMs, "preview",);
 			const result = await readChunkWithTimeout(reader, remainingMs, timeoutMs, "preview",);
 			if (result.done) break;
-			consumeTsvChunk(decoder.write(result.value,), state, handleRow,);
+			consumeTsvChunk(decoder.decode(result.value, { stream: true, },), state, handleRow,);
 		}
 
 		if (!done) {
-			const tail = decoder.end();
+			const tail = decoder.decode();
 			if (tail !== "") consumeTsvChunk(tail, state, handleRow,);
 			flushTsvStream(state, handleRow,);
 		}
@@ -514,7 +513,7 @@ async function collectTsvRowCount(
 	timeoutMs: number,
 ): Promise<{ count: number; bounded: boolean; }> {
 	const state = createTsvStreamState();
-	const decoder = new StringDecoder("utf-8",);
+	const decoder = new TextDecoder("utf-8", { ignoreBOM: true, },);
 	let headerSeen = false;
 	let count = 0;
 	let bounded = false;
@@ -557,11 +556,11 @@ async function collectTsvRowCount(
 				"row count assertion",
 			);
 			if (result.done) break;
-			consumeTsvChunk(decoder.write(result.value,), state, handleRow,);
+			consumeTsvChunk(decoder.decode(result.value, { stream: true, },), state, handleRow,);
 		}
 
 		if (!bounded) {
-			const tail = decoder.end();
+			const tail = decoder.decode();
 			if (tail !== "") consumeTsvChunk(tail, state, handleRow,);
 			flushTsvStream(state, handleRow,);
 		}
@@ -593,7 +592,7 @@ function tsvToCsvTransform(
 ): TransformStream<Uint8Array, Uint8Array<ArrayBuffer>> {
 	type Target = TransformStreamDefaultController<Uint8Array<ArrayBuffer>>;
 	const state = createTsvStreamState();
-	const decoder = new StringDecoder("utf-8",);
+	const decoder = new TextDecoder("utf-8", { ignoreBOM: true, },);
 	const encoder = new TextEncoder();
 	const maxRows = Math.max(1, maxDataRows,);
 	let headerSeen = false;
@@ -644,7 +643,7 @@ function tsvToCsvTransform(
 	return new TransformStream<Uint8Array, Uint8Array<ArrayBuffer>>({
 		transform(chunk, controller,) {
 			consumeTsvChunk(
-				decoder.write(chunk,),
+				decoder.decode(chunk, { stream: true, },),
 				state,
 				(row,) => handleRow(row, (line,) => queueLine(controller, line,),),
 			);
@@ -656,7 +655,7 @@ function tsvToCsvTransform(
 			}
 		},
 		flush(controller,) {
-			const tail = decoder.end();
+			const tail = decoder.decode();
 			if (tail !== "") {
 				consumeTsvChunk(
 					tail,
@@ -1493,7 +1492,7 @@ export class DatasetsResource extends BaseResource {
 		if (fileName === "") {
 			throw new ClientValidationError("fileName must be a non-empty uploaded filename.",);
 		}
-		const localFile = await fs.promises.stat(localPath,);
+		const localFile = await Bun.file(localPath,).stat();
 		if (!localFile.isFile()) {
 			throw new ClientValidationError(`${localPath} is not a regular file.`,);
 		}

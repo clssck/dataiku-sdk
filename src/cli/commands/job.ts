@@ -1,5 +1,4 @@
-import { mkdir, writeFile, } from "node:fs/promises";
-import { dirname, resolve, } from "node:path";
+import { resolve, } from "node:path";
 import type { DataikuClient, } from "../../client.js";
 import { ClientValidationError, DataikuError, } from "../../errors.js";
 import type { BuildMode, DatasetSchema, JobSummary, } from "../../schemas.js";
@@ -336,8 +335,7 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			},);
 			if (!outputFile) return tailJobLogForStdout(log, requestedLines ?? DEFAULT_STDOUT_LOG_LINES,);
 			const outputPath = resolve(outputFile,);
-			await mkdir(dirname(outputPath,), { recursive: true, },);
-			await writeFile(outputPath, log.endsWith("\n",) ? log : `${log}\n`, "utf-8",);
+			await Bun.write(outputPath, log.endsWith("\n",) ? log : `${log}\n`,);
 			return outputPath;
 		},
 		description:

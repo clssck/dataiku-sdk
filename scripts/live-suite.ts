@@ -22,7 +22,6 @@
 import * as fsp from "node:fs/promises";
 import { hostname, } from "node:os";
 import * as path from "node:path";
-import { fileURLToPath, } from "node:url";
 
 import { loadEnvFile, } from "../src/cli/env.js";
 import { resolveCredentials, } from "../src/cli/runtime.js";
@@ -46,7 +45,7 @@ import {
 import { checkLiveCoverageCatalogue, liveCoverage, } from "../tests/live-coverage.js";
 
 /** Repo root (parent of scripts/). */
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url,),), "..",);
+const REPO_ROOT = path.resolve(import.meta.dir, "..",);
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing
@@ -290,7 +289,7 @@ export async function readPointer(stateRoot: string,): Promise<LabPointer | unde
 	const pointerPath = path.join(stateRoot, "current.json",);
 	let raw: string;
 	try {
-		raw = await fsp.readFile(pointerPath, "utf8",);
+		raw = await Bun.file(pointerPath,).text();
 	} catch {
 		return undefined;
 	}
@@ -358,7 +357,7 @@ async function acquireLabLock(stateRoot: string,): Promise<LockHandle> {
 	// Lock exists: identify the holder. A lock from this pid is reentrant.
 	let holder: { pid?: number; startedAt?: string; } = {};
 	try {
-		holder = JSON.parse(await fsp.readFile(lockPath, "utf8",),) as {
+		holder = JSON.parse(await Bun.file(lockPath,).text(),) as {
 			pid?: number;
 			startedAt?: string;
 		};

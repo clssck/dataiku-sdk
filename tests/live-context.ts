@@ -1,8 +1,6 @@
 import StreamZip from "node-stream-zip";
-import { randomUUID, } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { fileURLToPath, } from "node:url";
 import { jsonInput, } from "../src/cli/coerce.js";
 import { buildCommandRegistry, } from "../src/cli/contract.js";
 import { executionMode, parseArgs, } from "../src/cli/flags.js";
@@ -31,7 +29,7 @@ import {
 	readBare,
 } from "./live-host.js";
 
-export const LIVE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url,),), "..",);
+export const LIVE_ROOT = path.resolve(import.meta.dir, "..",);
 const commandRegistry = buildCommandRegistry();
 const GIT_AUTHORITY = Symbol("owned Git command",);
 const activeCommands = new Set<ReturnType<typeof Bun.spawn>>();
@@ -376,7 +374,7 @@ export type LiveCredentials = {
 };
 
 export async function writeLiveJson(file: string, value: unknown,): Promise<void> {
-	const temporary = `${file}.tmp-${randomUUID()}`;
+	const temporary = `${file}.tmp-${crypto.randomUUID()}`;
 	const handle = await fs.open(temporary, "wx", 0o600,);
 	try {
 		try {
@@ -410,7 +408,7 @@ function isHostDaemon(value: unknown, directory: HostDirectory,): value is HostD
 }
 
 export async function loadLiveManifest(file: string,): Promise<LiveManifest> {
-	const data = JSON.parse(await fs.readFile(file, "utf8",),) as LiveManifest;
+	const data = JSON.parse(await Bun.file(file,).text(),) as LiveManifest;
 	if (
 		data.version !== 1 || data.fixtureVersion !== 1 || !/^[a-f0-9]{16}$/.test(data.runId,)
 		|| typeof data.dssUrl !== "string" || !Array.isArray(data.projects,)
@@ -1139,7 +1137,7 @@ export class LiveRunContext implements LiveContext {
 		body: (directory: HostDirectory,) => Promise<T>,
 	): Promise<T> {
 		const projectKey = await this.createProject(`host_${label}`,);
-		const nonce = randomUUID().replaceAll("-", "",);
+		const nonce = crypto.randomUUID().replaceAll("-", "",);
 		const directory: OwnedHostDirectory = {
 			path: `/tmp/sdk_live_${this.runId}_${nonce}`,
 			nonce,
@@ -2157,7 +2155,7 @@ export class LiveRunContext implements LiveContext {
 	private async reserveExactName(
 		kind: OwnedGlobalKind,
 		name: string,
-		nonce = randomUUID().replaceAll("-", "",),
+		nonce = crypto.randomUUID().replaceAll("-", "",),
 	): Promise<string> {
 		if (
 			this.manifest.globals.some(g => g.kind === kind && g.name === name && g.state !== "deleted")
@@ -2203,7 +2201,7 @@ export class LiveRunContext implements LiveContext {
 		options: { lang?: "PYTHON" | "R"; } = {},
 	): Promise<string> {
 		const raw = this.globalName(kind, label,);
-		const nonce = randomUUID().replaceAll("-", "",);
+		const nonce = crypto.randomUUID().replaceAll("-", "",);
 		const lang = (options.lang ?? "PYTHON").toLowerCase();
 		const name = kind === "code-env"
 			? `${lang}_${raw.toLowerCase()}`
@@ -2731,7 +2729,7 @@ export async function initializeLiveManifest(
 	const manifest: LiveManifest = {
 		version: 1,
 		fixtureVersion: 1,
-		runId: randomUUID().replaceAll("-", "",).slice(0, 16,),
+		runId: crypto.randomUUID().replaceAll("-", "",).slice(0, 16,),
 		dssUrl: canonicalDssUrl(credentials.url,),
 		projectKey: "",
 		owner,

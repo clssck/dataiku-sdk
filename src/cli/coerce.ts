@@ -260,6 +260,16 @@ export function readInputText(path: string, flag: string,): string {
 }
 
 /**
+ * Async UTF-8 file read via Bun.file. Bun.file().text() strips a leading BOM, so decode
+ * the bytes with `ignoreBOM` to return exactly what `readFileSync(path, "utf-8")` did.
+ */
+export async function readTextFile(path: string,): Promise<string> {
+	return new TextDecoder("utf-8", { ignoreBOM: true, },).decode(
+		await Bun.file(path,).arrayBuffer(),
+	);
+}
+
+/**
  * Credential values seen in this process's JSON inputs. DSS error text can
  * echo the request payload, so error reports redact these.
  */

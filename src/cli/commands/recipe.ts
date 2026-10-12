@@ -1,5 +1,3 @@
-import { readFileSync, } from "node:fs";
-import { writeFile, } from "node:fs/promises";
 import { join, } from "node:path";
 import type { DataikuClient, } from "../../client.js";
 import { ClientValidationError, DataikuError, } from "../../errors.js";
@@ -17,6 +15,7 @@ import {
 	maxLogLinesFromFlags,
 	normalizeLineEndings,
 	num,
+	readTextFile,
 	recipeInputDatasetsFromFlags,
 	requiredJsonInput,
 	requiredStringFlag,
@@ -45,9 +44,9 @@ import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
 /** Read a local recipe file before any DSS request, mapping read failures to usage validation. */
-function readRecipeFile(filePath: string, flagName: string,): string {
+async function readRecipeFile(filePath: string, flagName: string,): Promise<string> {
 	try {
-		return readFileSync(filePath, "utf-8",);
+		return await readTextFile(filePath,);
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error,);
 		throw new UsageError(
@@ -616,7 +615,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 				throw new UsageError(`--file is required. Usage: ${commandUsage("recipe", "diff",)}`,);
 			}
 			// Read and validate the local file before any DSS request.
-			const localContent = readRecipeFile(filePath, "--file",);
+			const localContent = await readRecipeFile(filePath, "--file",);
 			const result = await c.recipes.get(a[0], {
 				includePayload: true,
 				projectKey: f["project-key"] as string | undefined,
@@ -779,7 +778,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 				projectKey: f["project-key"] as string | undefined,
 			},);
 			if (typeof f["output"] === "string") {
-				await writeFile(f["output"], payload, "utf-8",);
+				await Bun.write(f["output"], payload,);
 				return f["output"];
 			}
 			return payload;
@@ -806,7 +805,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 			requireArgs(a, 1, commandUsage("recipe", "set-payload",),);
 			const filePath = f["file"] as string;
 			if (!filePath) throw new UsageError("--file is required.",);
-			const content = readRecipeFile(filePath, "--file",);
+			const content = await readRecipeFile(filePath, "--file",);
 			const pk = f["project-key"] as string | undefined;
 			const shouldBackup = f["no-backup"] !== true;
 			const backupDir = shouldBackup

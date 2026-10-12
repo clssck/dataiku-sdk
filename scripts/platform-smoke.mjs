@@ -1,9 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath, } from "node:url";
 import { verifyCandidate, } from "./release-candidate.mjs";
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url,),), "..",);
+const root = path.resolve(import.meta.dir, "..",);
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-sdk-platform-",),);
 
 function assert(condition, message,) {
@@ -32,8 +31,7 @@ try {
 	const installDir = path.join(tempRoot, "installed package",);
 	const skillTarget = path.join(tempRoot, "skill target",);
 	fs.mkdirSync(packDir, { recursive: true, },);
-	fs.mkdirSync(installDir, { recursive: true, },);
-	fs.writeFileSync(path.join(installDir, "package.json",), '{"private":true}\n',);
+	await Bun.write(path.join(installDir, "package.json",), '{"private":true}\n',);
 
 	const [option, candidateDirectory, ...extra] = process.argv.slice(2,);
 	assert(
@@ -50,7 +48,7 @@ try {
 		assert(typeof packedPath === "string" && packedPath.length > 0, "Bun pack omitted filename",);
 		tarball = path.isAbsolute(packedPath,) ? packedPath : path.join(packDir, packedPath,);
 	}
-	assert(fs.existsSync(tarball,), `packed artifact is missing: ${tarball}`,);
+	assert(await Bun.file(tarball,).exists(), `packed artifact is missing: ${tarball}`,);
 
 	run(process.execPath, [
 		"add",
@@ -62,7 +60,7 @@ try {
 	],);
 
 	const cli = path.join(installDir, "node_modules", "dataiku-sdk", "bin", "dss.js",);
-	assert(fs.existsSync(cli,), `installed CLI entrypoint is missing: ${cli}`,);
+	assert(await Bun.file(cli,).exists(), `installed CLI entrypoint is missing: ${cli}`,);
 
 	const version = JSON.parse(
 		run(process.execPath, ["--no-env-file", cli, "version",], { cwd: installDir, },),
@@ -97,20 +95,21 @@ try {
 	);
 	const skillPath = path.join(skillTarget, ".claude", "skills", "dataiku-dss", "SKILL.md",);
 	assert(skillResult.installed?.[0]?.path === skillPath, "skill installer returned the wrong path",);
-	const skill = fs.readFileSync(skillPath, "utf8",);
+	const skill = await Bun.file(skillPath,).text();
 	for (const match of skill.matchAll(/\]\((references\/[^)]+)\)/g,)) {
 		const relativePath = match[1];
-		const installedReference = fs.readFileSync(path.join(path.dirname(skillPath,), relativePath,),);
-		const packagedReference = fs.readFileSync(
+		const installedReference = await Bun.file(path.join(path.dirname(skillPath,), relativePath,),)
+			.bytes();
+		const packagedReference = await Bun.file(
 			path.join(installDir, "node_modules", "dataiku-sdk", "skills", "dataiku-dss", relativePath,),
-		);
+		).bytes();
 		assert(
-			installedReference.equals(packagedReference,),
+			Bun.deepEquals(installedReference, packagedReference,),
 			`installed skill reference differs from packaged bytes: ${relativePath}`,
 		);
 	}
 	for (const file of skillResult.installed[0].files) {
-		assert(fs.existsSync(file.path,), `bundled skill file is missing: ${file.path}`,);
+		assert(await Bun.file(file.path,).exists(), `bundled skill file is missing: ${file.path}`,);
 	}
 
 	// A real API command exercises the compiled DataikuClient resource path,

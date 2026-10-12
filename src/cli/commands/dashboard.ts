@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import { ClientValidationError, } from "../../errors.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import { jsonInput, parseBooleanOption, } from "../coerce.js";
@@ -89,7 +88,7 @@ export const dashboardCommands: Record<string, CommandMeta> = withUsage("dashboa
 					"Confirm DSS graphics export is configured and retry the export.",
 				);
 			}
-			fs.writeFileSync(outputPath, bytes,);
+			await Bun.write(outputPath, bytes,);
 			return {
 				path: outputPath,
 				bytes: bytes.length,

@@ -128,7 +128,7 @@ async function exerciseDatasetSelection(ctx: LiveContext,): Promise<void> {
 			"--output",
 			output,
 		],);
-		const header = (await readFile(output, "utf8",)).split("\n",)[0]!;
+		const header = (await Bun.file(output,).text()).split("\n",)[0]!;
 		expect(header.split(",",).map(name => name.replace(/^"|"$/g, "",)),).toEqual(picked,);
 	},);
 }

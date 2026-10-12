@@ -1,3 +1,4 @@
+import type { Stats, } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { ClientValidationError, } from "../errors.js";
@@ -48,9 +49,9 @@ export async function preflightCleanupLedgerPath(filePath: string,): Promise<voi
 	const resolved = path.resolve(filePath,);
 	const parent = path.dirname(resolved,);
 	await fs.mkdir(parent, { recursive: true, },);
-	let stats: Awaited<ReturnType<typeof fs.stat>> | undefined;
+	let stats: Stats | undefined;
 	try {
-		stats = await fs.stat(resolved,);
+		stats = await Bun.file(resolved,).stat();
 	} catch (error) {
 		if ((error as { code?: string; }).code !== "ENOENT") {
 			throw new ClientValidationError(
@@ -133,7 +134,7 @@ export async function reserveCleanupLedgerDssUrl(
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 	}
-	const raw = await fs.readFile(bindingPath, "utf-8",);
+	const raw = await Bun.file(bindingPath,).text();
 	let found: string;
 	try {
 		found = canonicalDssUrl(raw.trim(),);
@@ -204,7 +205,7 @@ export async function appendCleanupLedgerEntry(
 }
 
 export async function readCleanupLedger(filePath: string,): Promise<CleanupLedgerEntry[]> {
-	const content = await fs.readFile(path.resolve(filePath,), "utf-8",);
+	const content = await Bun.file(path.resolve(filePath,),).text();
 	return content
 		.split(/\r?\n/,)
 		.map((line,) => line.trim())

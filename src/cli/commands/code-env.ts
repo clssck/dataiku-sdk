@@ -1,4 +1,3 @@
-import { readFileSync, writeFileSync, } from "node:fs";
 import { ClientValidationError, } from "../../errors.js";
 import { SHA256_HEX_PATTERN, stableHash, } from "../../utils/stable-hash.js";
 import { json, jsonInput, num, numFlag, parseBooleanOption, } from "../coerce.js";
@@ -76,9 +75,9 @@ function splitPackageSpec(raw: string,): string[] {
  * (set-packages replaces specPackageList wholesale); only a call with no
  * package source flag at all is a usage error.
  */
-function codeEnvPackageList(flags: Record<string, string | boolean>,): string[] {
+async function codeEnvPackageList(flags: Record<string, string | boolean>,): Promise<string[]> {
 	const file = flags["file"];
-	const packages = typeof file === "string" ? splitPackageSpec(readFileSync(file, "utf-8",),) : [];
+	const packages = typeof file === "string" ? splitPackageSpec(await Bun.file(file,).text(),) : [];
 	if (typeof flags["packages"] === "string") {
 		packages.push(...splitPackageSpec(flags["packages"],),);
 	}
@@ -156,7 +155,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = withUsage("code-env"
 			},);
 			const output = f["output"] as string | undefined;
 			if (typeof output === "string" && output.trim().length > 0) {
-				writeFileSync(output, result.log, "utf-8",);
+				await Bun.write(output, result.log,);
 				if (result.truncated || result.tailed) {
 					const limits = [
 						result.tailed ? `tail limited to ${maxLines ?? 500} lines` : undefined,
@@ -303,7 +302,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = withUsage("code-env"
 			const usage = commandUsage("code-env", "set-packages",);
 			requireArgs(a, 2, usage,);
 			const envLang = requireEnvLang(a[0], usage,);
-			const packages = codeEnvPackageList(f,);
+			const packages = await codeEnvPackageList(f,);
 			const installCorePackages = parseBooleanOption(
 				f["install-core-packages"],
 				"--install-core-packages",

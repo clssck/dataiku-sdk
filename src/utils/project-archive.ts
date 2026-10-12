@@ -1,5 +1,4 @@
 import StreamZip from "node-stream-zip";
-import { stat, } from "node:fs/promises";
 import type { Readable, } from "node:stream";
 import { ClientValidationError, unexpectedResponseError, } from "../errors.js";
 import { asRecord, } from "./records.js";
@@ -487,7 +486,7 @@ export async function inspectProjectArchive(
 	let sizeBytes = 0;
 	let statError: ProjectArchiveIssue | undefined;
 	try {
-		const info = await stat(filePath,);
+		const info = await Bun.file(filePath,).stat();
 		if (!info.isFile()) {
 			statError = {
 				severity: "error",

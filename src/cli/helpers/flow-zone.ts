@@ -1,4 +1,3 @@
-import { readFileSync, } from "node:fs";
 import type { DataikuClient, } from "../../client.js";
 import { ClientValidationError, } from "../../errors.js";
 import type { FlowZoneItemInput, } from "../../resources/flow-zones.js";
@@ -368,12 +367,12 @@ export function parseFlowZoneOrganizePlan(input: Record<string, unknown>,): Flow
 	return plan;
 }
 
-export function readFlowZoneOrganizePlan(
+export async function readFlowZoneOrganizePlan(
 	flags: Record<string, string | boolean>,
 	usage: string,
-): FlowZoneOrganizePlan {
+): Promise<FlowZoneOrganizePlan> {
 	const data = typeof flags["file"] === "string"
-		? parseJsonObject(readFileSync(flags["file"], "utf-8",), flags["file"],)
+		? parseJsonObject(await Bun.file(flags["file"],).text(), flags["file"],)
 		: jsonInput(flags,);
 	if (!data) {
 		throw new UsageError(

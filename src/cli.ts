@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import * as fs from "node:fs/promises";
 import { homedir, } from "node:os";
 import { resolve, } from "node:path";
 import { num, seenJsonInputCredentials, unknownJsonInput, } from "./cli/coerce.js";
@@ -1010,7 +1009,7 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 		);
 	if (typeof outputPath === "string") {
 		const exported = selectedRegistry;
-		await fs.writeFile(outputPath, `${JSON.stringify(exported,)}\n`, "utf-8",);
+		await Bun.write(outputPath, `${JSON.stringify(exported,)}\n`,);
 		return { path: outputPath, };
 	}
 	return selectedRegistry;

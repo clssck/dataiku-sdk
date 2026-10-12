@@ -418,7 +418,13 @@ export class DataikuClient {
 	private readonly maxResponseBodyBytes: number;
 	private readonly retryMaxAttempts: number;
 	private readonly verbose: boolean;
-	private readonly tlsOptions: FetchTlsOptions | undefined;
+	/**
+	 * Connection pool carrying this client's TLS settings (custom CA, disabled
+	 * verification). A session never shares connections with plain `fetch` or
+	 * another client, so a connection opened with relaxed TLS cannot serve a
+	 * client that expects strict verification. Default-TLS clients use plain fetch.
+	 */
+	private readonly session: Bun.FetchSession | undefined;
 	private readonly onTrace: (event: DataikuClientTraceEvent,) => void;
 	private readonly onValidationWarning: (method: string, errors: string[],) => void;
 
@@ -918,7 +924,8 @@ export class DataikuClient {
 		const rawMax = config?.retryMaxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
 		this.retryMaxAttempts = Math.min(Math.max(1, rawMax,), MAX_RETRY_ATTEMPTS_CAP,);
 		this.verbose = config?.verbose === true;
-		this.tlsOptions = config ? buildFetchTlsOptions(config,) : undefined;
+		const tls = config ? buildFetchTlsOptions(config,) : undefined;
+		this.session = tls ? new Bun.FetchSession({ tls, },) : undefined;
 		this.onTrace = config?.onTrace ?? defaultTrace;
 		this.onValidationWarning = config?.onValidationWarning ?? defaultValidationWarning;
 	}
@@ -1611,12 +1618,12 @@ export class DataikuClient {
 			this.logTrace({ phase: "request", method, url, attempt, maxAttempts, },);
 
 			try {
-				const requestInit: RequestInit & { tls?: FetchTlsOptions; } = {
+				const requestInit: RequestInit = {
 					...init,
 					method,
 					signal: controller.signal,
+					...(this.session ? { session: this.session, } : {}),
 				};
-				if (this.tlsOptions) requestInit.tls = this.tlsOptions;
 				const res = await fetch(url, requestInit,);
 				this.logTrace({
 					phase: "response",

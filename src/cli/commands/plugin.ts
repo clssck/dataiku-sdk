@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import {
 	validatedPluginGitUrl,
 	validatePluginDestinationPath,
@@ -7,7 +6,7 @@ import {
 	validatePluginPath,
 } from "../../resources/plugins.js";
 import { writeResponseToFile, } from "../../utils/response-file.js";
-import { num, readStdinText, sha256Hex, } from "../coerce.js";
+import { num, readStdinText, readTextFile, sha256Hex, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { planResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
@@ -324,7 +323,7 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 			requireArgs(a, 1, SETTINGS_SET_USAGE,);
 			const pluginId = validatePluginId(a[0],);
 			const mode = executionMode(f,);
-			const settings = readSettingsInput(f,);
+			const settings = await readSettingsInput(f,);
 			if (mode.dryRun) {
 				return pluginPlan("settings-set", {
 					method: "POST",
@@ -683,7 +682,7 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 				},);
 			}
 			const content = typeof f["file"] === "string"
-				? fs.readFileSync(f["file"] as string,)
+				? Buffer.from(await Bun.file(f["file"] as string,).arrayBuffer(),)
 				: typeof f["content"] === "string"
 				? f["content"] as string
 				: await readStdinText();
@@ -807,10 +806,12 @@ interface SettingsPayload {
 	[key: string]: unknown;
 }
 
-function readSettingsInput(flags: Record<string, string | boolean>,): SettingsPayload {
+async function readSettingsInput(
+	flags: Record<string, string | boolean>,
+): Promise<SettingsPayload> {
 	let text: string;
 	if (typeof flags["file"] === "string") {
-		text = fs.readFileSync(flags["file"] as string, "utf-8",);
+		text = await readTextFile(flags["file"] as string,);
 	} else if (typeof flags["content"] === "string") {
 		text = flags["content"];
 	} else if (flags["stdin"] === true) {

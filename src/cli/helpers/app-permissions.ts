@@ -237,10 +237,12 @@ export function parseAppPermissionsSnapshot(text: string, source: string,): AppP
 	};
 }
 
-export function readAppPermissionsSnapshot(filePath: string,): AppPermissionsSnapshot {
+export async function readAppPermissionsSnapshot(
+	filePath: string,
+): Promise<AppPermissionsSnapshot> {
 	let text: string;
 	try {
-		text = fs.readFileSync(filePath, "utf-8",);
+		text = await Bun.file(filePath,).text();
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error,);
 		throw new UsageError(

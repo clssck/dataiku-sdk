@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import { ClientValidationError, } from "../errors.js";
 import type { WikiArticleAttachment, WikiArticleData, WikiSettings, } from "../schemas.js";
@@ -81,10 +80,7 @@ export function wikiAttachmentNotFound(
 
 /** Check that a local path is a readable regular file before any DSS call. */
 export async function statWikiAttachmentFile(localPath: string,): Promise<LocalWikiAttachmentFile> {
-	let stat: fs.Stats;
-	try {
-		stat = await fs.promises.stat(localPath,);
-	} catch (error) {
+	const stat = await Bun.file(localPath,).stat().catch((error: unknown,) => {
 		throw new ClientValidationError(
 			`Could not read attachment file ${localPath}: ${
 				error instanceof Error ? error.message : String(error,)
@@ -92,7 +88,7 @@ export async function statWikiAttachmentFile(localPath: string,): Promise<LocalW
 			"not_found",
 			"Verify the file path and that it is readable.",
 		);
-	}
+	},);
 	if (!stat.isFile()) {
 		throw new ClientValidationError(`${localPath} is not a regular file.`,);
 	}

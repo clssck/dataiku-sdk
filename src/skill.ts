@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath, } from "node:url";
 import { ClientValidationError, } from "./errors.js";
 import { sha256Hex, } from "./utils/stable-hash.js";
 
@@ -184,7 +183,7 @@ function skillState(
 
 /** Load the packaged tree, keeping portable relative paths in the report. */
 function skillFiles(): Map<string, Buffer> {
-	const root = fileURLToPath(skillDirectory(),);
+	const root = Bun.fileURLToPath(skillDirectory(),);
 	const files = new Map<string, Buffer>();
 	function visit(relativeDir: string,): void {
 		const dir = path.join(root, relativeDir,);
