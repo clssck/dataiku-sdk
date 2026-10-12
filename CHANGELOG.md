@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 4.1.0
+
 - **Breaking:** agent contract v6. `scenario get-run` and `scenario last-runs` print compact results by default (`--full`/`--fields` return the DSS objects). `get-run` keeps the run identity, outcome, timing, trigger, per-step built datasets and executed jobs with their error message, plus `failure` {stepId, jobId, dataset, message} and `next` argv (e.g. `dss job log JOB --errors-only`); the raw report's trigger auth context, permission flags, API-key metadata, and log tails are gone (a failed run went from ~5 KB of noise to ~1 KB). A failed `last-runs` item carries `next` pointing at `scenario get-run`. `scenario run-and-wait` / `run --wait` failures include `failure` and `next`.
 - `commands run --fields` returns the known selectors when some are unknown and warns `unknown_fields` with did-you-mean suggestions (`flow.map` → `project.map`); it fails only when none are known, now with `details.suggestions`.
 - `commands run --fields RESOURCE` (a bare resource, on stdout) lists each action's `usage`, `description`, and `sideEffect` instead of every full entry: `--fields recipe` is 6 KB instead of 49 KB. In an eval run the agent got a 49 KB, middle-elided result and spent four calls exporting the registry and filtering it with `jq`. `RESOURCE.ACTION` and `--output PATH` still return full entries.
