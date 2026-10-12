@@ -261,12 +261,21 @@ describe("renderReportMarkdown", () => {
 				usageErrors: metrics.usageErrors,
 				mutatingCalls: [],
 				tokens: metrics.tokens,
+				turns: metrics.turns,
+				dssOutputChars: metrics.dssOutputChars,
 				finalAnswer: metrics.finalAnswer,
 				cleanedUp: true,
 			},],
 		};
 		const markdown = renderReportMarkdown(report,);
-		expect(markdown,).toContain("| scenario-fix | PASS | 70s | 5 | 8 | 2 | 1 | 1.1k / 0.1k |",);
+		expect(metrics.turns,).toEqual({
+			count: 5,
+			firstTurnContextTokens: 130,
+			lastTurnContextTokens: 301,
+		},);
+		expect(markdown,).toContain(
+			"| scenario-fix | PASS | 70s | 5 | 5 | 8 | 2 | 1.1k / 0.1k | 0.1k | ~0.1k |",
+		);
 		expect(markdown,).toContain("[scenario-fix] `usage_error` (exit 1) `dss commands run --fields",);
 		expect(markdown,).toContain(
 			"`not_found` (exit 2) `dss recipe cat compute_totals --project-key P1`",

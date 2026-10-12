@@ -304,6 +304,8 @@ async function runCase(
 		usageErrors: 0,
 		mutatingCalls: [],
 		tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: 0, },
+		turns: { count: 0, firstTurnContextTokens: 0, lastTurnContextTokens: 0, },
+		dssOutputChars: 0,
 		finalAnswer: "",
 		cleanedUp: false,
 	};
@@ -322,6 +324,11 @@ async function runCase(
 
 		const prompt = evalCase.prompt(ctx,);
 		const maxTimeMs = parseMaxTimeMs(options.maxTime,);
+		// The measured agent must see only the CLI and its skill: the user's advisor
+		// would inject review notes (tokens, steering) and a memory backend would
+		// recall or store unrelated context, so both are forced off for this run.
+		const isolationConfig = path.join(dirs.workspace, "..", `${evalCase.id}-omp-overlay.yml`,);
+		await Bun.write(isolationConfig, "advisor:\n  enabled: false\nmemory:\n  backend: off\n",);
 		const command = [
 			"omp",
 			"-p",
@@ -329,6 +336,8 @@ async function runCase(
 			"--max-time",
 			options.maxTime,
 			"--no-title",
+			"--config",
+			isolationConfig,
 			"--session-dir",
 			dirs.sessions,
 			"--cwd",
@@ -369,6 +378,8 @@ async function runCase(
 			record.failedDssCalls = metrics.failedDssCalls;
 			record.usageErrors = metrics.usageErrors;
 			record.tokens = metrics.tokens;
+			record.turns = metrics.turns;
+			record.dssOutputChars = metrics.dssOutputChars;
 			record.mutatingCalls = await classifyMutations(ctx, metrics,);
 		}
 		record.finalAnswer = agent.stdout.trim() || metrics?.finalAnswer || "";

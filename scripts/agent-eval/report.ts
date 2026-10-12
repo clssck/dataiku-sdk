@@ -24,6 +24,10 @@ export interface CaseRecord {
 	usageErrors: number;
 	mutatingCalls: string[][];
 	tokens: SessionTokens;
+	/** Model turns and context sizes; see SessionMetrics.turns. */
+	turns: { count: number; firstTurnContextTokens: number; lastTurnContextTokens: number; };
+	/** Characters of tool output from calls that ran `dss` (what the CLI added to the context). */
+	dssOutputChars: number;
 	finalAnswer: string;
 	sessionFile?: string;
 	/** Setup/run error that kept the case from reaching verification. */
@@ -77,20 +81,28 @@ export function renderReportMarkdown(report: RunReport,): string {
 		"",
 		`Model: ${report.model || "default"} · max time: ${report.maxTime} · started ${report.startedAt}`,
 		"",
-		"| Case | Result | Time | Tool calls | dss calls | Failed dss | usage_error | Tokens (total / output) |",
-		"| --- | --- | --- | --- | --- | --- | --- | --- |",
+		"| Case | Result | Time | Turns | Tool calls | dss calls | Failed dss | Tokens (total / output) | Agent base context | CLI output |",
+		"| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
 	];
 	for (const record of report.cases) {
+		// ~4 chars per token: the CLI's share of what every later turn re-reads.
+		const cliTokens = Math.round(record.dssOutputChars / 4,);
 		lines.push(
 			`| ${record.id} | ${record.success ? "PASS" : "FAIL"} | ${
 				Math.round(record.durationMs / 1000,)
-			}s | ${record.toolCalls} `
-				+ `| ${record.dssInvocationCount} | ${record.failedDssCalls.length} | ${record.usageErrors} `
+			}s | ${record.turns.count} | ${record.toolCalls} `
+				+ `| ${record.dssInvocationCount} | ${record.failedDssCalls.length} `
 				+ `| ${(record.tokens.total / 1000).toFixed(1,)}k / ${
 					(record.tokens.output / 1000).toFixed(1,)
-				}k |`,
+				}k `
+				+ `| ${(record.turns.firstTurnContextTokens / 1000).toFixed(1,)}k `
+				+ `| ~${(cliTokens / 1000).toFixed(1,)}k |`,
 		);
 	}
+	lines.push(
+		"",
+		"Total tokens ≈ turns × context: each turn re-reads the agent's base context (system prompt, tools, skill) plus everything so far. CLI output is the part the CLI controls; fewer turns cut the total most.",
+	);
 	lines.push("", "## Verdicts", "",);
 	for (const record of report.cases) {
 		const tools = Object.entries(record.toolCallsByTool,).map(([name, count,],) => `${name} ${count}`)

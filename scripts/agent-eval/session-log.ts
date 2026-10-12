@@ -49,6 +49,14 @@ export interface SessionMetrics {
 	failedDssCalls: FailedDssCall[];
 	usageErrors: number;
 	tokens: SessionTokens;
+	/**
+	 * Where tokens go. Every model turn re-reads the whole context, so totals
+	 * are roughly turns x context: `firstTurnContextTokens` is the agent's own
+	 * fixed overhead (system prompt, tools, skill), `dssOutputChars` is what the
+	 * CLI added to that context across the run.
+	 */
+	turns: { count: number; firstTurnContextTokens: number; lastTurnContextTokens: number; };
+	dssOutputChars: number;
 	finalAnswer: string;
 }
 
@@ -66,6 +74,8 @@ export function parseSessionLog(jsonl: string,): SessionMetrics {
 		failedDssCalls: [],
 		usageErrors: 0,
 		tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: 0, },
+		turns: { count: 0, firstTurnContextTokens: 0, lastTurnContextTokens: 0, },
+		dssOutputChars: 0,
 		finalAnswer: "",
 	};
 	const calls = new Map<string, ToolCallRecord>();
@@ -90,7 +100,15 @@ export function parseSessionLog(jsonl: string,): SessionMetrics {
 		const content = Array.isArray(message["content"],) ? message["content"] : [];
 
 		if (message["role"] === "assistant") {
-			addUsage(metrics.tokens, asRecord(message["usage"],),);
+			const usage = asRecord(message["usage"],);
+			addUsage(metrics.tokens, usage,);
+			if (usage) {
+				const context = numberOr0(usage["input"],) + numberOr0(usage["cacheRead"],)
+					+ numberOr0(usage["cacheWrite"],);
+				metrics.turns.count += 1;
+				if (metrics.turns.count === 1) metrics.turns.firstTurnContextTokens = context;
+				metrics.turns.lastTurnContextTokens = context;
+			}
 			const text: string[] = [];
 			for (const part of content) {
 				const block = asRecord(part,);
@@ -122,6 +140,7 @@ export function parseSessionLog(jsonl: string,): SessionMetrics {
 				.filter((block,) => block?.["type"] === "text" && typeof block["text"] === "string")
 				.map((block,) => String(block?.["text"],))
 				.join("\n",);
+			metrics.dssOutputChars += text.length;
 			const errors = extractDssErrors(text,);
 			errors.forEach((error, index,) => {
 				const failed: FailedDssCall = { ...error, tool: call.name, toolCallId: call.id, argv: null, };
