@@ -321,6 +321,7 @@ describe("agent contract accuracy", () => {
 			error: "Unknown action: flow map",
 			code: "usage_error",
 			exitCode: 1,
+			hint: expect.stringMatching(/^Did you mean `--fields project\.map\.usage`\?/,),
 			details: { resource: "flow", action: "map", suggestions: ["project.map.usage",], },
 		},);
 	});

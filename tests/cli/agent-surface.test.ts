@@ -51,7 +51,7 @@ describe("CLI agent-only command surface", () => {
 				"commands",
 				"run",
 				"--fields",
-				"version.run,auth,dataset.list,agent.contract,recipe.get-payload",
+				"version.run,auth,auth.login,dataset.list,agent.contract,recipe.get-payload",
 			],
 		);
 		expect(stderr,).toBe("",);
@@ -70,6 +70,12 @@ describe("CLI agent-only command surface", () => {
 				description: expect.any(String,),
 				sideEffect: "auth",
 			},
+		},);
+		expect(registry["auth.login"],).toMatchObject({
+			resource: "auth",
+			action: "login",
+			requiredFlags: ["url", "api-key",],
+			outputShape: "object",
 		},);
 		expect(registry["dataset.list"],).toMatchObject({
 			resource: "dataset",
