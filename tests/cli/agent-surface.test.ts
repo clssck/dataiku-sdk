@@ -242,7 +242,7 @@ describe("CLI command registry discovery", () => {
 		);
 		expect(registry.recipe["get-payload"].action,).toBe("get-payload",);
 		expect(registry.recipe["set-payload"].action,).toBe("set-payload",);
-		expect(registry.agent.contract.agentContractVersion,).toBe(4,);
+		expect(registry.agent.contract.agentContractVersion,).toBe(5,);
 	});
 });
 
