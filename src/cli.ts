@@ -655,7 +655,7 @@ async function validateBatchStep(
 	const metaAction = await validateMetaCommandInputs(resource, action, flags,);
 	if (metaAction) return { positional, flags, resource, action: metaAction, };
 	const resourceActions = commands[resource];
-	if (!resourceActions) throw unknownResourceError(resource,);
+	if (!resourceActions) throw unknownResourceError(resource, action,);
 	if (!action) {
 		throw missingActionError(resource, Object.keys(resourceActions,), `dss ${resource} <action>`,);
 	}
@@ -1018,12 +1018,17 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 	if (unknownNames.length > 0) {
 		if (knownSelectors.length === 0 && selectors.length > 0) {
 			const { error, suggestions, } = unknownSelectors[unknownNames[0]!]!;
-			throw suggestions.length === 0
-				? error
-				: new UsageError(error.message, error.code, error.hint, {
-					...error.details,
-					suggestions,
-				},);
+			// The shared error suggests `dss resource action` commands; here the fix is a selector.
+			const hint = suggestions.length === 0
+				? COMMANDS_RUN_HINT
+				: `Did you mean ${
+					suggestions.map((name,) => `\`--fields ${name}\``).join(" or ",)
+				}? ${COMMANDS_RUN_HINT}`;
+			const { suggestions: _commandSuggestions, ...details } = error.details ?? {};
+			throw new UsageError(error.message, error.code, hint, {
+				...details,
+				...(suggestions.length > 0 ? { suggestions, } : {}),
+			},);
 		}
 		enqueueCliWarning({
 			code: "unknown_fields",
@@ -1372,7 +1377,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 				result = metaCommand.result;
 			} else {
 				const resourceActions = commands[resource];
-				if (!resourceActions) throw unknownResourceError(resource,);
+				if (!resourceActions) throw unknownResourceError(resource, action,);
 				if (!action) {
 					throw missingActionError(resource, Object.keys(resourceActions,), `dss ${resource} <action>`,);
 				}
@@ -1905,7 +1910,7 @@ async function main(): Promise<void> {
 	}
 
 	// Resource and action recovery require only this resource's definitions.
-	if (!RESOURCE_NAMES.includes(resource,)) throw unknownResourceError(resource,);
+	if (!RESOURCE_NAMES.includes(resource,)) throw unknownResourceError(resource, positional[1],);
 	const resourceActions = commands[resource]!;
 	if (positional.length === 1) {
 		throw missingActionError(

@@ -258,6 +258,21 @@ describe("agent contract accuracy", () => {
 		expect((actionReport.details as Record<string, unknown>).validActions,).toContain("create",);
 	});
 
+	it("suggests the closest command for a mistyped resource or action", async () => {
+		const cases = [
+			{ argv: ["flow", "map",], suggestion: "dss project map", },
+			{ argv: ["recipes", "list",], suggestion: "dss recipe list", },
+			{ argv: ["scenario", "get-runs", "x",], suggestion: "dss scenario get-run", },
+		];
+		for (const { argv, suggestion, } of cases) {
+			const failure = await dssFailure(argv,);
+			expect(failure.code,).toBe(1,);
+			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
+			expect(report.hint,).toStartWith(`Did you mean \`${suggestion}\`?`,);
+			expect((report.details as Record<string, unknown>).suggestions,).toEqual([suggestion,],);
+		}
+	});
+
 	it("returns the known --fields selectors and warns about unknown ones with suggestions", async () => {
 		const result = await dss([
 			"commands",

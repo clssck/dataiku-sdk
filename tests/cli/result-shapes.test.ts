@@ -590,10 +590,20 @@ describe("scenario last-runs compact shape", () => {
 	});
 });
 
-async function scenarioCli(args: string[], body: unknown, path: string,): Promise<unknown> {
+async function scenarioCli(
+	args: string[],
+	body: unknown,
+	path: string,
+	extra: Record<string, unknown> = {},
+): Promise<unknown> {
 	let stdout = "";
 	await withCliServer((req, res,) => {
-		expect(new URL(req.url ?? "/", "http://localhost",).pathname,).toBe(path,);
+		const requested = new URL(req.url ?? "/", "http://localhost",).pathname;
+		if (requested in extra) {
+			sendJson(res, extra[requested],);
+			return;
+		}
+		expect(requested,).toBe(path,);
 		sendJson(res, body,);
 	}, async (url,) => {
 		const result = await dss(["scenario", ...args,], { env: cliEnv(url,), },);
@@ -603,16 +613,59 @@ async function scenarioCli(args: string[], body: unknown, path: string,): Promis
 	return JSON.parse(stdout,);
 }
 
+/** Raw `job get` of the failed scenario job: one FAILED python activity. */
+const failedScenarioJob = {
+	baseStatus: {
+		state: "FAILED",
+		activities: {
+			python_report_NP: {
+				recipeName: "python_report",
+				state: "FAILED",
+				sources: [{ type: "DATASET", id: "TEST.orders_joined", }, {
+					type: "DATASET",
+					id: "OTHER.rates",
+				},],
+			},
+		},
+	},
+};
+
 describe("CLI scenario get-run / last-runs output", () => {
-	it("get-run is compact by default and raw with --full", async () => {
+	it("get-run is compact, names the failed recipe and its inputs, and is raw with --full", async () => {
 		const path = `/public/api/projects/TEST/scenarios/nightly/${RUN_ID}/`;
+		const jobPath = `/public/api/projects/TEST/jobs/${FAILED_JOB_ID}/`;
 		const args = ["get-run", "nightly", RUN_ID,];
-		expect(await scenarioCli(args, scenarioRunReport(), path,),).toMatchObject({
-			failure: { message: KEY_ERROR, },
+		const compact = await scenarioCli(args, scenarioRunReport(), path, {
+			[jobPath]: failedScenarioJob,
+		},);
+		expect(compact,).toMatchObject({
+			failure: {
+				message: KEY_ERROR,
+				recipe: "python_report",
+				inputs: ["orders_joined", "OTHER.rates",],
+			},
+			next: [
+				["dss", "recipe", "cat", "python_report", "--project-key", "TEST",],
+				["dss", "dataset", "schema", "orders_joined", "--project-key", "TEST",],
+				["dss", "dataset", "schema", "OTHER.rates", "--project-key", "TEST",],
+				["dss", "job", "log", FAILED_JOB_ID, "--errors-only", "--project-key", "TEST",],
+			],
 		},);
 		expect(await scenarioCli([...args, "--full",], scenarioRunReport(), path,),).toEqual(
 			scenarioRunReport(),
 		);
+	});
+
+	it("get-run keeps the job-level diagnosis when the job cannot be read", async () => {
+		const path = `/public/api/projects/TEST/scenarios/nightly/${RUN_ID}/`;
+		const jobPath = `/public/api/projects/TEST/jobs/${FAILED_JOB_ID}/`;
+		const compact = await scenarioCli(["get-run", "nightly", RUN_ID,], scenarioRunReport(), path, {
+			[jobPath]: { baseStatus: { activities: {}, }, },
+		},);
+		expect(compact,).toMatchObject({
+			failure: { message: KEY_ERROR, jobId: FAILED_JOB_ID, },
+			next: [["dss", "job", "log", FAILED_JOB_ID, "--errors-only", "--project-key", "TEST",],],
+		},);
 	});
 
 	it("last-runs is compact by default and raw with --full", async () => {

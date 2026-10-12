@@ -1,17 +1,69 @@
 import type { DataikuClient, } from "../../client.js";
 import type { ScenarioWaitResult, } from "../../schemas.js";
+import { asRecord, } from "../../utils/records.js";
 import { jsonInput, num, parseBooleanOption, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
-import { scenarioRunDiagnosis, } from "../result-shapes.js";
+import {
+	type FailedActivity,
+	scenarioRunDiagnosis,
+	shapeCommandResult,
+} from "../result-shapes.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
 /**
+ * The recipe a failed job was running and the datasets it read, from one
+ * `job get` (its FAILED activity). Undefined when the job cannot be read or
+ * names no failed recipe: the diagnosis then stays job-level.
+ */
+async function failedActivity(
+	c: DataikuClient,
+	jobId: unknown,
+	projectKey: string | undefined,
+): Promise<FailedActivity | undefined> {
+	if (typeof jobId !== "string") return undefined;
+	try {
+		const job = asRecord(await c.jobs.get(jobId, projectKey,),);
+		const activities = asRecord(asRecord(job?.["baseStatus"],)?.["activities"],) ?? {};
+		for (const value of Object.values(activities,)) {
+			const activity = asRecord(value,);
+			if (activity?.["state"] !== "FAILED" || typeof activity["recipeName"] !== "string") continue;
+			const sources = Array.isArray(activity["sources"],) ? activity["sources"] : [];
+			const inputs = sources.flatMap((source,) => {
+				const id = asRecord(source,)?.["id"];
+				if (typeof id !== "string") return [];
+				// Same-project inputs are named bare; foreign ones keep PROJECT.name.
+				const dot = id.indexOf(".",);
+				return [dot > 0 && id.slice(0, dot,) === projectKey ? id.slice(dot + 1,) : id,];
+			},);
+			return { recipe: activity["recipeName"], inputs, };
+		}
+	} catch {
+		// A diagnosis aid only: the run report itself is already in hand.
+	}
+	return undefined;
+}
+
+/** Diagnosis of a raw run report, located at the failed recipe when its job names one. */
+async function locatedDiagnosis(
+	c: DataikuClient,
+	details: unknown,
+	projectKey: string | undefined,
+) {
+	const plain = scenarioRunDiagnosis(details,);
+	const runProject = asRecord(asRecord(asRecord(details,)?.["scenarioRun"],)?.["trigger"],)
+		?.["projectKey"];
+	const pk = projectKey ?? (typeof runProject === "string" ? runProject : undefined);
+	const activity = await failedActivity(c, plain.failure?.["jobId"], pk,);
+	return activity ? scenarioRunDiagnosis(details, activity,) : plain;
+}
+
+/**
  * Run a scenario and wait; a failed (not timed-out) run gains the first
- * failure and the next command. One extra get-run read, only on failure; a
- * read error leaves the wait result untouched so the outcome is never lost.
+ * failure, the recipe that failed, and the next commands. Extra reads happen
+ * only on failure; a read error leaves the wait result untouched.
  */
 async function runAndWaitWithFailure(
 	c: DataikuClient,
@@ -24,7 +76,7 @@ async function runAndWaitWithFailure(
 		const details = await c.scenarios.getRunDetails(scenarioId, result.runId, {
 			projectKey: options.projectKey,
 		},);
-		return { ...result, ...scenarioRunDiagnosis(details,), };
+		return { ...result, ...await locatedDiagnosis(c, details, options.projectKey,), };
 	} catch {
 		return result;
 	}
@@ -257,14 +309,19 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 		examples: ["dss scenario last-runs my_scenario --limit 10",],
 	},
 	"get-run": {
-		handler: (c, a, f,) => {
+		handler: async (c, a, f,) => {
 			requireArgs(a, 2, commandUsage("scenario", "get-run",),);
-			return c.scenarios.getRunDetails(a[0], a[1], {
-				projectKey: f["project-key"] as string | undefined,
-			},);
+			const projectKey = f["project-key"] as string | undefined;
+			const details = await c.scenarios.getRunDetails(a[0], a[1], { projectKey, },);
+			if (f["full"] === true || typeof f["fields"] === "string") return details;
+			// Compact view, located at the failed recipe (one extra job read, only on failure).
+			// The shaped object has no `scenarioRun`, so the dispatcher's shaping passes it through.
+			const shaped = asRecord(shapeCommandResult("scenario", "get-run", details, f,),);
+			if (!shaped?.["failure"]) return shaped ?? details;
+			return { ...shaped, ...await locatedDiagnosis(c, details, projectKey,), };
 		},
 		description:
-			"Get a scenario run: outcome, timing, trigger, per-step datasets and jobs, plus `failure` {stepId, jobId, dataset, message} and `next` argv for the first failure (compact by default; --full returns the raw DSS run report).",
+			"Get a scenario run: outcome, timing, trigger, per-step datasets and jobs, plus `failure` {stepId, jobId, dataset, recipe, inputs, message} and `next` argv (recipe code, input schemas, job errors) for the first failure (compact by default; --full returns the raw DSS run report).",
 		examples: ["dss scenario get-run my_scenario 2024-09-01-01-02-03-123",],
 	},
 	log: {

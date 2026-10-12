@@ -19,7 +19,10 @@ interface TokenBudget {
 }
 
 const TOKEN_BUDGETS = {
-	skill: { baseline: 774, maxTokens: 825, },
+	// +86 tokens: the "follow `next`/`hint` before exploring" rule and the failed-scenario path.
+	// Live agent traces showed most cost is extra turns, not output size; guidance that removes a
+	// turn is worth far more than its tokens (each turn re-reads the agent's ~17k-token context).
+	skill: { baseline: 860, maxTokens: 900, },
 	// Intentional contract expansion: the 113-action resource surface (plugin,
 	// saved-model, user, data-collection, connection, project-folder, scenario,
 	// dataset, recipe, project, llm, knowledge-bank, group, macro additions)

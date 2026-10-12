@@ -315,34 +315,37 @@ function projectKeyArgs(projectKey: unknown,): string[] {
 		: [];
 }
 
-/** Next-step argv for a failure: the job's error log, else the scenario run log. */
+/** The failed activity of a job: the recipe that failed and the datasets it read. */
+export interface FailedActivity {
+	recipe: string;
+	inputs: string[];
+}
+
+/**
+ * Next-step argv for a failure. With the failed recipe known: its code and the
+ * schemas of its inputs (what a "column not found" or type error needs), then
+ * the job's error log; else the job's error log, else the scenario run log.
+ */
 function failureNextSteps(
 	failure: Item,
 	scenarioId: unknown,
 	runId: unknown,
 	projectKey: unknown,
+	activity: FailedActivity | undefined,
 ): string[][] | undefined {
+	const pk = projectKeyArgs(projectKey,);
+	const inspect = activity
+		? [
+			["dss", "recipe", "cat", activity.recipe, ...pk,],
+			...activity.inputs.slice(0, 3,).map((input,) => ["dss", "dataset", "schema", input, ...pk,]),
+		]
+		: [];
 	if (typeof failure["jobId"] === "string") {
-		return [[
-			"dss",
-			"job",
-			"log",
-			failure["jobId"],
-			"--errors-only",
-			...projectKeyArgs(projectKey,),
-		],];
+		return [...inspect, ["dss", "job", "log", failure["jobId"], "--errors-only", ...pk,],];
 	}
 	if (typeof scenarioId !== "string" || typeof runId !== "string") return undefined;
 	const stepArgs = typeof failure["stepId"] === "string" ? ["--step-id", failure["stepId"],] : [];
-	return [[
-		"dss",
-		"scenario",
-		"log",
-		scenarioId,
-		runId,
-		...stepArgs,
-		...projectKeyArgs(projectKey,),
-	],];
+	return [["dss", "scenario", "log", scenarioId, runId, ...stepArgs, ...pk,],];
 }
 
 /** Scenario identity of a run object (`scenarioRun` or a last-runs item). */
@@ -369,7 +372,10 @@ function runTrigger(run: Item,): Item | undefined {
  * (`{ stepId, jobId, dataset, message }`) and the next command(s) to run as
  * argv arrays. Empty when the run did not fail.
  */
-export function scenarioRunDiagnosis(details: unknown,): { failure?: Item; next?: string[][]; } {
+export function scenarioRunDiagnosis(
+	details: unknown,
+	activity?: FailedActivity,
+): { failure?: Item; next?: string[][]; } {
 	const fields = record(details,);
 	const run = record(fields["scenarioRun"],);
 	const result = record(run["result"],);
@@ -381,8 +387,11 @@ export function scenarioRunDiagnosis(details: unknown,): { failure?: Item; next?
 		|| steps.some((step,) => isFailedOutcome(step["outcome"],));
 	const failure = failed ? firstScenarioFailure(steps, result["thrown"],) : undefined;
 	if (!failure) return {};
-	const next = failureNextSteps(failure, scenarioId, run["runId"], projectKey,);
-	return next ? { failure, next, } : { failure, };
+	const located = activity
+		? { ...failure, recipe: activity.recipe, inputs: activity.inputs, }
+		: failure;
+	const next = failureNextSteps(located, scenarioId, run["runId"], projectKey, activity,);
+	return next ? { failure: located, next, } : { failure: located, };
 }
 
 /**
@@ -436,9 +445,11 @@ function shapeScenarioRunSummary(item: unknown,): unknown {
 			...(typeof projectKey === "string" ? ["--project-key", projectKey,] : []),
 		],]
 		: undefined;
+	// DSS lists an in-progress run with `end: 0` and no result outcome.
+	const running = result["outcome"] === undefined && item["end"] === 0;
 	return defined({
 		runId: item["runId"],
-		outcome: result["outcome"],
+		outcome: running ? "RUNNING" : result["outcome"],
 		start: item["start"] ?? result["start"],
 		end: item["end"] ?? result["end"],
 		trigger: runTrigger(item,),

@@ -44,7 +44,14 @@ export function compactReadOutputSchemas(): Record<string, Record<string, unknow
 	const failureSchema = {
 		type: "object",
 		additionalProperties: false,
-		properties: { stepId: STRING, jobId: STRING, dataset: STRING, message: STRING, },
+		properties: {
+			stepId: STRING,
+			jobId: STRING,
+			dataset: STRING,
+			recipe: STRING,
+			inputs: { type: "array", items: { type: "string", }, },
+			message: STRING,
+		},
 	};
 	const nextSchema = {
 		type: "array",

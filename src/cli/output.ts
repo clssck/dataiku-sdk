@@ -239,16 +239,21 @@ export function commandFailureMessage(result: unknown,): string {
 			return `Timed out waiting for job ${record.jobId} after ${record.elapsedMs}ms (last known state: ${record.state}); the job is still running in DSS and was not cancelled.${resume}`;
 		}
 		if (record.timedOut === true) {
-			// ML training, scenario runs and futures: the client stopped waiting; nothing was cancelled.
+			// ML training, scenario runs, futures, code run: the client stopped waiting. Only a
+			// result that says `cancelled: false` proves nothing was stopped; `code run` cleans up
+			// its throwaway scenario, so its `cleanup` status is what tells.
 			const known = typeof record.state === "string"
 				? record.state
 				: typeof record.outcome === "string"
 				? record.outcome
 				: undefined;
 			const elapsed = typeof record.elapsedMs === "number" ? ` after ${record.elapsedMs}ms` : "";
-			return `Timed out waiting${elapsed}${
-				known ? ` (last known state: ${known})` : ""
-			}; the operation was not cancelled and may still be running in DSS.`;
+			const after = record.cancelled === false
+				? "the operation was not cancelled and may still be running in DSS."
+				: record.cleanup !== undefined
+				? "the client stopped waiting; see `cleanup` for what happened to the run."
+				: "the client stopped waiting; the operation may still be running in DSS.";
+			return `Timed out waiting${elapsed}${known ? ` (last known state: ${known})` : ""}; ${after}`;
 		}
 		const state = typeof record.state === "string"
 			? record.state

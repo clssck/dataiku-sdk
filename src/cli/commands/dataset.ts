@@ -277,16 +277,20 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 		handler: async (c, a, f,) => {
 			const previewUsage = commandUsage("dataset", "preview",);
 			requireArgs(a, 1, previewUsage,);
-			const maxRows = num(f["max-rows"], "--max-rows",);
+			const requestedRows = num(f["max-rows"], "--max-rows",);
 			if (
-				maxRows !== undefined && (!Number.isSafeInteger(maxRows,) || maxRows <= 0 || maxRows > 500)
+				requestedRows !== undefined && (!Number.isSafeInteger(requestedRows,) || requestedRows <= 0)
 			) {
 				throw new UsageError(
-					`--max-rows must be a positive integer no greater than 500 (got "${String(f["max-rows"],)}"); `
-						+ `for more rows use \`dss dataset download NAME --limit N --output PATH\`. Usage: ${previewUsage}`,
+					`--max-rows must be a positive integer (got "${
+						String(f["max-rows"],)
+					}"). Usage: ${previewUsage}`,
 					"validation_failed",
 				);
 			}
+			// Agents ask for "all rows" with a large number; serve the 500-row public
+			// maximum instead of failing, and let the truncation warning say if more exist.
+			const maxRows = requestedRows === undefined ? undefined : Math.min(requestedRows, 500,);
 			const result = await c.datasets.preview(a[0], {
 				maxRows,
 				projectKey: f["project-key"] as string | undefined,

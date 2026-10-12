@@ -146,21 +146,23 @@ describe("dataset assertions", () => {
 		});
 	});
 
-	it("rejects --max-rows above the public maximum before contacting DSS", async () => {
-		for (const value of ["501", "1000",]) {
-			const failure = await dssFailure([
+	it("serves the 500-row maximum when --max-rows asks for more, instead of failing", async () => {
+		let requestedLimit = "";
+		await withCliServer((req, res,) => {
+			requestedLimit = new URL(req.url ?? "/", "http://localhost",).searchParams.get("limit",) ?? "";
+			tsvResponse(res, ["name\tcity", "Alice\tParis", "Bob\tBerlin",],);
+		}, async (url,) => {
+			const { stdout, stderr, } = await dss([
 				"dataset",
 				"preview",
 				"orders",
 				"--max-rows",
-				value,
-			], { env: cliEnv("http://127.0.0.1:1",), },);
-			expect(failure.code,).toBe(1,);
-			const report = JSON.parse(failure.stdout,) as { code: string; error: string; };
-			expect(report.code,).toBe("validation_failed",);
-			expect(report.error,).toContain("--max-rows must be a positive integer no greater than 500",);
-			expect(report.error,).toContain(value,);
-		}
+				"100000",
+			], { env: cliEnv(url,), },);
+			expect(requestedLimit,).toBe("501",);
+			expect(JSON.parse(stdout,),).toMatchObject({ rowCount: 2, truncated: false, limit: 500, },);
+			expect(stderr,).toBe("",);
+		},);
 	});
 
 	it("gives actionable guidance when a preview is truncated below the cap", async () => {

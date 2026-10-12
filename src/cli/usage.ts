@@ -1,5 +1,28 @@
 import type { StableErrorCode, } from "../errors.js";
-import { commandSyntaxTree, renderNodes, syntaxHasFlag, } from "./syntax.js";
+import { suggestSelectors, } from "./selector-suggestions.js";
+import { commandSyntaxKeys, commandSyntaxTree, renderNodes, syntaxHasFlag, } from "./syntax.js";
+
+/**
+ * `dss resource action` commands close to a mistyped one (`flow map` -> `project map`,
+ * `recipes list` -> `recipe list`), from the syntax tree, so the error names the fix.
+ */
+function commandSuggestions(resource: string, action: string | undefined,): string[] {
+	const actionsByResource: Record<string, string[]> = {};
+	for (const key of commandSyntaxKeys()) {
+		const dot = key.indexOf(".",);
+		(actionsByResource[key.slice(0, dot,)] ??= []).push(key.slice(dot + 1,),);
+	}
+	return suggestSelectors(action ? `${resource}.${action}` : resource, actionsByResource,)
+		.map((selector,) => `dss ${selector.replace(".", " ",)}`);
+}
+
+function suggestionHint(suggestions: string[],): string {
+	return suggestions.length > 0
+		? `Did you mean ${
+			suggestions.map((command,) => `\`${command}\``).join(" or ",)
+		}? ${COMMANDS_RUN_HINT}`
+		: COMMANDS_RUN_HINT;
+}
 
 export const RESOURCE_NAMES = [
 	"agent",
@@ -155,12 +178,17 @@ export function missingActionError(
 	);
 }
 
-export function unknownResourceError(resource: string,): UsageError {
+export function unknownResourceError(resource: string, action?: string,): UsageError {
+	const suggestions = commandSuggestions(resource, action,);
 	return new UsageError(
 		`Unknown resource: ${resource}.`,
 		"usage_error",
-		COMMANDS_RUN_HINT,
-		{ resource, validResources: RESOURCE_NAMES, },
+		suggestionHint(suggestions,),
+		{
+			resource,
+			validResources: RESOURCE_NAMES,
+			...(suggestions.length > 0 ? { suggestions, } : {}),
+		},
 	);
 }
 
@@ -194,11 +222,12 @@ export function unknownActionError(
 	validActions: string[],
 	hint?: string,
 ): UsageError {
+	const suggestions = commandSuggestions(resource, action,);
 	return new UsageError(
 		`Unknown action: ${resource} ${action ?? ""}`.trim(),
 		"usage_error",
-		hint ?? COMMANDS_RUN_HINT,
-		{ resource, action, validActions, },
+		hint ?? suggestionHint(suggestions,),
+		{ resource, action, validActions, ...(suggestions.length > 0 ? { suggestions, } : {}), },
 	);
 }
 

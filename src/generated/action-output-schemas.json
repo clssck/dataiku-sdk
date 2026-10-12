@@ -2105,6 +2105,15 @@
 						"dataset": {
 							"type": "string"
 						},
+						"recipe": {
+							"type": "string"
+						},
+						"inputs": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
 						"message": {
 							"type": "string"
 						}

@@ -371,23 +371,23 @@ describe("DataikuClient bounded response bodies", () => {
 
 	it("getTextTailLimited applies the timeout per chunk, not to the whole transfer", async () => {
 		// Real-socket integration (like the stall tests above): fake timers cannot
-		// model a trickling TCP body. Each chunk arrives well inside the 200ms
-		// stall budget, but the whole transfer takes ~480ms: a total-transfer
-		// deadline would fail it.
+		// model a trickling TCP body. Each chunk arrives far inside the 400ms stall
+		// budget (5x margin for loaded runners), but the whole transfer takes
+		// ~640ms: a total-transfer deadline of the request timeout would fail it.
 		await withDataikuServer(async (_req, res,) => {
 			res.writeHead(200, { "Content-Type": "text/plain", },);
-			for (const chunk of ["aaaa", "bbbb", "cccc", "dddd",]) {
+			for (const chunk of ["aaaa", "bbbb", "cccc", "dddd", "ffff", "gggg", "hhhh", "iiii",]) {
 				res.write(chunk,);
-				await Bun.sleep(120,);
+				await Bun.sleep(80,);
 			}
 			res.end("eeee",);
 		}, async (client,) => {
 			const started = Date.now();
 			const { text, truncated, } = await client.getTextTailLimited("/slow-log", 10,);
-			expect(Date.now() - started,).toBeGreaterThan(200,);
+			expect(Date.now() - started,).toBeGreaterThan(400,);
 			expect(truncated,).toBe(true,);
-			expect(text,).toBe("ccddddeeee",);
-		}, { requestTimeoutMs: 200, },);
+			expect(text,).toBe("hhiiiieeee",);
+		}, { requestTimeoutMs: 400, },);
 	});
 
 	// Real-socket integration: the stall is a genuine idle TCP body.
