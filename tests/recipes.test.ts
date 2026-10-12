@@ -258,6 +258,70 @@ describe("RecipesResource", () => {
 		},);
 	});
 
+	it("rejects envSelection outside recipe.params on update without sending a PUT", async () => {
+		let puts = 0;
+		await withRecipeServer((req, res,) => {
+			if (req.method === "PUT") puts += 1;
+			sendJson(res, {
+				recipe: {
+					name: "env-recipe",
+					type: "python",
+					params: { envSelection: { envMode: "INHERIT", }, },
+				},
+			},);
+		}, async (url,) => {
+			const client = createClient(url,);
+			const envSelection = { envMode: "EXPLICIT_ENV", envName: "py39", };
+			const atRoot = await client.recipes.update("env-recipe", { envSelection, },).catch(
+				(error: unknown,) => error,
+			);
+			expect(atRoot,).toMatchObject({
+				code: "validation_failed",
+				message: expect.stringContaining(
+					'{"recipe":{"params":{"envSelection":{"envMode":"EXPLICIT_ENV","envName":"py311_env"}}}}',
+				),
+			},);
+			const underRecipe = await client.recipes.update("env-recipe", { recipe: { envSelection, }, },)
+				.catch((error: unknown,) => error);
+			expect(underRecipe,).toMatchObject({
+				code: "validation_failed",
+				message: expect.stringContaining("recipe.envSelection",),
+			},);
+		},);
+		expect(puts,).toBe(0,);
+	});
+
+	it("replaces recipe.params.envSelection instead of merging so no stale envName remains", async () => {
+		let updatedBody: Record<string, unknown> | undefined;
+		await withRecipeServer(async (req, res,) => {
+			if (req.method === "GET") {
+				sendJson(res, {
+					recipe: {
+						name: "env-recipe",
+						type: "python",
+						params: {
+							envSelection: { envMode: "EXPLICIT_ENV", envName: "py39", },
+							other: { keep: true, },
+						},
+					},
+				},);
+				return;
+			}
+			updatedBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+			sendJson(res, { ok: true, },);
+		}, async (url,) => {
+			const client = createClient(url,);
+			await client.recipes.update("env-recipe", {
+				recipe: { params: { envSelection: { envMode: "INHERIT", }, }, },
+			},);
+		},);
+		expect(updatedBody?.recipe,).toMatchObject({
+			params: { envSelection: { envMode: "INHERIT", }, other: { keep: true, }, },
+		},);
+		// toMatchObject ignores extra keys, so assert the stale envName is gone explicitly.
+		expect(JSON.stringify(updatedBody,),).not.toContain("envName",);
+	});
+
 	it("clones recipe graph, settings, and payload with output rewrites", async () => {
 		const requests: string[] = [];
 		let postBody: Record<string, unknown> | undefined;

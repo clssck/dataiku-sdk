@@ -7,8 +7,8 @@ import {
 	schemaUpdateComputableId,
 	schemaUpdateIsPending,
 } from "../../resources/recipe-create.js";
+import { buildRecipeUpdate, } from "../../resources/recipes.js";
 import type { BuildMode, } from "../../schemas.js";
-import { deepMerge, } from "../../utils/deep-merge.js";
 import {
 	jobLogFilterFromFlag,
 	jsonInput,
@@ -644,27 +644,18 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
 				const current = await c.recipes.get(a[0], { projectKey: pk, includePayload: true, },);
-				const currentRecipe = current.recipe as Record<string, unknown>;
-				const next = {
-					...current,
-					...data,
-					recipe: deepMerge(
-						currentRecipe,
-						(data.recipe && typeof data.recipe === "object" && !Array.isArray(data.recipe,))
-							? data.recipe as Record<string, unknown>
-							: {},
-					),
-				};
+				const next = buildRecipeUpdate(current as Record<string, unknown>, data,);
 				return { dryRun: true, action: "update", resource: "recipe", name: a[0], current, next, };
 			}
 			await c.recipes.update(a[0], data, pk,);
 			return { updated: a[0], resource: "recipe", };
 		},
 		description:
-			"Update recipe settings via JSON merge. Recipe definition fields must be nested under a top-level recipe key.",
+			"Update recipe settings via JSON merge. Recipe definition fields must be nested under a top-level recipe key. recipe.params.envSelection, when present, replaces the existing envSelection object (include envMode; no stale envName is kept) and is only accepted under recipe.params.",
 		examples: [
 			"dss recipe update compute_orders --data-file settings.json --dry-run",
-			'dss recipe update compute_orders --data \'{"recipe":{"params":{"envSelection":{"envMode":"EXPLICIT_ENV","envName":"python39"}}}}\'',
+			'dss recipe update compute_orders --data \'{"recipe":{"params":{"envSelection":{"envMode":"EXPLICIT_ENV","envName":"py311_env"}}}}\'',
+			'dss recipe update compute_orders --data \'{"recipe":{"params":{"envSelection":{"envMode":"INHERIT"}}}}\'',
 			"cat settings.json | dss recipe update compute_orders --stdin",
 		],
 	},

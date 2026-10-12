@@ -150,13 +150,54 @@ function formatLimitBytes(bytes: number,): string {
 	return `${bytes} B`;
 }
 
-function tsvLimitError(what: "field" | "row" | "response", limit: number,): DataikuError {
-	return new DataikuError(
-		0,
-		"Dataset TSV Limit",
-		`Dataset TSV ${what} exceeded ${
-			formatLimitBytes(limit,)
-		}; streaming was aborted to guard against unbounded memory use.`,
+const TSV_ERROR_COLUMN_NAME_MAX = 40;
+
+/**
+ * Describe the column whose cell is being read when a field/row budget trips:
+ * the header name once the header row has been parsed, otherwise the 0-based
+ * column index. Error summaries are bounded (~200 chars), so the name is
+ * shortened to keep the `--columns` hint inside the visible message.
+ */
+function describeTsvColumn(state: TsvStreamState,): string {
+	const index = state.currentRow.length;
+	const name = state.header?.[index];
+	if (name === undefined) return `column index ${index}`;
+	const shown = name.length > TSV_ERROR_COLUMN_NAME_MAX
+		? `${name.slice(0, TSV_ERROR_COLUMN_NAME_MAX,)}...`
+		: name;
+	return `column "${shown}"`;
+}
+
+/**
+ * A client-side size budget, not a DSS or transport failure: retrying the same
+ * read cannot succeed, so this is a non-retryable input error whose fix is a
+ * narrower selection (--columns).
+ */
+function tsvLimitError(
+	what: "field" | "row" | "response",
+	limit: number,
+	state: TsvStreamState,
+): ClientValidationError {
+	const exceeded = `Dataset TSV ${what} exceeded ${formatLimitBytes(limit,)}`;
+	const cellLimit = formatLimitBytes(state.limits.maxFieldBytes,);
+	let message: string;
+	if (what === "field") {
+		message = `${exceeded} in ${
+			describeTsvColumn(state,)
+		} (a single cell is limited to ${cellLimit}); exclude it with --columns.`;
+	} else if (what === "row") {
+		message = `${exceeded} (a single cell is limited to ${cellLimit}); reached in ${
+			describeTsvColumn(state,)
+		}. Exclude large columns with --columns.`;
+	} else {
+		message = `${exceeded}; streaming was aborted to guard against unbounded memory use.`;
+	}
+	return new ClientValidationError(
+		message,
+		"validation_failed",
+		what === "response"
+			? "Narrow the read with --columns, --partitions, or a lower row limit."
+			: "Select fewer columns with --columns so the oversized cell is not read.",
 	);
 }
 
@@ -203,6 +244,8 @@ function csvEscape(field: string, spreadsheetSafe: boolean,): string {
 interface TsvStreamState {
 	currentField: string;
 	currentRow: string[];
+	/** First non-blank row (the TSV header), used to name columns in limit errors. */
+	header: string[] | undefined;
 	inQuotes: boolean;
 	pendingQuoteInQuotes: boolean;
 	fieldBytes: number;
@@ -221,6 +264,7 @@ function createTsvStreamState(
 	return {
 		currentField: "",
 		currentRow: [],
+		header: undefined,
 		inQuotes: false,
 		pendingQuoteInQuotes: false,
 		fieldBytes: 0,
@@ -237,10 +281,10 @@ function appendFieldText(state: TsvStreamState, text: string,): void {
 	state.fieldBytes += bytes;
 	state.rowBytes += bytes;
 	if (state.fieldBytes > state.limits.maxFieldBytes) {
-		throw tsvLimitError("field", state.limits.maxFieldBytes,);
+		throw tsvLimitError("field", state.limits.maxFieldBytes, state,);
 	}
 	if (state.rowBytes > state.limits.maxRowBytes) {
-		throw tsvLimitError("row", state.limits.maxRowBytes,);
+		throw tsvLimitError("row", state.limits.maxRowBytes, state,);
 	}
 	state.currentField += text;
 }
@@ -253,6 +297,15 @@ function endField(state: TsvStreamState,): void {
 	state.rowBytes += 1; // count the delimiter byte
 }
 
+/** Hand a completed row to `onRow`, remembering the first non-blank row as the header. */
+function emitRow(state: TsvStreamState, onRow: (row: string[],) => void,): void {
+	const row = state.currentRow;
+	state.currentRow = [];
+	state.rowBytes = 0;
+	if (state.header === undefined && !isBlankRow(row,)) state.header = row;
+	onRow(row,);
+}
+
 function consumeTsvChunk(
 	text: string,
 	state: TsvStreamState,
@@ -261,7 +314,7 @@ function consumeTsvChunk(
 	// Response budget: bound total decoded bytes regardless of row structure.
 	state.responseBytes += Buffer.byteLength(text, "utf-8",);
 	if (state.responseBytes > state.limits.maxResponseBytes) {
-		throw tsvLimitError("response", state.limits.maxResponseBytes,);
+		throw tsvLimitError("response", state.limits.maxResponseBytes, state,);
 	}
 
 	let i = 0;
@@ -344,10 +397,7 @@ function consumeTsvChunk(
 		if (ch === "\n") {
 			endField(state,);
 			i = special + 1;
-			const row = state.currentRow;
-			state.currentRow = [];
-			state.rowBytes = 0;
-			onRow(row,);
+			emitRow(state, onRow,);
 			continue;
 		}
 		// "\r" — carriage return: skipped, as in the original parser.
@@ -364,10 +414,7 @@ function flushTsvStream(state: TsvStreamState, onRow: (row: string[],) => void,)
 	state.currentRow.push(state.currentField,);
 	state.currentField = "";
 	state.fieldBytes = 0;
-	const row = state.currentRow;
-	state.currentRow = [];
-	state.rowBytes = 0;
-	onRow(row,);
+	emitRow(state, onRow,);
 }
 
 function rowToCsv(row: string[], spreadsheetSafe: boolean,): string {

@@ -350,6 +350,118 @@ describe("code run command", () => {
 		},);
 	});
 
+	it("keeps the captured output when the scenario log exceeds the read cap", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		// ~1.5 MiB of DSS start-up noise precedes the markers, which sit at the end of the log.
+		const noise = Array.from(
+			{ length: 12_000, },
+			(_, i,) =>
+				`[2026/06/01-11:30:11.894] [Exec-1] [INFO] [dip.scenario]  - noise ${i} ${"n".repeat(100,)}`,
+		);
+		const log = [...noise, processLog(["kept line one", "kept line two",],),].join("\n",);
+		expect(Buffer.byteLength(log, "utf-8",),).toBeGreaterThan(1_048_576,);
+		await withCliServer(codeRunServer({ outcome: "SUCCESS", log, }, capture,), async (url,) => {
+			const { stdout, } = await dssWithInput(["code", "run", "--stdin",], "print(1)\n", {
+				env: cliEnv(url,),
+			},);
+			const r = JSON.parse(stdout,) as { output: string; log?: string; logTruncated: boolean; };
+			expect(r.logTruncated,).toBe(true,);
+			expect(r.output,).toBe("kept line one\nkept line two",);
+			expect(r.log,).toBeUndefined();
+		},);
+	});
+
+	it("bounds the captured output inside the generated wrapper", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		await withCliServer(
+			codeRunServer({ outcome: "SUCCESS", log: processLog(["x",],), }, capture,),
+			async (url,) => {
+				await dssWithInput(
+					["code", "run", "--stdin", "--max-log-bytes", "4096",],
+					"print(1)\n",
+					{ env: cliEnv(url,), },
+				);
+			},
+		);
+		// 4096 / 4 bytes of script output budget.
+		expect(capture.script,).toContain("len(_dku_bytes) - 1024",);
+		expect(capture.script,).toContain("DSS_CODE_RUN_OUTPUT_TRUNCATED_b7e3a1",);
+	});
+
+	it("reports truncated script output with a warning and keeps the tail", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		const log = [
+			"[t] [E] [INFO] [dip.scenario]  - start",
+			shortProcessLogLine(OUT_START,),
+			shortProcessLogLine("tail A",),
+			shortProcessLogLine("tail B",),
+			shortProcessLogLine(OUT_END,),
+			shortProcessLogLine("<<<DSS_CODE_RUN_OUTPUT_TRUNCATED_b7e3a1:2048>>>",),
+			"[t] [W] [INFO] [dku.utils]  - done",
+		].join("\n",);
+		await withCliServer(codeRunServer({ outcome: "SUCCESS", log, }, capture,), async (url,) => {
+			const { stdout, stderr, } = await dssWithInput(["code", "run", "--stdin",], "print(1)\n", {
+				env: cliEnv(url,),
+			},);
+			const r = JSON.parse(stdout,) as {
+				output: string;
+				outputTruncated?: boolean;
+				outputOmittedBytes?: number;
+			};
+			expect(r.output,).toBe("tail A\ntail B",);
+			expect(r.outputTruncated,).toBe(true,);
+			expect(r.outputOmittedBytes,).toBe(2048,);
+			const warning = JSON.parse(stderr.trim(),) as {
+				warnings: Array<{ code: string; omittedBytes?: number; }>;
+			};
+			expect(warning.warnings[0]?.code,).toBe("code_run_output_truncated",);
+			expect(warning.warnings[0]?.omittedBytes,).toBe(2048,);
+		},);
+	});
+
+	it("returns the surviving output and a warning when the log cap cut the START marker", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		const lines = Array.from({ length: 40, }, (_, i,) => shortProcessLogLine(`row ${i}`,),);
+		const log = [
+			"[t] [E] [INFO] [dip.scenario]  - start",
+			shortProcessLogLine(OUT_START,),
+			...lines,
+			shortProcessLogLine(OUT_END,),
+		].join("\n",);
+		await withCliServer(codeRunServer({ outcome: "SUCCESS", log, }, capture,), async (url,) => {
+			const { stdout, stderr, } = await dssWithInput(
+				["code", "run", "--stdin", "--max-log-bytes", "600",],
+				"print(1)\n",
+				{ env: cliEnv(url,), },
+			);
+			const r = JSON.parse(stdout,) as { output: string; logTruncated: boolean; };
+			expect(r.logTruncated,).toBe(true,);
+			expect(r.output,).toContain("row 39",);
+			expect(r.output,).not.toContain("row 0\n",);
+			const warning = JSON.parse(stderr.trim(),) as { warnings: Array<{ code: string; }>; };
+			expect(warning.warnings[0]?.code,).toBe("code_run_output_truncated",);
+		},);
+	});
+
+	it("keeps printed lines containing CR, U+2028 and U+2029", async () => {
+		const capture: CodeRunCapture = { created: false, deleted: false, };
+		const log = processLog([
+			"progress 10%\rprogress 100%",
+			"before\u2028after",
+			"para\u2029graph",
+			"last",
+		],);
+		await withCliServer(codeRunServer({ outcome: "SUCCESS", log, }, capture,), async (url,) => {
+			const { stdout, } = await dssWithInput(["code", "run", "--stdin",], "print(1)\n", {
+				env: cliEnv(url,),
+			},);
+			const r = JSON.parse(stdout,) as { output: string; };
+			expect(r.output,).toBe(
+				"progress 10%\rprogress 100%\nbefore\u2028after\npara\u2029graph\nlast",
+			);
+		},);
+	});
+
 	it("rejects negative and fractional --timeout before any DSS request", async () => {
 		let requests = 0;
 		await withCliServer((

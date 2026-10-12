@@ -6,7 +6,7 @@ import { type AddressInfo, } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { gunzipSync, } from "node:zlib";
-import { DataikuError, } from "../src/errors.js";
+import { ClientValidationError, DataikuError, } from "../src/errors.js";
 import {
 	DataikuClient,
 	type JupyterNotebookContent,
@@ -553,6 +553,11 @@ describe("DatasetsResource.download CSV batching", () => {
 
 describe("DatasetsResource TSV stream bounds", () => {
 	const oversizedField = "x".repeat(16 * 1024 * 1024 + 9,);
+	const previewServer = (_req: IncomingMessage, res: ServerResponse,): void => {
+		res.statusCode = 200;
+		res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+		res.end(`name\tblob\tcity\nAlice\t${oversizedField}\tParis\n`,);
+	};
 
 	it("fails closed on preview when a field exceeds the decoded-byte limit", async () => {
 		await withTestServer((_req, res,) => {
@@ -564,7 +569,7 @@ describe("DatasetsResource TSV stream bounds", () => {
 			const error = await client.datasets.preview("sample", { maxRows: 2, },).catch(
 				(caught: unknown,) => caught,
 			);
-			expect(error,).toBeInstanceOf(DataikuError,);
+			expect(error,).toMatchObject({ name: "ClientValidationError", code: "validation_failed", },);
 			expect((error as Error).message,).toContain("TSV field exceeded",);
 		},);
 	});
@@ -579,8 +584,105 @@ describe("DatasetsResource TSV stream bounds", () => {
 			const error = await client.datasets.assertRowCount("sample", 5,).catch(
 				(caught: unknown,) => caught,
 			);
-			expect(error,).toBeInstanceOf(DataikuError,);
+			expect(error,).toBeInstanceOf(ClientValidationError,);
 			expect((error as Error).message,).toContain("TSV field exceeded",);
+		},);
+	});
+
+	it("names the oversized column and suggests --columns in the field error", async () => {
+		await withTestServer(previewServer, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const error = await client.datasets.preview("sample", { maxRows: 2, },).catch(
+				(caught: unknown,) => caught,
+			);
+			expect(error,).toBeInstanceOf(ClientValidationError,);
+			const message = (error as Error).message;
+			expect(message,).toContain('column "blob"',);
+			expect(message,).toContain("--columns",);
+			expect(message,).toContain("a single cell is limited to 16 MiB",);
+
+			const countError = await client.datasets.assertRowCount("sample", 5,).catch(
+				(caught: unknown,) => caught,
+			);
+			expect((countError as Error).message,).toContain('column "blob"',);
+			expect((countError as Error).message,).toContain("--columns",);
+		},);
+	});
+
+	it("reports the column index when the header row is not known yet", async () => {
+		await withTestServer((_req, res,) => {
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+			res.end(`a\t${oversizedField}\n`,);
+		}, async (url,) => {
+			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+			const error = await client.datasets.preview("sample", { maxRows: 2, },).catch(
+				(caught: unknown,) => caught,
+			);
+			expect((error as Error).message,).toContain("column index 1",);
+			expect((error as Error).message,).toContain("--columns",);
+		},);
+	});
+
+	it("names the column and hints --columns when a row exceeds the row cap", async () => {
+		const resource = new DatasetsResource({
+			resolveProjectKey: (projectKey?: string,) => projectKey ?? "TEST",
+			getRequestTimeoutMs: () => 30_000,
+			stream: async () => ({
+				body: new ReadableStream<Uint8Array>({
+					start(controller,) {
+						const cell = "y".repeat(15 * 1024 * 1024,);
+						controller.enqueue(new TextEncoder().encode("c0\tc1\tc2\tc3\tc4\tc5\n",),);
+						// Six cells of 15 MiB stay under the 16 MiB field cap but pass 64 MiB per row.
+						controller.enqueue(
+							new TextEncoder().encode(`${[cell, cell, cell, cell, cell, cell,].join("\t",)}\n`,),
+						);
+						controller.close();
+					},
+				},),
+			}),
+			getTextLimited: async () => "",
+		} as unknown as DataikuClient,);
+		const error = await resource.preview("sample", { maxRows: 1, projectKey: "TEST", },).catch(
+			(caught: unknown,) => caught,
+		);
+		expect(error,).toBeInstanceOf(ClientValidationError,);
+		const message = (error as Error).message;
+		expect(message,).toContain("TSV row exceeded 64 MiB",);
+		expect(message,).toContain('column "c4"',);
+		expect(message,).toContain("--columns",);
+	});
+
+	it("downloads successfully when --columns excludes the oversized column", async () => {
+		await withTestServer(async (req, res,) => {
+			expect(req.method,).toBe("POST",);
+			const body = JSON.parse(await readRequestBody(req,),) as { columns?: string[]; };
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+			if (body.columns?.includes("blob",)) {
+				res.end(`name\tblob\nAlice\t${oversizedField}\n`,);
+				return;
+			}
+			res.end("name\tcity\nAlice\tParis\n",);
+		}, async (url,) => {
+			const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+			try {
+				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+				const failed = await client.datasets.download("sample", {
+					outputPath: path.join(tempDir, "all.csv",),
+					columns: ["name", "blob",],
+				},).catch((caught: unknown,) => caught);
+				expect((failed as Error).message,).toContain('column "blob"',);
+
+				const result = await client.datasets.download("sample", {
+					outputPath: path.join(tempDir, "slim.csv",),
+					columns: ["name", "city",],
+				},);
+				expect(result.rows,).toBe(1,);
+				expect(fs.readFileSync(result.path, "utf8",),).toBe("name,city\nAlice,Paris\n",);
+			} finally {
+				fs.rmSync(tempDir, { recursive: true, force: true, },);
+			}
 		},);
 	});
 
@@ -597,7 +699,7 @@ describe("DatasetsResource TSV stream bounds", () => {
 				const error = await client.datasets.download("sample", { outputPath, },).catch(
 					(caught: unknown,) => caught,
 				);
-				expect(error,).toBeInstanceOf(DataikuError,);
+				expect(error,).toBeInstanceOf(ClientValidationError,);
 				expect((error as Error).message,).toContain("TSV field exceeded",);
 				expect(fs.existsSync(outputPath,),).toBe(false,);
 			} finally {

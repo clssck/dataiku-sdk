@@ -166,9 +166,23 @@ export const codeCommands: Record<string, CommandMeta> = withUsage("code", {
 				maxLogBytes: run.maxLogBytes,
 				cleanup: run.cleanup,
 				...(run.timedOut === true ? { timedOut: true, timeoutMs: run.timeoutMs, } : {}),
+				...(run.outputTruncated === true ? { outputTruncated: true, } : {}),
+				...(run.outputOmittedBytes !== undefined
+					? { outputOmittedBytes: run.outputOmittedBytes, }
+					: {}),
 			};
 			if (f["full-log"] === true || run.output === undefined) {
 				result.log = run.log;
+			}
+			if (run.outputTruncated === true) {
+				enqueueCliWarning({
+					code: "code_run_output_truncated",
+					hint: run.outputOmittedBytes !== undefined
+						? `Script output exceeded the capture budget; the first ${run.outputOmittedBytes} bytes were dropped and \`output\` holds the last part. Raise --max-log-bytes (the budget is a quarter of it) or print less.`
+						: "The run log exceeded --max-log-bytes, so the start of the script output was cut and `output` holds the last part. Raise --max-log-bytes or print less.",
+					...(run.outputOmittedBytes !== undefined ? { omittedBytes: run.outputOmittedBytes, } : {}),
+					maxLogBytes: run.maxLogBytes,
+				},);
 			}
 			if (run.cleanup.status === "failed") {
 				reportCleanupFailure({ scenarioId: run.scenarioId, error: run.cleanup.error ?? "unknown", },);
@@ -176,10 +190,10 @@ export const codeCommands: Record<string, CommandMeta> = withUsage("code", {
 			return result;
 		},
 		description:
-			"Run Python through a throwaway custom-python scenario and return captured output plus outcome. --timeout caps waiting; --max-log-bytes caps logs; --full-log returns the capped raw log. Exits 4 unless outcome is SUCCESS.",
+			"Run Python through a throwaway custom-python scenario and return captured output plus outcome. --timeout caps waiting; --max-log-bytes caps the log tail read (script output keeps its last quarter; a code_run_output_truncated warning reports cuts); --full-log returns the capped raw log. Exits 4 unless outcome is SUCCESS.",
 		examples: [
 			"dss code run --file inspect.py",
-			"dss code run --file inspect.py --env py39_pandas",
+			"dss code run --file inspect.py --env py311_pandas",
 			"cat snippet.py | dss code run --stdin",
 			"dss code run --file inspect.py --full-log",
 		],

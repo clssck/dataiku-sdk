@@ -158,6 +158,10 @@ export interface ScenarioScriptRunResult {
 	elapsedMs: number;
 	pollCount: number;
 	output?: string;
+	/** True when the captured script output was cut (wrapper byte budget or log read cap); `output` then holds the last part only. */
+	outputTruncated?: boolean;
+	/** Bytes of script output the wrapper dropped from the front; absent when the cut happened in the log read instead. */
+	outputOmittedBytes?: number;
 	log: string;
 	logTruncated: boolean;
 	maxLogBytes: number;
@@ -171,6 +175,14 @@ export interface ScenarioScriptRunResult {
 const DEFAULT_CODE_RUN_MAX_LOG_BYTES = 1_048_576;
 const CODE_RUN_OUTPUT_START = "<<<DSS_CODE_RUN_OUTPUT_b7e3a1>>>";
 const CODE_RUN_OUTPUT_END = "<<<DSS_CODE_RUN_OUTPUT_END_b7e3a1>>>";
+/** Written right after the END marker when the wrapper cut the captured output; carries the omitted byte count. */
+const CODE_RUN_OUTPUT_TRUNCATED_RE = /^<<<DSS_CODE_RUN_OUTPUT_TRUNCATED_b7e3a1:(\d+)>>>$/;
+/**
+ * The wrapper keeps at most `maxLogBytes / CODE_RUN_OUTPUT_BUDGET_DIVISOR` bytes
+ * of script output. The remainder of the read cap is headroom for the per-line
+ * DSS log prefix, so the markers still fit in what `runScript` reads back.
+ */
+const CODE_RUN_OUTPUT_BUDGET_DIVISOR = 4;
 
 /** Prefer the current runId field, with the legacy id field as fallback. */
 function triggerRunIdOf(trigger: Record<string, unknown>, scenarioId?: string,): string {
@@ -232,8 +244,10 @@ function scenarioLightStatusFromRaw(raw: Record<string, unknown>,): ScenarioLigh
  * wrapper noise. The script is base64-encoded to avoid quoting/escaping issues and
  * exec'd as `__main__`. A failing script re-raises SystemExit(1) so the scenario
  * outcome is FAILED while the captured traceback still lands between the markers.
+ * Only the last `maxOutputBytes` UTF-8 bytes of output are re-emitted; when output
+ * was cut, a truncation marker with the omitted byte count follows the END marker.
  */
-function buildCodeRunScript(script: string,): string {
+function buildCodeRunScript(script: string, maxOutputBytes: number,): string {
 	const encoded = Buffer.from(script, "utf-8",).toString("base64",);
 	return [
 		"import base64 as _dku_b64, sys as _dku_sys, io as _dku_io, traceback as _dku_tb",
@@ -251,9 +265,14 @@ function buildCodeRunScript(script: string,): string {
 		"\t_dku_tb.print_exc()",
 		"finally:",
 		"\t_dku_sys.stdout, _dku_sys.stderr = _dku_out, _dku_err",
+		'\t_dku_bytes = _dku_buf.getvalue().encode("utf-8", "replace")',
+		`\t_dku_omitted = max(0, len(_dku_bytes) - ${maxOutputBytes})`,
+		'\t_dku_text = _dku_bytes[_dku_omitted:].decode("utf-8", "ignore")',
 		`\t_dku_out.write("${CODE_RUN_OUTPUT_START}\\n")`,
-		"\t_dku_out.write(_dku_buf.getvalue())",
+		"\t_dku_out.write(_dku_text)",
 		`\t_dku_out.write("\\n${CODE_RUN_OUTPUT_END}\\n")`,
+		"\tif _dku_omitted:",
+		'\t\t_dku_out.write("<<<DSS_CODE_RUN_OUTPUT_TRUNCATED_b7e3a1:%d>>>\\n" % _dku_omitted)',
 		"\t_dku_out.flush()",
 		"if _dku_code:",
 		"\traise SystemExit(_dku_code)",
@@ -265,10 +284,16 @@ function buildCodeRunScript(script: string,): string {
  * Pull the script's own stdout/stderr back out of the full DSS run log by slicing
  * the `[process]` lines between the markers emitted by {@link buildCodeRunScript}.
  * Returns undefined if the markers are absent (e.g. the harness never ran), in which
- * case callers should fall back to the full log.
+ * case callers should fall back to the full log. When the log read itself was cut
+ * (`logTruncated`) the START marker may be gone while END survives; the output is
+ * then whatever precedes END, reported as truncated.
  */
-function extractCodeRunOutput(log: string,): string | undefined {
-	const messageRe = /^\[[^\]]*\] \[[^\]]*\] \[[^\]]*\] \[process\]  - (.*)$/;
+function extractCodeRunOutput(
+	log: string,
+	logTruncated: boolean,
+): { output: string; truncated: boolean; omittedBytes?: number; } | undefined {
+	// `[\s\S]` (not `.`): CR, U+2028 and U+2029 inside a printed line must not drop it.
+	const messageRe = /^\[[^\]]*\] \[[^\]]*\] \[[^\]]*\] \[process\]  - ([\s\S]*)$/;
 	const contents: string[] = [];
 	for (const rawLine of log.split("\n",)) {
 		const line = rawLine.endsWith("\r",) ? rawLine.slice(0, -1,) : rawLine;
@@ -277,7 +302,7 @@ function extractCodeRunOutput(log: string,): string | undefined {
 	}
 	// First start + last end, so a script that prints a marker string stays body content.
 	const start = contents.indexOf(CODE_RUN_OUTPUT_START,);
-	if (start < 0) return undefined;
+	if (start < 0 && !logTruncated) return undefined;
 	let end = -1;
 	for (let i = contents.length - 1; i > start; i--) {
 		if (contents[i] === CODE_RUN_OUTPUT_END) {
@@ -289,7 +314,13 @@ function extractCodeRunOutput(log: string,): string | undefined {
 	const body = contents.slice(start + 1, end,);
 	// Drop only the single trailing separator the harness writes before the end marker.
 	if (body.length > 0 && body[body.length - 1] === "") body.pop();
-	return body.join("\n",);
+	const omitted = CODE_RUN_OUTPUT_TRUNCATED_RE.exec(contents[end + 1] ?? "",);
+	const omittedBytes = omitted ? Number(omitted[1],) : undefined;
+	return {
+		output: body.join("\n",),
+		truncated: omitted !== null || start < 0,
+		...(omittedBytes !== undefined ? { omittedBytes, } : {}),
+	};
 }
 
 function scenarioStepWarningSummary(stepResult: Record<string, unknown> | undefined,): {
@@ -681,7 +712,13 @@ export class ScenariosResource extends BaseResource {
 			},);
 			await this.client.putVoid(
 				`${base}/payload`,
-				{ script: buildCodeRunScript(script,), extension: "py", },
+				{
+					script: buildCodeRunScript(
+						script,
+						Math.floor(maxLogBytes / CODE_RUN_OUTPUT_BUDGET_DIVISOR,),
+					),
+					extension: "py",
+				},
 			);
 
 			const trigger = await this.client.post<Record<string, unknown>>(`${base}/run/`, {},);
@@ -697,9 +734,12 @@ export class ScenariosResource extends BaseResource {
 			timedOut = tracked.timedOut;
 
 			if (runId && outcome !== "TIMEOUT") {
+				// Tail read: the markers are printed last, so a log over the cap loses
+				// DSS start-up noise instead of the END marker.
 				const limitedLog = await this.getRunLog(scenarioId, runId, {
 					projectKey: opts?.projectKey,
 					maxLogBytes,
+					tail: true,
 				},);
 				log = limitedLog.text;
 				logTruncated = limitedLog.truncated;
@@ -717,7 +757,7 @@ export class ScenariosResource extends BaseResource {
 			}
 			throw primaryError;
 		}
-		const output = extractCodeRunOutput(log,);
+		const extracted = extractCodeRunOutput(log, logTruncated,);
 		return {
 			scenarioId,
 			runId,
@@ -725,7 +765,11 @@ export class ScenariosResource extends BaseResource {
 			success: outcome === "SUCCESS",
 			elapsedMs: Date.now() - startedAt,
 			pollCount,
-			output,
+			output: extracted?.output,
+			...(extracted?.truncated ? { outputTruncated: true, } : {}),
+			...(extracted?.omittedBytes !== undefined
+				? { outputOmittedBytes: extracted.omittedBytes, }
+				: {}),
 			log,
 			logTruncated,
 			maxLogBytes,
@@ -785,7 +829,9 @@ export class ScenariosResource extends BaseResource {
 	 * Get the log of a scenario run (GET /scenarios/{id}/{runId}/log), optionally
 	 * scoped to a single step via `stepId`. The text is byte-bounded: at most
 	 * `maxLogBytes` (default 1 MiB) of the beginning of the log is retained and
-	 * `truncated` reports whether the cap cut the body.
+	 * `truncated` reports whether the cap cut the body. With `tail: true` the
+	 * last `maxLogBytes` are retained instead (used by code runs, whose output
+	 * markers sit at the end of the log).
 	 */
 	async getRunLog(
 		scenarioId: string,
@@ -794,6 +840,7 @@ export class ScenariosResource extends BaseResource {
 			stepId?: string;
 			maxLogBytes?: number;
 			projectKey?: string;
+			tail?: boolean;
 		},
 	): Promise<ScenarioRunLog> {
 		if (opts?.stepId !== undefined) requireNonEmpty(opts.stepId, "stepId",);
@@ -805,7 +852,10 @@ export class ScenariosResource extends BaseResource {
 		const query = opts?.stepId !== undefined
 			? `?stepId=${encodeURIComponent(opts.stepId,)}`
 			: "";
-		const { text, truncated, } = await this.client.getTextLimited(
+		const readText = opts?.tail === true
+			? this.client.getTextTailLimited.bind(this.client,)
+			: this.client.getTextLimited.bind(this.client,);
+		const { text, truncated, } = await readText(
 			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/${
 				encodeURIComponent(runId,)
 			}/log${query}`,

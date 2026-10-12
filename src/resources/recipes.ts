@@ -141,6 +141,51 @@ function rootRecipeDefinitionFields(data: Record<string, unknown>,): string[] {
 	return Object.keys(data,).filter((key,) => RECIPE_DEFINITION_FIELDS.has(key,));
 }
 
+/**
+ * Validate an update patch against the current recipe document and return the
+ * document to PUT. `recipe` is deep-merged, except `recipe.params.envSelection`,
+ * which the patch replaces wholesale so no stale `envName` survives an
+ * EXPLICIT_ENV to INHERIT switch. `envSelection` outside `recipe.params` is
+ * rejected: neither DSS nor the CLI reads it there.
+ */
+export function buildRecipeUpdate(
+	current: Record<string, unknown>,
+	data: Record<string, unknown>,
+): Record<string, unknown> {
+	const currentRecipe = asRecord(current.recipe,) ?? {};
+	const recipePatch = asRecord(data.recipe,) ?? {};
+	const misplacedEnvSelection = [
+		...("envSelection" in data ? ["envSelection",] : []),
+		...("envSelection" in recipePatch ? ["recipe.envSelection",] : []),
+	];
+	if (misplacedEnvSelection.length > 0) {
+		throw new ClientValidationError(
+			`envSelection at ${
+				misplacedEnvSelection.join(" and ",)
+			} is ignored; it only applies under recipe.params. Example: {"recipe":{"params":{"envSelection":{"envMode":"EXPLICIT_ENV","envName":"py311_env"}}}}`,
+			"validation_failed",
+		);
+	}
+	const misplacedRecipeFields = rootRecipeDefinitionFields(data,);
+	if (misplacedRecipeFields.length > 0) {
+		throw new ClientValidationError(
+			`Recipe fields ${
+				misplacedRecipeFields.join(", ",)
+			} must be nested under "recipe". Example: {"recipe":{"outputs":{...},"params":{...}}}`,
+			"validation_failed",
+		);
+	}
+	const mergedRecipe = deepMerge(currentRecipe, recipePatch,);
+	const paramsPatch = asRecord(recipePatch.params,);
+	if (paramsPatch && "envSelection" in paramsPatch) {
+		mergedRecipe.params = {
+			...asRecord(mergedRecipe.params,),
+			envSelection: paramsPatch.envSelection,
+		};
+	}
+	return { ...current, ...data, recipe: mergedRecipe, };
+}
+
 function normalizeRecipeOutputType(value: unknown,): JobBuildTargetType | undefined {
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().toUpperCase().replace(/-/g, "_",);
@@ -1105,7 +1150,10 @@ export class RecipesResource extends BaseResource {
 
 	/**
 	 * Update a recipe by merging the patch into the current definition.
-	 * The `recipe` sub-object is deep-merged to preserve nested fields.
+	 * The `recipe` sub-object is deep-merged to preserve nested fields, except
+	 * `recipe.params.envSelection`: when the patch provides it, the whole object
+	 * is replaced (not merged), so switching EXPLICIT_ENV to INHERIT cannot leave
+	 * a stale `envName` behind. `envSelection` outside `recipe.params` is rejected.
 	 */
 	async update(
 		recipeName: string,
@@ -1117,24 +1165,13 @@ export class RecipesResource extends BaseResource {
 		const current = await this.client.get<Record<string, unknown>>(
 			`/public/api/projects/${enc}/recipes/${rnEnc}`,
 		);
-		const currentRecipe = asRecord(current.recipe,);
-		if (!currentRecipe) {
+		if (!asRecord(current.recipe,)) {
 			throw new ClientValidationError(
 				`Recipe "${recipeName}" was not found or returned an empty definition.`,
 				"validation_failed",
 			);
 		}
-		const misplacedRecipeFields = rootRecipeDefinitionFields(data,);
-		if (misplacedRecipeFields.length > 0) {
-			throw new ClientValidationError(
-				`Recipe fields ${
-					misplacedRecipeFields.join(", ",)
-				} must be nested under "recipe". Example: {"recipe":{"outputs":{...},"params":{...}}}`,
-				"validation_failed",
-			);
-		}
-		const mergedRecipe = deepMerge(currentRecipe, asRecord(data.recipe,) ?? {},);
-		const merged = { ...current, ...data, recipe: mergedRecipe, };
+		const merged = buildRecipeUpdate(current, data,);
 		await this.client.put<Record<string, unknown>>(
 			`/public/api/projects/${enc}/recipes/${rnEnc}`,
 			merged,
