@@ -7,6 +7,7 @@ observations.md
 plan.md
 bugs.md
 .live-tests/
+.agent-eval/
 # dss install-skill project targets
 .claude/skills/dataiku-dss/
 .codex/skills/dataiku-dss/

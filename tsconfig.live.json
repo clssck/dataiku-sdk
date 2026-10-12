@@ -5,6 +5,9 @@
 	},
 	"include": [
 		"scripts/live-suite.ts",
-		"tests/live-*.ts"
+		"scripts/agent-eval.ts",
+		"scripts/agent-eval/*.ts",
+		"tests/live-*.ts",
+		"tests/agent-eval.test.ts"
 	]
 }

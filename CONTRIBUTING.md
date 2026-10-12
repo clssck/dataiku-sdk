@@ -55,6 +55,14 @@ Before opening a pull request, all of these must be green:
 - Never point mutating tests at a project you care about — use a throwaway instance/project.
 - New behavior should ship with a test. Prefer tests that defend real contracts (exit codes, error taxonomy, output shape) over implementation details.
 
+## Agent-navigability eval
+
+`bun run eval:agents` measures how navigable the CLI is for a coding agent. For each case it provisions a throwaway `AGENTEVAL_*` project on the DSS from the repo `.env` (`DATAIKU_URL`, `DATAIKU_API_KEY`), runs a headless `omp -p` agent in an empty workspace with only the installed skill and `bin/dss` on `PATH`, verifies the outcome against DSS state and the final answer, then deletes the project and temp dirs.
+
+- `bun run eval:agents --list` lists the cases (offline); `--case ID[,ID]`, `--model M`, `--max-time 20m`, and `--keep` (keep the project and temp dirs) select and tune a run.
+- Each run writes `.agent-eval/<runId>/` (gitignored): `report.md` (result table plus a friction list of failed `dss` calls with their error `code`), `report.json`, and the redacted session jsonl per case.
+- Cases live in `scripts/agent-eval/cases.ts`; the session-log parser is `scripts/agent-eval/session-log.ts`. Treat the friction list as a backlog for CLI discoverability fixes. Run it only against a disposable DSS instance; it needs `omp` on `PATH` and spends model tokens.
+
 ## Releases
 
 Dispatch `release.yml` from current `main` with a patch, minor, or major bump. Releases are serialized without cancelling an active release; stale dispatches fail rather than releasing a different revision.

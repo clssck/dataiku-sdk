@@ -35,6 +35,7 @@
 		"format:check": "dprint check",
 		"test": "bun test --parallel --timeout 30000",
 		"test:live": "bun --no-env-file scripts/live-suite.ts",
+		"eval:agents": "bun --no-env-file scripts/agent-eval.ts",
 		"check:live": "bun check -p tsconfig.live.json",
 		"test:tokens": "bun test tests/cli/agent-token-budget.test.ts",
 		"test:platform": "bun scripts/platform-smoke.mjs",
