@@ -443,8 +443,8 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 				"--data",
 				JSON.stringify({ script: SCENARIO_SLEEP_SCRIPT, extension: "py", },),
 			],);
-			const triggered = await ctx.run<{ runId: string; }>(["scenario", "run", id,],);
-			expect(triggered.runId.length,).toBeGreaterThan(0,);
+			const triggered = await ctx.run<{ triggerRunId: string; }>(["scenario", "run", id,],);
+			expect(triggered.triggerRunId.length,).toBeGreaterThan(0,);
 
 			const running = await waitForScenarioRunning(ctx, id, true, SCENARIO_START_TIMEOUT_MS,);
 			expect(running.running,).toBe(true,);

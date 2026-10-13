@@ -54,7 +54,11 @@ describe("SDK response and identifier boundaries", () => {
 			expect(methods,).toEqual(["POST", "POST", "POST",],);
 			response = { runId: "R", id: "legacy", };
 			await expect(client.macros.run("M",),).resolves.toMatchObject({ runId: "R", },);
-			await expect(client.scenarios.run("S",),).resolves.toEqual({ runId: "R", },);
+			await expect(client.scenarios.run("S",),).resolves.toEqual({
+				triggerId: "manual",
+				triggerRunId: "R",
+				cancelled: false,
+			},);
 		} finally {
 			server.stop(true,);
 		}

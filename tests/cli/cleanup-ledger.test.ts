@@ -400,6 +400,11 @@ const REPRESENTATIVES: Record<string, Representative> = {
 	"group.create": { args: [], flags: { data: `{"name":"analysts"}`, }, result: { msg: "ok", }, },
 	"insight.create": { args: [], flags: {}, result: { created: "INS1", }, },
 	"meaning.create": { args: ["vip", "VIP", "VALUES_LIST",], flags: {}, result: { id: "vip", }, },
+	"messaging-channel.create": {
+		args: [],
+		flags: { type: "shell", },
+		result: { id: "ops-shell", type: "shell", },
+	},
 	"ml-task.create": { args: ["AN1",], flags: {}, result: { created: "TASK1", }, },
 	"ml-task.create-for-dataset": {
 		args: ["orders",],

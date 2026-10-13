@@ -262,6 +262,19 @@ const DEFAULT_METADATA_TIMEOUT_MS = 1_500;
 const PROJECT_IMPORT_AMBIGUOUS_REMEDIATION =
 	"Import processing left DSS state indeterminate. Inspect the archive with `dss project inspect-archive <file>` and the live projects with `dss project list` before retrying the import.";
 
+export interface TestScenarioRunsReportOptions {
+	/** Automation-node bundle whose test runs are reported; the active bundle when omitted. */
+	bundleId?: string;
+	/** `junit` (default) is JUnit XML; `html` is a rendered page. */
+	format?: "junit" | "html";
+}
+
+function testReportRoute(options: TestScenarioRunsReportOptions,): string {
+	return options.format === "html"
+		? "last-test-scenario-runs-html-report"
+		: "last-test-scenario-runs-report";
+}
+
 export class ProjectsResource extends BaseResource {
 	/** Create a new project. */
 	async createProject(
@@ -596,6 +609,63 @@ export class ProjectsResource extends BaseResource {
 				encodeURIComponent(remote,)
 			}`,
 		);
+	}
+
+	/**
+	 * Get the testing status of a project: the worst outcome across the last
+	 * runs of its test scenarios. On an Automation node, `bundleId` restricts
+	 * the runs to those made while that bundle was active.
+	 */
+	async getTestingStatus(
+		projectKey?: string,
+		bundleId?: string,
+	): Promise<Record<string, unknown>> {
+		return this.client.get<Record<string, unknown>>(
+			this.testScenarioRoute(projectKey, "testing-status", bundleId,),
+		);
+	}
+
+	/**
+	 * Fetch the report of the latest test-scenario runs as text: JUnit XML by
+	 * default, an HTML page for `format: "html"`. On an Automation node,
+	 * `bundleId` selects the bundle; otherwise the active bundle is reported.
+	 */
+	async getTestScenarioRunsReport(
+		projectKey?: string,
+		options: TestScenarioRunsReportOptions = {},
+	): Promise<string> {
+		return this.client.getText(
+			this.testScenarioRoute(projectKey, testReportRoute(options,), options.bundleId,),
+		);
+	}
+
+	/**
+	 * Download the latest test-scenario runs report to a local file and return
+	 * the byte count written. The file is only published once complete.
+	 */
+	async downloadTestScenarioRunsReport(
+		filePath: string,
+		projectKey?: string,
+		options: TestScenarioRunsReportOptions = {},
+	): Promise<number> {
+		const res = await this.client.stream(
+			this.testScenarioRoute(projectKey, testReportRoute(options,), options.bundleId,),
+		);
+		if (!res.body) {
+			throw unexpectedResponseError(
+				"projects.downloadTestScenarioRunsReport response did not include a body",
+			);
+		}
+		return writeResponseToFile(filePath, res,);
+	}
+
+	private testScenarioRoute(
+		projectKey: string | undefined,
+		route: string,
+		bundleId: string | undefined,
+	): string {
+		const query = bundleId === undefined ? "" : `?bundleId=${encodeURIComponent(bundleId,)}`;
+		return `/public/api/projects/${this.enc(projectKey,)}/scenarios/${route}${query}`;
 	}
 
 	/** Get project-level tags (tag name → {color?}). */

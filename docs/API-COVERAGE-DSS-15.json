@@ -1856,15 +1856,17 @@
 				"docAnchor": "#scenarios-scenario-get-4",
 				"status": "implemented",
 				"sdk": [
+					"ScenariosResource.getRunForTrigger",
 					"ScenariosResource.runAndWait",
 					"ScenariosResource.runScript"
 				],
 				"cli": [
 					"dss code run",
+					"dss scenario get-run-for-trigger",
 					"dss scenario run",
 					"dss scenario run-and-wait"
 				],
-				"note": "Tracking internals use GET /scenarios/{id}/get-run-for-trigger and GET /scenarios/trigger/{scenarioId}/{triggerId} through a private helper; public entry points are runAndWait/runScript."
+				"note": "`scenario get-run-for-trigger` resolves a trigger run id to its scenario run (PENDING/RUNNING/FINISHED/CANCELLED). Run tracking also reads GET /scenarios/trigger/{scenarioId}/{triggerId} through a private helper to detect a cancelled fire; public entry points are runAndWait/runScript."
 			},
 			{
 				"section": "Scenarios",

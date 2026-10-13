@@ -340,6 +340,16 @@ export function cleanupLedgerEntry(
 				cleanup: { argv: ["streaming-endpoint", "delete", id, ...withProject,], },
 			};
 		}
+		case "messaging-channel.create": {
+			// DSS echoes the id it allocated; an explicit --id is the fallback.
+			const id = stringField(record, ["id",],) ?? flags["id"] as string | undefined;
+			if (!id) return undefined;
+			return {
+				...base,
+				id,
+				cleanup: { argv: ["messaging-channel", "delete", id, "--if-exists",], },
+			};
+		}
 		case "meaning.create": {
 			const id = args[0];
 			return {

@@ -58,3 +58,4 @@ Paths are relative to this skill, not CWD. Do not preload all references.
 | Flow maps and zones | [Flow](references/flow-maps.md) |
 | Recipes, libraries, notebooks, Git, code envs | [Coding](references/coding.md) |
 | Failures, build logs, downloads, SQL, schema changes | [Troubleshooting](references/troubleshooting.md) |
+| Scenario alerts, messaging channels, test reports | [Notifications](references/notifications.md) |

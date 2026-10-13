@@ -482,6 +482,7 @@ const READ_SHAPERS: Record<string, (result: unknown,) => unknown> = {
 	"project.get": shapeProjectGet,
 	"scenario.get-run": shapeScenarioGetRun,
 	"scenario.last-runs": shapeScenarioLastRuns,
+	"scenario.runs-by-date": shapeScenarioLastRuns,
 };
 
 /**

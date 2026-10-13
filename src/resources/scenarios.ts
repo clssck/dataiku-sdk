@@ -15,6 +15,7 @@ import { deepMerge, } from "../utils/deep-merge.js";
 import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
 import { isRecord, } from "../utils/records.js";
 import { BaseResource, requireArrayResponse, requireNonEmpty, } from "./base.js";
+import { type ScenarioListSelector, selectScenarioListIndex, } from "./scenario-authoring.js";
 
 /** DSS keeps triggers and reporters at the top level of the scenario (as dataikuapi does), not under params. */
 export const SCENARIO_CANONICAL_EDITABLE_FIELDS = [
@@ -75,6 +76,54 @@ export interface ScenarioRunDetails {
 	stepRuns?: ScenarioRunStepReport[];
 }
 
+/** One firing of a scenario trigger: what `POST /scenarios/{id}/run` returns (not a scenario run). */
+export interface ScenarioTriggerFire {
+	triggerId: string;
+	triggerRunId: string;
+	cancelled: boolean;
+}
+
+/** A trigger fire resolved against the scenario run it started (if any). */
+export interface ScenarioTriggerRunState extends ScenarioTriggerFire {
+	state: "PENDING" | "RUNNING" | "FINISHED" | "CANCELLED";
+	/** The scenario run id (what get-run and log take), once DSS started the run. */
+	runId?: string;
+	outcome?: string;
+	start?: number;
+}
+
+/** Test-scenario report text (JUnit XML), byte-bounded. */
+export interface ScenarioRunReport {
+	text: string;
+	truncated: boolean;
+	maxBytes: number;
+}
+
+export type ScenarioListKind = "trigger" | "reporter";
+
+/** Where each list lives on the scenario object (top level, as dataikuapi). */
+const SCENARIO_LIST_FIELDS = { trigger: "triggers", reporter: "reporters", } as const;
+
+/** Outcome of adding or removing one trigger/reporter. */
+export interface ScenarioListEdit {
+	kind: ScenarioListKind;
+	/** Position of the added element (as stored) or of the removed one. */
+	index: number;
+	/** The element as DSS stored it (added) or as it was (removed). */
+	item: unknown;
+	/** Elements left in the list. */
+	count: number;
+}
+
+export interface ScenarioRunAsResult {
+	scenarioId: string;
+	/** The explicit run-as login, or null when the scenario runs as its last editor. */
+	runAsUser: string | null;
+	/** Who the scenario actually runs as (dataikuapi `effective_run_as`). */
+	effectiveRunAs?: string;
+	previousRunAsUser?: string;
+}
+
 /** Bounded log retrieval result: text plus whether the byte cap cut it. */
 export interface ScenarioRunLog {
 	text: string;
@@ -87,6 +136,8 @@ interface TrackedRun {
 	runId: string;
 	outcome: string;
 	timedOut: boolean;
+	/** DSS cancelled the trigger fire: no scenario run exists. */
+	cancelled: boolean;
 	pollCount: number;
 }
 
@@ -200,13 +251,65 @@ function triggerRunIdOf(trigger: Record<string, unknown>, scenarioId?: string,):
 	return runId;
 }
 
-function triggerQueryOf(trigger: Record<string, unknown>,): string {
-	const triggerObj = trigger.trigger as Record<string, unknown> | undefined;
-	const triggerId = (triggerObj?.id as string | undefined) ?? "manual";
-	const triggerRunId = triggerRunIdOf(trigger,);
-	return `triggerId=${encodeURIComponent(triggerId,)}&triggerRunId=${
-		encodeURIComponent(triggerRunId,)
-	}`;
+/** Trigger id (`manual` for API runs), trigger run id and cancellation flag of a POST /run response. */
+function triggerFireOf(
+	trigger: Record<string, unknown>,
+	scenarioId?: string,
+): ScenarioTriggerFire {
+	const triggerId = isRecord(trigger.trigger,) && typeof trigger.trigger.id === "string"
+		? trigger.trigger.id
+		: "manual";
+	return {
+		triggerId,
+		triggerRunId: triggerRunIdOf(trigger, scenarioId,),
+		cancelled: trigger.cancelled === true,
+	};
+}
+
+/** The `triggers`/`reporters` array of a scenario object; absent means empty, any other shape is an error. */
+function scenarioListField(scenario: Record<string, unknown>, kind: ScenarioListKind,): unknown[] {
+	const items = scenario[SCENARIO_LIST_FIELDS[kind]];
+	return items === undefined ? [] : requireArrayResponse<unknown>(items, `scenario ${kind}s`,);
+}
+
+/**
+ * DSS stamps `params.lastUpdate` on every temporal trigger each time the scenario
+ * is saved, so echoing the value it last stored can never be read back (the
+ * verification after a trigger edit would report every trigger as unpersisted).
+ * Omitting it lets DSS stamp afresh, as it does for the other saved triggers.
+ */
+function withoutServerStamp(item: unknown,): unknown {
+	if (!isRecord(item,) || !isRecord(item.params,) || !("lastUpdate" in item.params)) return item;
+	const { lastUpdate: _stamp, ...params } = item.params;
+	return { ...item, params, };
+}
+
+/** `YYYY-MM-DD` day of a date or ISO date-time (the day DSS filters runs by); anything else is a usage error. */
+function scenarioDay(value: string, name: string,): string {
+	const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(value,);
+	if (match) {
+		const day = new Date(Date.UTC(Number(match[1],), Number(match[2],) - 1, Number(match[3],),),);
+		if (day.getUTCMonth() === Number(match[2],) - 1 && day.getUTCDate() === Number(match[3],)) {
+			return `${match[1]}-${match[2]}-${match[3]}`;
+		}
+	}
+	throw new ClientValidationError(
+		`${name} must be a YYYY-MM-DD date or ISO date-time, got ${JSON.stringify(value,)}.`,
+		"invalid_flag_value",
+	);
+}
+
+/** Who a scenario really runs as: its `runAsUser`, else the last editor (dataikuapi `effective_run_as`). */
+export function effectiveRunAs(scenario: Record<string, unknown>,): string | undefined {
+	if (typeof scenario.runAsUser === "string") return scenario.runAsUser;
+	for (const tag of [scenario.versionTag, scenario.creationTag,]) {
+		if (
+			isRecord(tag,) && isRecord(tag.lastModifiedBy,) && typeof tag.lastModifiedBy.login === "string"
+		) {
+			return tag.lastModifiedBy.login;
+		}
+	}
+	return undefined;
 }
 
 /** A finite number, or undefined for anything else (absent/malformed JSON fields). */
@@ -583,14 +686,23 @@ export class ScenariosResource extends BaseResource {
 		);
 	}
 
-	/** Trigger a scenario run. */
-	async run(scenarioId: string, projectKey?: string,): Promise<{ runId: string; }> {
+	/**
+	 * Trigger a scenario run. `params` is sent as the POST body (dataikuapi
+	 * `run(params)`) and reaches the run as its trigger parameters. The result
+	 * identifies the TRIGGER fire, not a scenario run: resolve it with
+	 * {@link getRunForTrigger}. `cancelled` is already true when DSS refused the
+	 * fire because the scenario is running.
+	 */
+	async run(
+		scenarioId: string,
+		opts?: { params?: Record<string, unknown>; projectKey?: string; },
+	): Promise<ScenarioTriggerFire> {
 		const scEnc = encodeURIComponent(requireNonEmpty(scenarioId, "scenarioId",),);
 		const result = await this.client.post<Record<string, unknown>>(
-			`/public/api/projects/${this.enc(projectKey,)}/scenarios/${scEnc}/run/`,
-			{},
+			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/run/`,
+			opts?.params ?? {},
 		);
-		return { runId: triggerRunIdOf(result, scenarioId,), };
+		return triggerFireOf(result, scenarioId,);
 	}
 
 	/** Get the light/status view of a scenario. */
@@ -608,19 +720,25 @@ export class ScenariosResource extends BaseResource {
 		data: Record<string, unknown>,
 		projectKey?: string,
 	): Promise<ScenarioUpdateResult> {
-		const scEnc = encodeURIComponent(scenarioId,);
-		const pkEnc = this.enc(projectKey,);
 		const current = await this.client.get<Record<string, unknown>>(
-			`/public/api/projects/${pkEnc}/scenarios/${scEnc}/`,
+			`/public/api/projects/${this.enc(projectKey,)}/scenarios/${encodeURIComponent(scenarioId,)}/`,
 		);
+		return this.applyUpdate(scenarioId, current, data, projectKey,);
+	}
+
+	/** PUT the merge of `data` into an already-read scenario, refetch, and verify it persisted. */
+	private async applyUpdate(
+		scenarioId: string,
+		current: Record<string, unknown>,
+		data: Record<string, unknown>,
+		projectKey: string | undefined,
+	): Promise<ScenarioUpdateResult> {
+		const path = `/public/api/projects/${this.enc(projectKey,)}/scenarios/${
+			encodeURIComponent(scenarioId,)
+		}/`;
 		const preview = scenarioUpdatePreview(current, data,);
-		await this.client.put<Record<string, unknown>>(
-			`/public/api/projects/${pkEnc}/scenarios/${scEnc}/`,
-			preview.next,
-		);
-		const after = await this.client.get<Record<string, unknown>>(
-			`/public/api/projects/${pkEnc}/scenarios/${scEnc}/`,
-		);
+		await this.client.put<Record<string, unknown>>(path, preview.next,);
+		const after = await this.client.get<Record<string, unknown>>(path,);
 		const mismatches = scenarioFieldMismatches(after, preview.next, preview.normalizedData,);
 		if (mismatches.length > 0) {
 			throw scenarioUpdateVerificationError(mismatches, preview.normalization,);
@@ -650,6 +768,7 @@ export class ScenariosResource extends BaseResource {
 	async runAndWait(
 		scenarioId: string,
 		opts?: {
+			params?: Record<string, unknown>;
 			pollIntervalMs?: number;
 			timeoutMs?: number;
 			projectKey?: string;
@@ -664,14 +783,18 @@ export class ScenariosResource extends BaseResource {
 		// POST /run/ returns a TRIGGER run id, which differs from the actual scenario
 		// run id; resolve the real run via get-run-for-trigger so a completed scenario
 		// is not misreported as a timeout (the trigger id never matches lastRun).
-		const trigger = await this.client.post<Record<string, unknown>>(`${base}/run/`, {},);
-		const tracked = await this.trackTriggerRun(scenarioId, base, trigger, {
+		const trigger = await this.client.post<Record<string, unknown>>(
+			`${base}/run/`,
+			opts?.params ?? {},
+		);
+		const fire = triggerFireOf(trigger, scenarioId,);
+		const tracked = await this.trackTriggerRun(scenarioId, opts?.projectKey, trigger, {
 			startedAt,
 			baseIntervalMs,
 			adaptivePolling,
 			timeout,
 		},);
-		const resolvedRunId = tracked.runId || triggerRunIdOf(trigger,);
+		const resolvedRunId = tracked.runId || fire.triggerRunId;
 		const steps = tracked.timedOut || !tracked.runId
 			? undefined
 			: await this.runStepSummaries(base, tracked.runId,);
@@ -682,9 +805,10 @@ export class ScenariosResource extends BaseResource {
 			success: tracked.outcome === "SUCCESS",
 			elapsedMs: Date.now() - startedAt,
 			pollCount: tracked.pollCount,
-			...(triggerRunIdOf(trigger,) !== resolvedRunId
-				? { triggerRunId: triggerRunIdOf(trigger,), }
+			...(fire.triggerRunId !== resolvedRunId || tracked.cancelled
+				? { triggerRunId: fire.triggerRunId, }
 				: {}),
+			...(tracked.cancelled ? { cancelled: true, } : {}),
 			...(tracked.timedOut ? { timedOut: true, } : {}),
 			...(steps ? { steps, } : {}),
 		};
@@ -749,7 +873,7 @@ export class ScenariosResource extends BaseResource {
 			);
 
 			const trigger = await this.client.post<Record<string, unknown>>(`${base}/run/`, {},);
-			const tracked = await this.trackTriggerRun(scenarioId, base, trigger, {
+			const tracked = await this.trackTriggerRun(scenarioId, opts?.projectKey, trigger, {
 				startedAt,
 				baseIntervalMs,
 				adaptivePolling,
@@ -818,11 +942,15 @@ export class ScenariosResource extends BaseResource {
 		);
 	}
 
-	/** Get the raw last-runs list (GET /scenarios/{id}/get-last-runs/?limit=N). */
+	/**
+	 * Get the raw last-runs list (GET /scenarios/{id}/get-last-runs/?limit=N).
+	 * `onlyFinished` drops runs still in progress (DSS `onlyFinishedRuns`).
+	 */
 	async getLastRuns(
 		scenarioId: string,
 		opts?: {
 			limit?: number;
+			onlyFinished?: boolean;
 			projectKey?: string;
 		},
 	): Promise<ScenarioRunSummary[]> {
@@ -830,13 +958,107 @@ export class ScenariosResource extends BaseResource {
 			throw new ClientValidationError(`limit must be a positive integer, got ${opts.limit}.`,);
 		}
 		const scEnc = encodeURIComponent(scenarioId,);
-		const query = opts?.limit !== undefined ? `?limit=${opts.limit}` : "";
+		const query = new URLSearchParams();
+		if (opts?.limit !== undefined) query.set("limit", String(opts.limit,),);
+		if (opts?.onlyFinished === true) query.set("onlyFinishedRuns", "true",);
+		const suffix = query.size > 0 ? `?${query}` : "";
 		const raw = await this.client.get<unknown>(
-			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/get-last-runs/${query}`,
+			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/get-last-runs/${suffix}`,
 		);
 		return requireArrayResponse<unknown>(raw, "scenarios.getLastRuns",).map(
 			scenarioRunSummaryFromRaw,
 		);
+	}
+
+	/**
+	 * Runs that started between two days (GET /scenarios/{id}/get-runs-by-date).
+	 * Dates are `YYYY-MM-DD` or ISO date-times (the time part is dropped, as
+	 * dataikuapi does). DSS treats `to` as exclusive (verified live: `from=to=today`
+	 * is empty and today's runs need `to=tomorrow`), so it defaults to tomorrow
+	 * rather than dataikuapi's today, which would leave today's runs out.
+	 */
+	async getRunsByDate(
+		scenarioId: string,
+		opts: { from: string; to?: string; projectKey?: string; },
+	): Promise<ScenarioRunSummary[]> {
+		const query = new URLSearchParams({
+			fromDate: scenarioDay(opts.from, "from",),
+			toDate: scenarioDay(
+				opts.to ?? new Date(Date.now() + 86_400_000,).toLocaleDateString("en-CA",),
+				"to",
+			),
+		},);
+		const raw = await this.client.get<unknown>(
+			`/public/api/projects/${this.enc(opts.projectKey,)}/scenarios/${
+				encodeURIComponent(requireNonEmpty(scenarioId, "scenarioId",),)
+			}/get-runs-by-date?${query}`,
+		);
+		return requireArrayResponse<unknown>(raw, "scenarios.getRunsByDate",).map(
+			scenarioRunSummaryFromRaw,
+		);
+	}
+
+	/**
+	 * JUnit XML report of a test scenario run (GET /scenarios/{id}/{runId}/scenario-run-report),
+	 * or of one step with `stepId` (…/step-run-report?stepId=). DSS only builds
+	 * reports for scenarios marked as test; the text is byte-bounded like the log.
+	 */
+	async getRunReport(
+		scenarioId: string,
+		runId: string,
+		opts?: { stepId?: string; maxBytes?: number; projectKey?: string; },
+	): Promise<ScenarioRunReport> {
+		if (opts?.stepId !== undefined) requireNonEmpty(opts.stepId, "stepId",);
+		const maxBytes = Math.max(0, Math.floor(opts?.maxBytes ?? DEFAULT_SCENARIO_MAX_LOG_BYTES,),);
+		const runPath = `/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${
+			encodeURIComponent(requireNonEmpty(scenarioId, "scenarioId",),)
+		}/${encodeURIComponent(requireNonEmpty(runId, "runId",),)}`;
+		const { text, truncated, } = await this.client.getTextLimited(
+			opts?.stepId === undefined
+				? `${runPath}/scenario-run-report`
+				: `${runPath}/step-run-report?stepId=${encodeURIComponent(opts.stepId,)}`,
+			maxBytes,
+		);
+		return { text, truncated, maxBytes, };
+	}
+
+	/**
+	 * Resolve a trigger run (what `run` returns) to its scenario run: the scenario
+	 * run id once DSS started one, or `CANCELLED` when DSS cancelled the fire (a
+	 * run already in progress suppresses it) and no run will ever exist.
+	 */
+	async getRunForTrigger(
+		scenarioId: string,
+		triggerRunId: string,
+		opts?: { triggerId?: string; projectKey?: string; },
+	): Promise<ScenarioTriggerRunState> {
+		const pkEnc = this.enc(opts?.projectKey,);
+		const triggerId = requireNonEmpty(opts?.triggerId ?? "manual", "triggerId",);
+		const fire = { triggerId, triggerRunId: requireNonEmpty(triggerRunId, "triggerRunId",), };
+		const run = await this.client.get<Record<string, unknown>>(
+			`/public/api/projects/${pkEnc}/scenarios/${
+				encodeURIComponent(requireNonEmpty(scenarioId, "scenarioId",),)
+			}/get-run-for-trigger?triggerId=${encodeURIComponent(triggerId,)}&triggerRunId=${
+				encodeURIComponent(fire.triggerRunId,)
+			}`,
+		);
+		if (isRecord(run.scenarioRun,)) {
+			const outcome =
+				isRecord(run.scenarioRun.result,) && typeof run.scenarioRun.result.outcome === "string"
+					? run.scenarioRun.result.outcome
+					: undefined;
+			const start = optionalNumber(run.scenarioRun.start,);
+			return {
+				...fire,
+				cancelled: false,
+				state: outcome === undefined ? "RUNNING" : "FINISHED",
+				...(typeof run.scenarioRun.runId === "string" ? { runId: run.scenarioRun.runId, } : {}),
+				...(outcome === undefined ? {} : { outcome, }),
+				...(start === undefined ? {} : { start, }),
+			};
+		}
+		const cancelled = await this.isTriggerFireCancelled(pkEnc, scenarioId, fire,);
+		return { ...fire, cancelled, state: cancelled ? "CANCELLED" : "PENDING", };
 	}
 
 	/** Get the details of a specific run (GET /scenarios/{id}/{runId}). */
@@ -943,16 +1165,131 @@ export class ScenariosResource extends BaseResource {
 		};
 	}
 
+	/** The scenario's triggers or reporters, in DSS order (GET /scenarios/{id}/). */
+	async listItems(
+		kind: ScenarioListKind,
+		scenarioId: string,
+		opts?: { projectKey?: string; },
+	): Promise<unknown[]> {
+		return scenarioListField(await this.getSettings(scenarioId, opts?.projectKey,), kind,);
+	}
+
+	private async getSettings(
+		scenarioId: string,
+		projectKey: string | undefined,
+	): Promise<Record<string, unknown>> {
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/projects/${this.enc(projectKey,)}/scenarios/${
+				encodeURIComponent(requireNonEmpty(scenarioId, "scenarioId",),)
+			}/`,
+		);
+	}
+
 	/**
-	 * Poll get-run-for-trigger until the triggered run reports an outcome or the
-	 * deadline elapses. Shared by runAndWait and runScript: POST /run/ returns a
-	 * TRIGGER run id, which differs from the actual scenario run id, so the real
-	 * run is resolved via get-run-for-trigger (the trigger id never matches
-	 * lastRun and would misreport a completed scenario as a timeout).
+	 * Append a trigger or reporter. `triggers`/`reporters` are arrays, which a merge
+	 * update replaces wholesale, so this reads the current list and writes it back
+	 * with the new element last (then verifies the stored result).
+	 */
+	async addItem(
+		kind: ScenarioListKind,
+		scenarioId: string,
+		item: Record<string, unknown>,
+		opts?: { projectKey?: string; },
+	): Promise<ScenarioListEdit> {
+		const current = await this.getSettings(scenarioId, opts?.projectKey,);
+		const items = scenarioListField(current, kind,);
+		const result = await this.applyUpdate(
+			scenarioId,
+			current,
+			{
+				[SCENARIO_LIST_FIELDS[kind]]: [...items.map(withoutServerStamp,), item,],
+			},
+			opts?.projectKey,
+		);
+		const stored = scenarioListField(result.after, kind,);
+		return { kind, index: items.length, item: stored[items.length], count: stored.length, };
+	}
+
+	/** Remove the trigger or reporter selected by `--index`/`--name`, keeping every other element. */
+	async removeItem(
+		kind: ScenarioListKind,
+		scenarioId: string,
+		selector: ScenarioListSelector,
+		opts?: { projectKey?: string; },
+	): Promise<ScenarioListEdit> {
+		const current = await this.getSettings(scenarioId, opts?.projectKey,);
+		const items = scenarioListField(current, kind,);
+		const index = selectScenarioListIndex(items, selector, kind,);
+		const result = await this.applyUpdate(
+			scenarioId,
+			current,
+			{
+				[SCENARIO_LIST_FIELDS[kind]]: items.flatMap((existing, position,) =>
+					position === index ? [] : [withoutServerStamp(existing,),]
+				),
+			},
+			opts?.projectKey,
+		);
+		return {
+			kind,
+			index,
+			item: items[index],
+			count: scenarioListField(result.after, kind,).length,
+		};
+	}
+
+	/**
+	 * Set (`user`) or clear (`null`) the scenario's `runAsUser` (admin only for a
+	 * non-null value). Clearing deletes the key, which a merge update cannot do.
+	 */
+	async setRunAs(
+		scenarioId: string,
+		user: string | null,
+		opts?: { projectKey?: string; },
+	): Promise<ScenarioRunAsResult> {
+		const path = `/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${
+			encodeURIComponent(requireNonEmpty(scenarioId, "scenarioId",),)
+		}/`;
+		const current = await this.client.get<Record<string, unknown>>(path,);
+		const { runAsUser: previous, ...withoutRunAs } = current;
+		await this.client.put<unknown>(
+			path,
+			user === null ? withoutRunAs : { ...withoutRunAs, runAsUser: user, },
+		);
+		const after = await this.client.get<Record<string, unknown>>(path,);
+		const stored = typeof after.runAsUser === "string" ? after.runAsUser : null;
+		if (stored !== user) {
+			const error = new DataikuError(
+				400,
+				"Scenario Update Verification Failed",
+				`Scenario run-as did not persist after refetch: expected ${
+					user === null ? "no runAsUser" : "the requested user"
+				}.`,
+			);
+			error.details = { mismatches: [{ path: "runAsUser", },], };
+			throw error;
+		}
+		return {
+			scenarioId,
+			runAsUser: stored,
+			effectiveRunAs: effectiveRunAs(after,),
+			...(typeof previous === "string" ? { previousRunAsUser: previous, } : {}),
+		};
+	}
+
+	/**
+	 * Poll get-run-for-trigger until the triggered run reports an outcome, DSS
+	 * cancels the trigger fire, or the deadline elapses. Shared by runAndWait and
+	 * runScript: POST /run/ returns a TRIGGER run id, which differs from the actual
+	 * scenario run id, so the real run is resolved via get-run-for-trigger (the
+	 * trigger id never matches lastRun and would misreport a completed scenario as
+	 * a timeout). While no scenario run exists yet, the trigger fire itself is read:
+	 * DSS cancels a fire when the scenario is already running (or a newer fire
+	 * replaces it), and then no run will ever appear.
 	 */
 	private async trackTriggerRun(
 		scenarioId: string,
-		base: string,
+		projectKey: string | undefined,
 		trigger: Record<string, unknown>,
 		timing: {
 			startedAt: number;
@@ -961,27 +1298,41 @@ export class ScenariosResource extends BaseResource {
 			timeout: number;
 		},
 	): Promise<TrackedRun> {
-		triggerRunIdOf(trigger, scenarioId,);
-		const trigQuery = triggerQueryOf(trigger,);
+		const fire = triggerFireOf(trigger, scenarioId,);
+		if (fire.cancelled) {
+			return { runId: "", outcome: "CANCELLED", timedOut: false, cancelled: true, pollCount: 0, };
+		}
+		const pkEnc = this.enc(projectKey,);
+		const base = `/public/api/projects/${pkEnc}/scenarios/${encodeURIComponent(scenarioId,)}`;
+		const trigQuery = `triggerId=${encodeURIComponent(fire.triggerId,)}&triggerRunId=${
+			encodeURIComponent(fire.triggerRunId,)
+		}`;
+		const remainingMs = () => Math.max(1, timing.timeout - (Date.now() - timing.startedAt),);
 		let runId = "";
 		let pollCount = 0;
 		while (true) {
 			if (Date.now() - timing.startedAt >= timing.timeout) {
-				return { runId, outcome: "TIMEOUT", timedOut: true, pollCount, };
+				return { runId, outcome: "TIMEOUT", timedOut: true, cancelled: false, pollCount, };
 			}
 			pollCount += 1;
-			// Budget the per-poll GET by the remaining wait so a stalling
+			// Budget the per-poll GETs by the remaining wait so a stalling
 			// trigger-status endpoint cannot defeat the overall run deadline.
-			const remainingMs = Math.max(1, timing.timeout - (Date.now() - timing.startedAt),);
 			let run: Record<string, unknown>;
+			let cancelled = false;
 			try {
 				run = await this.client.get<Record<string, unknown>>(
 					`${base}/get-run-for-trigger?${trigQuery}`,
-					{ timeoutMs: remainingMs, },
+					{ timeoutMs: remainingMs(), },
 				);
+				if (!isRecord(run.scenarioRun,)) {
+					cancelled = await this.isTriggerFireCancelled(pkEnc, scenarioId, fire, remainingMs(),);
+				}
 			} catch (error) {
 				if (!isRequestDeadlineError(error, timing.startedAt + timing.timeout,)) throw error;
-				return { runId, outcome: "TIMEOUT", timedOut: true, pollCount, };
+				return { runId, outcome: "TIMEOUT", timedOut: true, cancelled: false, pollCount, };
+			}
+			if (cancelled) {
+				return { runId, outcome: "CANCELLED", timedOut: false, cancelled: true, pollCount, };
 			}
 			const scenarioRun = run.scenarioRun as Record<string, unknown> | undefined;
 			if (scenarioRun) {
@@ -989,7 +1340,7 @@ export class ScenariosResource extends BaseResource {
 				const result = scenarioRun.result as Record<string, unknown> | undefined;
 				const finished = result?.outcome as string | undefined;
 				if (finished) {
-					return { runId, outcome: finished, timedOut: false, pollCount, };
+					return { runId, outcome: finished, timedOut: false, cancelled: false, pollCount, };
 				}
 			}
 			const nextDelayMs = computeNextPollDelayMs({
@@ -998,15 +1349,25 @@ export class ScenariosResource extends BaseResource {
 				adaptiveEnabled: timing.adaptivePolling,
 			},);
 			const { promise, resolve, } = Promise.withResolvers<void>();
-			setTimeout(
-				resolve,
-				Math.min(
-					nextDelayMs,
-					Math.max(1, timing.timeout - (Date.now() - timing.startedAt),),
-				),
-			);
+			setTimeout(resolve, Math.min(nextDelayMs, remainingMs(),),);
 			await promise;
 		}
+	}
+
+	/** Whether DSS cancelled this trigger fire (GET /scenarios/trigger/{id}/{triggerId}?triggerRunId=). */
+	private async isTriggerFireCancelled(
+		pkEnc: string,
+		scenarioId: string,
+		fire: { triggerId: string; triggerRunId: string; },
+		timeoutMs?: number,
+	): Promise<boolean> {
+		const raw = await this.client.get<Record<string, unknown>>(
+			`/public/api/projects/${pkEnc}/scenarios/trigger/${encodeURIComponent(scenarioId,)}/${
+				encodeURIComponent(fire.triggerId,)
+			}?triggerRunId=${encodeURIComponent(fire.triggerRunId,)}`,
+			timeoutMs === undefined ? undefined : { timeoutMs, },
+		);
+		return raw.cancelled === true;
 	}
 
 	/**

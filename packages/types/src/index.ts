@@ -491,6 +491,8 @@ export const ScenarioWaitResultSchema = Type.Object({
 	elapsedMs: Type.Number(),
 	pollCount: Type.Number(),
 	timedOut: Type.Optional(Type.Boolean(),),
+	/** DSS cancelled the trigger fire (the scenario was already running): no scenario run exists. */
+	cancelled: Type.Optional(Type.Boolean(),),
 	triggerRunId: Type.Optional(Type.String(),),
 	steps: Type.Optional(Type.Array(ScenarioStepRunSchema,),),
 },);

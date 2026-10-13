@@ -38,6 +38,7 @@ import type { KnowledgeBanksResource, } from "./resources/knowledge-banks.js";
 import type { LlmsResource, } from "./resources/llms.js";
 import type { MacrosResource, } from "./resources/macros.js";
 import type { MeaningsResource, } from "./resources/meanings.js";
+import type { MessagingChannelsResource, } from "./resources/messaging-channels.js";
 import type { MetricsResource, } from "./resources/metrics.js";
 import type { MlTasksResource, } from "./resources/ml-tasks.js";
 import type { MlflowExtensionResource, } from "./resources/mlflow-extension.js";
@@ -466,6 +467,7 @@ export class DataikuClient {
 	private workspacesResource?: WorkspacesResource;
 	private metricsResource?: MetricsResource;
 	private meaningsResource?: MeaningsResource;
+	private messagingChannelsResource?: MessagingChannelsResource;
 	private analysesResource?: AnalysesResource;
 	private mlTasksResource?: MlTasksResource;
 	private savedModelsResource?: SavedModelsResource;
@@ -786,6 +788,15 @@ export class DataikuClient {
 			this.meaningsResource = new Resource(this,);
 		}
 		return this.meaningsResource;
+	}
+	get messagingChannels(): MessagingChannelsResource {
+		if (!this.messagingChannelsResource) {
+			const { MessagingChannelsResource: Resource, } = require(
+				"./resources/messaging-channels.js",
+			) as typeof import("./resources/messaging-channels.js");
+			this.messagingChannelsResource = new Resource(this,);
+		}
+		return this.messagingChannelsResource;
 	}
 	get analyses(): AnalysesResource {
 		if (!this.analysesResource) {
@@ -1188,6 +1199,28 @@ export class DataikuClient {
 		parts: UploadFormPart[],
 		query?: URLSearchParams,
 	): Promise<T> {
+		return this.parseJsonResponse<T>(await this.postFormData(path, parts, query,),);
+	}
+
+	/**
+	 * POST a multipart/form-data body like {@link uploadForm} for endpoints whose
+	 * success carries no JSON the caller needs (e.g. mail sends): the response
+	 * body is not parsed, so a non-JSON acknowledgement cannot turn an already
+	 * applied write into a client error.
+	 */
+	async uploadFormVoid(
+		path: string,
+		parts: UploadFormPart[],
+		query?: URLSearchParams,
+	): Promise<void> {
+		await this.postFormData(path, parts, query,);
+	}
+
+	private async postFormData(
+		path: string,
+		parts: UploadFormPart[],
+		query?: URLSearchParams,
+	): Promise<Response> {
 		const formData = new FormData();
 		for (const part of parts) {
 			if (part.value !== undefined) {
@@ -1206,12 +1239,11 @@ export class DataikuClient {
 			formData.append(part.name, blob, part.fileName,);
 		}
 		const suffix = query && [...query.keys(),].length > 0 ? `?${query.toString()}` : "";
-		const res = await this.fetchWithRetry(`${this.baseUrl}${path}${suffix}`, {
+		return this.fetchWithRetry(`${this.baseUrl}${path}${suffix}`, {
 			method: "POST",
 			headers: { Authorization: `Bearer ${this.apiKey}`, },
 			body: formData,
 		},);
-		return this.parseJsonResponse<T>(res,);
 	}
 
 	private async uploadResponse(

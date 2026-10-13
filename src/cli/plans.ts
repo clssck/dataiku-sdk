@@ -23,6 +23,7 @@ import {
 import { buildRecipeCreateRequest, } from "../resources/recipe-create.js";
 import { modelDiagnosticsBody, } from "../resources/trained-model.js";
 import { encodeGitReferencePath, validateGitReferencePath, } from "../utils/git-reference.js";
+import { sanitizeMessagingChannelSecrets, } from "../utils/messaging-channel-secrets.js";
 import {
 	jobBuildTargetTypeFromFlags,
 	json,
@@ -41,6 +42,7 @@ import {
 } from "./coerce.js";
 import { parseCodeRunIntegerFlag, resolveCodeInputWithSource, } from "./commands/code.js";
 import { schemaPropagationOptionsFromFlags, } from "./commands/flow.js";
+import { messagingChannelPlanShape, } from "./commands/messaging-channel.js";
 import { mlTaskFieldsFromFlags, mlTaskReguessOptionsFromFlags, } from "./commands/ml-task.js";
 import {
 	deployRunOptionsFromFlags,
@@ -49,6 +51,11 @@ import {
 } from "./commands/mlflow.js";
 import { projectLibraryPutPayload, } from "./commands/project-library.js";
 import { enqueueRecipeCreateWarnings, recipeCreateOptionsFromFlags, } from "./commands/recipe.js";
+import {
+	scenarioReporterFromFlags,
+	scenarioRunParams,
+	scenarioTriggerFromFlags,
+} from "./commands/scenario.js";
 import { resolveSqlQueryInvocation, } from "./commands/sql.js";
 import { buildRegistryEntry, type CommandRegistryEntry, splitPackageSpec, } from "./contract.js";
 import { ambientProjectKey, } from "./env.js";
@@ -1408,7 +1415,7 @@ export function commandPlanShape(
 				method: "POST",
 				endpoint: projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/run/`,),
 				identifiers: { id, },
-				payload: {},
+				payload: scenarioRunParams(flags,) ?? {},
 				wait: action === "run-and-wait" || flags["wait"] === true,
 			};
 		case "scenario.delete":
@@ -1432,7 +1439,82 @@ export function commandPlanShape(
 					...(type === "step_based"
 						? { params: { steps: [], }, triggers: [], reporters: [], }
 						: { params: {}, }),
+					...jsonInput(flags,),
 				},
+			};
+		}
+		case "scenario.trigger-add":
+		case "scenario.reporter-add": {
+			const isTrigger = action === "trigger-add";
+			const field = isTrigger ? "triggers" : "reporters";
+			const item = isTrigger
+				? scenarioTriggerFromFlags(flags,)
+				: sanitizeMessagingChannelSecrets(scenarioReporterFromFlags(flags,),);
+			const endpoint = projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/`,);
+			return {
+				exact: false,
+				reason:
+					`Apply GETs the scenario, appends this element to ${field} (the others are kept), PUTs the full scenario, then GETs it back to verify; the stored element gains DSS-assigned ids.`,
+				method: "PUT",
+				endpoint,
+				identifiers: { id, },
+				payload: item,
+				requests: [
+					{ sequence: 1, method: "GET", endpoint, },
+					{ sequence: 2, method: "PUT", endpoint, payloadEdits: { [field]: { append: item, }, }, },
+					{ sequence: 3, method: "GET", endpoint, },
+				],
+			};
+		}
+		case "scenario.trigger-remove":
+		case "scenario.reporter-remove": {
+			const field = action === "trigger-remove" ? "triggers" : "reporters";
+			const selector = flags["index"] !== undefined
+				? { index: num(flags["index"], "--index",), }
+				: { name: flags["name"], };
+			if ((flags["index"] === undefined) === (flags["name"] === undefined)) {
+				throw new UsageError(`Pass exactly one of --index or --name. Usage: ${entry.usage}`,);
+			}
+			const endpoint = projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/`,);
+			return {
+				exact: false,
+				reason:
+					`Apply GETs the scenario, drops the selected element from ${field} (the others are kept), PUTs the full scenario, then GETs it back to verify.`,
+				method: "PUT",
+				endpoint,
+				identifiers: { id, },
+				payload: selector,
+				requests: [
+					{ sequence: 1, method: "GET", endpoint, },
+					{ sequence: 2, method: "PUT", endpoint, payloadEdits: { [field]: { remove: selector, }, }, },
+					{ sequence: 3, method: "GET", endpoint, },
+				],
+			};
+		}
+		case "scenario.run-as-set": {
+			const user = flags["user"];
+			if ((typeof user === "string") === (flags["clear"] === true)) {
+				throw new UsageError(`Pass exactly one of --user LOGIN or --clear. Usage: ${entry.usage}`,);
+			}
+			const endpoint = projectEndpoint(`/scenarios/${encodeURIComponent(id,)}/`,);
+			return {
+				exact: false,
+				reason:
+					"Apply GETs the scenario, sets (or, with --clear, removes) runAsUser, PUTs the full scenario, then GETs it back to verify.",
+				method: "PUT",
+				endpoint,
+				identifiers: { id, },
+				payload: { runAsUser: typeof user === "string" ? user : null, },
+				requests: [
+					{ sequence: 1, method: "GET", endpoint, },
+					{
+						sequence: 2,
+						method: "PUT",
+						endpoint,
+						payloadEdits: { runAsUser: typeof user === "string" ? user : "<removed>", },
+					},
+					{ sequence: 3, method: "GET", endpoint, },
+				],
 			};
 		}
 		case "scenario.update":
@@ -1551,6 +1633,23 @@ export function commandPlanShape(
 				endpoint: `/public/api/project-deployer/infras/${encodeURIComponent(id,)}`,
 				identifiers: { infraId: id, },
 			};
+		case "project-deployer.run-test-scenarios": {
+			const nodeFlag = flags["automation-node-id"];
+			const automationNodeId = typeof nodeFlag === "string" && nodeFlag !== "" ? nodeFlag : undefined;
+			return {
+				method: "POST",
+				endpoint: `/public/api/project-deployer/deployments/${
+					encodeURIComponent(id,)
+				}/run-test-scenarios${querySuffix({ automationNodeId, },)}`,
+				identifiers: { deploymentId: id, },
+			};
+		}
+		case "messaging-channel.create":
+		case "messaging-channel.settings-set":
+		case "messaging-channel.permissions-set":
+		case "messaging-channel.delete":
+		case "messaging-channel.send":
+			return messagingChannelPlanShape(action, args, flags, projectKey,);
 		case "project-deployer.delete-project":
 			return {
 				method: "DELETE",

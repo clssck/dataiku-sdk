@@ -1300,6 +1300,33 @@
 				}
 			}
 		},
+		"messaging-channel.list": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"properties": {
+					"id": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"type": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"family": {
+						"type": [
+							"string",
+							"null"
+						]
+					}
+				}
+			}
+		},
 		"notebook.get-jupyter": {
 			"additionalProperties": true,
 			"type": "object",
@@ -2225,6 +2252,61 @@
 							"boolean",
 							"null"
 						]
+					}
+				}
+			}
+		},
+		"scenario.runs-by-date": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"runId"
+				],
+				"properties": {
+					"runId": {
+						"type": "string"
+					},
+					"outcome": {
+						"type": "string"
+					},
+					"start": {
+						"type": "number"
+					},
+					"end": {
+						"type": "number"
+					},
+					"trigger": {
+						"type": "object",
+						"additionalProperties": false,
+						"properties": {
+							"type": {
+								"type": "string"
+							},
+							"name": {
+								"type": "string"
+							}
+						}
+					},
+					"failure": {
+						"type": "object",
+						"additionalProperties": false,
+						"properties": {
+							"message": {
+								"type": "string"
+							}
+						}
+					},
+					"next": {
+						"type": "array",
+						"description": "Next commands to run, each as an argv array.",
+						"items": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					}
 				}
 			}

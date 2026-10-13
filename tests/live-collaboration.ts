@@ -524,8 +524,8 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 			"--data",
 			JSON.stringify({ name: SCENARIO_BASELINE_NAME, },),
 		],);
-		const run = await ctx.run<{ runId: string; }>(["scenario", "run", scenarioId,],);
-		expect(run.runId.length,).toBeGreaterThan(0,);
+		const run = await ctx.run<{ triggerRunId: string; }>(["scenario", "run", scenarioId,],);
+		expect(run.triggerRunId.length,).toBeGreaterThan(0,);
 		const wait = await ctx.run<
 			{ scenarioId: string; outcome: string; success: boolean; steps?: unknown[]; }
 		>([

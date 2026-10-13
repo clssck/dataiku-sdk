@@ -58,7 +58,7 @@ export function compactReadOutputSchemas(): Record<string, Record<string, unknow
 		description: "Next commands to run, each as an argv array.",
 		items: { type: "array", items: STRING, },
 	};
-	return {
+	const schemas = {
 		"job.get": {
 			type: "object",
 			additionalProperties: false,
@@ -205,4 +205,5 @@ export function compactReadOutputSchemas(): Record<string, Record<string, unknow
 			},
 		},
 	};
+	return { ...schemas, "scenario.runs-by-date": schemas["scenario.last-runs"], };
 }

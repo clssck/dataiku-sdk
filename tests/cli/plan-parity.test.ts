@@ -10,6 +10,8 @@ import { cliEnv, dss, dssFailure, readBody, sendJson, withCliServer, } from "./_
  */
 const CASES: string[][] = [
 	["scenario", "create", "my_scenario", "My Scenario",],
+	["scenario", "create", "my_scenario", "My Scenario", "--data", '{"markedAsTest":true}',],
+	["scenario", "run", "my_scenario", "--params", '{"region":"EU"}',],
 	["flow-zone", "create", "--name", "Exports",],
 	[
 		"saved-model",
@@ -68,6 +70,19 @@ const CASES: string[][] = [
 	["dataset", "create", "--name", "uploads", "--type", "UploadedFiles",],
 	["folder", "create", "--name", "exports", "--type", "S3", "--connection", "s3",],
 	["scenario", "active-set", "my_scenario", "false",],
+	[
+		"messaging-channel",
+		"create",
+		"--type",
+		"shell",
+		"--id",
+		"ops",
+		"--data",
+		'{"type":"COMMAND","command":"echo"}',
+	],
+	["messaging-channel", "permissions-set", "ops", "--data", '[{"group":"g","canUse":true}]',],
+	["messaging-channel", "delete", "ops",],
+	["project-deployer", "run-test-scenarios", "dep1", "--automation-node-id", "n1",],
 ];
 
 describe("--plan matches the request the command sends", () => {

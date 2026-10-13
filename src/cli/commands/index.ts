@@ -69,6 +69,10 @@ export const commands: Record<string, Record<string, CommandMeta>> = {
 	get "meaning"() {
 		return (require("./meaning.js",) as typeof import("./meaning.js")).meaningCommands;
 	},
+	get "messaging-channel"() {
+		return (require("./messaging-channel.js",) as typeof import("./messaging-channel.js"))
+			.messagingChannelCommands;
+	},
 	get "workspace"() {
 		return (require("./workspace.js",) as typeof import("./workspace.js")).workspaceCommands;
 	},

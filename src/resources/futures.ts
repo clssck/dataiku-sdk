@@ -61,12 +61,17 @@ export class FuturesResource extends BaseResource {
 	/**
 	 * Long tasks in progress (GET /futures/): the caller's own by default,
 	 * every user's with `allUsers`, running scenarios too with `withScenarios`.
+	 * `scenariosOnly` lists running scenarios and nothing else, like dataikuapi's
+	 * `list_running_scenarios` (`withScenarios=true&withNotScenarios=false`).
 	 */
-	async list(opts: { allUsers?: boolean; withScenarios?: boolean; } = {},): Promise<FutureState[]> {
+	async list(
+		opts: { allUsers?: boolean; withScenarios?: boolean; scenariosOnly?: boolean; } = {},
+	): Promise<FutureState[]> {
 		const query = new URLSearchParams({
 			allUsers: String(opts.allUsers === true,),
-			withScenarios: String(opts.withScenarios === true,),
+			withScenarios: String(opts.withScenarios === true || opts.scenariosOnly === true,),
 		},);
+		if (opts.scenariosOnly === true) query.set("withNotScenarios", "false",);
 		return this.client.get<FutureState[]>(`/public/api/futures/?${query}`,);
 	}
 

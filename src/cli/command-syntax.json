@@ -6352,6 +6352,15 @@
 				"optional": [
 					[
 						{
+							"flag": "scenarios-only"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "contains",
 							"value": "TEXT"
 						}
@@ -8377,6 +8386,369 @@
 					[
 						{
 							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"messaging-channel.create": [
+			"dss",
+			"messaging-channel",
+			"create",
+			{
+				"flag": "type",
+				"value": "TYPE"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "permissions",
+							"value": "JSON"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"messaging-channel.delete": [
+			"dss",
+			"messaging-channel",
+			"delete",
+			{
+				"arg": "channelId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "if-exists"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"messaging-channel.get": [
+			"dss",
+			"messaging-channel",
+			"get",
+			{
+				"arg": "channelId"
+			}
+		],
+		"messaging-channel.list": [
+			"dss",
+			"messaging-channel",
+			"list",
+			{
+				"optional": [
+					[
+						{
+							"flag": "type",
+							"value": "TYPE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "family",
+							"value": "FAMILY"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "contains",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "limit",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			}
+		],
+		"messaging-channel.permissions-get": [
+			"dss",
+			"messaging-channel",
+			"permissions-get",
+			{
+				"arg": "channelId"
+			}
+		],
+		"messaging-channel.permissions-set": [
+			"dss",
+			"messaging-channel",
+			"permissions-set",
+			{
+				"arg": "channelId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
+		"messaging-channel.send": [
+			"dss",
+			"messaging-channel",
+			"send",
+			{
+				"arg": "channelId"
+			},
+			{
+				"flag": "to",
+				"value": "ADDR[,ADDR]"
+			},
+			{
+				"flag": "subject",
+				"value": "TEXT"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "body",
+							"value": "TEXT"
+						}
+					],
+					[
+						{
+							"flag": "body-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "cc",
+							"value": "ADDR[,ADDR]"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "bcc",
+							"value": "ADDR[,ADDR]"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "from",
+							"value": "ADDR"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "plain-text"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "attachment",
+							"value": "PATH[,PATH]"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "single-message"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"messaging-channel.settings-get": [
+			"dss",
+			"messaging-channel",
+			"settings-get",
+			{
+				"arg": "channelId"
+			}
+		],
+		"messaging-channel.settings-set": [
+			"dss",
+			"messaging-channel",
+			"settings-set",
+			{
+				"arg": "channelId"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "data",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "expect-hash",
+							"value": "SHA256"
 						}
 					]
 				]
@@ -11596,6 +11968,33 @@
 				"arg": "publishedProjectKey"
 			}
 		],
+		"project-deployer.run-test-scenarios": [
+			"dss",
+			"project-deployer",
+			"run-test-scenarios",
+			{
+				"arg": "deploymentId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "automation-node-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			}
+		],
 		"project-deployer.save-deployment-settings": [
 			"dss",
 			"project-deployer",
@@ -11678,6 +12077,34 @@
 					[
 						{
 							"flag": "stdin"
+						}
+					]
+				]
+			}
+		],
+		"project-deployer.testing-status": [
+			"dss",
+			"project-deployer",
+			"testing-status",
+			{
+				"arg": "deploymentId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "bundle-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "automation-node-id",
+							"value": "ID"
 						}
 					]
 				]
@@ -13426,6 +13853,79 @@
 					[
 						{
 							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.test-report": [
+			"dss",
+			"project",
+			"test-report",
+			{
+				"optional": [
+					[
+						{
+							"flag": "format",
+							"values": [
+								"junit",
+								"html"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "bundle-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"project.testing-status": [
+			"dss",
+			"project",
+			"testing-status",
+			{
+				"optional": [
+					[
+						{
+							"flag": "bundle-id",
+							"value": "ID"
 						}
 					]
 				]
@@ -15697,6 +16197,27 @@
 				"optional": [
 					[
 						{
+							"flag": "data",
+							"value": "'{...}'"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "dry-run"
 						}
 					]
@@ -15806,6 +16327,37 @@
 				]
 			}
 		],
+		"scenario.get-run-for-trigger": [
+			"dss",
+			"scenario",
+			"get-run-for-trigger",
+			{
+				"arg": "id"
+			},
+			{
+				"arg": "triggerRunId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "trigger-id",
+							"value": "ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"scenario.last-runs": [
 			"dss",
 			"scenario",
@@ -15819,6 +16371,15 @@
 						{
 							"flag": "limit",
 							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "only-finished"
 						}
 					]
 				]
@@ -16005,6 +16566,208 @@
 				]
 			}
 		],
+		"scenario.reporter-add": [
+			"dss",
+			"scenario",
+			"reporter-add",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "channel",
+							"value": "CHANNEL_ID"
+						}
+					],
+					[
+						{
+							"flag": "data",
+							"value": "'{...}'"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "recipient",
+							"value": "ADDRESSES"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "subject",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "message",
+							"value": "TEXT"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "condition",
+							"value": "EXPR"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "phase",
+							"values": [
+								"START",
+								"END"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "active",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.reporter-list": [
+			"dss",
+			"scenario",
+			"reporter-list",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.reporter-remove": [
+			"dss",
+			"scenario",
+			"reporter-remove",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "index",
+							"value": "N"
+						}
+					],
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
 		"scenario.run": [
 			"dss",
 			"scenario",
@@ -16037,6 +16800,22 @@
 						{
 							"flag": "poll-interval",
 							"value": "MS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "params",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "params-file",
+							"value": "PATH"
 						}
 					]
 				]
@@ -16092,7 +16871,158 @@
 				"optional": [
 					[
 						{
+							"flag": "params",
+							"value": "JSON"
+						}
+					],
+					[
+						{
+							"flag": "params-file",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.run-as-set": [
+			"dss",
+			"scenario",
+			"run-as-set",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "user",
+							"value": "LOGIN"
+						}
+					],
+					[
+						{
+							"flag": "clear"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.run-report": [
+			"dss",
+			"scenario",
+			"run-report",
+			{
+				"arg": "id"
+			},
+			{
+				"arg": "runId"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "step-id",
+							"value": "STEP_ID"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "max-bytes",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "output",
+							"value": "PATH"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.runs-by-date": [
+			"dss",
+			"scenario",
+			"runs-by-date",
+			{
+				"arg": "id"
+			},
+			{
+				"flag": "from",
+				"value": "DATE"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "to",
+							"value": "DATE"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "full"
 						}
 					]
 				]
@@ -16114,6 +17044,240 @@
 			"status",
 			{
 				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.trigger-add": [
+			"dss",
+			"scenario",
+			"trigger-add",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "frequency",
+							"values": [
+								"minutely",
+								"hourly",
+								"daily",
+								"weekly",
+								"monthly"
+							]
+						}
+					],
+					[
+						{
+							"flag": "data",
+							"value": "'{...}'"
+						}
+					],
+					[
+						{
+							"flag": "data-file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "stdin"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "every",
+							"value": "N"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "hour",
+							"value": "H"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "minute",
+							"value": "M"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "days",
+							"value": "DAYS"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "day-of-month",
+							"value": "D"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "run-on",
+							"values": [
+								"ON_THE_DAY",
+								"LAST_DAY_OF_THE_MONTH",
+								"FIRST_WEEK",
+								"SECOND_WEEK",
+								"THIRD_WEEK",
+								"FOURTH_WEEK",
+								"LAST_WEEK"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "start-date",
+							"value": "YYYY-MM-DD"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "timezone",
+							"value": "TZ"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "active",
+							"values": [
+								"true",
+								"false"
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.trigger-list": [
+			"dss",
+			"scenario",
+			"trigger-list",
+			{
+				"arg": "id"
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "project-key",
+							"value": "KEY"
+						}
+					]
+				]
+			}
+		],
+		"scenario.trigger-remove": [
+			"dss",
+			"scenario",
+			"trigger-remove",
+			{
+				"arg": "id"
+			},
+			{
+				"oneOf": [
+					[
+						{
+							"flag": "index",
+							"value": "N"
+						}
+					],
+					[
+						{
+							"flag": "name",
+							"value": "NAME"
+						}
+					]
+				],
+				"sep": " | "
+			},
+			{
+				"optional": [
+					[
+						{
+							"flag": "dry-run"
+						}
+					]
+				]
 			},
 			{
 				"optional": [

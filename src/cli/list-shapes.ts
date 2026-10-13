@@ -114,6 +114,11 @@ export const COMPACT_LIST_FIELDS: Record<string, Record<string, CompactListField
 		label: field("label", STRING,),
 		type: field("type", STRING,),
 	},
+	"messaging-channel": {
+		id: field("id", STRING,),
+		type: field("type", STRING,),
+		family: field("family", STRING,),
+	},
 };
 
 /** Discovery output schemas of the compact `RESOURCE.list` defaults. */

@@ -350,6 +350,7 @@ describe("CLI registry required-input usage accuracy", () => {
 			"streaming-endpoint create",
 			"continuous-activity start",
 			"meaning create",
+			"messaging-channel create",
 			"wiki create",
 			"dashboard create",
 			"insight create",
@@ -357,6 +358,10 @@ describe("CLI registry required-input usage accuracy", () => {
 			"saved-model create-external",
 			"macro run",
 			"macro run-and-wait",
+			// Run parameters and the extra create fields are optional.
+			"scenario run",
+			"scenario run-and-wait",
+			"scenario create",
 			// Without --data DSS runs every check configured on the dataset.
 			"metrics dataset-run-checks",
 		],);

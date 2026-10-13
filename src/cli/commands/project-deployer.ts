@@ -1,4 +1,6 @@
 import { requiredJsonInput, } from "../coerce.js";
+import { executionMode, } from "../flags.js";
+import { planResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, } from "../usage.js";
@@ -68,6 +70,43 @@ export const projectDeployerCommands: Record<string, CommandMeta> = withUsage("p
 		},
 		description: "Get a Project Deployer deployment's full health/status.",
 		examples: ["dss project-deployer deployment-status my-deployment",],
+	},
+	"testing-status": {
+		handler: (c, a, f,) => {
+			requireArgs(a, 1, commandUsage("project-deployer", "testing-status",),);
+			return c.projectDeployer.getTestingStatus(a[0], {
+				bundleId: f["bundle-id"] as string | undefined,
+				automationNodeId: f["automation-node-id"] as string | undefined,
+			},);
+		},
+		description:
+			"Get a deployment's testing status: the combined last-run outcome of its test scenarios (worst outcome wins). --bundle-id filters the runs to one bundle; --automation-node-id is needed for multi-node deployments only.",
+		examples: ["dss project-deployer testing-status my-deployment",],
+	},
+	"run-test-scenarios": {
+		handler: async (c, a, f,) => {
+			requireArgs(a, 1, commandUsage("project-deployer", "run-test-scenarios",),);
+			const automationNodeId = f["automation-node-id"] as string | undefined;
+			if (executionMode(f,).dryRun) {
+				return planResult("project-deployer", "run-test-scenarios", {
+					asyncKind: "none",
+					method: "POST",
+					endpoint: `/public/api/project-deployer/deployments/${
+						encodeURIComponent(a[0],)
+					}/run-test-scenarios${
+						automationNodeId ? `?automationNodeId=${encodeURIComponent(automationNodeId,)}` : ""
+					}`,
+					identifiers: { deploymentId: a[0], },
+					idempotency: "none",
+					exitCodesOnFailure: { usage: 1, error: 2, transient: 3, },
+					plannedAndDryRun: true,
+				},);
+			}
+			return c.projectDeployer.runTestScenarios(a[0], { automationNodeId, },);
+		},
+		description:
+			"Run every test scenario of a deployment on its Automation node and return the resulting testing status. The request stays open until the scenarios finish, so raise --request-timeout for long suites. --automation-node-id is needed for multi-node deployments only; --dry-run previews the request.",
+		examples: ["dss project-deployer run-test-scenarios my-deployment --dry-run",],
 	},
 	"save-deployment-settings": {
 		handler: async (c, a, f,) => {

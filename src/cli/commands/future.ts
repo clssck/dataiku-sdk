@@ -11,10 +11,15 @@ export const futureCommands: Record<string, CommandMeta> = withUsage("future", {
 			c.futures.list({
 				allUsers: f["all-users"] === true,
 				withScenarios: f["with-scenarios"] === true,
+				scenariosOnly: f["scenarios-only"] === true,
 			},),
 		description:
-			"List long tasks in progress on the instance (DSS futures): your own, or every user's with --all-users; --with-scenarios adds running scenarios.",
-		examples: ["dss future list", "dss future list --all-users --with-scenarios",],
+			"List long tasks in progress on the instance (DSS futures): your own, or every user's with --all-users; --with-scenarios adds running scenarios, --scenarios-only lists only running scenarios.",
+		examples: [
+			"dss future list",
+			"dss future list --all-users --with-scenarios",
+			"dss future list --scenarios-only",
+		],
 	},
 	get: {
 		handler: (c, a,) => {

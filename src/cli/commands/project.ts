@@ -217,6 +217,45 @@ export const projectCommands: Record<string, CommandMeta> = withUsage("project",
 			"Export a project to a local archive (.zip). The written archive is inspected locally; credential-bearing structures (apikeys.json, secret-named variables, apiKey/token/password fields) raise an export_contains_credentials warning listing member paths and key names only, and the result reports credentialFindings. The archive is not redacted.",
 		examples: ["dss project export MY_PROJ --output ./my_proj.zip",],
 	},
+	"test-report": {
+		handler: async (c, _a, f,) => {
+			const requested = f["format"] ?? "junit";
+			const format = (["junit", "html",] as const).find((name,) => name === requested);
+			if (format === undefined) {
+				throw new UsageError("--format must be junit or html.", "invalid_enum",);
+			}
+			const options = { bundleId: f["bundle-id"] as string | undefined, format, };
+			const projectKey = f["project-key"] as string | undefined;
+			const out = f["output"] as string | undefined;
+			if (out) {
+				const bytes = await c.projects.downloadTestScenarioRunsReport(out, projectKey, options,);
+				return { path: out, bytes, format, };
+			}
+			if (format === "html") {
+				throw new UsageError(
+					"--output PATH is required for --format html (the page is not printed to stdout).",
+					"missing_required_flag",
+				);
+			}
+			return { format, report: await c.projects.getTestScenarioRunsReport(projectKey, options,), };
+		},
+		description:
+			"Download the report of the latest test-scenario runs (scenarios marked as test): JUnit XML by default, an HTML page with --format html. Without --output the JUnit XML is returned in the `report` field; --output PATH writes the file instead (required for html). On an Automation node --bundle-id selects the bundle, otherwise the active bundle is reported.",
+		examples: [
+			"dss project test-report --project-key MYPROJ",
+			"dss project test-report --format html --output ./test-report.html --project-key MYPROJ",
+		],
+	},
+	"testing-status": {
+		handler: (c, _a, f,) =>
+			c.projects.getTestingStatus(
+				f["project-key"] as string | undefined,
+				f["bundle-id"] as string | undefined,
+			),
+		description:
+			"Get the testing status of a project: the worst outcome across the last runs of its test scenarios. On an Automation node --bundle-id restricts it to runs made while that bundle was active.",
+		examples: ["dss project testing-status --project-key MYPROJ",],
+	},
 	import: {
 		handler: async (c, a, f,) => {
 			const usage = commandUsage("project", "import",);

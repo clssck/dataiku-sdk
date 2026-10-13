@@ -362,6 +362,46 @@ export class ProjectDeployerResource extends BaseResource {
 		);
 	}
 
+	/**
+	 * Combined last-run outcome of the deployment's test scenarios, worst
+	 * outcome wins. `bundleId` filters the runs to one bundle;
+	 * `automationNodeId` is required for multi-node deployments only.
+	 */
+	async getTestingStatus(
+		deploymentId: string,
+		options: { bundleId?: string; automationNodeId?: string; } = {},
+	): Promise<Record<string, unknown>> {
+		const query = new URLSearchParams();
+		if (options.bundleId) query.set("bundleId", options.bundleId,);
+		if (options.automationNodeId) query.set("automationNodeId", options.automationNodeId,);
+		const suffix = query.size > 0 ? `?${query.toString()}` : "";
+		return this.client.get<Record<string, unknown>>(
+			`/public/api/project-deployer/deployments/${
+				encodeURIComponent(deploymentId,)
+			}/testing-status${suffix}`,
+		);
+	}
+
+	/**
+	 * Run every test scenario of the deployment on its Automation node and
+	 * return the resulting testing status. The request stays open until the
+	 * scenarios finish. `automationNodeId` is required for multi-node
+	 * deployments only.
+	 */
+	async runTestScenarios(
+		deploymentId: string,
+		options: { automationNodeId?: string; } = {},
+	): Promise<Record<string, unknown>> {
+		const suffix = options.automationNodeId
+			? `?automationNodeId=${encodeURIComponent(options.automationNodeId,)}`
+			: "";
+		return this.client.post<Record<string, unknown>>(
+			`/public/api/project-deployer/deployments/${
+				encodeURIComponent(deploymentId,)
+			}/run-test-scenarios${suffix}`,
+		);
+	}
+
 	/** Delete a published project no deployment uses. */
 	async deleteProject(publishedProjectKey: string,): Promise<void> {
 		await this.client.del(

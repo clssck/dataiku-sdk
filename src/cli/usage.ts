@@ -58,6 +58,7 @@ export const RESOURCE_NAMES = [
 	"statistics",
 	"discussion",
 	"meaning",
+	"messaging-channel",
 	"workspace",
 	"metrics",
 	"doctor",

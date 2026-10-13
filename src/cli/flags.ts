@@ -80,6 +80,9 @@ export const BOOLEAN_FLAGS = new Set([
 	"no-auto-rebuild",
 	"all-users",
 	"with-scenarios",
+	"scenarios-only",
+	"only-finished",
+	"clear",
 	"for-everybody",
 	"payload-only",
 	"allow-same-path",
@@ -106,6 +109,8 @@ export const BOOLEAN_FLAGS = new Set([
 	"conda",
 	"force",
 	"partitioning-folder",
+	"plain-text",
+	"single-message",
 ],);
 
 export const SHORT_FLAGS: Record<string, string> = {
@@ -238,6 +243,24 @@ export const VALUE_FLAGS = new Set([
 	"repository",
 	"request-timeout",
 	"params",
+	"params-file",
+	"frequency",
+	"every",
+	"hour",
+	"minute",
+	"days",
+	"day-of-month",
+	"run-on",
+	"start-date",
+	"timezone",
+	"index",
+	"channel",
+	"recipient",
+	"subject",
+	"condition",
+	"phase",
+	"user",
+	"trigger-id",
 	"password-env",
 	"results-per-page",
 	"record-cleanup",
@@ -331,6 +354,16 @@ export const VALUE_FLAGS = new Set([
 	"time-variable",
 	"timeseries-ids",
 	"full-reguess",
+	"cc",
+	"bcc",
+	"subject",
+	"body",
+	"body-file",
+	"attachment",
+	"family",
+	"permissions",
+	"automation-node-id",
+	"id",
 ],);
 
 export const REPEATABLE_VALUE_FLAGS = new Set([
@@ -345,6 +378,7 @@ export const REPEATABLE_VALUE_FLAGS = new Set([
 	"replace-input",
 	"replace-output",
 	"replace-payload-text",
+	"attachment",
 ],);
 
 export const KNOWN_LONG_FLAGS = new Set([

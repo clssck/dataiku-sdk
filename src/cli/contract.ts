@@ -396,6 +396,7 @@ const ALLOWED_CLEANUP_ACTIONS: ReadonlySet<string> = new Set([
 	"data-collection delete",
 	"plugin delete",
 	"connection delete",
+	"messaging-channel delete",
 	"user delete",
 	"group delete",
 ],);
@@ -862,6 +863,8 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 		return "read";
 	}
 	if (resource === "install-skill") return "write";
+	// `send` matches no mutating verb, yet delivers real mail through the channel.
+	if (resource === "messaging-channel" && action === "send") return "write";
 	if (resource === "sql" && action === "query") return "write";
 	if (resource === "ml-task" && action === "train") return "write";
 	// Project and dashboard exports stream a rendered/archive artifact and write it
@@ -916,7 +919,7 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 			.test(action,)
 		// Compound actions whose mutating verb is a suffix (e.g. permissions-set,
 		// dataset-compute, saved-model external-metadata-put).
-		|| /-(set|compute|restore|put)$/.test(action,)
+		|| /-(set|compute|restore|put|add|remove)$/.test(action,)
 	) {
 		return "write";
 	}
@@ -966,10 +969,15 @@ const STRING_OUTPUT_ACTIONS = new Set([
 const SCOPED_OUTPUT_SHAPES: Readonly<Record<string, CommandOutputShape>> = {
 	"folder.contents": "array",
 	"scenario.last-runs": "array",
+	"scenario.runs-by-date": "array",
+	"scenario.trigger-list": "array",
+	"scenario.reporter-list": "array",
+	"scenario.run-report": "string",
 	"plugin.usages": "object",
 	"plugin.download": "object",
 	"dataset.download": "object",
 	"project-library.get": "string",
+	"messaging-channel.permissions-get": "array",
 	"project-library.diff": "object",
 };
 
@@ -1113,6 +1121,11 @@ const EXPLICIT_DESTRUCTIVE_KEYS: Record<string, true> = {
 	// MLflow cleanup permanently erases experiment-tracking data.
 	"mlflow.garbage-collect": true,
 	"mlflow.clean-db": true,
+	// Removing a trigger or reporter drops its configuration; no public route restores it.
+	"scenario.trigger-remove": true,
+	"scenario.reporter-remove": true,
+	// A sent mail is delivered to external recipients and cannot be recalled.
+	"messaging-channel.send": true,
 };
 
 function inferDestructiveLevel(
@@ -1141,7 +1154,10 @@ function inferAsyncKind(resource: string, action: string,): CommandAsyncKind {
 	if (resource === "recipe" && action === "run") return "job";
 	if (resource === "ml-task" && action === "train") return "job";
 	if (resource === "future" && ["get", "peek", "wait", "abort",].includes(action,)) return "future";
-	if (resource === "scenario" && ["run", "run-and-wait", "status",].includes(action,)) {
+	if (
+		resource === "scenario"
+		&& ["run", "run-and-wait", "status", "get-run-for-trigger",].includes(action,)
+	) {
 		return "future";
 	}
 	if (resource === "user" && ADMIN_SECURITY_FUTURE_ACTIONS[action] === true) return "future";

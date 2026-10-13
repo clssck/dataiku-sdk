@@ -478,7 +478,7 @@ describe("CLI command behavioral smoke coverage", () => {
 				expect(
 					JSON.parse((await dss(["scenario", "run", "scenario-1",], { env: cliEnv(url,), },)).stdout,),
 				)
-					.toEqual({ runId: "run-1", },);
+					.toMatchObject({ triggerId: "manual", triggerRunId: "run-1", cancelled: false, },);
 				expect(
 					JSON.parse(
 						(await dss(["scenario", "status", "scenario-1",], { env: cliEnv(url,), },)).stdout,

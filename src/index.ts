@@ -101,6 +101,7 @@ export {
 	type MacroWaitOptions,
 } from "./resources/macros.js";
 export { MeaningsResource, } from "./resources/meanings.js";
+export * from "./resources/messaging-channels.js";
 export { MetricsResource, } from "./resources/metrics.js";
 export * from "./resources/ml-tasks.js";
 export {
