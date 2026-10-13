@@ -85,7 +85,7 @@ describe("CLI agent-only command surface", () => {
 			resource: "agent",
 			action: "contract",
 			requiresAuth: false,
-			agentContractVersion: 6,
+			agentContractVersion: 7,
 		},);
 		expect(registry["recipe.get-payload"],).toHaveProperty("unsafeOutputs",);
 	});
@@ -96,7 +96,7 @@ describe("CLI agent-only command surface", () => {
 		const contract = JSON.parse(stdout,) as Record<string, unknown>;
 		expect(contract,).toMatchObject({
 			protocol: "dataiku-sdk-agent",
-			agentContractVersion: 6,
+			agentContractVersion: 7,
 		},);
 		expect(contract,).toHaveProperty("commands.actions.agent",);
 		expect(contract,).toHaveProperty("schemas.agentContract",);
@@ -258,7 +258,7 @@ describe("CLI command registry discovery", () => {
 		);
 		expect(registry["recipe.get-payload"]!.action,).toBe("get-payload",);
 		expect(registry["recipe.set-payload"]!.action,).toBe("set-payload",);
-		expect(registry["agent.contract"]!.agentContractVersion,).toBe(6,);
+		expect(registry["agent.contract"]!.agentContractVersion,).toBe(7,);
 	});
 });
 

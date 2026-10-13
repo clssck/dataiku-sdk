@@ -53,6 +53,10 @@ function storedScenario(initial: Record<string, unknown>,) {
 	let stored = initial;
 	return {
 		answer: (request: Sent,) => {
+			// Visible messaging channels, for reporter-add's channel check.
+			if (request.method === "GET" && request.path === "/public/api/messaging-channels/") {
+				return [{ id: "smtp", type: "smtp", family: "mail", },];
+			}
 			if (request.path !== `${SCENARIOS}/s1/`) return undefined;
 			if (request.method === "PUT" && typeof request.body === "object" && request.body !== null) {
 				stored = { ...request.body, };
@@ -601,6 +605,34 @@ describe("scenario reporter-add / reporter-list / reporter-remove", () => {
 				triggers: [TRIGGER_A,],
 				reporters: [MAIL_REPORTER, SLACK_REPORTER, { phase: "END", },],
 			},);
+		},);
+	});
+
+	it("reporter-add warns when the channel id is not a visible messaging channel, and still saves", async () => {
+		await withScenarioCli(storedScenario(settings,).answer, async (env, sent,) => {
+			const added = await dss([
+				"scenario",
+				"reporter-add",
+				"s1",
+				"--channel",
+				"nonexistent",
+				"--recipient",
+				"ops@example.com",
+				"--subject",
+				"S",
+				"--message",
+				"M",
+			], { env, },);
+			expect(JSON.parse(added.stderr,),).toEqual({
+				type: "warning",
+				warnings: [{
+					code: "reporter_channel_unknown",
+					channel: "nonexistent",
+					knownChannels: ["smtp",],
+					hint: expect.any(String,),
+				},],
+			},);
+			expect(sent.filter((request,) => request.method === "PUT"),).toHaveLength(1,);
 		},);
 	});
 

@@ -28,7 +28,7 @@ import {
 	splitCsvFlag,
 } from "../coerce.js";
 import { executionMode, } from "../flags.js";
-import { encodedProjectEndpoint, readIfExists, skipResult, } from "../output.js";
+import { encodedProjectEndpoint, enqueueCliWarning, readIfExists, skipResult, } from "../output.js";
 import {
 	type FailedActivity,
 	scenarioRunDiagnosis,
@@ -856,9 +856,25 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 		examples: ["dss scenario reporter-list my_scenario",],
 	},
 	"reporter-add": {
-		handler: (c, a, f,) => {
+		handler: async (c, a, f,) => {
 			requireArgs(a, 1, commandUsage("scenario", "reporter-add",),);
-			return addScenarioItem(c, "reporter", a[0], scenarioReporterFromFlags(f,), f,);
+			const reporter = scenarioReporterFromFlags(f,);
+			// DSS saves a reporter with any channel id; an unknown one never sends. Warn, don't fail:
+			// a channel may be hidden from this key yet usable by the scenario's run-as user.
+			const channel = f["channel"];
+			if (typeof channel === "string") {
+				const known = (await c.messagingChannels.list()).map((entry,) => entry.id);
+				if (!known.includes(channel,)) {
+					enqueueCliWarning({
+						code: "reporter_channel_unknown",
+						channel,
+						knownChannels: known,
+						hint:
+							"No messaging channel with this id is visible: the reporter will not send. Check `dss messaging-channel list`.",
+					},);
+				}
+			}
+			return addScenarioItem(c, "reporter", a[0], reporter, f,);
 		},
 		description:
 			"Append a reporter, keeping the others. Mail: --channel ID (messaging-channel list), --recipient, --subject, --message (required), --condition EXPR, --phase START|END (default END). Slack, Teams and other channel types: pass the reporter JSON with --data.",
