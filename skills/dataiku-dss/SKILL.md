@@ -22,9 +22,9 @@ Reads (`list`, `get`, `preview`, `schema`, `cat`, `log`, `last-runs`): run them 
 name or flag fails before any DSS call, and the error carries the usage line or a "Did you mean".
 Before the first write of an action, fetch its entry once (syntax, payload schema, side effects,
 dry-run, cleanup), several in one request: `dss commands run --fields recipe.set-payload,recipe.update`.
-Unknown names: `dss commands run` lists resources and actions; `--fields recipe` gives recipe usage
-lines. Contract version: `dss agent contract --fields agentContractVersion`. Never load the full
-registry into context; export it if needed: `dss commands run --output commands.json`.
+Unknown names: `dss commands run` lists actions; by concept: `dss commands run --contains "build dataset"`.
+Contract version: `dss agent contract --fields agentContractVersion`. Never load the full registry;
+export it if needed: `dss commands run --output commands.json`.
 
 ## Safety and results
 

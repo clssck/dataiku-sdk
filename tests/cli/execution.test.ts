@@ -293,6 +293,10 @@ describe("CLI execution behavior", () => {
 			expect(report.error,).toBe(
 				"400 Bad Request: Scenario update did not persist requested fields after refetch: params.steps",
 			);
+			// The envelope shows what DSS stored instead, so the agent can fix the payload.
+			expect(report.details,).toMatchObject({
+				mismatches: [{ path: "params.steps", expected: [{ type: "build_flowitem", },], actual: [], },],
+			},);
 		},);
 	});
 

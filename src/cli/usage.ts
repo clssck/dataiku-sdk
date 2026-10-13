@@ -12,6 +12,14 @@ function commandSuggestions(resource: string, action: string | undefined,): stri
 		const dot = key.indexOf(".",);
 		(actionsByResource[key.slice(0, dot,)] ??= []).push(key.slice(dot + 1,),);
 	}
+	// An unknown resource with no close name gets no suggestions: the same action under
+	// arbitrary resources (`pipelines list` -> `app list`) misleads more than it helps.
+	if (
+		!Object.hasOwn(actionsByResource, resource,)
+		&& suggestSelectors(resource, actionsByResource,).length === 0
+	) {
+		return [];
+	}
 	return suggestSelectors(action ? `${resource}.${action}` : resource, actionsByResource,)
 		.map((selector,) => `dss ${selector.replace(".", " ",)}`);
 }

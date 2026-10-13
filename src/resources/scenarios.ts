@@ -16,10 +16,11 @@ import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/pollin
 import { isRecord, } from "../utils/records.js";
 import { BaseResource, requireArrayResponse, requireNonEmpty, } from "./base.js";
 
+/** DSS keeps triggers and reporters at the top level of the scenario (as dataikuapi does), not under params. */
 export const SCENARIO_CANONICAL_EDITABLE_FIELDS = [
 	"params.steps",
-	"params.triggers",
-	"params.reporters",
+	"triggers",
+	"reporters",
 	"params.customScript",
 	"active",
 	"name",
@@ -500,16 +501,17 @@ function scenarioUpdateVerificationError(
 	normalization: ScenarioUpdateNormalization[],
 ): DataikuError {
 	const mismatchPaths = mismatches.map((mismatch,) => mismatch.path).join(", ",);
-	return new DataikuError(
-		400,
-		"Scenario Update Verification Failed",
-		JSON.stringify({
-			message: `Scenario update did not persist requested fields after refetch: ${mismatchPaths}`,
-			mismatches,
-			canonicalEditableFields: SCENARIO_CANONICAL_EDITABLE_FIELDS,
-			...(normalization.length > 0 ? { normalization, } : {}),
-		},),
-	);
+	const body = {
+		message: `Scenario update did not persist requested fields after refetch: ${mismatchPaths}`,
+		mismatches,
+		canonicalEditableFields: SCENARIO_CANONICAL_EDITABLE_FIELDS,
+		...(normalization.length > 0 ? { normalization, } : {}),
+	};
+	const error = new DataikuError(400, "Scenario Update Verification Failed", JSON.stringify(body,),);
+	// CLI envelopes show `details`, never the body: without this the agent sees which
+	// path failed but not what DSS stored instead (e.g. a dropped unknown channelId).
+	error.details = { mismatches, canonicalEditableFields: SCENARIO_CANONICAL_EDITABLE_FIELDS, };
+	return error;
 }
 
 export class ScenariosResource extends BaseResource {

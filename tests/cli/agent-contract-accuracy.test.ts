@@ -271,6 +271,13 @@ describe("agent contract accuracy", () => {
 			expect(report.hint,).toStartWith(`Did you mean \`${suggestion}\`?`,);
 			expect((report.details as Record<string, unknown>).suggestions,).toEqual([suggestion,],);
 		}
+		// No close resource: no guesses at the same action under unrelated resources.
+		const unrelated = JSON.parse((await dssFailure(["pipelines", "list",],)).stdout,) as Record<
+			string,
+			unknown
+		>;
+		expect(unrelated.details,).not.toHaveProperty("suggestions",);
+		expect(unrelated.hint,).not.toContain("Did you mean",);
 	});
 
 	it("indents stdout results and errors under DSS_PRETTY=1 without changing the value", async () => {

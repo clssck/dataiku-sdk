@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix: scenario `canonicalEditableFields` named `params.triggers` and `params.reporters`; DSS (and dataikuapi) keep triggers and reporters at the top level (`triggers`, `reporters`), so an agent following the advertised path wrote fields DSS ignores. Verified live: an email reporter (`messaging.type: mail-scenario`) and a daily trigger set through `scenario update` persist.
+- A scenario update that DSS did not persist as sent now carries `details.mismatches` (path, expected, what DSS stored) in the CLI error, not only the path: e.g. DSS drops an unknown `channelId` from a mail reporter.
+- A mistyped resource with no close match (`dss pipelines list`) no longer suggests the same action under unrelated resources.
+- The skill names `dss commands run --contains TEXT` for finding commands by concept.
+
 ## 4.1.0
 
 - **Breaking:** agent contract v6. `scenario get-run` and `scenario last-runs` print compact results by default (`--full`/`--fields` return the DSS objects). `get-run` keeps the run identity, outcome, timing, trigger, per-step built datasets and executed jobs with their error message, plus `failure` {stepId, jobId, dataset, message} and `next` argv (e.g. `dss job log JOB --errors-only`); the raw report's trigger auth context, permission flags, API-key metadata, and log tails are gone (a failed run went from ~5 KB of noise to ~1 KB). A failed `last-runs` item carries `next` pointing at `scenario get-run`. `scenario run-and-wait` / `run --wait` failures include `failure` and `next`.
