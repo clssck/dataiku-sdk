@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 4.2.0
+
 - Fix: scenario `canonicalEditableFields` named `params.triggers` and `params.reporters`; DSS (and dataikuapi) keep triggers and reporters at the top level (`triggers`, `reporters`), so an agent following the advertised path wrote fields DSS ignores. Verified live: an email reporter (`messaging.type: mail-scenario`) and a daily trigger set through `scenario update` persist.
 - A scenario update that DSS did not persist as sent now carries `details.mismatches` in the CLI error: each mismatched field with the paths that differ (e.g. `reporters.0.messaging.channelId`), never the values, since reporter and step settings can hold credentials.
 - `scenario reporter-add --channel ID` warns `reporter_channel_unknown` (with the visible channel ids) when no messaging channel has that id: DSS saves such a reporter, but it never sends.
