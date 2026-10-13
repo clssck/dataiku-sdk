@@ -1429,7 +1429,9 @@ export function commandPlanShape(
 					name: args[1],
 					projectKey,
 					type,
-					params: type === "step_based" ? { steps: [], triggers: [], reporters: [], } : {},
+					...(type === "step_based"
+						? { params: { steps: [], }, triggers: [], reporters: [], }
+						: { params: {}, }),
 				},
 			};
 		}

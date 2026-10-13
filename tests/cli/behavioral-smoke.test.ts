@@ -444,10 +444,15 @@ describe("CLI command behavioral smoke coverage", () => {
 					),
 				)
 					.toEqual({ created: "scenario-1", name: "Scenario 1", resource: "scenario", },);
-				expect(scenarioCreateBody,).toMatchObject({
+				// DSS keeps triggers and reporters at the top level, not under params.
+				expect(scenarioCreateBody,).toEqual({
 					id: "scenario-1",
 					name: "Scenario 1",
 					projectKey: "TEST",
+					type: "step_based",
+					params: { steps: [], },
+					triggers: [],
+					reporters: [],
 				},);
 				const scenarioUpdate = JSON.parse(
 					(await dss([

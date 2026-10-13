@@ -508,10 +508,33 @@ function scenarioUpdateVerificationError(
 		...(normalization.length > 0 ? { normalization, } : {}),
 	};
 	const error = new DataikuError(400, "Scenario Update Verification Failed", JSON.stringify(body,),);
-	// CLI envelopes show `details`, never the body: without this the agent sees which
-	// path failed but not what DSS stored instead (e.g. a dropped unknown channelId).
-	error.details = { mismatches, canonicalEditableFields: SCENARIO_CANONICAL_EDITABLE_FIELDS, };
+	// CLI envelopes show `details`, never the body. Only paths go there: reporter and step
+	// values can hold webhook URLs, tokens, or credentials.
+	error.details = {
+		mismatches: mismatches.map((mismatch,) => ({
+			path: mismatch.path,
+			differingPaths: differingLeafPaths(mismatch.expected, mismatch.actual, mismatch.path,),
+		})),
+		canonicalEditableFields: SCENARIO_CANONICAL_EDITABLE_FIELDS,
+	};
 	return error;
+}
+
+/** Paths under `path` where the sent value is missing or different in what DSS stored (e.g. `reporters.0.messaging.channelId`). */
+function differingLeafPaths(expected: unknown, actual: unknown, path: string,): string[] {
+	if (Array.isArray(expected,)) {
+		if (!Array.isArray(actual,)) return [path,];
+		return expected.flatMap((item, index,) =>
+			differingLeafPaths(item, actual[index], `${path}.${index}`,)
+		);
+	}
+	if (isRecord(expected,)) {
+		if (!isRecord(actual,)) return [path,];
+		return Object.entries(expected,).flatMap(([key, value,],) =>
+			differingLeafPaths(value, actual[key], `${path}.${key}`,)
+		);
+	}
+	return jsonValueEqual(expected, actual,) ? [] : [path,];
 }
 
 export class ScenariosResource extends BaseResource {
@@ -549,7 +572,9 @@ export class ScenariosResource extends BaseResource {
 			name,
 			projectKey: pk,
 			type: scenarioType,
-			params: scenarioType === "step_based" ? { steps: [], triggers: [], reporters: [], } : {},
+			...(scenarioType === "step_based"
+				? { params: { steps: [], }, triggers: [], reporters: [], }
+				: { params: {}, }),
 			...opts?.data,
 		};
 		await this.client.post<void>(
