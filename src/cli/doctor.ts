@@ -197,6 +197,9 @@ function doctorIdentityFromAuthInfo(raw: unknown,): DoctorIdentity | undefined {
 
 export function permissionStatusForError(error: unknown,): PermissionStatus {
 	if (error instanceof DataikuError) {
+		// An intermediary's page (proxy, SSO gateway) is not a DSS answer: the
+		// permission was never evaluated.
+		if (error.category === "unexpected_response") return "unknown";
 		if (error.status === 401 || error.status === 403 || error.status === 404) return "no";
 		if (error.status === 0 || error.status >= 500 || error.category === "transient") return "unknown";
 		if (error.category === "forbidden" || error.category === "not_found") return "no";

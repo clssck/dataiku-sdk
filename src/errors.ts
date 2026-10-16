@@ -170,6 +170,9 @@ export const NOT_FOUND_HINT =
 const BUSINESS_APPS_API_UNAVAILABLE_HINT =
 	"Business Apps API is not available on this DSS instance. Use classic app commands or check DSS version/feature availability.";
 const MAX_ERROR_SUMMARY_LENGTH = 200;
+/** Hint for an intermediary's 401/403 page; see {@link isIntermediaryAuthPage}. */
+const INTERMEDIARY_PAGE_HINT =
+	"An intermediary (corporate proxy, SSO gateway, or firewall) answered with an HTML page instead of the DSS API, so this is not an API-key or DSS-permission refusal. Ask the network team to exempt the DSS host from browser authentication and interception for API clients, or use a network path that reaches DSS directly; do not retry unchanged.";
 
 function isHtmlResponseBody(body: string,): boolean {
 	const lowerTrimmed = body.trimStart().slice(0, 500,).toLowerCase();
@@ -178,6 +181,16 @@ function isHtmlResponseBody(body: string,): boolean {
 		|| lowerTrimmed.includes("<html",)
 		|| lowerTrimmed.includes("<body",)
 		|| lowerTrimmed.includes("<title",);
+}
+
+/**
+ * DSS answers 401/403 with a JSON error document (NotAuthenticatedException,
+ * UnauthorizedException). An HTML page under those statuses was served by an
+ * intermediary that intercepted the request (corporate proxy, SSO gateway,
+ * firewall), not by DSS: it says nothing about the API key or DSS permissions.
+ */
+function isIntermediaryAuthPage(status: number, body: string,): boolean {
+	return (status === 401 || status === 403) && isHtmlResponseBody(body,);
 }
 
 function stripServerFilesystemPaths(text: string,): string {
@@ -221,14 +234,14 @@ function conciseErrorSummary(text: string,): string {
 		: sanitized;
 }
 
-function summarizeHtmlErrorBody(body: string,): string {
+function summarizeHtmlErrorBody(body: string, source: string,): string {
 	const textLine = firstHtmlTextLine(body,);
-	if (!textLine) return "HTML error page from DSS";
-	return `HTML error page from DSS: ${conciseErrorSummary(textLine,)}`;
+	if (!textLine) return `HTML error page from ${source}`;
+	return `HTML error page from ${source}: ${conciseErrorSummary(textLine,)}`;
 }
 
 function summarizeErrorText(text: string,): string {
-	if (isHtmlResponseBody(text,)) return summarizeHtmlErrorBody(text,);
+	if (isHtmlResponseBody(text,)) return summarizeHtmlErrorBody(text, "DSS",);
 	return conciseErrorSummary(text,);
 }
 
@@ -313,6 +326,10 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 			retryHint:
 				"DSS returned a non-JSON response to a JSON API request (typically a proxy, gateway, or login page). Verify the DSS URL and that no intermediary serves HTML; do not retry unchanged.",
 		};
+	}
+
+	if (isIntermediaryAuthPage(status, body,)) {
+		return { category: "unexpected_response", retryable: false, retryHint: INTERMEDIARY_PAGE_HINT, };
 	}
 
 	// finish-streaming answers 2xx with the server-side failure text when the
@@ -560,7 +577,10 @@ export class DataikuError extends Error {
 		return this.message.slice(this.safeMessage.length + 2,);
 	}
 
-	private static extractSummary(_status: number, body: string,): string {
+	private static extractSummary(status: number, body: string,): string {
+		if (isIntermediaryAuthPage(status, body,)) {
+			return summarizeHtmlErrorBody(body, "an intermediary, not DSS",);
+		}
 		try {
 			const parsed = JSON.parse(body,);
 			if (parsed.message) return summarizeErrorText(String(parsed.message,),);

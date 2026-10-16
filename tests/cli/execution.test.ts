@@ -1501,6 +1501,35 @@ describe("CLI execution behavior", () => {
 		},);
 	});
 
+	it("doctor reports an intercepting proxy's page as unknown permissions, not denied ones", async () => {
+		await withCliServer((_req, res,) => {
+			// Every GET is answered by a proxy's browser-authentication page.
+			res.statusCode = 403;
+			res.setHeader("Content-Type", "text/html",);
+			res.end(
+				"<!DOCTYPE html><html><head><title>Internet Security by Zscaler</title></head><body></body></html>",
+			);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				["doctor", "--project-key", "TEST", "--capabilities", "--fast",],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(2,);
+			const result = JSON.parse(failure.stdout,) as {
+				ok: boolean;
+				checks: Array<{ name: string; ok: boolean; details?: Record<string, unknown>; }>;
+				permissions: Record<string, string>;
+			};
+			expect(result.ok,).toBe(false,);
+			const connectivity = result.checks.find((check,) => check.name === "connectivity");
+			expect(connectivity?.details?.category,).toBe("unexpected_response",);
+			// The requests never reached DSS, so no permission was evaluated.
+			for (const [permission, status,] of Object.entries(result.permissions,)) {
+				expect(status, permission,).toBe("unknown",);
+			}
+		},);
+	});
+
 	it("fixtures discovers safe defaults and rejected candidates", async () => {
 		await withCliServer((req, res,) => {
 			const url = new URL(req.url ?? "/", "http://localhost",);

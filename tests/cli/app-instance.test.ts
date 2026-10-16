@@ -657,6 +657,38 @@ describe("app create-instance wait, plans, and cleanup", () => {
 		},);
 	});
 
+	it("surfaces an intercepting proxy's 403 page instead of probing it as a masked target", async () => {
+		let posts = 0;
+		let fallbackProbes = 0;
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "GET" && url.pathname === "/public/api/projects/NEWPROJ/") {
+				// A proxy answering GETs with a browser-authentication page, not DSS.
+				res.statusCode = 403;
+				res.setHeader("Content-Type", "text/html",);
+				res.end("<!DOCTYPE html><html><head><title>Access Denied</title></head><body></body></html>",);
+				return;
+			}
+			if (req.method === "POST") posts += 1;
+			else fallbackProbes += 1;
+			// Non-retryable, so a request that should not happen fails fast.
+			sendJson(res, { message: `unexpected ${req.method} ${url.pathname}`, }, 404,);
+		}, async (url,) => {
+			const failure = await dssFailure(
+				["app", "create-instance", "MYAPP", "--data", '{"targetProjectKey":"NEWPROJ"}',],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(2,);
+			const report = JSON.parse(failure.stdout,) as { code: string; status?: number; };
+			// The page proves nothing about the target, so it is neither a masked
+			// target (target_absence_unverifiable) nor a permission denial.
+			expect(report.code,).toBe("unexpected_response",);
+			expect(report.status,).toBe(403,);
+			expect(fallbackProbes,).toBe(0,);
+			expect(posts,).toBe(0,);
+		},);
+	});
+
 	it("folds a masked global project listing into the strict absence refusal", async () => {
 		let posts = 0;
 		let projectListProbes = 0;

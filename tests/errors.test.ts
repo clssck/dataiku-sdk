@@ -218,6 +218,31 @@ describe("classifyDataikuError", () => {
 			expect(result.category,).toBe("forbidden",);
 			expect(result.retryable,).toBe(false,);
 		});
+
+		it("classifies an HTML 401/403 page as an intermediary answer, not a DSS refusal", () => {
+			// A GET-intercepting proxy (browser-authentication interstitial) answers
+			// in place of DSS; DSS itself answers 401/403 with a JSON error document.
+			const page = "<!DOCTYPE html><html><head><title>Internet Security by Zscaler</title></head>"
+				+ "<body><h1>Access Denied</h1></body></html>";
+			for (const status of [401, 403,]) {
+				const err = new DataikuError(status, canonicalStatusText(status,), page,);
+				expect(err.category, `status ${status}`,).toBe("unexpected_response",);
+				expect(err.retryable, `status ${status}`,).toBe(false,);
+				expect(err.message, `status ${status}`,).toContain("Internet Security by Zscaler",);
+				expect(err.message, `status ${status}`,).not.toContain("from DSS",);
+			}
+			const dssRefusal = new DataikuError(
+				403,
+				"Forbidden",
+				JSON.stringify({
+					errorType: "com.dataiku.dip.exceptions.UnauthorizedException",
+					message: "Failed to read project permissions",
+					detailedMessageHTML:
+						'<span><span class="err-msg">Failed to read project permissions</span></span>',
+				},),
+			);
+			expect(dssRefusal.category,).toBe("forbidden",);
+		});
 	});
 
 	describe("client validation", () => {

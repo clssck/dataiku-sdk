@@ -223,7 +223,7 @@ export class DashboardsResource extends BaseResource {
 					}/`,
 				);
 			} catch (error) {
-				if (error instanceof DataikuError && error.status === 403) {
+				if (error instanceof DataikuError && error.status === 403 && error.category === "forbidden") {
 					throw new ClientValidationError(
 						`Dashboard cannot validate inaccessible dataset ${datasetSmartName}.`,
 						"validation_failed",

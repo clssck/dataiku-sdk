@@ -364,7 +364,11 @@ export async function requireAbsentProjectTarget(
 		const existing = await readIfExists(() => client.projects.get(targetProjectKey,));
 		if (existing === undefined) return;
 	} catch (error) {
-		if (!(error instanceof DataikuError) || error.status !== 403) throw error;
+		// Only a DSS refusal masks the target; an intermediary's 403 page says
+		// nothing about it and surfaces as itself.
+		if (!(error instanceof DataikuError) || error.status !== 403 || error.category !== "forbidden") {
+			throw error;
+		}
 		let projectListProbe: number = 200;
 		let targetVisibleInProjectList: boolean | null;
 		try {
@@ -373,7 +377,10 @@ export async function requireAbsentProjectTarget(
 				(project,) => project.projectKey === targetProjectKey,
 			);
 		} catch (projectListError) {
-			if (!(projectListError instanceof DataikuError) || projectListError.status !== 403) {
+			if (
+				!(projectListError instanceof DataikuError) || projectListError.status !== 403
+				|| projectListError.category !== "forbidden"
+			) {
 				throw projectListError;
 			}
 			projectListProbe = 403;
@@ -386,7 +393,10 @@ export async function requireAbsentProjectTarget(
 				visibleAppInstanceKeys = (await client.applications.listInstances(context.appId,))
 					.map((instance,) => instance.projectKey);
 			} catch (appInstancesError) {
-				if (!(appInstancesError instanceof DataikuError) || appInstancesError.status !== 403) {
+				if (
+					!(appInstancesError instanceof DataikuError) || appInstancesError.status !== 403
+					|| appInstancesError.category !== "forbidden"
+				) {
 					throw appInstancesError;
 				}
 				appInstancesProbe = 403;

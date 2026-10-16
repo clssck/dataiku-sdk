@@ -122,7 +122,7 @@ export const connectionCommands: Record<string, CommandMeta> = withUsage("connec
 				const details = await c.connections.adminGet(name,);
 				return sanitizeConnectionSecrets(details,);
 			} catch (error) {
-				if (error instanceof DataikuError && error.status === 403) {
+				if (error instanceof DataikuError && error.status === 403 && error.category === "forbidden") {
 					// The admin endpoint refuses non-admin keys for every connection,
 					// including ones they can query; status, code, and exit stay as is.
 					error.retryHint =
