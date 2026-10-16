@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 4.2.1
+
 - Fix: an HTML page answering with `401`/`403` is `unexpected_response` (exit 2), not `permission_denied`. DSS answers those statuses with a JSON error document, so the page came from an intermediary, e.g. a corporate proxy that intercepts GETs for browser authentication (Zscaler) while POSTs pass. The error reads "HTML error page from an intermediary, not DSS" and the hint points at the network path instead of the API key and project permissions. `doctor --capabilities` reports such probes as `unknown` instead of `no`, and the target-absence guard of `app create-instance` / `create-successor-instance` surfaces the intercepted probe instead of `target_absence_unverifiable` (still creating nothing). Verified live behind a simulated intercepting proxy; DSS's own `401`/`403` stay `permission_denied`.
 
 ## 4.2.0
