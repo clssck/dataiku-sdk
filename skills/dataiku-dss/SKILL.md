@@ -39,7 +39,7 @@ Never load the full registry; export it if needed: `dss commands run --output co
 - Stdout: one JSON value, line-wrapped when long; parse it whole.
   Stderr: JSONL diagnostics. Dispatch errors carry `type:"error"`, `code`, `category`, `exitCode`;
   doctor/batch/cleanup may return direct failure results. Branch on structured fields, not message text.
-- Bound exploration with advertised `--fields`, `--preview`, row limits, or `--output PATH`.
+- Bound exploration with `--fields`, `--preview`, row limits, or `--output PATH` (any command).
 - Reads are compact; `--full` returns the DSS object. Follow a result's or error's `next` (argv
   arrays) or `hint` before exploring; a `next` that writes (build, run) follows the write rules.
   Failed scenario/job: `scenario last-runs ID` → `next` → `scenario get-run` gives `failure`

@@ -92,15 +92,16 @@ describe("agent-facing token budgets", () => {
 		// coding again for the grouping/prepare flags, troubleshooting for flow propagate-schema.
 		// discovery and troubleshooting: compact get defaults and the 100-line `job log` tail.
 		// troubleshooting again: one line for the compact `scenario get-run` failure/next fields.
-		// discovery: wrapped stdout, compact action entries and `--full`, dry-run `changes`;
+		// discovery: wrapped stdout, compact action entries and `--full`, dry-run `changes`,
+		// `--output` on any command, JSON recipe payloads;
 		// mutations: the facts an entry lists are the non-default ones.
 		const baselines = {
 			authentication: 504,
-			discovery: 730,
+			discovery: 802,
 			mutations: 531,
 			"app-releases": 872,
 			"flow-maps": 159,
-			coding: 362,
+			coding: 380,
 			troubleshooting: 1_098,
 		};
 		for (const [name, baseline,] of Object.entries(baselines,)) {

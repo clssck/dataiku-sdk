@@ -347,7 +347,7 @@ const PROJECT_GIT_CONVERGENT_ACTIONS: Record<string, true> = {
 	"reset-to-upstream": true,
 };
 
-const GLOBAL_AGENT_FLAGS = ["verbose", "fields",];
+const GLOBAL_AGENT_FLAGS = ["verbose", "fields", "output",];
 const AUTHENTICATED_AGENT_FLAGS = [
 	"url",
 	"api-key",
@@ -1065,6 +1065,7 @@ function inferOutputShape(resource: string, action: string,): CommandOutputShape
 const GLOBAL_FLAG_VALUE_HINTS: Record<string, { valueType: string; enumValues?: string[]; }> = {
 	url: { valueType: "URL", },
 	fields: { valueType: "CSV", },
+	output: { valueType: "PATH", },
 	"api-key": { valueType: "KEY", },
 	"request-timeout": { valueType: "MS", },
 	retries: { valueType: "N", },

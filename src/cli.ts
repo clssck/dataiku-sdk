@@ -21,9 +21,11 @@ import {
 	enqueueCliWarning,
 	flushCliWarnings,
 	isFailedWaitResult,
+	outputFileActive,
 	planResult,
 	projectResultFields,
 	setOutputFieldProjection,
+	setOutputFile,
 	stdoutJson,
 	writeCommandResult,
 } from "./cli/output.js";
@@ -35,7 +37,7 @@ import {
 	resolveLoginCredentials,
 } from "./cli/runtime.js";
 import { suggestSelectors, } from "./cli/selector-suggestions.js";
-import { commandSyntaxTree, commandUsage, } from "./cli/syntax.js";
+import { commandSyntaxTree, commandUsage, syntaxHasFlag, } from "./cli/syntax.js";
 import type { CommandMeta, } from "./cli/types.js";
 import {
 	COMMANDS_RUN_HINT,
@@ -723,9 +725,33 @@ function validateBatchStepConnectionFlags(argv: string[], index: number,): void 
 	}
 }
 
+/**
+ * `--output PATH` is global: it writes one result, so a step cannot carry it.
+ * Steps whose command declares its own `--output` keep it.
+ */
+function validateBatchStepOutputFlag(argv: string[], index: number,): void {
+	let positional: string[];
+	let flags: Record<string, string | boolean>;
+	try {
+		({ positional, flags, } = parseArgs(argv,));
+	} catch {
+		return;
+	}
+	const resource = positional[0];
+	if (!resource || !Object.hasOwn(flags, "output",)) return;
+	if (declaresOutputFlag(resource, positional[1],)) return;
+	throw new UsageError(
+		`Batch step ${index} sets --output, which writes one result for the whole invocation.`,
+		"usage_error",
+		"Remove --output from the step and pass it on `dss batch` itself.",
+		{ step: index, flag: "output", },
+	);
+}
+
 function validateBatchSteps(steps: string[][],): void {
 	for (let index = 0; index < steps.length; index++) {
 		validateBatchStepConnectionFlags(steps[index]!, index,);
+		validateBatchStepOutputFlag(steps[index]!, index,);
 		validateBatchStepMode(steps[index]!, index,);
 	}
 }
@@ -1252,6 +1278,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 			Object.assign(currentCommandContext, { ...context, projectKey: batchProjectKey, },);
 			try {
 				validateBatchStepConnectionFlags(argv, index,);
+				validateBatchStepOutputFlag(argv, index,);
 				validateBatchStepMode(argv, index,);
 				const step = await validateBatchStep(argv,);
 				Object.assign(currentCommandContext, {
@@ -1886,6 +1913,35 @@ function errorReportNeedsCommandRuntime(err: unknown,): boolean {
 	return !!method && method !== "GET" && method !== "HEAD"
 		&& (err.status === 0 || err.status >= 500);
 }
+
+/** Whether the command's own usage declares `--output`: its handler owns the flag. */
+function declaresOutputFlag(resource: string, action: string | undefined,): boolean {
+	const tree = commandSyntaxTree(resource, action ?? "run",);
+	return tree !== undefined && syntaxHasFlag(tree, "output",);
+}
+
+/**
+ * The global `--output PATH` of a command that does not declare the flag. It is
+ * removed from `flags` so no handler mistakes it for its own, and a blank path
+ * fails before anything runs.
+ */
+function takeGlobalOutputPath(
+	flags: Record<string, string | boolean>,
+	declared: boolean,
+): string | undefined {
+	const value = flags["output"];
+	if (value === undefined || declared) return undefined;
+	delete flags["output"];
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new UsageError(
+			"--output requires a non-empty PATH.",
+			"invalid_flag_value",
+			"Pass --output PATH to write the JSON result to a file.",
+			{ flag: "--output", },
+		);
+	}
+	return value;
+}
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -1905,7 +1961,8 @@ async function main(): Promise<void> {
 	}
 
 	if (flags["version"] === true) {
-		writeCommandResult(cliVersionResult(),);
+		setOutputFile(takeGlobalOutputPath(flags, false,),);
+		await writeCommandResult(cliVersionResult(),);
 		return;
 	}
 
@@ -1919,10 +1976,11 @@ async function main(): Promise<void> {
 			? flags["project-key"]
 			: ambientProjectKey(),
 	},);
+	setOutputFile(takeGlobalOutputPath(flags, declaresOutputFlag(resource, positional[1],),),);
 
 	const metaCommand = await runMetaCommand(resource, positional[1], flags,);
 	if (metaCommand) {
-		writeCommandResult(metaCommand.result,);
+		await writeCommandResult(metaCommand.result,);
 		if (metaCommand.exitCode !== 0) process.exitCode = metaCommand.exitCode;
 		return;
 	}
@@ -1953,14 +2011,14 @@ async function main(): Promise<void> {
 			args,
 			flags,
 		);
-		writeCommandResult(plan,);
+		await writeCommandResult(plan,);
 		return;
 	}
 	if (actionMeta.localHandler) {
 		const result = await actionMeta.localHandler(args, flags,);
 		const failureExitCode = commandFailureExitCode(result,);
 		if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);
-		writeCommandResult(result,);
+		await writeCommandResult(result,);
 		return;
 	}
 
@@ -2006,11 +2064,23 @@ async function main(): Promise<void> {
 	await recordCleanupLedgerEntry(client, resource, action, args, flags, result, projectKey,);
 	const failureExitCode = commandFailureExitCode(result,);
 	if (failureExitCode !== undefined) throw new CommandResultFailure(result, failureExitCode,);
-	writeCommandResult(result,);
+	await writeCommandResult(result,);
 }
 
 main().catch(async (err: unknown,) => {
-	if (errorReportNeedsCommandRuntime(err,)) await loadCommandRuntime();
-	writeErrorReport(err,);
-	process.exitCode = errorExitCode(err,);
+	let failure = err;
+	// A failed result (e.g. a failed job) is still the command's result: with a
+	// global --output it goes to the file and the exit code stays the failure's.
+	if (err instanceof CommandResultFailure && outputFileActive()) {
+		try {
+			await writeCommandResult(err.result,);
+			process.exitCode = err.exitCode;
+			return;
+		} catch (writeError) {
+			failure = writeError;
+		}
+	}
+	if (errorReportNeedsCommandRuntime(failure,)) await loadCommandRuntime();
+	writeErrorReport(failure,);
+	process.exitCode = errorExitCode(failure,);
 },);

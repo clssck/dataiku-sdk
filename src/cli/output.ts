@@ -1,5 +1,6 @@
 import type { DataikuClient, } from "../client.js";
 import { DataikuError, type StableErrorCode, } from "../errors.js";
+import { writeResponseToFile, } from "../utils/response-file.js";
 import { stdoutJsonMode, } from "./env.js";
 
 let outputFieldProjection: string[] | undefined;
@@ -223,12 +224,33 @@ export function stdoutJson(value: unknown,): string {
 	return out.join("",);
 }
 
-export function writeCommandResult(result: unknown,): void {
+/**
+ * Write the result to `--output PATH` instead of stdout; stdout then carries
+ * `{ path, bytes }`. Set only for commands that do not declare `--output`
+ * themselves: those handlers own the flag and write their own files.
+ */
+let outputFilePath: string | undefined;
+
+export function setOutputFile(path: string | undefined,): void {
+	outputFilePath = path;
+}
+
+export function outputFileActive(): boolean {
+	return outputFilePath !== undefined;
+}
+
+export async function writeCommandResult(result: unknown,): Promise<void> {
 	const projected = outputFieldProjection
 		? projectResultFields(result, outputFieldProjection,)
 		: result;
 	flushCliWarnings();
-	process.stdout.write(stdoutJson(projected ?? { ok: true, },),);
+	const text = stdoutJson(projected ?? { ok: true, },);
+	if (outputFilePath === undefined) {
+		process.stdout.write(text,);
+		return;
+	}
+	const bytes = await writeResponseToFile(outputFilePath, new Response(text,), "preserve",);
+	process.stdout.write(stdoutJson({ path: outputFilePath, bytes, },),);
 }
 
 export function addTransientTargetContext(

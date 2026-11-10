@@ -221,7 +221,8 @@ dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,com
 actions for a concept. `--fields RESOURCE.ACTION` prints a compact entry (usage, description, examples,
 side effects, and the JSON-body contract); `--full` adds flag metadata and JSON schemas, and a deep
 selector such as `dataset.create.flags` names one field. The whole registry travels only via
-`--output PATH`. See the canonical skill for the full `--fields` projection rules and planning workflow.
+`--output PATH`; on every other command `--output PATH` writes the JSON result to PATH and prints
+`{path, bytes}`. See the canonical skill for the full `--fields` projection rules and planning workflow.
 
 ## Agent skill installation
 

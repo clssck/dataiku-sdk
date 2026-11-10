@@ -156,6 +156,29 @@ describe("argv schema canonical form", () => {
 		expect(argvValidates(argvSchema, ["project", "export", "KEY", "-o",],),).toBe(false,);
 	});
 
+	it("accepts the global --output=PATH wherever --fields is accepted", () => {
+		const datasetList = argvSchemaOf(registry.dataset?.list,);
+		expect(datasetList,).toBeDefined();
+		expect(argvValidates(datasetList, ["dataset", "list", "--output=out.json",],),).toBe(true,);
+		expect(argvValidates(datasetList, ["dataset", "list", "--fields=name",],),).toBe(true,);
+		expect(argvValidates(datasetList, ["dataset", "list", "--output",],),).toBe(false,);
+		expect(argvValidates(datasetList, ["dataset", "list", "--output=",],),).toBe(false,);
+		expect(argvValidates(datasetList, ["dataset", "list", "-o",],),).toBe(false,);
+		const mismatched: string[] = [];
+		for (const [resource, actions,] of Object.entries(registry,)) {
+			for (const [action, entry,] of Object.entries(actions,)) {
+				const schema = argvSchemaOf(entry,);
+				const head = prefixOf(schema,).map((item,) => String(item["const"] ?? "x",));
+				// Entries that also need required flags fail both probes alike; skip them.
+				if (!argvValidates(schema, [...head, "--fields=a",],)) continue;
+				if (!argvValidates(schema, [...head, "--output=out.json",],)) {
+					mismatched.push(`${resource}.${action}`,);
+				}
+			}
+		}
+		expect(mismatched,).toEqual([],);
+	});
+
 	it("allows empty = values where the runtime accepts them and keeps booleans standalone", () => {
 		const setVersion = argvSchemaOf(registry.app?.["set-manifest-version"],);
 		expect(setVersion,).toBeDefined();
