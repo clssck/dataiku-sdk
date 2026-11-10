@@ -34,6 +34,18 @@ const PROJECT_LIBRARY_ITEM_OUTPUT_SCHEMA: Record<string, unknown> = {
 	},
 };
 
+/**
+ * `recipe get-payload` and `recipe cat` print the payload text as a string (code recipes, empty
+ * payloads, `--output` path), or the parsed JSON when a visual recipe's payload is an object or array.
+ */
+const RECIPE_PAYLOAD_OUTPUT_SCHEMA: Record<string, unknown> = {
+	anyOf: [
+		{ type: "string", },
+		{ type: "object", additionalProperties: true, },
+		{ type: "array", items: true, },
+	],
+};
+
 const NOTEBOOK_SAVE_OUTPUT_SCHEMA: Record<string, unknown> = {
 	type: "object",
 	additionalProperties: false,
@@ -286,6 +298,8 @@ export function typeBoxCommandOutputSchemas(): Record<string, Record<string, unk
 				},
 			],
 		},
+		"recipe.get-payload": RECIPE_PAYLOAD_OUTPUT_SCHEMA,
+		"recipe.cat": RECIPE_PAYLOAD_OUTPUT_SCHEMA,
 		// `*.list` and the four large reads default to compact shapes; `--full`
 		// returns the DSS objects.
 		...compactListOutputSchemas(),

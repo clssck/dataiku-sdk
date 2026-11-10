@@ -2034,6 +2034,36 @@
 				}
 			}
 		},
+		"recipe.cat": {
+			"anyOf": [
+				{
+					"type": "string"
+				},
+				{
+					"type": "object",
+					"additionalProperties": true
+				},
+				{
+					"type": "array",
+					"items": true
+				}
+			]
+		},
+		"recipe.get-payload": {
+			"anyOf": [
+				{
+					"type": "string"
+				},
+				{
+					"type": "object",
+					"additionalProperties": true
+				},
+				{
+					"type": "array",
+					"items": true
+				}
+			]
+		},
 		"recipe.list": {
 			"type": "array",
 			"items": {

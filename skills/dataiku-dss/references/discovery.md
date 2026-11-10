@@ -6,7 +6,7 @@
 - Dispatch/runtime failure: stdout error object (`type:"error"`, `error`, `code`, `category`, `exitCode`; `projectKey` when resolved), nonzero exit. `doctor`/`batch`/`cleanup` failures instead return direct result objects; inspect exit code and fields.
 - Stderr: JSONL diagnostics only; `type:"warning"` / `type:"trace"` for warnings / `--verbose` HTTP traces, flushed before success or failure output.
 - Exits: 0 success, 1 usage/configuration, 2 DSS/internal/permission-or-environment, 3 transient/retryable DSS error, 4 failed long-running result/assertion.
-- Recipe payload stdout: JSON string. With `--output PATH`: exact bytes to file, JSON string equal to `PATH` on stdout.
+- Recipe payload stdout: JSON string for code, JSON value for visual recipes (JSON payloads). With `--output PATH`: exact bytes to file, JSON string equal to `PATH` on stdout.
 - General `--fields a,b,c`: object projection, element-wise for object arrays. Dotted paths traverse nested objects; missing fields become `null`; strings/scalars pass through.
 - Compact by default: `*.list` (ids, kind, next-step fields such as recipe `inputs`/`outputs`), `job get` (no log tail), `dataset get`/`info`, `project get`, `scenario get-run`/`last-runs`; `--full`/`--fields` use DSS objects. Lists: `--contains TEXT` filters ids; `--limit N` caps (`list_truncated` warning).
 - Update `--dry-run`: `changes` (`path`, `before`, `after`; long text as a `diff`), `changeCount`; `[]` means no-op. `--fields current,next` returns the objects.

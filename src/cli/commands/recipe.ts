@@ -44,6 +44,23 @@ import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
 
+const JSON_CONTAINER_START = /^\s*[[{]/;
+
+/**
+ * Stdout form of a recipe payload: the parsed value when the text is a JSON object or array
+ * (visual recipes), else the text itself (code, empty, or JSON scalars). `--output` keeps the
+ * exact bytes for editing.
+ */
+function recipePayloadValue(payload: string,): string | object {
+	if (!JSON_CONTAINER_START.test(payload,)) return payload;
+	try {
+		const parsed: unknown = JSON.parse(payload,);
+		return typeof parsed === "object" && parsed !== null ? parsed : payload;
+	} catch {
+		return payload;
+	}
+}
+
 /** Read a local recipe file before any DSS request, mapping read failures to usage validation. */
 async function readRecipeFile(filePath: string, flagName: string,): Promise<string> {
 	try {
@@ -800,23 +817,23 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 				await Bun.write(f["output"], payload,);
 				return f["output"];
 			}
-			return payload;
+			return recipePayloadValue(payload,);
 		},
 		description:
-			"Print the recipe code payload as a JSON string, or write it to a file with --output.",
+			"Print the recipe payload: JSON of visual recipes as JSON, code as a string. --output writes the exact bytes for editing and set-payload.",
 		examples: [
 			"dss recipe get-payload compute_orders",
 			"dss recipe get-payload compute_orders -o code.py",
 		],
 	},
 	cat: {
-		handler: (c, a, f,) => {
+		handler: async (c, a, f,) => {
 			requireArgs(a, 1, commandUsage("recipe", "cat",),);
-			return c.recipes.getPayload(a[0], {
-				projectKey: f["project-key"] as string | undefined,
-			},);
+			return recipePayloadValue(
+				await c.recipes.getPayload(a[0], { projectKey: f["project-key"] as string | undefined, },),
+			);
 		},
-		description: "Print the recipe code payload as a JSON string.",
+		description: "Print the recipe payload: JSON of visual recipes as JSON, code as a string.",
 		examples: ["dss recipe cat compute_orders",],
 	},
 	"set-payload": {

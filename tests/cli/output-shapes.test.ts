@@ -9,6 +9,13 @@ import { cliEnv, dss, sendJson, withCliServer, } from "./_harness.js";
 
 type Shape = "object" | "array" | "string" | "void";
 
+// Payload commands print a string (code, `--output` path) or parsed JSON (visual recipes): the
+// schema lists every type and `outputShape` names the code form.
+const MULTI_TYPE_OUTPUTS: Record<string, true> = {
+	"recipe.get-payload": true,
+	"recipe.cat": true,
+};
+
 const registry = buildCommandRegistry();
 
 const ADVERTISED_SHAPES: Array<[key: string, shape: Shape, why: string,]> = [
@@ -50,7 +57,8 @@ describe("discovery outputShape is resource-scoped", () => {
 					? [record.type,]
 					: (record.anyOf ?? record.oneOf ?? []).map((branch,) => branch.type),
 			);
-			if (types.size !== 1 || !types.has(declared,)) {
+			const multiType = MULTI_TYPE_OUTPUTS[key] === true;
+			if ((!multiType && types.size !== 1) || !types.has(declared,)) {
 				mismatches.push(`${key}: outputShape=${declared} schema=${[...types,].join("|",)}`,);
 			}
 		}

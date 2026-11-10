@@ -673,6 +673,96 @@ describe("CLI recipe get-payload and set-payload", () => {
 			rmSync(outPath, { force: true, },);
 		}
 	});
+
+	describe("visual-recipe JSON payloads", () => {
+		const prepare = {
+			columnsSelection: { mode: "ALL", },
+			steps: [
+				{ type: "ColumnRenamer", params: { renamings: [{ from: "a", to: "b", },], }, },
+				{ type: "CreateColumnWithGREL", params: { column: "c", expression: "b * 2", }, },
+			],
+		};
+		const prepareText = JSON.stringify(prepare, null, 2,);
+
+		const payloadStdout = async (
+			command: "get-payload" | "cat",
+			type: string,
+			payload: string,
+		): Promise<string> => {
+			let stdout = "";
+			await withCliServer((_req, res,) => {
+				sendJson(res, { recipe: { type, }, payload, },);
+			}, async (url,) => {
+				const result = await dss(["recipe", command, "my_recipe",], { env: cliEnv(url,), },);
+				expect(result.stderr,).toBe("",);
+				stdout = result.stdout;
+			},);
+			return stdout;
+		};
+
+		for (const command of ["get-payload", "cat",] as const) {
+			it(`${command} prints a JSON object payload as an object, not an escaped string`, async () => {
+				const stdout = await payloadStdout(command, "shaker", prepareText,);
+				expect(JSON.parse(stdout,),).toEqual(prepare,);
+				expect(stdout,).not.toContain('\\"',);
+				expect(stdout,).not.toContain("\\n",);
+			});
+
+			it(`${command} prints a JSON array payload as an array`, async () => {
+				const stdout = await payloadStdout(command, "shaker", '[\n  {"a": 1},\n  2\n]\n',);
+				expect(JSON.parse(stdout,),).toEqual([{ a: 1, }, 2,],);
+			});
+
+			it(`${command} prints a Python payload as the exact JSON string`, async () => {
+				const code = 'import dataiku\nprint(\'{"not": "json"}\')\n';
+				expect(JSON.parse(await payloadStdout(command, "python", code,),),).toBe(code,);
+			});
+
+			it(`${command} still rejects an empty payload as validation_failed`, async () => {
+				await withCliServer((_req, res,) => {
+					sendJson(res, { recipe: { type: "python", }, payload: "", },);
+				}, async (url,) => {
+					const failure = await dssFailure(["recipe", command, "my_recipe",], { env: cliEnv(url,), },);
+					expect(failure.code,).toBe(1,);
+					expect(JSON.parse(failure.stdout,),).toMatchObject({
+						code: "validation_failed",
+						error: 'Recipe "my_recipe" has no code payload.',
+					},);
+				},);
+			});
+
+			it(`${command} keeps payload text that parses to a JSON scalar as a string`, async () => {
+				expect(JSON.parse(await payloadStdout(command, "python", "42",),),).toBe("42",);
+				expect(JSON.parse(await payloadStdout(command, "python", '"x"',),),).toBe('"x"',);
+				expect(JSON.parse(await payloadStdout(command, "python", "null",),),).toBe("null",);
+			});
+
+			it(`${command} keeps invalid JSON that starts with a brace as a string`, async () => {
+				for (const text of ['{"steps": [', "{ not json }\n", "[1, 2",]) {
+					expect(JSON.parse(await payloadStdout(command, "python", text,),),).toBe(text,);
+				}
+			});
+		}
+
+		it("get-payload --output writes the exact server bytes for a visual recipe", async () => {
+			const outPath = join(tmpdir(), `dss-cli-getpayload-visual-${Date.now()}.json`,);
+			const text = `${prepareText}\r\n`;
+			try {
+				await withCliServer((_req, res,) => {
+					sendJson(res, { recipe: { type: "shaker", }, payload: text, },);
+				}, async (url,) => {
+					const { stdout, } = await dss(
+						["recipe", "get-payload", "my_recipe", "--output", outPath,],
+						{ env: cliEnv(url,), },
+					);
+					expect(JSON.parse(stdout,),).toBe(outPath,);
+					expect(readFileSync(outPath, "utf-8",),).toBe(text,);
+				},);
+			} finally {
+				rmSync(outPath, { force: true, },);
+			}
+		});
+	});
 	it("--raw is rejected as an unknown flag on get-payload", async () => {
 		const failure = await dssFailure(["recipe", "get-payload", "my_recipe", "--raw",], {
 			env: cliEnv("http://127.0.0.1:1",),
