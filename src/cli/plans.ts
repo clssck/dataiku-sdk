@@ -3297,19 +3297,23 @@ export function commandPlanShape(
 			) ?? true;
 			return {
 				method: "PUT",
-				endpoint: projectEndpoint("/bundles/exported/" + encodeURIComponent(id,),) + querySuffix({
-					releaseNotes: flags["release-notes"] as string | undefined,
-					evaluateProjectStandardsChecks,
-				},),
+				endpoint: `${projectEndpoint(`/bundles/exported/${encodeURIComponent(id,)}`,)}${
+					querySuffix({
+						releaseNotes: flags["release-notes"] as string | undefined,
+						evaluateProjectStandardsChecks,
+					},)
+				}`,
 				identifiers: { bundleId: id, },
 			};
 		}
 		case "bundle.publish":
 			return {
 				method: "POST",
-				endpoint: projectEndpoint("/bundles/" + encodeURIComponent(id,) + "/publish",) + querySuffix({
-					publishedProjectKey: flags["published-project-key"] as string | undefined,
-				},),
+				endpoint: `${projectEndpoint(`/bundles/${encodeURIComponent(id,)}/publish`,)}${
+					querySuffix({
+						publishedProjectKey: flags["published-project-key"] as string | undefined,
+					},)
+				}`,
 				identifiers: { bundleId: id, },
 				payload: {},
 			};

@@ -68,7 +68,7 @@ describe.skipIf(!sseAvailable,)("owned host cleanup", () => {
 				"-c",
 				prefix + [
 					`os.mkdir(${JSON.stringify(privatePath,)})`,
-					`open(${JSON.stringify(privatePath + "/retained",)}, "w").write("keep")`,
+					`open(${JSON.stringify(`${privatePath}/retained`,)}, "w").write("keep")`,
 					`os.chmod(${JSON.stringify(privatePath,)}, 0)`,
 				].join("\n",),
 			],);
