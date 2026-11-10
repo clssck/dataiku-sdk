@@ -8,7 +8,7 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 - **Official docs:** https://doc.dataiku.com/dss/api/15/rest/
 - **Snapshot:** official static HTML, retrieved **2026-09-09**; DSS major version **15**.
 - **Machine-readable companion:** [docs/API-COVERAGE-DSS-15.json](./API-COVERAGE-DSS-15.json) (same rows plus `meta`).
-- **CLI catalogue (actual programmatic registry):** `buildCommandRegistry()` / `commandActionSummary()` = **57 resources / 530 actions**, of which 49 resources / 522 actions are API-facing and 8 are meta-commands (`agent`, `auth`, `batch`, `cleanup`, `commands`, `fixtures`, `install-skill`, `version`).
+- **CLI catalogue (actual programmatic registry):** `buildCommandRegistry()` = **58 resources / 555 actions**, of which **50 resources / 547 actions** are API-facing and 8 are meta-commands (`agent`, `auth`, `batch`, `cleanup`, `commands`, `fixtures`, `install-skill`, `version`). These totals are checked against the registry by `tests/api-coverage-matrix.test.ts`; the endpoint rows below are the 2026-10-03 snapshot.
 
 ## Counting rules (read before citing numbers)
 
@@ -20,9 +20,9 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 
 ## Mapping validation (machine-checked)
 
-- Every nonempty CLI mapping in this matrix exists in the current catalogue (`buildCommandRegistry()` summary: 57/530); the correct action is the one whose handler actually calls the mapped SDK method (hyphenated quoted action keys parsed structurally).
+- Every nonempty CLI mapping in this matrix exists in the current catalogue (`buildCommandRegistry()`); the correct action is the one whose handler actually calls the mapped SDK method (hyphenated quoted action keys parsed structurally).
 - Every cited SDK method is a public method on its client resource class; private helpers are cited only through the public methods that call them.
-- 8 meta-commands (`agent.contract`, `auth.login`, `batch.*`, `cleanup.*`, `commands.run`, `fixtures.*`, `install-skill.*`, `version.run`) drive no REST endpoint and never appear as coverage; the API-facing subset is 49/522.
+- 8 meta-commands (`agent.contract`, `auth.login`, `batch.*`, `cleanup.*`, `commands.run`, `fixtures.*`, `install-skill.*`, `version.run`) drive no REST endpoint and never appear as coverage.
 - This document describes source-level wiring only and makes no live-instance compatibility claims.
 
 ## Legend
@@ -651,4 +651,4 @@ Complete inventory of the official DSS 15 REST API (every `#### <name>[METHOD](#
 
 ---
 
-*Generated 2026-10-03 from the official DSS 15 REST docs snapshot plus this repository working tree; CLI counts validated against the actual programmatic catalogue (`buildCommandRegistry()` = 57 resources / 530 actions; API-facing subset 49/522). This document makes no live-instance compatibility claims. JSON `meta` records the exact source of every number.*
+*Endpoint rows generated 2026-10-03 from the official DSS 15 REST docs snapshot plus this repository working tree; CLI catalogue totals are test-checked against `buildCommandRegistry()`. This document makes no live-instance compatibility claims. JSON `meta` records the exact source of every number.*

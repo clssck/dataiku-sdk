@@ -17,6 +17,9 @@ const matrix = JSON.parse(readFileSync(join(docs, "API-COVERAGE-DSS-15.json",), 
 		officialEndpointRows: number;
 		implementedOfficialRows: number;
 		notImplementedOfficialRows: number;
+		cliResources: number;
+		cliActions: number;
+		cliApiResourceSubset: { resources: number; actions: number; metaCommands: string[]; };
 	};
 	sections: Record<string, Row[]>;
 };
@@ -48,4 +51,32 @@ it("keeps the coverage matrix counts, CLI actions, and SDK methods real", () => 
 	const markdown = readFileSync(join(docs, "API-COVERAGE-DSS-15.md",), "utf-8",);
 	expect(markdown,).toContain(`**${matrix.meta.officialEndpointRows} entries`,);
 	expect(markdown,).toContain(`**${matrix.meta.implementedOfficialRows} implemented**`,);
+
+	// The catalogue totals both files quote are the registry's, not a dated snapshot.
+	const { metaCommands, } = matrix.meta.cliApiResourceSubset;
+	expect(metaCommands.filter((name,) => registry[name] === undefined),).toEqual([],);
+	const counted = { cliResources: 0, cliActions: 0, api: { resources: 0, actions: 0, }, };
+	for (const [name, actions,] of Object.entries(registry,)) {
+		const actionCount = Object.keys(actions,).length;
+		counted.cliResources += 1;
+		counted.cliActions += actionCount;
+		if (!metaCommands.includes(name,)) {
+			counted.api.resources += 1;
+			counted.api.actions += actionCount;
+		}
+	}
+	expect({
+		cliResources: matrix.meta.cliResources,
+		cliActions: matrix.meta.cliActions,
+		api: {
+			resources: matrix.meta.cliApiResourceSubset.resources,
+			actions: matrix.meta.cliApiResourceSubset.actions,
+		},
+	},).toEqual(counted,);
+	expect(markdown,).toContain(
+		`**${matrix.meta.cliResources} resources / ${matrix.meta.cliActions} actions**`,
+	);
+	expect(markdown,).toContain(
+		`**${matrix.meta.cliApiResourceSubset.resources} resources / ${matrix.meta.cliApiResourceSubset.actions} actions**`,
+	);
 });

@@ -5,12 +5,12 @@
 		"sourceSnapshot": "official static HTML-to-markdown text, retrieved 2026-09-09",
 		"dssMajorVersion": 15,
 		"officialEndpointRows": 372,
-		"sdkSnapshot": "src/resources (50 files) + src/cli working tree 2026-10-03; CLI catalogue = buildCommandRegistry()/commandActionSummary(): 57 resources / 530 actions total (49 API-facing resources / 522 API actions + 8 meta-commands: agent, auth, batch, cleanup, commands, fixtures, install-skill, version). Mappings machine-validated: every nonempty CLI mapping exists in the catalogue and every cited SDK method is a public method on its client resource class (private helpers are cited only via their public callers).",
-		"cliResourcesAtSnapshot": 57,
-		"cliActionsAtSnapshot": 530,
+		"sdkSnapshot": "Endpoint rows: src/resources + src/cli working tree 2026-10-03. CLI catalogue totals (cliResources, cliActions, cliApiResourceSubset) = buildCommandRegistry(), kept equal to the registry by tests/api-coverage-matrix.test.ts; the API-facing subset excludes the meta-commands, which drive no REST endpoint. Mappings machine-validated: every nonempty CLI mapping exists in the catalogue and every cited SDK method is a public method on its client resource class (private helpers are cited only via their public callers).",
+		"cliResources": 58,
+		"cliActions": 555,
 		"cliApiResourceSubset": {
-			"resources": 49,
-			"actions": 522,
+			"resources": 50,
+			"actions": 547,
 			"metaCommands": [
 				"agent",
 				"auth",

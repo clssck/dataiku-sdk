@@ -2,11 +2,11 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest published `3.x` release on npm. Older versions are not maintained.
+Security fixes are provided for the latest published major release on npm (currently `4.x`). Older majors are not maintained.
 
 | Version      | Supported          |
 | ------------ | ------------------ |
-| latest `3.x` | :white_check_mark: |
+| latest `4.x` | :white_check_mark: |
 | older        | :x:                |
 
 ## Reporting a vulnerability
