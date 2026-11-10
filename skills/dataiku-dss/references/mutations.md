@@ -2,10 +2,10 @@
 
 ## Before writes
 
-- For `sideEffect:"write"`, first run exact argv with `--plan`: local derived operation, no DSS calls. Check `destructive`, `idempotency`, `async`, `unsafeOutputs`, `exitCodes` before execution.
-- `--plan` explains; `--dry-run` simulates, only when that action advertises `dryRun:true`. Never add unsupported flags.
+- For `sideEffect:"write"`, first run exact argv with `--plan`: local derived operation, no DSS calls. The entry names `destructive`, `idempotency`, `async`, `unsafeOutputs` when they differ from a plain reversible write.
+- `--plan` explains; `--dry-run` simulates, only when the usage lists it. Never add unsupported flags.
 - For creates/uploads advertising it, pass `--record-cleanup cleanup.jsonl`. `dss cleanup --file cleanup.jsonl` previews reverse-order steps without mutation; inspect before adding `--apply`.
-- JSON: follow `inputContract`, `requiredFlags`, `requiredOneOf`. Prefer advertised `--data-file PATH` / `--stdin` over inline `--data`: preserve JSON across shells; keep large/sensitive payloads out of argv.
+- JSON: follow `inputContract` / `schemas.input`; required flags are in the usage line. Prefer advertised `--data-file PATH` / `--stdin` over inline `--data`: preserve JSON across shells; keep large/sensitive payloads out of argv.
 - Authenticated actions expose `--request-timeout MS`, `--retries N` (idempotent GET only). Long-running actions expose `--timeout MS`, `--poll-interval MS`, log limits. Use only advertised flags.
 - Before live mutation tests, discover compatible resources with `dss fixtures`; never guess project objects.
 

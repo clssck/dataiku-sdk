@@ -280,7 +280,7 @@ export const notebookCommands: Record<string, CommandMeta> = withUsage("notebook
 					resource: "sql-notebook",
 					id: a[0],
 					current,
-					next: options,
+					request: options,
 					endpoint: encodedProjectEndpoint(
 						c,
 						pk,

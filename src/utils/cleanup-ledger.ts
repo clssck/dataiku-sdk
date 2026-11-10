@@ -108,6 +108,13 @@ export async function preflightCleanupLedgerPath(filePath: string,): Promise<voi
 	}
 }
 
+const HARD_LINK_UNSUPPORTED: Record<string, true> = {
+	EPERM: true,
+	ENOTSUP: true,
+	EOPNOTSUPP: true,
+	ENOSYS: true,
+};
+
 /**
  * Atomically bind a cleanup ledger path to one DSS server before a mutation.
  * The adjacent owner-only reservation closes the empty-ledger race: processes
@@ -124,15 +131,27 @@ export async function reserveCleanupLedgerDssUrl(
 	const bindingPath = `${resolved}.dss-url`;
 	const expected = canonicalDssUrl(dssUrl,);
 	await fs.mkdir(path.dirname(resolved,), { recursive: true, },);
+	// Publish the binding complete: write a private temp file, then hard-link it
+	// to the binding path. link fails with EEXIST when another writer won, so
+	// first-writer-wins holds across processes, and no reader can ever see the
+	// binding empty (a bare exclusive create would expose it before its content).
+	const temporaryPath = `${bindingPath}.tmp-${crypto.randomUUID()}`;
+	const content = `${expected}\n`;
 	try {
-		await fs.writeFile(bindingPath, `${expected}\n`, {
-			encoding: "utf-8",
-			flag: "wx",
-			mode: 0o600,
-		},);
+		await fs.writeFile(temporaryPath, content, { encoding: "utf-8", flag: "wx", mode: 0o600, },);
+		try {
+			await fs.link(temporaryPath, bindingPath,);
+		} catch (error) {
+			// No hard links here (FAT/exFAT, some network mounts): an exclusive
+			// create still has a single winner, with the brief empty window.
+			if (!HARD_LINK_UNSUPPORTED[(error as NodeJS.ErrnoException).code ?? ""]) throw error;
+			await fs.writeFile(bindingPath, content, { encoding: "utf-8", flag: "wx", mode: 0o600, },);
+		}
 		return;
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+	} finally {
+		await fs.rm(temporaryPath, { force: true, },);
 	}
 	const raw = await fs.readFile(bindingPath, "utf-8",);
 	let found: string;

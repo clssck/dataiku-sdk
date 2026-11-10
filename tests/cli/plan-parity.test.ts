@@ -128,3 +128,128 @@ it("plugin create-dev --plan refuses a repository URL with embedded credentials"
 	expect(failure.stdout,).not.toContain("s3cret-token",);
 	expect(JSON.parse(failure.stdout,),).toMatchObject({ exitCode: 1, },);
 });
+
+describe("--plan applies the registry's required-flag contract", () => {
+	it("rejects a plan that omits a required flag, as apply would", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			sendJson(res, {},);
+		}, async (url,) => {
+			const env = cliEnv(url,);
+			const failure = await dssFailure([
+				"project",
+				"create",
+				"TEMP",
+				"TempProject",
+				"--plan",
+			], { env, },);
+			expect(failure.code,).toBe(1,);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				code: "missing_required_flag",
+				exitCode: 1,
+				error: expect.stringContaining("--owner is required",),
+			},);
+
+			const ok = await dss([
+				"project",
+				"create",
+				"TEMP",
+				"TempProject",
+				"--owner",
+				"alice",
+				"--plan",
+			], { env, },);
+			expect(JSON.parse(ok.stdout,),).toMatchObject({ payload: { owner: "alice", }, },);
+		},);
+		expect(requests,).toEqual([],);
+	});
+
+	it("rejects a plan that satisfies none of a required choice", async () => {
+		const failure = await dssFailure([
+			"project",
+			"settings-set",
+			"--project-key",
+			"P",
+			"--plan",
+		], { env: cliEnv("http://127.0.0.1:1",), },);
+		expect(failure.code,).toBe(1,);
+		expect(JSON.parse(failure.stdout,),).toMatchObject({ code: "missing_required_flag", },);
+	});
+
+	it("rejects an empty --name or --content-type before any request, in every mode", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			sendJson(res, { id: "A", name: "old", article: { id: "A", name: "old", }, payload: "x", },);
+		}, async (url,) => {
+			const env = cliEnv(url,);
+			for (
+				const argv of [
+					["wiki", "update", "A", "--name", "",],
+					["wiki", "update", "A", "--name", "", "--content", "# kept",],
+					["dashboard", "update", "A", "--name", "",],
+					["insight", "update", "A", "--name", "",],
+					["insight", "update", "A", "--content-type", "",],
+				]
+			) {
+				for (const mode of [[], ["--plan",], ["--dry-run",],]) {
+					const failure = await dssFailure([...argv, ...mode,], { env, },);
+					expect(JSON.parse(failure.stdout,),).toMatchObject({
+						code: "invalid_flag_value",
+						exitCode: 1,
+					},);
+				}
+			}
+		},);
+		expect(requests,).toEqual([],);
+	});
+
+	it("requires an explicit content source instead of reading stdin by default", async () => {
+		const requests: string[] = [];
+		await withCliServer((req, res,) => {
+			requests.push(`${req.method} ${req.url}`,);
+			sendJson(res, {},);
+		}, async (url,) => {
+			const env = cliEnv(url,);
+			for (
+				const argv of [
+					["project-library", "put", "python/a.py",],
+					["project-library", "put", "python/a.py", "--plan",],
+					["project-library", "put", "python/a.py", "--dry-run",],
+					["project-library", "diff", "python/a.py",],
+					["plugin", "contents-put", "my-plugin", "python/a.py",],
+					["plugin", "contents-put", "my-plugin", "python/a.py", "--plan",],
+					["plugin", "contents-put", "my-plugin", "python/a.py", "--dry-run",],
+				]
+			) {
+				const failure = await dssFailure(argv, { env, },);
+				expect(JSON.parse(failure.stdout,),).toMatchObject({
+					code: "missing_required_flag",
+					exitCode: 1,
+				},);
+			}
+		},);
+		expect(requests,).toEqual([],);
+	});
+});
+
+describe("--plan reports whether the command waits", () => {
+	it("run-and-wait always waits; run waits only with --wait", async () => {
+		const waits: Record<string, unknown> = {};
+		for (
+			const [name, argv,] of [
+				["run-and-wait", ["macro", "run-and-wait", "m",],],
+				["run", ["macro", "run", "m",],],
+				["run --wait", ["macro", "run", "m", "--wait",],],
+			] as const
+		) {
+			const { stdout, } = await dss([...argv, "--plan", "--project-key", "P",], {
+				env: cliEnv("http://127.0.0.1:1",),
+			},);
+			const plan = JSON.parse(stdout,) as { wait: unknown; };
+			waits[name] = plan.wait;
+		}
+		expect(waits,).toEqual({ "run-and-wait": true, run: false, "run --wait": true, },);
+	});
+});

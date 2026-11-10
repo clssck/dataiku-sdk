@@ -964,12 +964,9 @@ describe("CLI recipe get-payload and set-payload", () => {
 				state: "DONE",
 				type: "MANAGED_FOLDER_BUILD",
 				log: "stdout: preparing\n>>> DONE: 19 experiments",
-				logSummary: {
-					state: "DONE",
-					lineCount: 2,
-					lines: ["stdout: preparing", ">>> DONE: 19 experiments",],
-				},
+				logSummary: { state: "DONE", lineCount: 2, },
 			},);
+			expect(result["logSummary"],).not.toHaveProperty("lines",);
 		},);
 
 		expect(buildRequestBody,).toEqual({

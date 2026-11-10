@@ -1087,84 +1087,199 @@
 			}
 		},
 		"job.monitor": {
-			"type": "object",
-			"required": [
-				"jobId",
-				"state",
-				"type",
-				"elapsedMs",
-				"pollCount",
-				"success",
-				"progress"
-			],
-			"properties": {
-				"jobId": {
-					"type": "string"
-				},
-				"state": {
-					"type": "string"
-				},
-				"type": {
-					"type": "string"
-				},
-				"elapsedMs": {
-					"type": "number"
-				},
-				"pollCount": {
-					"type": "number"
-				},
-				"success": {
-					"type": "boolean"
-				},
-				"timedOut": {
-					"type": "boolean"
-				},
-				"cancelled": {
-					"type": "boolean"
-				},
-				"resume": {
-					"type": "string"
-				},
-				"resumeArgv": {
-					"type": "array",
-					"items": {
-						"type": "string"
-					}
-				},
-				"progress": {
+			"anyOf": [
+				{
 					"type": "object",
 					"required": [
-						"done",
-						"failed",
-						"running",
-						"total"
+						"jobId",
+						"state",
+						"type",
+						"elapsedMs",
+						"pollCount",
+						"success",
+						"progress"
 					],
 					"properties": {
-						"done": {
+						"jobId": {
+							"type": "string"
+						},
+						"state": {
+							"type": "string"
+						},
+						"type": {
+							"type": "string"
+						},
+						"elapsedMs": {
 							"type": "number"
 						},
-						"failed": {
+						"pollCount": {
 							"type": "number"
 						},
-						"running": {
-							"type": "number"
+						"success": {
+							"type": "boolean"
 						},
-						"total": {
-							"anyOf": [
-								{
+						"timedOut": {
+							"type": "boolean"
+						},
+						"cancelled": {
+							"type": "boolean"
+						},
+						"resume": {
+							"type": "string"
+						},
+						"resumeArgv": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						"progress": {
+							"type": "object",
+							"required": [
+								"done",
+								"failed",
+								"running",
+								"total"
+							],
+							"properties": {
+								"done": {
 									"type": "number"
 								},
-								{
-									"type": "null"
+								"failed": {
+									"type": "number"
+								},
+								"running": {
+									"type": "number"
+								},
+								"total": {
+									"anyOf": [
+										{
+											"type": "number"
+										},
+										{
+											"type": "null"
+										}
+									]
 								}
-							]
+							}
+						},
+						"log": {
+							"type": "string"
 						}
 					}
 				},
-				"log": {
-					"type": "string"
+				{
+					"type": "object",
+					"required": [
+						"jobs",
+						"state",
+						"success",
+						"elapsedMs",
+						"pollCount",
+						"until"
+					],
+					"properties": {
+						"jobs": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"required": [
+									"jobId",
+									"state",
+									"type",
+									"elapsedMs",
+									"pollCount",
+									"success",
+									"progress"
+								],
+								"properties": {
+									"jobId": {
+										"type": "string"
+									},
+									"state": {
+										"type": "string"
+									},
+									"type": {
+										"type": "string"
+									},
+									"elapsedMs": {
+										"type": "number"
+									},
+									"pollCount": {
+										"type": "number"
+									},
+									"success": {
+										"type": "boolean"
+									},
+									"timedOut": {
+										"type": "boolean"
+									},
+									"cancelled": {
+										"type": "boolean"
+									},
+									"resume": {
+										"type": "string"
+									},
+									"resumeArgv": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
+									"progress": {
+										"type": "object",
+										"required": [
+											"done",
+											"failed",
+											"running",
+											"total"
+										],
+										"properties": {
+											"done": {
+												"type": "number"
+											},
+											"failed": {
+												"type": "number"
+											},
+											"running": {
+												"type": "number"
+											},
+											"total": {
+												"anyOf": [
+													{
+														"type": "number"
+													},
+													{
+														"type": "null"
+													}
+												]
+											}
+										}
+									},
+									"log": {
+										"type": "string"
+									}
+								}
+							}
+						},
+						"state": {
+							"type": "string"
+						},
+						"success": {
+							"type": "boolean"
+						},
+						"elapsedMs": {
+							"type": "number"
+						},
+						"pollCount": {
+							"type": "number"
+						},
+						"until": {
+							"type": "string"
+						}
+					}
 				}
-			}
+			]
 		},
 		"job.wait": {
 			"type": "object",

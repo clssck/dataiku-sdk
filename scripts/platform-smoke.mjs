@@ -168,12 +168,7 @@ try {
 		`packaged CLI returned unexpected error status: ${failure.exitCode}`,
 	);
 	assert(failure.stderr.toString() === "", "packaged CLI wrote error output to stderr",);
-	const errorLines = failure.stdout.toString().trim().split("\n",);
-	assert(
-		errorLines.length === 1,
-		"packaged CLI error output was truncated or was not one JSONL event",
-	);
-	const error = JSON.parse(errorLines[0],);
+	const error = JSON.parse(failure.stdout.toString(),);
 	assert(error.type === "error" && error.exitCode === 1, "packaged CLI error envelope is invalid",);
 
 	process.stdout.write(`${

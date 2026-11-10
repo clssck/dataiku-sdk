@@ -255,7 +255,10 @@ async function classifyMutations(ctx: CaseContext, metrics: SessionMetrics,): Pr
 	for (const { argv, } of metrics.dssInvocations) {
 		const action = dssActionOf(argv,);
 		if (action === undefined || known.has(action,)) continue;
-		const entry = (await ctx.dss(["commands", "run", "--fields", action,], { allowFailure: true, },))
+		// `mutatesDss` is in the full entry only; the default entry is the compact one.
+		const entry = (await ctx.dss(["commands", "run", "--full", "--fields", action,], {
+			allowFailure: true,
+		},))
 			.json as
 				| Record<string, { mutatesDss?: boolean; } | undefined>
 				| undefined;

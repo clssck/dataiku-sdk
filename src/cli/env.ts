@@ -28,13 +28,21 @@ export function ambientProjectKey(): string | undefined {
 	return dataikuEnvironmentEnabled() ? process.env.DATAIKU_PROJECT_KEY : undefined;
 }
 
+export type StdoutJsonMode = "wrapped" | "pretty" | "compact";
+
 /**
- * `DSS_PRETTY=1` indents stdout JSON. Agent shells that cut long lines (omp at
- * 768 bytes) truncate a one-line result; indented output keeps each line short.
- * Read from the process environment only, never from a `.env` file.
+ * Layout of stdout JSON, from `DSS_PRETTY` in the process environment only (never
+ * a `.env` file):
+ * - unset or any other value: "wrapped", compact JSON line-wrapped so no line
+ *   exceeds the byte budget agent shells cut at (omp at 768 bytes);
+ * - `1`: "pretty", 2-space indented;
+ * - `0`: "compact", always one physical line.
  */
-export function prettyOutputEnabled(): boolean {
-	return process.env.DSS_PRETTY === "1";
+export function stdoutJsonMode(): StdoutJsonMode {
+	const value = process.env.DSS_PRETTY;
+	if (value === "1") return "pretty";
+	if (value === "0") return "compact";
+	return "wrapped";
 }
 
 const allowedEnvKeys = new Set<string>(["NODE_EXTRA_CA_CERTS", "NODE_TLS_REJECT_UNAUTHORIZED",],);

@@ -1,11 +1,12 @@
 import { validateCredentials, } from "../auth.js";
 import { getCredentialsPath, saveCredentials, } from "../config.js";
-import { DataikuError, } from "../errors.js";
+import { ClientValidationError, DataikuError, } from "../errors.js";
 import actionOutputSchemasMetadata from "../generated/action-output-schemas.json" with {
 	type: "json",
 };
 import { commands, } from "./commands/index.js";
 import { BOOLEAN_FLAGS, FLAG_ALIASES, SHORT_FLAGS, } from "./flags.js";
+import { STDOUT_LINE_BUDGET_BYTES, } from "./output.js";
 import { resolveLoginCredentials, } from "./runtime.js";
 import {
 	type CommandInputContract,
@@ -45,7 +46,9 @@ export const AUTH_ACTIONS: Record<string, {
 }> = {
 	login: {
 		handler: async (flags,) => {
-			const { url, apiKey, projectKey, tlsSettings, } = resolveLoginCredentials(flags,);
+			const { url, apiKey, projectKey, tlsSettings, effectiveTlsSettings, } = resolveLoginCredentials(
+				flags,
+			);
 
 			if (!url || !apiKey) {
 				throw new UsageError(
@@ -56,7 +59,7 @@ export const AUTH_ACTIONS: Record<string, {
 				);
 			}
 
-			const result = await validateCredentials(url, apiKey, tlsSettings,);
+			const result = await validateCredentials(url, apiKey, effectiveTlsSettings,);
 			if (!result.valid) {
 				if (result.dataikuError) throw result.dataikuError;
 				throw new DataikuError(
@@ -209,7 +212,40 @@ const READ_ACTIONS = new Set([
 	"status-by-partition",
 	"usages",
 	"verify-instance",
+	"activity",
+	"backend-state",
+	"business-app-instance-permissions",
+	"column-lineage",
+	"dataset-history",
+	"diagnostics",
+	"files",
+	"generate-documentation",
+	"info",
+	"instances",
+	"last-runs",
+	"manifest",
+	"monitor",
+	"permissions-snapshot",
+	"plan",
+	"result",
+	"root",
+	"state",
+	"successor-preflight",
+	"tables",
+	"test",
+	"test-report",
+	"version",
+	"version-snippet",
 ],);
+
+/**
+ * Read verbs by shape, tested after the mutating-verb patterns. An action that
+ * matches neither must be classified explicitly (`READ_ACTIONS` or a resource
+ * branch in `inferSideEffect`).
+ */
+const READ_ACTION_PATTERN =
+	/^(get|list|find|search|inspect|validate|download|assert|compare)(-|$)|-(get|list|status|details|summary|diff|settings|manifest|timeline)$/;
+
 /**
  * Security admin actions that hand back a DSS future instead of settling
  * inline: resyncs mint sync jobs, external-user/group fetches mint a
@@ -325,13 +361,14 @@ const GLOBAL_FLAG_NAMES: Record<string, true> = Object.fromEntries(
 );
 export const COMMANDS_USAGE = commandUsage("commands", "run",);
 const COMMANDS_DESCRIPTION =
-	"Print a compact resource/action summary by default; --contains TEXT finds commands by concept (top 5 of id/usage/description matches), --fields gives scoped command metadata, and --output PATH exports the full registry without sending it through stdout.";
+	"Print a compact resource/action summary by default; --contains TEXT finds commands by concept (top 5 of id/usage/description matches), --fields gives scoped command metadata (RESOURCE.ACTION is compact; --full adds flags and schemas; RESOURCE.ACTION.FIELD names one field), and --output PATH exports the full registry without sending it through stdout.";
 const COMMANDS_EXAMPLES = [
 	"dss commands run",
 	'dss commands run --contains "propagate schema"',
 	"dss commands run --fields dataset",
 	"dss commands run --fields dataset.create",
 	"dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples",
+	"dss commands run --fields dataset.create --full",
 	"dss commands run --output commands.json",
 ];
 export const AGENT_CONTRACT_COMMAND = "dss agent contract";
@@ -594,6 +631,21 @@ const ALLOW_EMPTY_VALUE_FLAGS: Record<string, true> = {
 	"version-notes": true,
 };
 
+/**
+ * Empty values accepted by one command only: `code-env set-packages` replaces
+ * the requested package list wholesale, so an empty `--packages`/`--package`
+ * clears it, and `messaging-channel send` takes `--body ""` as an empty body.
+ */
+const ALLOW_EMPTY_VALUE_COMMAND_FLAGS: Record<string, readonly string[]> = {
+	"code-env.set-packages": ["packages", "package",],
+	"messaging-channel.send": ["body",],
+};
+
+function allowsEmptyValue(resource: string, action: string, name: string,): boolean {
+	return ALLOW_EMPTY_VALUE_FLAGS[name] === true
+		|| ALLOW_EMPTY_VALUE_COMMAND_FLAGS[`${resource}.${action}`]?.includes(name,) === true;
+}
+
 function flagValueTokenPattern(flag: CommandFlagMetadata,): string {
 	const names = [flag.name, ...(flag.aliases ?? []),];
 	const quantifier = flag.allowEmptyValue === true ? "*" : "+";
@@ -634,7 +686,7 @@ function argvPrefix(resource: string, action: string,): string[] {
  * usage-derived prefix, then the required `<...>` positionals first; flags and
  * values follow, so `prefixItems` pins the head of the array and the tail is
  * validated against the canonical flag token alphabet. Constraints mirror the
- * runtime checks in `validateRegistryCommandInputs`: required positional arity,
+ * runtime checks in `validateCommandInvocation` and `requireEntryFlags`: required positional arity,
  * required flags, required choice groups, and rejection of unknown long and
  * short flags. Value flags only validate in `--flag=VALUE` form, so a bare
  * value flag can never pass without its value; boolean flags stay standalone.
@@ -853,7 +905,7 @@ function requiredInputGroups(resource: string, action: string,): CommandRequired
 	return COMMAND_REQUIRED_INPUT_GROUPS[registryKey(resource, action,)] ?? [];
 }
 
-function inferSideEffect(resource: string, action: string,): CommandSideEffect {
+export function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	if (resource === "auth") return "auth";
 	if (
 		resource === "agent" || resource === "doctor" || resource === "commands"
@@ -923,7 +975,13 @@ function inferSideEffect(resource: string, action: string,): CommandSideEffect {
 	) {
 		return "write";
 	}
-	return "read";
+	if (READ_ACTION_PATTERN.test(action,)) return "read";
+	// Neither side recognises the name: failing here forces the author to classify
+	// the action instead of silently advertising a mutation as a read.
+	throw new ClientValidationError(
+		`Cannot infer sideEffect for ${resource}.${action}: add it to READ_ACTIONS, or make its verb match READ_ACTION_PATTERN or the mutating-verb pattern in inferSideEffect.`,
+		"internal_error",
+	);
 }
 
 function inferRequiresAuth(resource: string,): boolean {
@@ -1325,7 +1383,9 @@ export function buildRegistryEntry(
 		const aliasPart = aliases.length > 0 ? { aliases, } : {};
 		const kind = flagKind(name,);
 		if (kind === "boolean") return { name, kind, ...aliasPart, };
-		const allowEmptyPart = ALLOW_EMPTY_VALUE_FLAGS[name] === true ? { allowEmptyValue: true, } : {};
+		const allowEmptyPart = allowsEmptyValue(resource, action, name,)
+			? { allowEmptyValue: true, }
+			: {};
 		const hint = valueHints[name] ?? GLOBAL_FLAG_VALUE_HINTS[name];
 		if (!hint) return { name, kind, ...aliasPart, ...allowEmptyPart, };
 		return {
@@ -1517,6 +1577,54 @@ export function buildCommandRegistry(
 		}
 	}
 	return registry;
+}
+
+/**
+ * The entry an agent reads before running a command (`commands run --fields
+ * RESOURCE.ACTION`): what it must act on, not the machine restatement of the usage
+ * line. Every key is copied unchanged from `entry`; the full entry stays reachable by
+ * `--full`, `--output`, and deep selectors such as `RESOURCE.ACTION.flags`.
+ *
+ * Always kept: `usage`, `description`, `examples`, `sideEffect`.
+ * Kept only when not the default for the command's `sideEffect` (as set in
+ * `buildRegistryEntry`; reads and `auth` default to the "none"/"safe" values):
+ * - `destructive`: not "none" for a read, not "reversible" for a write;
+ * - `dryRun`: true for a read, false for a write (a write without `--dry-run`);
+ * - `idempotency`: not "safe" for a read, not "none" for a write;
+ * - `async`: not "none"; `producesLocalFile`: true.
+ * Kept when present: `unsafeOutputs`, `cleanupCommand`, `cleanupHint`.
+ * Payload contract, kept for commands that take a JSON body: `inputContract` (when it
+ * names a body source), `schemas.input`, `examplePayload`.
+ * Dropped: `resource`, `action`, `agentContractVersion`, `exitCodes`, `flags`,
+ * `optionalFlags`, `requiredFlags`, `requiredOneOf`, `requiredInputGroups`,
+ * `positionalArguments`, `structuredExamples`, `payloadSchema`, `schemas.argv`,
+ * `schemas.output`, `outputShape`, `requiresAuth`, `requiresProject`, `mutatesDss`.
+ */
+export function compactCommandEntry(entry: CommandRegistryEntry,): Record<string, unknown> {
+	const isWrite = entry.sideEffect === "write";
+	const compact: Record<string, unknown> = {
+		usage: entry.usage,
+		description: entry.description,
+		examples: entry.examples,
+		sideEffect: entry.sideEffect,
+	};
+	if (entry.destructive !== (isWrite ? "reversible" : "none")) {
+		compact.destructive = entry.destructive;
+	}
+	if (entry.dryRun !== isWrite) compact.dryRun = entry.dryRun;
+	if (entry.idempotency !== (entry.sideEffect === "read" ? "safe" : "none")) {
+		compact.idempotency = entry.idempotency;
+	}
+	if (entry.async !== "none") compact.async = entry.async;
+	if (entry.producesLocalFile) compact.producesLocalFile = true;
+	if (entry.unsafeOutputs) compact.unsafeOutputs = entry.unsafeOutputs;
+	if (entry.cleanupCommand) compact.cleanupCommand = entry.cleanupCommand;
+	if (entry.cleanupHint) compact.cleanupHint = entry.cleanupHint;
+	if (Object.keys(entry.inputContract,).length > 0) compact.inputContract = entry.inputContract;
+	// `schemas` builds lazily; only commands with a payload schema have an `input` to read.
+	if (entry.payloadSchema) compact.schemas = { input: entry.schemas.input, };
+	if (entry.examplePayload !== undefined) compact.examplePayload = entry.examplePayload;
+	return compact;
 }
 
 /** Query words that match nearly every description and carry no intent. */
@@ -1775,7 +1883,7 @@ export function buildAgentContract(): Record<string, unknown> {
 					"dss commands run --fields dataset.create",
 				],
 				scopedDiscoveryHint:
-					"Default: resource/action summary. --contains TEXT: top 5 actions by concept. --fields RESOURCE: each action's usage, description, and side effect; RESOURCE.ACTION: one full entry keyed by that path; append .FIELD for nested metadata. Comma-separate paths. --output PATH exports full entries (the full registry without --fields).",
+					"Default: resource/action summary. --contains TEXT: top 5 actions by concept. --fields RESOURCE: each action's usage, description, and side effect; RESOURCE.ACTION: one compact entry (usage, description, examples, side effects, payload contract), keyed by that path; --full: the complete entry (flags, schemas); append .FIELD for nested metadata (flags, schemas.argv, schemas.output). Comma-separate paths. --output PATH exports full entries (the full registry without --fields).",
 				// Accepted by every command and absent from per-entry `flags`; the
 				// connection flags matter only for commands that call DSS.
 				globalFlags: [...GLOBAL_AGENT_FLAGS, ...AUTHENTICATED_AGENT_FLAGS,].map((name,) => {
@@ -1797,7 +1905,8 @@ export function buildAgentContract(): Record<string, unknown> {
 		},
 		stdio: {
 			stdout: {
-				format: "compact-json",
+				format: "json",
+				lineWrapBytes: STDOUT_LINE_BUDGET_BYTES,
 				success: "single-json-value",
 				failure: "structured-error-object",
 				failureResultDetailLimitBytes: 65_536,

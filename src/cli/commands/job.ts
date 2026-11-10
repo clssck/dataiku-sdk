@@ -510,7 +510,7 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			return result;
 		},
 		description:
-			"Build a dataset or managed folder and wait for completion. --auto-update-schema lets DSS update each recipe's output schema before it runs; a successful dataset build that leaves an empty schema emits a built_dataset_has_no_columns warning. A managed dataset no recipe produces fails (exit 4).",
+			"Build a dataset or managed folder and wait for completion. --auto-update-schema lets DSS update each recipe's output schema before it runs; a successful dataset build that leaves an empty schema emits a built_dataset_has_no_columns warning. A managed dataset no recipe produces fails (exit 4). --summary adds logSummary; log `lines` only when the job did not succeed.",
 		examples: [
 			"dss job build-and-wait orders",
 			"dss job build-and-wait orders --include-logs --log-filter stdout --summary",
@@ -533,7 +533,8 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			},);
 			return withWaitResume(result, projectKey,);
 		},
-		description: "Wait for an existing job to complete.",
+		description:
+			"Wait for an existing job to complete. --summary adds logSummary; log `lines` only when the job did not succeed.",
 		examples: [
 			"dss job wait JOB_ID",
 			"dss job wait JOB_ID --include-logs --log-filter stdout --summary --timeout 60000",
@@ -558,7 +559,8 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			);
 			return aggregateJobWaitResults(jobs, String(f["until"] ?? "all-done",),);
 		},
-		description: "Monitor one or more existing jobs and summarize progress counters from logs.",
+		description:
+			"Monitor one or more existing jobs and summarize progress counters from logs (--summary, default on; log tail `lines` only for jobs that did not succeed).",
 		examples: ["dss job monitor JOB_ID --summary", "dss job monitor JOB1 JOB2 --until all-done",],
 	},
 	watch: {
@@ -580,7 +582,8 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			);
 			return aggregateJobWaitResults(jobs, String(f["until"] ?? "all-done",),);
 		},
-		description: "Watch one or more existing jobs with progress extraction enabled.",
+		description:
+			"Watch one or more existing jobs with progress extraction enabled (always --summary: log tail `lines` only for jobs that did not succeed).",
 		examples: ["dss job watch JOB_ID", "dss job watch JOB1 JOB2 --until all-done",],
 	},
 	abort: {

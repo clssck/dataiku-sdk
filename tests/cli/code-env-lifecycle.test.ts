@@ -290,7 +290,7 @@ describe("CLI code-env lifecycle additions", () => {
 				"--expect-hash",
 				staleHash,
 			], { env: cliEnv(url,), },);
-			expect([1, 2,],).toContain(failure.code,);
+			expect<unknown>([1, 2,],).toContain(failure.code,);
 			const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 			expect(report.code,).toBe("validation_failed",);
 			expect(report.details,).toMatchObject({

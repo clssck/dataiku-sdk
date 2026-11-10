@@ -1,6 +1,6 @@
 import { ClientValidationError, } from "../../errors.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
-import { jsonInput, parseBooleanOption, } from "../coerce.js";
+import { jsonInput, parseBooleanOption, rejectEmptyFlagValues, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
@@ -155,6 +155,7 @@ export const dashboardCommands: Record<string, CommandMeta> = withUsage("dashboa
 		],
 	},
 	update: {
+		validate: (_a, f,) => rejectEmptyFlagValues(f, ["name",],),
 		handler: async (c, a, f,) => {
 			requireArgs(
 				a,

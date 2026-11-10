@@ -16,6 +16,9 @@ import {
 
 type Schema = Record<string, unknown>;
 
+/** JSON Schema `properties` is untyped in `Schema`; read it as a nested schema map. */
+const propertiesOf = (schema: Schema | undefined,) => schema?.properties as Schema | undefined;
+
 describe("agent contract accuracy", () => {
 	it("extracts enum alternatives including uppercase forms into flag metadata", () => {
 		const registry = buildCommandRegistry();
@@ -282,8 +285,9 @@ describe("agent contract accuracy", () => {
 
 	it("indents stdout results and errors under DSS_PRETTY=1 without changing the value", async () => {
 		const pretty = { env: { ...process.env, DATAIKU_DISABLE_ENV: "1", DSS_PRETTY: "1", }, };
+		const oneLine = { env: { ...process.env, DATAIKU_DISABLE_ENV: "1", DSS_PRETTY: "0", }, };
 		const args = ["commands", "run", "--fields", "dataset.list",];
-		const compact = await dss(args,);
+		const compact = await dss(args, oneLine,);
 		const indented = await dss(args, pretty,);
 		expect(compact.stdout.trimEnd(),).not.toContain("\n",);
 		expect(indented.stdout.split("\n",).length,).toBeGreaterThan(10,);
@@ -469,6 +473,7 @@ describe("agent contract accuracy", () => {
 				"run",
 				"--fields",
 				"project.export,recipe.create,insight.update,sql.query,project.delete",
+				"--full",
 			],
 		);
 		expect(stderr,).toBe("",);
@@ -481,9 +486,9 @@ describe("agent contract accuracy", () => {
 		// Original envelope is preserved: required argv, additive constraints.
 		expect(exportSchema?.required,).toEqual(["argv",],);
 		expect(exportSchema?.additionalProperties,).toBe(true,);
-		expect(exportSchema?.properties?.resource,).toEqual({ const: "project", },);
-		expect(exportSchema?.properties?.action,).toEqual({ const: "export", },);
-		const exportArgv = exportSchema?.properties?.argv as Schema;
+		expect(propertiesOf(exportSchema,)?.resource,).toEqual({ const: "project", },);
+		expect(propertiesOf(exportSchema,)?.action,).toEqual({ const: "export", },);
+		const exportArgv = propertiesOf(exportSchema,)?.argv as Schema;
 		expect(exportArgv?.minItems,).toBe(3,); // resource + action + <projectKey>
 		expect(exportArgv?.prefixItems,).toEqual([
 			{ const: "project", },
@@ -496,7 +501,7 @@ describe("agent contract accuracy", () => {
 
 		const createSchema = argvSchemaOf("recipe.create",);
 		expect(createSchema,).toBeDefined();
-		const createArgv = createSchema?.properties?.argv as Schema;
+		const createArgv = propertiesOf(createSchema,)?.argv as Schema;
 		expect(createArgv?.minItems,).toBe(2,); // recipe create has no positionals
 		expect(createArgv?.prefixItems,).toEqual([
 			{ const: "recipe", },
@@ -512,7 +517,7 @@ describe("agent contract accuracy", () => {
 			},
 		],);
 
-		const insightArgv = argvSchemaOf("insight.update",)?.properties?.argv as Schema;
+		const insightArgv = propertiesOf(argvSchemaOf("insight.update",),)?.argv as Schema;
 		expect(insightArgv?.allOf,).toContainEqual({
 			anyOf: expect.arrayContaining([
 				{ contains: { pattern: "^--(file)=[\\s\\S]+$", }, minContains: 1, },
@@ -520,7 +525,7 @@ describe("agent contract accuracy", () => {
 			],),
 		},);
 
-		const deleteArgv = argvSchemaOf("project.delete",)?.properties?.argv as Schema;
+		const deleteArgv = propertiesOf(argvSchemaOf("project.delete",),)?.argv as Schema;
 		expect(deleteArgv?.minItems,).toBe(3,);
 		expect(deleteArgv?.prefixItems,).toEqual([
 			{ const: "project", },
@@ -565,7 +570,7 @@ describe("agent contract accuracy", () => {
 		],);
 		expect(registry.sql?.query?.requiredFlags,).toEqual([],);
 
-		const argv = registry.sql?.query?.schemas?.argv?.properties?.argv as Schema | undefined;
+		const argv = propertiesOf(registry.sql?.query?.schemas?.argv,)?.argv as Schema | undefined;
 		expect(argv,).toBeDefined();
 		// The usage spells the SQL input as a bare `SQL` placeholder (not <sql>),
 		// so it has no prefix slot; the SQL-input requirement is handler-enforced.

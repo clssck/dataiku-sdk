@@ -1132,6 +1132,7 @@ describe("app create-successor-instance", () => {
 				...NEW_INSTANCE_DETAILS,
 				projectKey: generatedKey,
 			},);
+			if (incarnation === undefined) throw new Error("expected a project incarnation hash",);
 			expect(entry.cleanup.argv,).toEqual([
 				"app",
 				"delete-instance",

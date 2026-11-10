@@ -8,6 +8,7 @@ import {
 } from "../schemas.js";
 import { deepMerge, } from "../utils/deep-merge.js";
 import { isRecord, } from "../utils/records.js";
+import { writeResponseToFile, } from "../utils/response-file.js";
 import { sanitizeFileName, } from "../utils/sanitize.js";
 import { BaseResource, } from "./base.js";
 import { resolveAdminManagedStorageConnection, } from "./connections.js";
@@ -1293,7 +1294,7 @@ export class DatasetsResource extends BaseResource {
 	 *
 	 * Streaming is byte-bounded (16 MiB per field, 64 MiB per row, 16 GiB per
 	 * response); on overflow the response is cancelled, the error is thrown,
-	 * and any partially written download file is removed.
+	 * and the destination is left untouched (a previous file there survives).
 	 */
 	async download(
 		datasetName: string,
@@ -1334,19 +1335,23 @@ export class DatasetsResource extends BaseResource {
 			tsvToCsvTransform(limit, stats, onHeader, opts?.rawData !== true,),
 		);
 		if (shouldGzip) csv = csv.pipeThrough(new CompressionStream("gzip",),);
-		fs.mkdirSync(nodePath.dirname(filePath,), { recursive: true, },);
 
+		// Stage next to the destination so a failed or incomplete export never
+		// touches a previous file at the destination, and readers never see a
+		// partial one. writeResponseToFile is the shared FileHandle-based writer
+		// (Bun.write(Bun.file(fd), response) can end the process on Windows).
+		const stagedPath = nodePath.join(
+			nodePath.dirname(filePath,),
+			`.${nodePath.basename(filePath,)}.download-${crypto.randomUUID()}`,
+		);
 		try {
-			// Native streaming write with backpressure; no Node stream layer.
-			await Bun.write(filePath, new Response(csv,),);
+			await writeResponseToFile(stagedPath, new Response(csv,), "preserve",);
 			if (!stats.truncated) {
 				await this.verifyStreamComplete(datasetName, opts?.projectKey, readSessionId,);
 			}
-		} catch (error) {
-			// A failed export (byte-limit overflow, network error) must never
-			// leave a partial file that looks like a complete download.
-			fs.rmSync(filePath, { force: true, },);
-			throw error;
+			await fs.promises.rename(stagedPath, filePath,);
+		} finally {
+			await fs.promises.rm(stagedPath, { force: true, },);
 		}
 
 		return { path: filePath, rows: stats.rows, truncated: stats.truncated, limit, };

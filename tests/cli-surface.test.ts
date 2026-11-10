@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, } from "node:url";
 import { promisify, } from "node:util";
+import { inferSideEffect, } from "../src/cli/contract.js";
 
 const exec = promisify(execFile,);
 const SDK_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url,),), "..",);
@@ -745,7 +746,7 @@ describe("CLI command surface", () => {
 				expect(typeof meta?.dryRun, `${resource} ${action} dryRun`,).toBe("boolean",);
 				expect(Array.isArray(meta?.requiredFlags,), `${resource} ${action} requiredFlags`,).toBe(true,);
 				expect(Array.isArray(meta?.optionalFlags,), `${resource} ${action} optionalFlags`,).toBe(true,);
-				expect(meta?.agentContractVersion, `${resource} ${action} agentContractVersion`,).toBe(7,);
+				expect(meta?.agentContractVersion, `${resource} ${action} agentContractVersion`,).toBe(8,);
 				expect(Array.isArray(meta?.structuredExamples,), `${resource} ${action} structuredExamples`,)
 					.toBe(
 						true,
@@ -1171,6 +1172,13 @@ describe("CLI command surface", () => {
 				false,
 			);
 		}
+	});
+
+	it("refuses to classify an action whose name is neither a known read nor a known mutation", () => {
+		expect(() => inferSideEffect("widget", "frobnicate",)).toThrow("widget.frobnicate",);
+		expect(inferSideEffect("widget", "frobnicate-set",),).toBe("write",);
+		expect(inferSideEffect("widget", "get-frobnication",),).toBe("read",);
+		expect(inferSideEffect("widget", "delete",),).toBe("write",);
 	});
 
 	it("reports array output shape for list-style and timeline reads", async () => {

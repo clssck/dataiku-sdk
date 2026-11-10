@@ -1,8 +1,10 @@
 import { describe, expect, it, } from "bun:test";
+import { DataikuError, } from "../src/errors.js";
 import { sanitizeFileName, } from "../src/utils/sanitize.js";
 import {
 	credentialValues,
 	redactCredentialPairs,
+	sanitizeErrorSecrets,
 	SECRET_REDACTED,
 } from "../src/utils/secret-sanitize.js";
 
@@ -33,6 +35,51 @@ describe("redactCredentialPairs", () => {
 	it("leaves text without credential pairs untouched", () => {
 		const text = '[INFO] [dku] - Building {"jobId":"x"} secret handling ok';
 		expect(redactCredentialPairs(text,),).toBe(text,);
+	});
+});
+
+describe("sanitizeErrorSecrets", () => {
+	const options = { sensitiveKeys: {}, };
+
+	it("scrubs a secret from message and from the JSON-escaped body, keeping the body valid JSON", () => {
+		const secret = 'pa"ss\\word';
+		const body = JSON.stringify({ message: `rejected ${secret}`, detail: { echoed: secret, }, },);
+		const error = new DataikuError(400, "Bad Request", body,);
+		expect(error.message,).toContain(secret,);
+		expect(body,).not.toContain(secret,);
+
+		sanitizeErrorSecrets(error, { ...options, secrets: [secret,], },);
+
+		expect(error.message,).not.toContain('pa"ss',);
+		expect(error.body,).not.toContain('pa\\"ss',);
+		expect(error.body,).not.toContain("ss\\\\word",);
+		expect(JSON.parse(error.body,),).toEqual({
+			message: `rejected ${SECRET_REDACTED}`,
+			detail: { echoed: SECRET_REDACTED, },
+		},);
+	});
+
+	it("scrubs a secret with a control character from the JSON-escaped body", () => {
+		const secret = "wo\nrd";
+		const error = new DataikuError(400, "Bad Request", JSON.stringify({ echoed: secret, },),);
+		sanitizeErrorSecrets(error, { ...options, secrets: [secret,], },);
+		expect(JSON.parse(error.body,),).toEqual({ echoed: SECRET_REDACTED, },);
+	});
+
+	it("scrubs non-ASCII secrets that the server wrote as \\u escapes", () => {
+		const secret = "p\u00e9\u00c9w";
+		for (const escaped of ["p\\u00e9\\u00c9w", "p\\u00E9\\u00C9w", secret,]) {
+			const error = new DataikuError(400, "Bad Request", `{"message":"bad ${escaped}"}`,);
+			sanitizeErrorSecrets(error, { ...options, secrets: [secret,], },);
+			expect(JSON.parse(error.body,),).toEqual({ message: `bad ${SECRET_REDACTED}`, },);
+		}
+	});
+
+	it("ignores empty secrets", () => {
+		const body = '{"message":"plain text"}';
+		const error = new DataikuError(400, "Bad Request", body,);
+		sanitizeErrorSecrets(error, { ...options, secrets: ["",], },);
+		expect(error.body,).toBe(body,);
 	});
 });
 

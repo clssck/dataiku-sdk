@@ -211,6 +211,8 @@ describe("CLI batch command", () => {
 			const failure = await dssFailure([
 				"batch",
 				"--continue-on-error",
+				"--retries",
+				"1",
 				"--data",
 				JSON.stringify([
 					[
@@ -219,8 +221,6 @@ describe("CLI batch command", () => {
 						"TRANSIENT",
 						"--project-key",
 						"TEST",
-						"--retries",
-						"1",
 					],
 					[
 						"dataset",
@@ -228,8 +228,6 @@ describe("CLI batch command", () => {
 						"MISSING",
 						"--project-key",
 						"TEST",
-						"--retries",
-						"1",
 					],
 				],),
 			], { env: cliEnv(url,), },);
@@ -347,7 +345,7 @@ describe("CLI batch command", () => {
 		);
 	});
 
-	it("redacts --api-key values from batch dry-run output, both separated and equals forms", async () => {
+	it("rejects --api-key inside steps in batch dry-run and never echoes it, separated or equals form", async () => {
 		const secret = "SUPERSECRET_KEY_12345";
 		const payload = JSON.stringify([
 			["dataset", "update", "orders", "--data", '{"description":"x"}', "--api-key", secret,],
@@ -355,11 +353,21 @@ describe("CLI batch command", () => {
 			["dataset", "get", "orders", "--api-key", "-",],
 			["dataset", "get", "orders", "--api-key", "-123",],
 		],);
-		const { stdout, } = await dss(["batch", "--data", payload, "--dry-run",], {
+		const failure = await dssFailure(["batch", "--data", payload, "--dry-run",], {
 			env: hermetic,
 		},);
-		expect(stdout,).not.toContain(secret,);
-		const report = JSON.parse(stdout,) as { steps: Array<{ args: string[]; runnable: boolean; }>; };
+		expect(failure.code,).toBe(1,);
+		expect(failure.stdout,).not.toContain(secret,);
+		const report = JSON.parse(failure.stdout,) as {
+			steps: Array<
+				{ args: string[]; runnable: boolean; error?: { code: string; error: string; }; }
+			>;
+		};
+		expect(report.steps.map((step,) => step.runnable),).toEqual([false, false, false, false,],);
+		for (const step of report.steps) {
+			expect(step.error?.code,).toBe("usage_error",);
+			expect(step.error?.error,).toContain("--api-key",);
+		}
 		expect(report.steps[0]!.args,).toEqual([
 			"dataset",
 			"update",
@@ -404,7 +412,7 @@ describe("CLI batch command", () => {
 		expect(report.steps[1]!.args,).toContain("--repository=***",);
 	});
 
-	it("redacts --api-key values from batch --plan output and executed step results", async () => {
+	it("redacts --api-key values from batch --plan output and rejects them inside live steps", async () => {
 		const secret = "SUPERSECRET_KEY_67890";
 		const planStdout = (
 			await dss([
@@ -421,17 +429,228 @@ describe("CLI batch command", () => {
 			requestCount++;
 			sendJson(res, { name: "orders", },);
 		}, async (url,) => {
-			const { stdout, } = await dss([
+			const failure = await dssFailure([
 				"batch",
 				"--data",
 				JSON.stringify([["dataset", "get", "orders", "--api-key", secret,],],),
 			], { env: cliEnv(url,), },);
-			expect(stdout,).not.toContain(secret,);
-			expect(JSON.parse(stdout,),).toMatchObject({
-				steps: [{ args: ["dataset", "get", "orders", "--api-key", "***",], ok: true, },],
+			expect(failure.code,).toBe(1,);
+			expect(failure.stdout,).not.toContain(secret,);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({ code: "usage_error", },);
+		},);
+		expect(requestCount,).toBe(0,);
+	});
+
+	it("runs each step's validate hook in live dispatch and in dry-run, before any request", async () => {
+		let requestCount = 0;
+		await withCliServer((req, res,) => {
+			requestCount++;
+			sendJson(res, {},);
+		}, async (url,) => {
+			const live = await dssFailure(
+				["batch", "--data", '[["project-folder","delete",""]]',],
+				{ env: cliEnv(url,), },
+			);
+			expect(live.code,).toBe(1,);
+			const liveReport = JSON.parse(live.stdout,) as {
+				ok: boolean;
+				steps: Array<{ ok: boolean; error?: { code: string; }; }>;
+			};
+			expect(liveReport.ok,).toBe(false,);
+			expect(liveReport.steps[0]!.error?.code,).toBe("usage_error",);
+
+			for (
+				const step of [["project-folder", "delete", "",], [
+					"project-folder",
+					"delete",
+					"",
+					"--dry-run",
+				],]
+			) {
+				const dry = await dssFailure(
+					["batch", "--dry-run", "--data", JSON.stringify([step,],),],
+					{ env: cliEnv(url,), },
+				);
+				expect(dry.code,).toBe(1,);
+				const dryReport = JSON.parse(dry.stdout,) as {
+					steps: Array<{ runnable: boolean; error?: { code: string; }; }>;
+				};
+				expect(dryReport.steps[0]!.runnable,).toBe(false,);
+				expect(dryReport.steps[0]!.error?.code,).toBe("usage_error",);
+			}
+		},);
+		expect(requestCount,).toBe(0,);
+	});
+
+	it("rejects connection flags inside steps for the whole batch before any step runs", async () => {
+		const stepKey = "STEP_KEY_NEVER_ECHOED";
+		let requestCount = 0;
+		await withCliServer((req, res,) => {
+			requestCount++;
+			sendJson(res, [],);
+		}, async (url,) => {
+			await withCliServer((req, res,) => {
+				requestCount++;
+				sendJson(res, [],);
+			}, async (otherUrl,) => {
+				const steps = [
+					["project", "list",],
+					["project", "list", "--url", otherUrl, "--api-key", stepKey,],
+				];
+				const live = await dssFailure(["batch", "--data", JSON.stringify(steps,),], {
+					env: cliEnv(url,),
+				},);
+				expect(live.code,).toBe(1,);
+				expect(live.stdout,).not.toContain(stepKey,);
+				expect(JSON.parse(live.stdout,),).toMatchObject({
+					code: "usage_error",
+					details: { step: 1, flag: "url", },
+				},);
+
+				const dry = await dssFailure([
+					"batch",
+					"--dry-run",
+					"--data",
+					JSON.stringify([...steps, ["project", "list", "--insecure",],],),
+				], { env: cliEnv(url,), },);
+				expect(dry.code,).toBe(1,);
+				expect(dry.stdout,).not.toContain(stepKey,);
+				const report = JSON.parse(dry.stdout,) as {
+					steps: Array<{ runnable: boolean; error?: { code: string; }; }>;
+				};
+				expect(report.steps.map((step,) => step.runnable),).toEqual([true, false, false,],);
+				expect(report.steps[1]!.error?.code,).toBe("usage_error",);
+				expect(report.steps[2]!.error?.code,).toBe("usage_error",);
 			},);
 		},);
-		expect(requestCount,).toBe(1,);
+		expect(requestCount,).toBe(0,);
+	});
+
+	it("redacts credentials inside inline JSON step values in plan, dry-run, and executed output", async () => {
+		const password = "PW_PROBE_VALUE";
+		const connectionPassword = "CONN_PROBE_VALUE";
+		const userBody = JSON.stringify({ login: "probe", password, secrets: ["S3_PROBE_VALUE",], },);
+		const steps = [
+			["user", "create", "--data", userBody,],
+			["user", "create", `--data=${userBody}`,],
+			[
+				"connection",
+				"create",
+				"--data",
+				JSON.stringify({
+					name: "c",
+					params: { password: connectionPassword, host: "db.example.com", },
+				},),
+			],
+			["dataset", "update", "orders", "--data", '{"description":"x"}',],
+			["dataset", "update", "orders", "--data", "not json",],
+		];
+		const secrets = [password, connectionPassword, "S3_PROBE_VALUE",];
+
+		const dryRun = await dssFailure(["batch", "--dry-run", "--data", JSON.stringify(steps,),], {
+			env: hermetic,
+		},);
+		const dry = JSON.parse(dryRun.stdout,) as {
+			steps: Array<{ args: string[]; runnable: boolean; }>;
+		};
+		const dryOutput = JSON.stringify(dry,);
+		for (const secret of secrets) expect(dryOutput,).not.toContain(secret,);
+		// The unparseable --data is unrunnable, but its value is echoed unchanged.
+		expect(dry.steps.map((step,) => step.runnable),).toEqual([true, true, true, true, false,],);
+		expect(dry.steps[0]!.args.join(" ",),).toContain('"login":"probe"',);
+		expect(dry.steps[1]!.args.join(" ",),).toContain('"login":"probe"',);
+		expect(dry.steps[1]!.args[2],).toStartWith("--data=",);
+		expect(dry.steps[2]!.args.join(" ",),).toContain("db.example.com",);
+		expect(dry.steps[3]!.args,).toEqual([
+			"dataset",
+			"update",
+			"orders",
+			"--data",
+			'{"description":"x"}',
+		],);
+		expect(dry.steps[4]!.args[4],).toBe("not json",);
+
+		const plan = (await dss(["batch", "--plan", "--data", JSON.stringify(steps,),], {
+			env: hermetic,
+		},)).stdout;
+		for (const secret of secrets) expect(plan,).not.toContain(secret,);
+
+		await withCliServer((req, res,) => {
+			sendJson(res, { login: "probe", },);
+		}, async (url,) => {
+			const { stdout, } = await dss([
+				"batch",
+				"--data",
+				JSON.stringify([steps[0], steps[2],],),
+			], { env: cliEnv(url,), },);
+			for (const secret of secrets) expect(stdout,).not.toContain(secret,);
+			expect(JSON.parse(stdout,),).toMatchObject({ ok: true, completed: 2, },);
+		},);
+	});
+
+	it("reports a failing step's own --project-key, falling back to the batch's", async () => {
+		await withCliServer((req, res,) => {
+			sendJson(res, { message: "missing", }, 404,);
+		}, async (url,) => {
+			const failure = await dssFailure([
+				"batch",
+				"--continue-on-error",
+				"--project-key",
+				"PARENT",
+				"--data",
+				JSON.stringify([
+					["dataset", "get", "ONE", "--project-key", "CHILD",],
+					["dataset", "get", "TWO",],
+				],),
+			], { env: cliEnv(url,), },);
+			const report = JSON.parse(failure.stdout,) as {
+				steps: Array<{ error?: { projectKey?: string; }; }>;
+			};
+			expect(report.steps[0]!.error?.projectKey,).toBe("CHILD",);
+			expect(report.steps[1]!.error?.projectKey,).toBe("PARENT",);
+		},);
+	});
+
+	it("runs commands with a local handler without credentials in a batch", async () => {
+		const dir = join(tmpdir(), `dss-batch-local-${String(Date.now(),)}`,);
+		mkdirSync(dir, { recursive: true, },);
+		try {
+			const archive = join(dir, "missing.zip",);
+			const steps = JSON.stringify([["project", "inspect-archive", archive,],],);
+			const live = JSON.parse(
+				(await dss(["batch", "--data", steps,], { env: hermetic, },)).stdout,
+			) as { ok: boolean; steps: Array<{ ok: boolean; result?: { filePath?: string; }; }>; };
+			expect(live.ok,).toBe(true,);
+			expect(live.steps[0]!.result?.filePath,).toBe(archive,);
+
+			const dry = JSON.parse(
+				(await dss(["batch", "--dry-run", "--data", steps,], { env: hermetic, },)).stdout,
+			) as { steps: Array<{ runnable: boolean; }>; };
+			expect(dry.steps[0]!.runnable,).toBe(true,);
+
+			const plan = JSON.parse(
+				(await dss(["batch", "--plan", "--data", steps,], { env: hermetic, },)).stdout,
+			) as { needsClient: boolean; };
+			expect(plan.needsClient,).toBe(false,);
+
+			const requests: string[] = [];
+			await withCliServer((req, res,) => {
+				requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+				sendJson(res, [],);
+			}, async (url,) => {
+				const mixed = JSON.parse(
+					(await dss([
+						"batch",
+						"--data",
+						JSON.stringify([["project", "inspect-archive", archive,], ["project", "list",],],),
+					], { env: cliEnv(url,), },)).stdout,
+				) as { ok: boolean; };
+				expect(mixed.ok,).toBe(true,);
+			},);
+			expect(requests,).toHaveLength(1,);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
 	});
 });
 

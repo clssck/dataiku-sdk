@@ -84,6 +84,63 @@ describe("flow map analysis", () => {
 		);
 	});
 
+	it("assigns a node to the zone that owns it, not to a zone it is only shared into", () => {
+		const normalized = normalizeFlowGraph({
+			nodes: {
+				raw: { type: "COMPUTABLE_DATASET", name: "raw", successors: ["prepare",], },
+				prepare: { type: "RECIPE", name: "prepare", },
+			},
+		}, "TEST",);
+		const result = analyzeFlowMap(normalized, [
+			{
+				id: "first",
+				name: "First",
+				position: { x: 0, y: 0, },
+				items: [{ objectType: "RECIPE", objectId: "prepare", },],
+				shared: [{ objectType: "DATASET", objectId: "raw", },],
+			},
+			{
+				id: "second",
+				name: "Second",
+				position: { x: 100, y: 0, },
+				items: [{ objectType: "DATASET", objectId: "raw", },],
+			},
+		],);
+		const byId = new Map(result.nodes.map((node,) => [node.id, node,]),);
+
+		expect(byId.get("raw",),).toMatchObject({ zoneId: "second", },);
+		expect(byId.get("prepare",),).toMatchObject({ zoneId: "first", },);
+		expect(result.zones.find((zone,) => zone.id === "first")?.nodeIds,).toEqual(["prepare",],);
+		expect(result.diagnostics.map((diagnostic,) => diagnostic.code),).not.toContain(
+			"duplicate_zone_assignment",
+		);
+	});
+
+	it("still warns when two zones both own the same node", () => {
+		const normalized = normalizeFlowGraph({
+			nodes: { raw: { type: "COMPUTABLE_DATASET", name: "raw", }, },
+		}, "TEST",);
+		const result = analyzeFlowMap(normalized, [
+			{
+				id: "first",
+				name: "First",
+				position: { x: 0, y: 0, },
+				items: [{ objectType: "DATASET", objectId: "raw", },],
+			},
+			{
+				id: "second",
+				name: "Second",
+				position: { x: 100, y: 0, },
+				items: [{ objectType: "DATASET", objectId: "raw", },],
+			},
+		],);
+
+		expect(result.nodes[0],).toMatchObject({ zoneId: "first", },);
+		expect(result.diagnostics,).toContainEqual(
+			expect.objectContaining({ code: "duplicate_zone_assignment", nodeIds: ["raw",], },),
+		);
+	});
+
 	it("fingerprints topology independently from visual metadata", () => {
 		const normalized = normalizeFlowGraph({
 			nodes: {

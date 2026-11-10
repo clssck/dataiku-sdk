@@ -117,6 +117,7 @@ export const SHORT_FLAGS: Record<string, string> = {
 	v: "verbose",
 	V: "version",
 	o: "output",
+	p: "project-key",
 };
 
 /** Long-flag aliases: these are normalized to the canonical name in parseArgs. */

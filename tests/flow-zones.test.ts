@@ -219,7 +219,7 @@ describe("FlowZonesResource", () => {
 				{ objectType: "DATASET", objectId: "orders", },
 				{ objectType: "MANAGED_FOLDER", objectId: "exports", projectKey: "OTHER", },
 			],);
-			expect(result.items,).toEqual(moveBody,);
+			expect<unknown>(result.items,).toEqual(moveBody,);
 		},);
 
 		expect(moveBody,).toEqual([

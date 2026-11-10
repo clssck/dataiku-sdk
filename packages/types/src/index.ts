@@ -385,6 +385,17 @@ export const JobWaitResultSchema = Type.Object({
 },);
 export type JobWaitResult = Static<typeof JobWaitResultSchema>;
 
+/** CLI only: `job monitor` with several job ids returns this aggregate; one id returns the job's own `JobWaitResult`. */
+export const JobMonitorAggregateSchema = Type.Object({
+	jobs: Type.Array(JobWaitResultSchema,),
+	state: Type.String(),
+	success: Type.Boolean(),
+	elapsedMs: Type.Number(),
+	pollCount: Type.Number(),
+	until: Type.String(),
+},);
+export type JobMonitorAggregate = Static<typeof JobMonitorAggregateSchema>;
+
 export const FutureStateSchema = Type.Object({
 	jobId: Type.Optional(Type.String(),),
 	hasResult: Type.Optional(Type.Boolean(),),

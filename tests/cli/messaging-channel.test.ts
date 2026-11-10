@@ -7,6 +7,7 @@ import {
 	cliEnv,
 	dss,
 	dssFailure,
+	dssWithInput,
 	type IncomingMessage,
 	readBody,
 	sendJson,
@@ -208,24 +209,36 @@ describe("messaging-channel settings-set", () => {
 		await withCliServer(
 			mockDss(seen, (_req, res,) => sendJson(res, smtpSettings,),),
 			async (url,) => {
-				const out = await dss([
+				const args = [
 					"messaging-channel",
 					"settings-set",
 					"smtp-main",
 					"--data",
 					'{"sender":"ops@example.com","password":"brand-new-password"}',
 					"--dry-run",
-				], { env: cliEnv(url,), },);
+				];
+				const out = await dss(args, { env: cliEnv(url,), },);
 				noSecretsIn(out.stdout,);
 				expect(out.stdout,).not.toContain("brand-new-password",);
-				expect(JSON.parse(out.stdout,),).toMatchObject({
+				// The password is redacted on both sides, so only the sender shows as a difference.
+				const preview = JSON.parse(out.stdout,) as Record<string, unknown>;
+				expect(preview,).toMatchObject({
 					dryRun: true,
 					changed: ["password", "sender",],
+					changes: [{ path: "sender", before: "noreply@example.com", after: "ops@example.com", },],
+					changeCount: 1,
+				},);
+				expect(preview,).not.toHaveProperty("current",);
+				expect(preview,).not.toHaveProperty("next",);
+				const raw = await dss([...args, "--fields", "current,next",], { env: cliEnv(url,), },);
+				noSecretsIn(raw.stdout,);
+				expect(raw.stdout,).not.toContain("brand-new-password",);
+				expect(JSON.parse(raw.stdout,),).toMatchObject({
 					next: { sender: "ops@example.com", password: "[redacted]", },
 				},);
 			},
 		);
-		expect(seen.map((request,) => request.method),).toEqual(["GET",],);
+		expect(seen.map((request,) => request.method),).toEqual(["GET", "GET",],);
 	});
 
 	it("plans offline without contacting DSS or printing credentials", async () => {
@@ -680,6 +693,54 @@ describe("messaging-channel send", () => {
 		},);
 		expect(seen,).toEqual([],);
 	});
+});
+
+describe("messaging-channel --stdin under --dry-run", () => {
+	// A dry run issues no write request, so the mock sees nothing but (at most) reads.
+	const cases: Array<{ name: string; args: string[]; flag: string[]; input: string; }> = [
+		{
+			name: "create",
+			args: ["messaging-channel", "create", "--type", "smtp", "--id", "ops-mail",],
+			flag: ["--data", '{"host":"smtp.example.com","port":587}',],
+			input: '{"host":"smtp.example.com","port":587}',
+		},
+		{
+			name: "permissions-set",
+			args: ["messaging-channel", "permissions-set", "smtp-main",],
+			flag: ["--data", '[{"group":"analysts","canUse":true}]',],
+			input: '[{"group":"analysts","canUse":true}]',
+		},
+		{
+			name: "send",
+			args: [
+				"messaging-channel",
+				"send",
+				"smtp-main",
+				"--to",
+				"a@example.com",
+				"--subject",
+				"Nightly build",
+				"--project-key",
+				"MYPROJ",
+			],
+			flag: ["--body", "<b>done</b>",],
+			input: "<b>done</b>",
+		},
+	];
+
+	for (const { name, args, flag, input, } of cases) {
+		it(`${name} previews the piped input exactly like the inline form`, async () => {
+			const seen: Seen[] = [];
+			await withCliServer(mockDss(seen, (_req, res,) => sendJson(res, {},),), async (url,) => {
+				const env = cliEnv(url,);
+				const inline = await dss([...args, ...flag, "--dry-run",], { env, },);
+				const piped = await dssWithInput([...args, "--stdin", "--dry-run",], input, { env, },);
+				expect(JSON.parse(piped.stdout,),).toEqual(JSON.parse(inline.stdout,),);
+				expect(JSON.parse(piped.stdout,),).toMatchObject({ plannedAndDryRun: true, },);
+			},);
+			expect(seen.filter((request,) => request.method !== "GET"),).toEqual([],);
+		});
+	}
 });
 
 describe("messaging-channel contract", () => {

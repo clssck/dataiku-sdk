@@ -1,6 +1,6 @@
 import type { DataikuClient, } from "../client.js";
 import { DataikuError, type StableErrorCode, } from "../errors.js";
-import { prettyOutputEnabled, } from "./env.js";
+import { stdoutJsonMode, } from "./env.js";
 
 let outputFieldProjection: string[] | undefined;
 
@@ -125,9 +125,102 @@ export function projectResultFields(
 	return pickResultFields(result, fields,);
 }
 
-/** One JSON value plus newline for stdout; indented when `DSS_PRETTY=1`. */
+/**
+ * Longest stdout line, in UTF-8 bytes, that the default layout produces. Agent
+ * shells cut lines at 768 bytes; this leaves a margin below that.
+ */
+export const STDOUT_LINE_BUDGET_BYTES = 760;
+
+function utf8Length(text: string,): number {
+	return Buffer.byteLength(text,);
+}
+
+/** Compact byte length of every container, memoized so each node is measured once. */
+type SizeMemo = Map<object, number>;
+
+function compactSize(node: unknown, memo: SizeMemo,): number {
+	if (typeof node !== "object" || node === null) return utf8Length(JSON.stringify(node,),);
+	const known = memo.get(node,);
+	if (known !== undefined) return known;
+	let size = 2;
+	let count = 0;
+	if (Array.isArray(node,)) {
+		for (const child of node) {
+			size += compactSize(child, memo,);
+			count++;
+		}
+	} else {
+		for (const [key, child,] of Object.entries(node,)) {
+			size += utf8Length(JSON.stringify(key,),) + 1 + compactSize(child, memo,);
+			count++;
+		}
+	}
+	if (count > 1) size += count - 1;
+	memo.set(node, size,);
+	return size;
+}
+
+/**
+ * Append `node` as lines: compact when it fits the remaining budget at its
+ * position, otherwise one child per line, one space of indent per level.
+ */
+function wrapNode(
+	node: unknown,
+	depth: number,
+	head: string,
+	trailer: string,
+	memo: SizeMemo,
+	out: string[],
+): void {
+	const indent = " ".repeat(depth,);
+	const isContainer = typeof node === "object" && node !== null;
+	const entries = !isContainer
+		? undefined
+		: Array.isArray(node,)
+		? node.map((child,) => ["", child,] as const)
+		: Object.entries(node,).map(([key, child,],) => [`${JSON.stringify(key,)}:`, child,] as const);
+	if (
+		entries === undefined || entries.length === 0
+		|| depth + utf8Length(head,) + compactSize(node, memo,) + trailer.length
+			<= STDOUT_LINE_BUDGET_BYTES
+	) {
+		out.push(`${indent}${head}${JSON.stringify(node,)}${trailer}\n`,);
+		return;
+	}
+	const [open, close,] = Array.isArray(node,) ? ["[", "]",] : ["{", "}",];
+	out.push(`${indent}${head}${open}\n`,);
+	const last = entries.length - 1;
+	for (const [index, [childHead, child,],] of entries.entries()) {
+		wrapNode(child, depth + 1, childHead, index === last ? "" : ",", memo, out,);
+	}
+	out.push(`${indent}${close}${trailer}\n`,);
+}
+
+/**
+ * One JSON value plus newline for stdout. `DSS_PRETTY` selects the layout (see
+ * `stdoutJsonMode`):
+ * - default: compact on one line when it fits `STDOUT_LINE_BUDGET_BYTES`, else
+ *   line-wrapped: an array/object that does not fit its line is split one child per
+ *   line (one space of indent per level), children that fit stay compact;
+ * - `DSS_PRETTY=1`: 2-space indented;
+ * - `DSS_PRETTY=0`: always one compact line.
+ * Every layout parses back to `JSON.parse(JSON.stringify(value))`.
+ */
 export function stdoutJson(value: unknown,): string {
-	return `${JSON.stringify(value, null, prettyOutputEnabled() ? 2 : undefined,)}\n`;
+	const mode = stdoutJsonMode();
+	if (mode === "pretty") return `${JSON.stringify(value, null, 2,)}\n`;
+	const compact = JSON.stringify(value,) as string | undefined;
+	if (
+		mode === "compact" || compact === undefined
+		|| (compact.length <= STDOUT_LINE_BUDGET_BYTES
+			&& utf8Length(compact,) <= STDOUT_LINE_BUDGET_BYTES)
+	) {
+		return `${compact}\n`;
+	}
+	// Re-parsing applies toJSON, undefined and non-finite handling exactly once.
+	const out: string[] = [];
+	wrapNode(JSON.parse(compact,), 0, "", "", new Map(), out,);
+	return out.join("",);
 }
 
 export function writeCommandResult(result: unknown,): void {

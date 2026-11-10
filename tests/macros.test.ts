@@ -249,7 +249,7 @@ describe("MacrosResource", () => {
 			res.statusCode = 404;
 			res.end(`unexpected ${req.method} ${url.pathname}`,);
 		}, async (client,) => {
-			const result = await client.macros.result("m1", "run-9",) as { rows: number; };
+			const result = await client.macros.result("m1", "run-9",) as { rows: number; status: string; };
 			expect(result.rows,).toBe(12,);
 			expect(result.status,).toBe("ok",);
 		},);
@@ -408,6 +408,41 @@ describe("MacrosResource", () => {
 			expect(result.success,).toBe(false,);
 			expect(result.running,).toBe(true,);
 			expect(result.runId,).toBe("run-slow",);
+		},);
+	});
+
+	it("runAndWait accepts a fractional budget after the run started", async () => {
+		const requests: string[] = [];
+		await withDataikuServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method ?? ""} ${url.pathname}`,);
+			if (req.method === "POST") {
+				sendJson(res, { runId: "run-frac", },);
+				return;
+			}
+			sendJson(res, { running: true, },);
+		}, async (client,) => {
+			const result = await client.macros.runAndWait("slow", {
+				pollIntervalMs: 1,
+				timeoutMs: 30.5,
+			},);
+			expect(result,).toMatchObject({ runId: "run-frac", timedOut: true, success: false, },);
+			expect(requests.filter((request,) => request.startsWith("POST",)),).toHaveLength(1,);
+		},);
+	});
+
+	it("runAndWait rejects an invalid budget before the run request", async () => {
+		const requests: string[] = [];
+		await withDataikuServer((req, res,) => {
+			requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
+			sendJson(res, { runId: "never", },);
+		}, async (client,) => {
+			for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1,]) {
+				await expect(client.macros.runAndWait("slow", { timeoutMs: bad, },),).rejects.toThrow(
+					/timeoutMs/,
+				);
+			}
+			expect(requests,).toEqual([],);
 		},);
 	});
 

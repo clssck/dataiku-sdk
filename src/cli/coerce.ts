@@ -147,6 +147,44 @@ export function requiredStringFlag(
 	return value.trim();
 }
 
+/**
+ * A value flag given as an empty string (an unset shell variable) is a mistake,
+ * not a request to blank the field: fail before any request or plan.
+ */
+export function rejectEmptyFlagValues(
+	flags: Record<string, string | boolean>,
+	names: readonly string[],
+): void {
+	for (const name of names) {
+		const value = flags[name];
+		if (typeof value === "string" && value.trim().length === 0) {
+			throw new UsageError(
+				`--${name} must not be empty; omit it to leave the value unchanged.`,
+				"invalid_flag_value",
+			);
+		}
+	}
+}
+
+/**
+ * The bytes to write or compare must be named explicitly. Falling back to stdin
+ * when no source flag is given would write an empty file wherever stdin is closed.
+ */
+export function requireContentSource(
+	flags: Record<string, string | boolean>,
+	usage: string,
+): void {
+	if (
+		typeof flags["content"] !== "string" && typeof flags["file"] !== "string"
+		&& flags["stdin"] !== true
+	) {
+		throw new UsageError(
+			`One of --content, --file, or --stdin is required. Usage: ${usage}`,
+			"missing_required_flag",
+		);
+	}
+}
+
 export function optionalStringField(
 	record: Record<string, unknown>,
 	keys: string[],

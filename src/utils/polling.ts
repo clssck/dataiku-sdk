@@ -2,7 +2,7 @@
 export const DEFAULT_POLL_INTERVAL_MS = 2_000;
 export const DEFAULT_TIMEOUT_MS = 120_000;
 
-import { DataikuError, } from "../errors.js";
+import { ClientValidationError, DataikuError, } from "../errors.js";
 
 /**
  * Shared polling helpers used by every long-running wait loop (jobs, futures,
@@ -34,6 +34,30 @@ export function computeNextPollDelayMs({
 	const step = Math.max(0, Math.floor((pollCount - 1) / 3,),);
 	const interval = baseIntervalMs * 2 ** step;
 	return Math.min(interval, Math.max(baseIntervalMs, MAX_POLL_INTERVAL_MS,),);
+}
+
+/**
+ * Validate a caller's wait budget. Call it before any request or mutation of
+ * the operation, so a malformed budget can never leave started work behind a
+ * thrown error. `undefined` (use the default) passes through.
+ */
+export function validateWaitBudgetMs(timeoutMs: number | undefined,): void {
+	if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs,) || timeoutMs < 0)) {
+		throw new ClientValidationError("timeoutMs must be a finite non-negative number.",);
+	}
+}
+
+/**
+ * Request options for one status poll under a wait budget. GET budgets are
+ * whole milliseconds >= 1, so a fractional remainder (a fractional caller
+ * budget, or a fractional clock) rounds up; a spent budget still issues
+ * exactly one transport attempt (no retries) so the first observation
+ * reaches the server.
+ */
+export function pollRequestOptions(
+	remainingMs: number,
+): { timeoutMs: number; } | { noRetry: true; } {
+	return remainingMs > 0 ? { timeoutMs: Math.ceil(remainingMs,), } : { noRetry: true, };
 }
 
 /** Distinguish an exhausted wait deadline from an earlier request timeout. */

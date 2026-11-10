@@ -76,9 +76,8 @@ describe("CLI agent-readiness mutation contracts", () => {
 					'{"tags":["new"]}',
 					"--dry-run",
 				], { env: cliEnv(url,), },)).stdout,
-			) as { current?: { tags?: string[]; }; next?: { tags?: string[]; }; };
-			expect(updateDryRun.current?.tags,).toEqual(["old",],);
-			expect(updateDryRun.next?.tags,).toEqual(["new",],);
+			) as { changes?: unknown[]; };
+			expect(updateDryRun.changes,).toEqual([{ path: "tags.0", before: "old", after: "new", },],);
 		},);
 	});
 
@@ -397,11 +396,15 @@ describe("CLI agent-readiness mutation contracts", () => {
 			res.statusCode = 500;
 			res.end(`unexpected ${req.method} ${url.pathname}`,);
 		}, async (url,) => {
+			const varsArgs = ["variable", "set", "--standard", '{"b":2}', "--dry-run",];
 			const varsDryRun = JSON.parse(
-				(await dss(["variable", "set", "--standard", '{"b":2}', "--dry-run",], { env: cliEnv(url,), },))
-					.stdout,
+				(await dss(varsArgs, { env: cliEnv(url,), },)).stdout,
+			) as { changes?: unknown[]; };
+			expect(varsDryRun.changes,).toEqual([{ path: "standard.b", after: 2, },],);
+			const varsNext = JSON.parse(
+				(await dss([...varsArgs, "--fields", "next",], { env: cliEnv(url,), },)).stdout,
 			) as { next?: { standard?: Record<string, unknown>; }; };
-			expect(varsDryRun.next?.standard,).toEqual({ a: 1, b: 2, },);
+			expect(varsNext.next?.standard,).toEqual({ a: 1, b: 2, },);
 
 			const clearDryRun = JSON.parse(
 				(await dss(["notebook", "clear-jupyter-outputs", "book", "--dry-run",], {

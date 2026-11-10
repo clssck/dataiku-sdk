@@ -85,7 +85,7 @@ describe("CodeEnvsResource log lifecycle", () => {
 			],),);
 		}, async (url,) => {
 			const client = createClient(url,);
-			await expect(client.codeEnvs.listLogs("PYTHON", "my_env",),).resolves.toEqual([
+			await expect<unknown>(client.codeEnvs.listLogs("PYTHON", "my_env",),).resolves.toEqual([
 				{ name: "install.log", size: 1204, },
 				{ name: "update-3.log", },
 			],);

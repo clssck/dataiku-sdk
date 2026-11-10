@@ -83,9 +83,9 @@ describe("DatasetSummary", () => {
 
 	it("preserves extra DSS fields", () => {
 		const data = { name: "ds", customMeta: { tier: "gold", }, zoneId: "z1", };
-		const result = parseSchema(DatasetSummarySchema, data,);
-		expect(result.customMeta.tier,).toBe("gold",);
-		expect(result.zoneId,).toBe("z1",);
+		const result: Record<string, unknown> = parseSchema(DatasetSummarySchema, data,);
+		expect(result["customMeta"],).toHaveProperty("tier", "gold",);
+		expect(result["zoneId"],).toBe("z1",);
 	});
 });
 
@@ -179,7 +179,7 @@ describe("FlowZone", () => {
 			items: [{ objectType: "DATASET", objectId: "orders", },],
 			position: { x: 10, y: 20, },
 		};
-		expect(parseSchema(FlowZoneSchema, data,),).toEqual(data,);
+		expect<unknown>(parseSchema(FlowZoneSchema, data,),).toEqual(data,);
 	});
 
 	it("throws when required identifiers are missing", () => {
@@ -341,8 +341,9 @@ describe("DataQuality schemas", () => {
 	});
 
 	it("validates rule result/status/compute wrapper shapes", () => {
-		expect(parseSchema(DataQualityRuleResultSchema, { id: "rule-1", outcome: "OK", extra: true, },),)
-			.toEqual({ id: "rule-1", outcome: "OK", extra: true, },);
+		expect<unknown>(
+			parseSchema(DataQualityRuleResultSchema, { id: "rule-1", outcome: "OK", extra: true, },),
+		).toEqual({ id: "rule-1", outcome: "OK", extra: true, },);
 		expect(parseSchema(DataQualityStatusByPartitionSchema, { NP: { status: "OK", }, },),)
 			.toEqual({ NP: { status: "OK", }, },);
 		expect(parseSchema(DataQualityComputeResultSchema, { jobId: "job-1", },),).toEqual({

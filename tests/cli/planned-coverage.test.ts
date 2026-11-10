@@ -1,4 +1,5 @@
 import { describe, expect, it, } from "bun:test";
+import { mkdtempSync, } from "node:fs";
 import { commandUsage, } from "../../src/cli/syntax.js";
 import {
 	cliEnv,
@@ -330,6 +331,8 @@ describe("CLI planned command coverage", () => {
 				"--metastore-table",
 				"target_ds",
 				"--dry-run",
+				"--fields",
+				"next",
 			], { env: cliEnv(url,), },);
 
 			expect(stderr,).toBe("",);
@@ -462,7 +465,7 @@ describe("CLI planned command coverage", () => {
 					env: cliEnv(url,),
 				},)).stdout,
 			) as Array<{ id: string; itemCount: number; containsMatchingObject: boolean; }>;
-			expect(summary,).toEqual([
+			expect<unknown>(summary,).toEqual([
 				{ id: "zone-1", name: "Raw", itemCount: 1, containsMatchingObject: false, },
 				{ id: "zone-2", name: "Recipes", itemCount: 1, containsMatchingObject: true, },
 			],);
@@ -471,7 +474,7 @@ describe("CLI planned command coverage", () => {
 				(await dss(["flow-zone", "find", "--recipe", "compute_orders",], { env: cliEnv(url,), },))
 					.stdout,
 			) as Array<{ id: string; containsMatchingObject: boolean; }>;
-			expect(found,).toEqual([{
+			expect<unknown>(found,).toEqual([{
 				id: "zone-2",
 				name: "Recipes",
 				itemCount: 1,
@@ -481,7 +484,7 @@ describe("CLI planned command coverage", () => {
 			const foundByName = JSON.parse(
 				(await dss(["flow-zone", "find", "Recipes",], { env: cliEnv(url,), },)).stdout,
 			) as Array<{ id: string; items: unknown[]; }>;
-			expect(foundByName,).toEqual([{
+			expect<unknown>(foundByName,).toEqual([{
 				id: "zone-2",
 				name: "Recipes",
 				itemCount: 1,
@@ -891,5 +894,109 @@ describe("CLI planned command coverage", () => {
 			source: { kind: "managed-folder", folderRef: "PROJ.FID", path: "/model", },
 			containerExecConfigName: "INHERIT",
 		},);
+	});
+
+	it("redacts credentials at any depth in user and connection plans", async () => {
+		const user = JSON.stringify({
+			login: "probe",
+			password: "PW_TOP",
+			secrets: [{ name: "s", value: "SECRET_NESTED", },],
+			nested: { password: "PW_NESTED", },
+			displayName: "Probe",
+		},);
+		const connection = JSON.stringify({
+			name: "conn",
+			type: "PostgreSQL",
+			password: "CONN_TOP",
+			credentials: { token: "CONN_NESTED", },
+			params: { host: "db", password: "CONN_PARAM", },
+		},);
+		const secrets = [
+			"PW_TOP",
+			"SECRET_NESTED",
+			"PW_NESTED",
+			"CONN_TOP",
+			"CONN_NESTED",
+			"CONN_PARAM",
+		];
+		for (
+			const argv of [
+				["user", "create", "--data", user,],
+				["user", "update", "probe", "--data", user,],
+				["connection", "create", "--data", connection,],
+				["connection", "update", "conn", "--data", connection,],
+			]
+		) {
+			const { stdout, } = await dss([...argv, "--plan",], { env: cliEnv("http://127.0.0.1:1",), },);
+			for (const secret of secrets) {
+				expect(stdout, `${argv[0]} ${argv[1]} plan must not print ${secret}`,).not.toContain(secret,);
+			}
+			const plan = JSON.parse(stdout,) as { payload: Record<string, unknown>; };
+			if (argv[0] === "user") {
+				expect(plan.payload,).toMatchObject({ login: "probe", displayName: "Probe", },);
+			} else {
+				expect(plan.payload,).toMatchObject({ name: "conn", type: "PostgreSQL", },);
+			}
+		}
+	});
+
+	it("plans flow-zone organize from --file with the execution parser, never as an exact request", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "dss-organize-plan-",),);
+		const requests: string[] = [];
+		try {
+			const file = join(dir, "zones.json",);
+			writeFileSync(file, JSON.stringify({ zones: [{ name: "Raw", datasets: ["orders",], },], },),);
+			await withCliServer((req, res,) => {
+				requests.push(`${req.method} ${req.url}`,);
+				sendJson(res, {},);
+			}, async (url,) => {
+				const env = cliEnv(url,);
+				const { stdout, } = await dss([
+					"flow-zone",
+					"organize",
+					"--file",
+					file,
+					"--sync",
+					"--plan",
+					"--project-key",
+					"TEST",
+				], { env, },);
+				expect(JSON.parse(stdout,),).toMatchObject({
+					plan: true,
+					exact: false,
+					reason: expect.stringContaining("depends on live DSS state",),
+					payload: {
+						zones: [{ name: "Raw", items: [{ objectType: "DATASET", objectId: "orders", },], },],
+					},
+				},);
+
+				const invalid = await dssFailure([
+					"flow-zone",
+					"organize",
+					"--data",
+					'{"zones":"nope"}',
+					"--plan",
+					"--project-key",
+					"TEST",
+				], { env, },);
+				expect(invalid.code,).toBe(1,);
+				expect(JSON.parse(invalid.stdout,),).toMatchObject({ code: "validation_failed", },);
+
+				const unreadable = await dssFailure([
+					"flow-zone",
+					"organize",
+					"--file",
+					join(dir, "missing.json",),
+					"--plan",
+					"--project-key",
+					"TEST",
+				], { env, },);
+				expect(unreadable.code,).toBe(1,);
+				expect(JSON.parse(unreadable.stdout,),).toMatchObject({ code: "validation_failed", },);
+			},);
+			expect(requests,).toEqual([],);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
 	});
 });

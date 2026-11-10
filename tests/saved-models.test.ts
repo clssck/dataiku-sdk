@@ -5,7 +5,10 @@ import { type AddressInfo, } from "node:net";
 import { tmpdir, } from "node:os";
 import { join, } from "node:path";
 import { DataikuClient, } from "../src/client.js";
-import { SavedModelsResource, } from "../src/resources/saved-models.js";
+import {
+	type ExternalModelVersionEvaluateRequest,
+	SavedModelsResource,
+} from "../src/resources/saved-models.js";
 import { writeResponseToFile, } from "../src/utils/response-file.js";
 
 async function readBody(req: IncomingMessage,): Promise<Buffer> {
@@ -127,7 +130,7 @@ describe("SavedModelsResource", () => {
 			await Bun.write(archive, archiveBytes,);
 			const requests: string[] = [];
 			let observedContentType = "";
-			let observedBody = Buffer.alloc(0,);
+			let observedBody: Buffer = Buffer.alloc(0,);
 
 			await withServer(async (req, res,) => {
 				requests.push(`${req.method ?? ""} ${req.url ?? ""}`,);
@@ -171,7 +174,7 @@ describe("SavedModelsResource", () => {
 
 	it("imports from a managed folder with a zero-byte file part and folderRef/path query", async () => {
 		const requests: string[] = [];
-		let observedBody = Buffer.alloc(0,);
+		let observedBody: Buffer = Buffer.alloc(0,);
 		let observedContentType = "";
 
 		await withServer(async (req, res,) => {
@@ -347,7 +350,7 @@ describe("SavedModelsResource", () => {
 			sendJson(res, { evaluated: true, },);
 		}, async (url,) => {
 			const resource = new SavedModelsResource(createClient(url,),);
-			const request: Record<string, unknown> = { datasetRef: "PROJ.ds", };
+			const request: ExternalModelVersionEvaluateRequest = { datasetRef: "PROJ.ds", };
 			await resource.evaluateVersion(request, undefined, "SM1", "v1",);
 			expect("containerExecConfigName" in request,).toBe(false,);
 			await resource.evaluateVersion(

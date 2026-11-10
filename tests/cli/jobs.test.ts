@@ -1,5 +1,8 @@
+import { type TSchema, Type, } from "@sinclair/typebox";
+import { Value, } from "@sinclair/typebox/value";
 import { describe, expect, it, } from "bun:test";
 import type { IncomingMessage, ServerResponse, } from "node:http";
+import { typeBoxCommandOutputSchemas, } from "../../src/cli/output-schemas.js";
 import { cliEnv, dss, dssFailure, sendJson, withCliServer, } from "./_harness.js";
 
 describe("CLI job aggregation", () => {
@@ -90,6 +93,38 @@ describe("CLI job aggregation", () => {
 					],
 				},);
 			}
+		},);
+	});
+
+	it("job monitor output satisfies its advertised schema for one job and for several", async () => {
+		const advertised = typeBoxCommandOutputSchemas()["job.monitor"] as { anyOf: TSchema[]; };
+		const schema = Type.Union(advertised.anyOf,);
+		await withCliServer((req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (url.pathname.endsWith("/log",)) {
+				res.statusCode = 200;
+				res.setHeader("content-type", "text/plain",);
+				res.end("",);
+				return;
+			}
+			const jobId = decodeURIComponent(url.pathname.split("/",).at(-2,) ?? "",);
+			sendJson(res, {
+				baseStatus: { def: { id: jobId, type: "RECURSIVE_BUILD", }, state: "DONE", },
+				globalState: { done: 1, failed: 0, running: 0, total: 1, },
+			},);
+		}, async (url,) => {
+			const env = cliEnv(url,);
+			const single = JSON.parse(
+				(await dss(["job", "monitor", "JOB_A", "--poll-interval", "1",], { env, },)).stdout,
+			);
+			const several = JSON.parse(
+				(await dss(["job", "monitor", "JOB_A", "JOB_B", "--poll-interval", "1",], { env, },))
+					.stdout,
+			);
+			expect(single,).toMatchObject({ jobId: "JOB_A", },);
+			expect(several.jobs,).toHaveLength(2,);
+			expect([...Value.Errors(schema, single,),],).toEqual([],);
+			expect([...Value.Errors(schema, several,),],).toEqual([],);
 		},);
 	});
 
@@ -387,6 +422,80 @@ describe("CLI job summary with an oversized job detail body", () => {
 			const failure = await dssFailure(["job", "summary", "NOPE",], { env: cliEnv(url,), },);
 			expect(failure.code,).not.toBe(0,);
 			expect(JSON.parse(failure.stdout,),).toMatchObject({ code: "not_found", },);
+		},);
+	});
+});
+
+describe("CLI job build-and-wait --summary log tail", () => {
+	const logLines = Array.from(
+		{ length: 250, },
+		(_, i,) =>
+			`[2026/10/12-14:59:15.${i}] [ActivityExecutor-67] [DEBUG] [dku.flow.activity] step ${i}`,
+	);
+
+	function serveBuild(state: "DONE" | "FAILED",) {
+		return (req: IncomingMessage, res: ServerResponse,): void => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			if (req.method === "POST" && url.pathname === "/public/api/projects/TEST/jobs/") {
+				sendJson(res, { id: "JOB1", },);
+				return;
+			}
+			if (url.pathname.endsWith("/jobs/JOB1/log/",)) {
+				res.statusCode = 200;
+				res.setHeader("content-type", "text/plain",);
+				res.end(`${logLines.join("\n",)}\n`,);
+				return;
+			}
+			if (url.pathname.endsWith("/jobs/JOB1/",)) {
+				sendJson(res, {
+					baseStatus: { def: { id: "JOB1", type: "RECURSIVE_BUILD", }, state, },
+					globalState: {
+						done: state === "DONE" ? 2 : 0,
+						failed: state === "DONE" ? 0 : 1,
+						running: 0,
+						total: 2,
+					},
+				},);
+				return;
+			}
+			sendJson(res, { columns: [{ name: "a", type: "string", },], userModified: false, },);
+		};
+	}
+
+	it("returns the log summary facts without the log tail when the build succeeded", async () => {
+		await withCliServer(serveBuild("DONE",), async (url,) => {
+			const { stdout, } = await dss(
+				["job", "build-and-wait", "out", "--summary", "--poll-interval", "1",],
+				{ env: cliEnv(url,), },
+			);
+			const result = JSON.parse(stdout,) as Record<string, unknown>;
+			expect(result,).toMatchObject({
+				success: true,
+				jobId: "JOB1",
+				state: "DONE",
+				logSummary: { state: "DONE", lineCount: 250, },
+			},);
+			expect(result["logSummary"],).not.toHaveProperty("lines",);
+			expect(stdout.length,).toBeLessThan(500,);
+		},);
+	});
+
+	it("keeps the log tail in the summary when the build failed", async () => {
+		await withCliServer(serveBuild("FAILED",), async (url,) => {
+			const failure = await dssFailure(
+				["job", "build-and-wait", "out", "--summary", "--poll-interval", "1",],
+				{ env: cliEnv(url,), },
+			);
+			expect(failure.code,).toBe(4,);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				details: {
+					result: {
+						success: false,
+						state: "FAILED",
+						logSummary: { lineCount: 250, lines: logLines.slice(-20,), },
+					},
+				},
+			},);
 		},);
 	});
 });

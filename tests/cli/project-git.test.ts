@@ -252,7 +252,7 @@ describe("project-git read dispatch", () => {
 		expect(error,).toBeInstanceOf(CommandResultFailure,);
 		const failure = error as CommandResultFailure;
 		expect(JSON.stringify(failure.result,),).not.toContain(secret,);
-		const failedGit = {
+		const failedGit: Partial<DataikuClient["projectGit"]> = {
 			waitForFuture: async (): Promise<unknown> => {
 				throw new Error(`clone failed for ${remoteUrl}`,);
 			},

@@ -103,7 +103,11 @@ describe("macro CLI commands", () => {
 	});
 
 	it("runs a macro without --wait and prints only the runId envelope", async () => {
-		const capture = { runBodies: [], abortBodies: [], stateHits: 0, };
+		const capture: Parameters<typeof macroServer>[1] = {
+			runBodies: [],
+			abortBodies: [],
+			stateHits: 0,
+		};
 		await withCliServer(macroServer({}, capture,), async (url,) => {
 			const { stdout, } = await dss(["macro", "run", "m1",], { env: cliEnv(url,), },);
 			const result = JSON.parse(stdout,) as { runId: string; };
@@ -157,7 +161,11 @@ describe("macro CLI commands", () => {
 	});
 
 	it("aborts a run with an empty POST body and 204", async () => {
-		const capture = { runBodies: [], abortBodies: [], stateHits: 0, };
+		const capture: Parameters<typeof macroServer>[1] = {
+			runBodies: [],
+			abortBodies: [],
+			stateHits: 0,
+		};
 		await withCliServer(macroServer({}, capture,), async (url,) => {
 			const { stdout, } = await dss(["macro", "abort", "m1", "run-42",], { env: cliEnv(url,), },);
 			const result = JSON.parse(stdout,) as { aborted: string; };

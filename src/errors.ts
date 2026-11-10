@@ -72,6 +72,11 @@ export interface DataikuErrorTrustedMetadata {
 }
 
 const CANONICAL_STATUS_TEXT: Record<number, string> = {
+	301: "Moved Permanently",
+	302: "Found",
+	303: "See Other",
+	307: "Temporary Redirect",
+	308: "Permanent Redirect",
 	400: "Bad Request",
 	401: "Unauthorized",
 	403: "Forbidden",
@@ -147,6 +152,40 @@ export function unexpectedResponseError(detail: string, status = 200,): DataikuE
 		"Unexpected Response",
 		`${UNEXPECTED_RESPONSE_MARKER}: ${detail}`,
 	);
+}
+
+/**
+ * Prefix the client stamps on a 3xx answer to a non-GET request. The client
+ * does not follow such redirects: the runtime would replay a POST as a GET (or
+ * forward the body to another origin), so the mutation would never happen.
+ */
+export const REDIRECT_NOT_FOLLOWED_MARKER = "DSS URL redirects";
+const REDIRECT_NOT_FOLLOWED_HINT =
+	"The DSS URL answered with an HTTP redirect, so the request was not applied. Set DATAIKU_URL / --url to the final DSS URL (details.redirectOrigin names the redirect target when known), then retry.";
+
+/**
+ * The one representation of a refused redirect: classified `unexpected_response`,
+ * non-retryable. `redirectOrigin` is scheme://host[:port] only, never a path,
+ * query, or userinfo.
+ */
+export function redirectNotFollowedError(
+	status: number,
+	method: string,
+	redirectOrigin: string | undefined,
+	retry?: DataikuRetryMetadata,
+	requestId?: string,
+): DataikuError {
+	const error = new DataikuError(
+		status,
+		canonicalStatusText(status,),
+		`${REDIRECT_NOT_FOLLOWED_MARKER}${
+			redirectOrigin ? ` to ${redirectOrigin}` : ""
+		}; the ${method} request was not followed and was not applied.`,
+		retry,
+		requestId,
+	);
+	if (redirectOrigin) error.details = { redirectOrigin, };
+	return error;
 }
 
 /** Hint for a DSS answer that definitively failed the request (e.g. the database rejected the SQL). */
@@ -330,6 +369,17 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 
 	if (isIntermediaryAuthPage(status, body,)) {
 		return { category: "unexpected_response", retryable: false, retryHint: INTERMEDIARY_PAGE_HINT, };
+	}
+
+	if (
+		status >= 300 && status < 400
+		&& lowerBody.startsWith(REDIRECT_NOT_FOLLOWED_MARKER.toLowerCase(),)
+	) {
+		return {
+			category: "unexpected_response",
+			retryable: false,
+			retryHint: REDIRECT_NOT_FOLLOWED_HINT,
+		};
 	}
 
 	// finish-streaming answers 2xx with the server-side failure text when the

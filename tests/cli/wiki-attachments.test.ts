@@ -443,7 +443,13 @@ describe("wiki detach", () => {
 	});
 
 	it("is advertised as a write with the right destructiveness and idempotency", async () => {
-		const { stdout, } = await dss(["commands", "run", "--fields", "wiki.attach,wiki.detach",],);
+		const { stdout, } = await dss([
+			"commands",
+			"run",
+			"--fields",
+			"wiki.attach,wiki.detach",
+			"--full",
+		],);
 		const registry = parse<Record<string, Record<string, unknown>>>(stdout,);
 		expect(registry["wiki.attach"]?.["sideEffect"],).toBe("write",);
 		expect(registry["wiki.attach"]?.["destructive"],).toBe("reversible",);

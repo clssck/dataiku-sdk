@@ -13,7 +13,7 @@ import {
 	prepareSteps,
 	recipeCreateWarnings,
 } from "../src/resources/recipe-create.js";
-import type { RecipeUpdateSchemaResult, } from "../src/schemas.js";
+import type { RecipeCreateOptions, RecipeUpdateSchemaResult, } from "../src/schemas.js";
 
 async function readBody(req: IncomingMessage,): Promise<string> {
 	let body = "";
@@ -761,12 +761,12 @@ describe("RecipesResource", () => {
 
 	describe("failed create rolls back provisioned outputs", () => {
 		const datasetsPath = "/public/api/projects/TEST/datasets/";
-		const createOpts = {
+		const createOpts: RecipeCreateOptions = {
 			type: "python",
 			inputDatasets: ["input_ds",],
 			outputDataset: "output_ds",
 			outputConnection: "s3_conn",
-		} as const;
+		};
 
 		function rollbackHandler(
 			state: {
@@ -1681,12 +1681,9 @@ describe("RecipesResource", () => {
 				success: true,
 				jobId: "job-summary",
 				state: "DONE",
-				logSummary: {
-					state: "DONE",
-					lineCount: 2,
-					lines: ["second line",],
-				},
+				logSummary: { state: "DONE", lineCount: 2, },
 			},);
+			expect(result.logSummary,).not.toHaveProperty("lines",);
 			expect(result,).not.toHaveProperty("log",);
 		},);
 

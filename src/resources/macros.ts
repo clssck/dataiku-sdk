@@ -18,6 +18,7 @@ import {
 	DEFAULT_POLL_INTERVAL_MS,
 	DEFAULT_TIMEOUT_MS,
 	isRequestDeadlineError,
+	validateWaitBudgetMs,
 } from "../utils/polling.js";
 import { isRecord, } from "../utils/records.js";
 import { BaseResource, requireNonEmpty, } from "./base.js";
@@ -287,11 +288,7 @@ export class MacrosResource extends BaseResource {
 				throw new ClientValidationError("pollIntervalMs must be a finite number >= 1.",);
 			}
 		}
-		if (opts?.timeoutMs !== undefined) {
-			if (!Number.isFinite(opts.timeoutMs,) || opts.timeoutMs < 0) {
-				throw new ClientValidationError("timeoutMs must be a finite number >= 0.",);
-			}
-		}
+		validateWaitBudgetMs(opts?.timeoutMs,);
 		const baseIntervalMs = Math.max(1, opts?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,);
 		const adaptivePolling = opts?.pollIntervalMs === undefined;
 		// One state observation always happens regardless of budget (poll
@@ -328,7 +325,7 @@ export class MacrosResource extends BaseResource {
 			try {
 				lastState = await this.state(runnableType, runId, {
 					projectKey: opts?.projectKey,
-					timeoutMs: Math.max(1, timeoutMs - (Date.now() - startedAt),),
+					timeoutMs: Math.max(1, Math.ceil(timeoutMs - (Date.now() - startedAt),),),
 				},);
 			} catch (error) {
 				if (!isRequestDeadlineError(error, startedAt + timeoutMs,)) throw error;

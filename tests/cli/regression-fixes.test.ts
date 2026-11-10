@@ -957,6 +957,7 @@ describe("CLI regression fixes", () => {
 				"run",
 				"--fields",
 				"dataset.preview,dataset.get,dataset.create,job.wait,project-library.create-file",
+				"--full",
 			],
 			{ env: hermeticEnv, },
 		);

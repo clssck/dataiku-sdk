@@ -6,8 +6,16 @@ import {
 	validatePluginName,
 	validatePluginPath,
 } from "../../resources/plugins.js";
+import { isRecord, } from "../../utils/records.js";
 import { writeResponseToFile, } from "../../utils/response-file.js";
-import { num, readStdinText, readTextFile, sha256Hex, } from "../coerce.js";
+import {
+	num,
+	parseJsonValue,
+	readInputText,
+	readStdinText,
+	requireContentSource,
+	sha256Hex,
+} from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { planResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
@@ -324,17 +332,15 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 			requireArgs(a, 1, SETTINGS_SET_USAGE,);
 			const pluginId = validatePluginId(a[0],);
 			const mode = executionMode(f,);
-			const settings = await readSettingsInput(f,);
+			const settings = readSettingsInput(f,);
 			if (mode.dryRun) {
 				return pluginPlan("settings-set", {
 					method: "POST",
 					endpoint: pluginRootEndpoint(pluginId, "/settings",)
 						+ scopeQueryForPlan(f["project-key"] as string | undefined,),
 					identifiers: { pluginId, },
-					payload: {
-						configKeys: Object.keys(settings.config ?? {},),
-						codeEnvName: settings.codeEnvName,
-					},
+					idempotency: "convergent",
+					payload: pluginSettingsPlanPayload(settings,),
 				},);
 			}
 			await c.plugins.setSettings(pluginId, settings, {
@@ -450,31 +456,16 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, CREATE_DEV_USAGE,);
 			const pluginId = validatePluginId(a[0],);
-			const creationModeRaw = optionalStringFlag(f, "creation-mode",) ?? "EMPTY";
-			const creationMode = normalizeCreationMode(creationModeRaw,);
-			const repository = optionalStringFlag(f, "repository",);
-			const checkout = optionalStringFlag(f, "checkout",);
-			const subpath = optionalStringFlag(f, "path-in-repository",);
-			const needsGit = creationMode !== "EMPTY";
-			if (needsGit && repository === undefined) {
-				throw new UsageError(
-					`--repository URL is required when --creation-mode is ${creationMode}.`,
-					"missing_required_flag",
-				);
-			}
-			const url = repository === undefined ? undefined : validatedPluginGitUrl(repository,);
+			const { creationMode, needsGit, url, checkout, subpath, payload, } = pluginCreateDevInput(
+				pluginId,
+				f,
+			);
 			if (executionMode(f,).dryRun) {
 				return pluginPlan("create-dev", {
 					method: "POST",
 					endpoint: "/public/api/plugins/actions/createDev",
 					identifiers: { pluginId, creationMode, ...(url ? { repositoryUrl: url, } : {}), },
-					payload: {
-						pluginId,
-						creationMode,
-						gitRepository: url ?? null,
-						gitCheckout: needsGit ? checkout ?? null : null,
-						gitSubpath: creationMode === "GIT_EXPORT" ? subpath ?? null : null,
-					},
+					payload,
 				},);
 			}
 			await c.plugins.createDev({
@@ -669,6 +660,7 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 			requireArgs(a, 2, CONTENTS_PUT_USAGE,);
 			const pluginId = validatePluginId(a[0],);
 			const path = validatePluginPath(a[1],);
+			requireContentSource(f, CONTENTS_PUT_USAGE,);
 			if (executionMode(f,).dryRun) {
 				const source = typeof f["file"] === "string"
 					? { contentSource: "file", file: f["file"] as string, }
@@ -801,31 +793,95 @@ function normalizeCreationMode(value: string,): "EMPTY" | "GIT_CLONE" | "GIT_EXP
 	);
 }
 
+/**
+ * Validated `plugin create-dev` options and the request body they produce,
+ * shared by apply, `--dry-run` and `--plan`. Mirrors PluginsResource.createDev:
+ * the git fields are always present in the body, null when unused.
+ */
+export function pluginCreateDevInput(
+	pluginId: string,
+	flags: Record<string, string | boolean>,
+): {
+	creationMode: "EMPTY" | "GIT_CLONE" | "GIT_EXPORT";
+	needsGit: boolean;
+	url: string | undefined;
+	checkout: string | undefined;
+	subpath: string | undefined;
+	payload: Record<string, unknown>;
+} {
+	const creationMode = normalizeCreationMode(
+		optionalStringFlag(flags, "creation-mode",) ?? "EMPTY",
+	);
+	const repository = optionalStringFlag(flags, "repository",);
+	const checkout = optionalStringFlag(flags, "checkout",);
+	const subpath = optionalStringFlag(flags, "path-in-repository",);
+	const needsGit = creationMode !== "EMPTY";
+	if (needsGit && repository === undefined) {
+		throw new UsageError(
+			`--repository URL is required when --creation-mode is ${creationMode}.`,
+			"missing_required_flag",
+		);
+	}
+	const url = repository === undefined ? undefined : validatedPluginGitUrl(repository,);
+	return {
+		creationMode,
+		needsGit,
+		url,
+		checkout,
+		subpath,
+		payload: {
+			pluginId,
+			creationMode,
+			gitRepository: needsGit ? url ?? null : null,
+			gitCheckout: needsGit ? checkout ?? null : null,
+			gitSubpath: creationMode === "GIT_EXPORT" ? subpath ?? null : null,
+		},
+	};
+}
+
 interface SettingsPayload {
 	config?: Record<string, unknown>;
 	codeEnvName?: string;
 	[key: string]: unknown;
 }
 
-async function readSettingsInput(
+/**
+ * The settings object of `plugin settings-set`, from --file, --content or
+ * --stdin. Local only: `--plan`, `--dry-run` and the live call all read it here.
+ */
+export function readSettingsInput(
 	flags: Record<string, string | boolean>,
-): Promise<SettingsPayload> {
+): SettingsPayload {
 	let text: string;
+	let source: string;
 	if (typeof flags["file"] === "string") {
-		text = await readTextFile(flags["file"] as string,);
+		text = readInputText(flags["file"], "--file",);
+		source = flags["file"];
 	} else if (typeof flags["content"] === "string") {
 		text = flags["content"];
+		source = "--content";
 	} else if (flags["stdin"] === true) {
 		text = readStdinText();
+		source = "stdin";
 	} else {
 		throw new UsageError(
 			"--content JSON, --file PATH, or --stdin is required.",
 			"missing_required_flag",
 		);
 	}
-	const parsed = JSON.parse(text,) as unknown;
-	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed,)) {
+	const parsed = parseJsonValue(text, source,);
+	if (!isRecord(parsed,)) {
 		throw new UsageError("Plugin settings must be a JSON object.", "validation_failed",);
 	}
 	return parsed as SettingsPayload;
+}
+
+/** Plan payload for `plugin settings-set`: the config keys and code env, never the values. */
+export function pluginSettingsPlanPayload(
+	settings: SettingsPayload,
+): { configKeys: string[]; codeEnvName: string | undefined; } {
+	return {
+		configKeys: isRecord(settings.config,) ? Object.keys(settings.config,) : [],
+		codeEnvName: settings.codeEnvName,
+	};
 }

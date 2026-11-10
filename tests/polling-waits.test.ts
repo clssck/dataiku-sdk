@@ -717,6 +717,196 @@ describe("post-budget polling", () => {
 	});
 });
 
+function strictClient(url: string,): DataikuClient {
+	return new DataikuClient({
+		url,
+		apiKey: "test-key",
+		projectKey: "DEFAULT",
+		onValidationWarning: (method, errors,) => {
+			throw new Error(`${method} produced an invalid result: ${errors.join("; ",)}`,);
+		},
+	},);
+}
+
+describe("wait budgets", () => {
+	const BUDGET_MS = 250.5;
+	const STALL_MS = 5_000;
+
+	it("futures.wait returns a schema-valid timeout when the deadline hits mid-request", async () => {
+		const respond = stallAfter(0, STALL_MS, { alive: true, hasResult: false, },);
+		const loopback = await startLoopback((_req, res,) => respond(res,));
+		try {
+			const result = await new FuturesResource(strictClient(loopback.url,),).wait("f-none", {
+				timeoutMs: 200,
+				pollIntervalMs: 50,
+			},);
+			expect(result,).toMatchObject({
+				futureId: "f-none",
+				state: "RUNNING",
+				success: false,
+				timedOut: true,
+				hasResult: false,
+				pollCount: 1,
+			},);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("futures.wait keeps the last observed state when the deadline hits mid-request", async () => {
+		const respond = stallAfter(1, STALL_MS, { jobId: "job-7", alive: true, hasResult: false, },);
+		const loopback = await startLoopback((_req, res,) => respond(res,));
+		try {
+			const result = await new FuturesResource(strictClient(loopback.url,),).wait("f-last", {
+				timeoutMs: 200,
+				pollIntervalMs: 50,
+			},);
+			expect(result,).toMatchObject({
+				futureId: "f-last",
+				jobId: "job-7",
+				state: "RUNNING",
+				timedOut: true,
+				success: false,
+				hasResult: false,
+				alive: true,
+			},);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("futures.wait accepts a fractional budget", async () => {
+		const respond = stallAfter(1, STALL_MS, { alive: true, hasResult: false, },);
+		const loopback = await startLoopback((_req, res,) => respond(res,));
+		try {
+			const result = await new FuturesResource(strictClient(loopback.url,),).wait("f-frac", {
+				timeoutMs: BUDGET_MS,
+				pollIntervalMs: 50,
+			},);
+			expect(result,).toMatchObject({ timedOut: true, success: false, hasResult: false, },);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("jobs.wait accepts a fractional budget", async () => {
+		const respond = stallAfter(1, STALL_MS, {
+			baseStatus: { state: "RUNNING", },
+			globalState: {},
+		},);
+		const loopback = await startLoopback((_req, res,) => respond(res,));
+		try {
+			const result = await new JobsResource(client(loopback.url,),).wait("j-frac", {
+				timeoutMs: BUDGET_MS,
+				pollIntervalMs: 100,
+				projectKey: "DEFAULT",
+			},);
+			expect(result,).toMatchObject({ success: false, timedOut: true, state: "RUNNING", },);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("futures.wait treats a negative budget as spent and returns the timed-out result", async () => {
+		const loopback = await startLoopback((_req, res,) => {
+			sendJson(res, { alive: true, hasResult: false, },);
+		},);
+		try {
+			const result = await new FuturesResource(strictClient(loopback.url,),).wait("f-neg", {
+				timeoutMs: -1,
+				pollIntervalMs: 10,
+			},);
+			expect(result,).toMatchObject({
+				timedOut: true,
+				success: false,
+				hasResult: false,
+				pollCount: 1,
+			},);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("jobs.wait treats a negative budget as one poll interval and returns the timed-out result", async () => {
+		const loopback = await startLoopback((_req, res,) => {
+			sendJson(res, { baseStatus: { state: "RUNNING", }, globalState: {}, },);
+		},);
+		try {
+			const result = await new JobsResource(client(loopback.url,),).wait("j-neg", {
+				timeoutMs: -1,
+				pollIntervalMs: 10,
+				projectKey: "DEFAULT",
+			},);
+			// The 10 ms budget may expire before the first poll answers, so only the
+			// timed-out outcome is stable; the observed state is not.
+			expect(result,).toMatchObject({ success: false, timedOut: true, },);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("jobs.buildAndWait rejects an invalid budget before the build request", async () => {
+		const loopback = await startLoopback((_req, res,) => {
+			sendJson(res, { id: "j-1", },);
+		},);
+		try {
+			for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1,]) {
+				await expect(
+					new JobsResource(client(loopback.url,),).buildAndWait("orders", { timeoutMs: bad, },),
+				).rejects.toThrow(/timeoutMs/,);
+			}
+			expect(loopback.requests,).toEqual([],);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("ml-tasks.train times out normally after starting training with a fractional budget", async () => {
+		const respond = stallAfter(1, STALL_MS, { training: true, fullModelIds: [], },);
+		const loopback = await startLoopback((_req, res, path,) => {
+			if (path === TRAIN) {
+				sendJson(res, { sessionId: "s-frac", },);
+				return;
+			}
+			respond(res,);
+		},);
+		try {
+			const result = await new MlTasksResource(client(loopback.url,),).train({
+				analysisId: "A1",
+				mlTaskId: "T1",
+				wait: true,
+				timeoutMs: BUDGET_MS,
+				pollIntervalMs: 100,
+			},);
+			expect(result,).toMatchObject({ sessionId: "s-frac", timedOut: true, success: false, },);
+			expect(loopback.requests.filter((request,) => request.path === TRAIN),).toHaveLength(1,);
+		} finally {
+			await loopback.close();
+		}
+	});
+
+	it("ml-tasks.train finishes with a fractional budget when training completes", async () => {
+		const loopback = await startLoopback((_req, res, path,) => {
+			sendJson(
+				res,
+				path === TRAIN ? { sessionId: "s-done", } : { training: false, fullModelIds: ["m1",], },
+			);
+		},);
+		try {
+			const result = await new MlTasksResource(client(loopback.url,),).train({
+				analysisId: "A1",
+				mlTaskId: "T1",
+				wait: true,
+				timeoutMs: 1500.5,
+			},);
+			expect(result.sessionId,).toBe("s-done",);
+			expect(result,).not.toHaveProperty("timedOut",);
+		} finally {
+			await loopback.close();
+		}
+	});
+});
+
 describe("DataikuClient.get noRetry", () => {
 	it("issues exactly one transport attempt", async () => {
 		const loopback = await startLoopback((_req, res,) => {

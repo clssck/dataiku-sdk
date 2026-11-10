@@ -52,6 +52,7 @@ describe("CLI agent-only command surface", () => {
 				"run",
 				"--fields",
 				"version.run,auth,auth.login,dataset.list,agent.contract,recipe.get-payload",
+				"--full",
 			],
 		);
 		expect(stderr,).toBe("",);
@@ -85,7 +86,7 @@ describe("CLI agent-only command surface", () => {
 			resource: "agent",
 			action: "contract",
 			requiresAuth: false,
-			agentContractVersion: 7,
+			agentContractVersion: 8,
 		},);
 		expect(registry["recipe.get-payload"],).toHaveProperty("unsafeOutputs",);
 	});
@@ -96,7 +97,7 @@ describe("CLI agent-only command surface", () => {
 		const contract = JSON.parse(stdout,) as Record<string, unknown>;
 		expect(contract,).toMatchObject({
 			protocol: "dataiku-sdk-agent",
-			agentContractVersion: 7,
+			agentContractVersion: 8,
 		},);
 		expect(contract,).toHaveProperty("commands.actions.agent",);
 		expect(contract,).toHaveProperty("schemas.agentContract",);
@@ -232,6 +233,7 @@ describe("CLI command registry discovery", () => {
 				"run",
 				"--fields",
 				"agent.contract,project.list,recipe.get-payload,recipe.set-payload",
+				"--full",
 			],
 		);
 		expect(stderr,).toBe("",);
@@ -258,13 +260,13 @@ describe("CLI command registry discovery", () => {
 		);
 		expect(registry["recipe.get-payload"]!.action,).toBe("get-payload",);
 		expect(registry["recipe.set-payload"]!.action,).toBe("set-payload",);
-		expect(registry["agent.contract"]!.agentContractVersion,).toBe(7,);
+		expect(registry["agent.contract"]!.agentContractVersion,).toBe(8,);
 	});
 });
 
 describe("CLI command registry short flags", () => {
 	it("registry exposes supported short-alias-backed flags without help metadata", async () => {
-		const { stdout, stderr, } = await dss(["commands", "run", "--fields", "project.get",],);
+		const { stdout, stderr, } = await dss(["commands", "run", "--fields", "project.get", "--full",],);
 		expect(stderr,).toBe("",);
 		const registry = JSON.parse(stdout,) as Record<string, { flags?: Array<{ name: string; }>; }>;
 		const projectFlags = registry["project.get"]!.flags?.map((flag,) => flag.name) ?? [];

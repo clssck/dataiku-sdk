@@ -1,5 +1,11 @@
 import { deepMerge, } from "../../utils/deep-merge.js";
-import { json, jsonInput, parseBooleanOption, textInput, } from "../coerce.js";
+import {
+	json,
+	jsonInput,
+	parseBooleanOption,
+	rejectEmptyFlagValues,
+	textInput,
+} from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
@@ -82,6 +88,7 @@ export const insightCommands: Record<string, CommandMeta> = withUsage("insight",
 		],
 	},
 	update: {
+		validate: (_a, f,) => rejectEmptyFlagValues(f, ["name", "content-type",],),
 		handler: async (c, a, f,) => {
 			requireArgs(
 				a,

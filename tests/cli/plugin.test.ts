@@ -1,5 +1,9 @@
 import { describe, expect, it, } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync, } from "node:fs";
+import { tmpdir, } from "node:os";
+import { join, } from "node:path";
 import { pluginCommands, } from "../../src/cli/commands/plugin.js";
+import { buildMutationPlan, } from "../../src/cli/plans.js";
 import { RESOURCE_NAMES, } from "../../src/cli/usage.js";
 import type { DataikuClient, } from "../../src/client.js";
 import { ClientValidationError, } from "../../src/errors.js";
@@ -435,5 +439,83 @@ describe("plugin CLI dry-run plans make zero requests", () => {
 		},);
 		expect(JSON.stringify(result,),).not.toContain("TOPSECRET",);
 		expect(calls,).toEqual([],);
+	});
+});
+
+function planOf(
+	action: string,
+	args: string[],
+	flags: Record<string, string | boolean>,
+): Record<string, unknown> {
+	return buildMutationPlan("plugin", action, pluginCommands[action]!, args, flags,);
+}
+
+async function dryRunOf(
+	action: string,
+	args: string[],
+	flags: Record<string, string | boolean>,
+): Promise<Record<string, unknown>> {
+	const { client, calls, } = recordingClient();
+	const result = await run(action, client, args, { ...flags, "dry-run": true, },);
+	expect(calls,).toEqual([],);
+	return result as Record<string, unknown>;
+}
+
+describe("plugin settings-set and create-dev: --plan matches --dry-run", () => {
+	it("summarizes the nested config keys and code env from every input source", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "dss-plugin-settings-",),);
+		try {
+			const body = '{"config":{"a":1,"b":{"c":2}},"codeEnvName":"E","secret":"TOPSECRET"}';
+			const file = join(dir, "settings.json",);
+			writeFileSync(file, body,);
+			const sources: Array<Record<string, string | boolean>> = [{ content: body, }, { file, },];
+			for (const flags of sources) {
+				const plan = planOf("settings-set", ["p",], flags,);
+				const dryRun = await dryRunOf("settings-set", ["p",], flags,);
+				expect(plan.payload,).toEqual({ configKeys: ["a", "b",], codeEnvName: "E", },);
+				expect(plan.payload,).toEqual(dryRun.payload,);
+				expect(plan.idempotency,).toBe(dryRun.idempotency,);
+				expect(plan.endpoint,).toBe(dryRun.endpoint,);
+				expect(JSON.stringify(plan,),).not.toContain("TOPSECRET",);
+			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
+	});
+
+	it("rejects invalid settings input the same way for plan and apply", async () => {
+		expect(() => planOf("settings-set", ["p",], { content: "[1]", },)).toThrow(
+			"Plugin settings must be a JSON object.",
+		);
+		expect(() => planOf("settings-set", ["p",], { content: "{", },)).toThrow("Invalid JSON",);
+		expect(() => planOf("settings-set", ["p",], { file: "/nonexistent/settings.json", },)).toThrow(
+			"Could not read --file",
+		);
+		const { client, calls, } = recordingClient();
+		await expect(run("settings-set", client, ["p",], { content: "{", },),).rejects.toThrow(
+			"Invalid JSON",
+		);
+		expect(calls,).toEqual([],);
+	});
+
+	it("normalizes and validates create-dev options identically", async () => {
+		const flags = {
+			"creation-mode": "git-export",
+			repository: "git@h:o/r.git",
+			"path-in-repository": "sub",
+		};
+		const plan = planOf("create-dev", ["p",], flags,);
+		const dryRun = await dryRunOf("create-dev", ["p",], flags,);
+		expect(plan.payload,).toEqual({
+			pluginId: "p",
+			creationMode: "GIT_EXPORT",
+			gitRepository: "git@h:o/r.git",
+			gitCheckout: null,
+			gitSubpath: "sub",
+		},);
+		expect(plan.payload,).toEqual(dryRun.payload,);
+		expect(() => planOf("create-dev", ["p",], { "creation-mode": "GIT_CLONE", },)).toThrow(
+			"--repository URL is required",
+		);
 	});
 });

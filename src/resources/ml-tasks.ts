@@ -1,5 +1,10 @@
 import { ClientValidationError, } from "../errors.js";
-import { computeNextPollDelayMs, isRequestDeadlineError, } from "../utils/polling.js";
+import {
+	computeNextPollDelayMs,
+	isRequestDeadlineError,
+	pollRequestOptions,
+	validateWaitBudgetMs,
+} from "../utils/polling.js";
 import { BaseResource, requireArrayResponse, requireNonEmpty, requireObject, } from "./base.js";
 import { TrainedModel, } from "./trained-model.js";
 
@@ -300,19 +305,10 @@ export class MlTasksResource extends BaseResource {
 				"validation_failed",
 			);
 		}
-		let timeoutMs: number | undefined;
-		if (opts.timeoutMs !== undefined) {
-			if (opts.wait !== true) {
-				throw new ClientValidationError("timeoutMs requires wait: true.", "validation_failed",);
-			}
-			if (!Number.isFinite(opts.timeoutMs,) || opts.timeoutMs < 0) {
-				throw new ClientValidationError(
-					"timeoutMs must be a finite non-negative number.",
-					"validation_failed",
-				);
-			}
-			timeoutMs = opts.timeoutMs;
+		if (opts.timeoutMs !== undefined && opts.wait !== true) {
+			throw new ClientValidationError("timeoutMs requires wait: true.", "validation_failed",);
 		}
+		validateWaitBudgetMs(opts.timeoutMs,);
 
 		const taskPath = this.taskPath(opts.analysisId, opts.mlTaskId, opts.projectKey,);
 		const session = await this.client.post<MlTaskTrainingSession>(
@@ -325,7 +321,7 @@ export class MlTasksResource extends BaseResource {
 		);
 		if (opts.wait !== true) return session;
 
-		const deadlineMs = timeoutMs ?? TRAIN_DEFAULT_TIMEOUT_MS;
+		const deadlineMs = opts.timeoutMs ?? TRAIN_DEFAULT_TIMEOUT_MS;
 		const baseIntervalMs = Math.max(1, explicitIntervalMs ?? TRAIN_POLL_INTERVAL_MS,);
 		const adaptiveEnabled = explicitIntervalMs === undefined;
 		const startedAt = Date.now();
@@ -359,9 +355,7 @@ export class MlTasksResource extends BaseResource {
 			try {
 				status = await this.client.get<MlTaskStatus>(
 					`${this.taskPath(opts.analysisId, opts.mlTaskId, opts.projectKey,)}/status`,
-					remainingMs > 0
-						? { timeoutMs: remainingMs, }
-						: { noRetry: true, },
+					pollRequestOptions(remainingMs,),
 				);
 			} catch (error) {
 				// The poll budget ran out: report the structured timeout instead

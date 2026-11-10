@@ -190,7 +190,7 @@ function addUsage(tokens: SessionTokens, usage: Record<string, unknown> | undefi
 
 /**
  * The CLI error envelope starts `{"type":"error","error":MSG,"code":CODE`; match
- * it compactly printed, pretty-printed, or as a Python dict repr.
+ * it compactly printed, line-wrapped, pretty-printed, or as a Python dict repr.
  */
 const ERROR_ENVELOPE =
 	/\{\s*["']type["']\s*:\s*["']error["']\s*,\s*["']error["']\s*:\s*(["'])((?:\\.|(?!\1)[^\\])*)\1\s*,\s*["']code["']\s*:\s*["']([\w.-]+)["']/g;

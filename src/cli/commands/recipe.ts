@@ -39,6 +39,7 @@ import {
 	writeRecipeBackup,
 } from "../helpers/recipe.js";
 import { encodedProjectEndpoint, enqueueCliWarning, readIfExists, skipResult, } from "../output.js";
+import { isCommandSafeId, } from "../result-shapes.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
@@ -376,7 +377,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 			return c.recipes.run(a[0], options,);
 		},
 		description:
-			"Run a recipe by resolving its outputs and submitting the correct dataset or managed-folder build job. --timeout defaults to 120000 ms and --poll-interval to 2000 ms.",
+			"Run a recipe by resolving its outputs and submitting the correct dataset or managed-folder build job. --timeout defaults to 120000 ms and --poll-interval to 2000 ms. --summary adds logSummary; log `lines` only when the job did not succeed.",
 		examples: [
 			"dss recipe run compute_orders --wait",
 			"dss recipe run compute_exports --include-logs --log-filter stdout --summary --timeout 600000",
@@ -485,9 +486,13 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 					requestedName: created.requestedName,
 					recipe: createdName,
 					reason: nameTaken ? "name_taken" : "dss_chose_name",
-					hint: nameTaken
-						? `A recipe named ${created.requestedName} already exists; use ${createdName} in follow-up commands.`
-						: `DSS ignored the requested name; use ${createdName} in follow-up commands.`,
+					...(isCommandSafeId(createdName,)
+						? {
+							hint: nameTaken
+								? `A recipe named ${created.requestedName} already exists; use ${createdName} in follow-up commands.`
+								: `DSS ignored the requested name; use ${createdName} in follow-up commands.`,
+						}
+						: {}),
 				},);
 			}
 			if (created.outputSchemaUpdateError) {
@@ -495,7 +500,9 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 					code: "recipe_output_schema_not_computed",
 					recipe: createdName,
 					error: created.outputSchemaUpdateError,
-					hint: `Fix the recipe settings, then run dss recipe update-schema ${createdName}.`,
+					...(isCommandSafeId(createdName,)
+						? { hint: `Fix the recipe settings, then run dss recipe update-schema ${createdName}.`, }
+						: {}),
 				},);
 			}
 			// A visual recipe whose payload came from flags is ready to run: point at the build
@@ -837,7 +844,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 					file: filePath,
 					current,
 					next: { ...current, payload: content, },
-					...(backupPath ? { backupPath, backup: recipeBackupDocument(a[0], pk, current,), } : {}),
+					...(backupPath ? { backupPath, } : {}),
 				};
 			}
 			if (backupDir && backupPath) {

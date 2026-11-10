@@ -232,14 +232,15 @@ describe("CLI execution behavior", () => {
 			res.statusCode = 404;
 			res.end("not found",);
 		}, async (url,) => {
-			const { stdout, stderr, } = await dss([
+			const args = [
 				"scenario",
 				"update",
 				"BUILD_FRG",
 				"--data",
 				JSON.stringify({ rawParams: { params: { steps: [step,], }, }, },),
 				"--dry-run",
-			], { env: cliEnv(url,), },);
+			];
+			const { stdout, stderr, } = await dss(args, { env: cliEnv(url,), },);
 			expect(stderr,).toBe("",);
 			const result = JSON.parse(stdout,) as Record<string, unknown>;
 			expect(result.normalization,).toEqual([{
@@ -254,7 +255,10 @@ describe("CLI execution behavior", () => {
 				before: [],
 				after: [step,],
 			},],);
-			expect(result.next,).toHaveProperty("params.steps", [step,],);
+			expect(result,).not.toHaveProperty("current",);
+			expect(result,).not.toHaveProperty("next",);
+			const nextOnly = await dss([...args, "--fields", "next",], { env: cliEnv(url,), },);
+			expect(JSON.parse(nextOnly.stdout,),).toHaveProperty("next.params.steps", [step,],);
 		},);
 	});
 

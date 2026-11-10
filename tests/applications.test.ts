@@ -1009,7 +1009,7 @@ describe("ApplicationsResource", () => {
 		expect(result?.dryRun,).toBe(false,);
 		expect(result?.concurrencyControl,).toBe(APP_MANIFEST_CONCURRENCY_CONTROL,);
 		expect(result?.before.manifestHash,).toBe(result?.desired.manifestHash,);
-		expect(result?.after.manifestHash,).toBe(result?.before.manifestHash,);
+		expect(result?.after?.manifestHash,).toBe(result?.before.manifestHash,);
 		expect(state.requests,).toEqual(["GET /public/api/projects/TEST/app-manifest",],);
 	});
 
@@ -1028,7 +1028,7 @@ describe("ApplicationsResource", () => {
 		expect(result?.changed,).toBe(true,);
 		expect(result?.persisted,).toBe(false,);
 		expect(result?.desired.version,).toBe("2.0.0",);
-		expect(result?.after.version,).toBe("1.0.0",);
+		expect(result?.after?.version,).toBe("1.0.0",);
 		expect(state.requests,).toEqual(["GET /public/api/projects/TEST/app-manifest",],);
 	});
 
@@ -1104,9 +1104,9 @@ describe("ApplicationsResource", () => {
 		expect(result?.dryRun,).toBe(false,);
 		expect(result?.concurrencyControl,).toBe(APP_MANIFEST_CONCURRENCY_CONTROL,);
 		expect(result?.desired.version,).toBe("2.0.0",);
-		expect(result?.after.version,).toBe("2.0.0",);
-		expect(result?.after.versionNotes,).toBe("Faster tiles.",);
-		expect(result?.after.manifestHash,).toBe(result?.desired.manifestHash,);
+		expect(result?.after?.version,).toBe("2.0.0",);
+		expect(result?.after?.versionNotes,).toBe("Faster tiles.",);
+		expect(result?.after?.manifestHash,).toBe(result?.desired.manifestHash,);
 		expect(state.requests,).toEqual([
 			"GET /public/api/projects/TEST/app-manifest",
 			"PUT /public/api/projects/TEST/app-manifest",

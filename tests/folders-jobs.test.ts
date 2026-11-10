@@ -674,6 +674,47 @@ describe("JobsResource.wait", () => {
 		},);
 	});
 
+	for (
+		const [state, success,] of [["DONE", true,], ["FAILED", false,], ["ABORTED", false,],] as const
+	) {
+		it(`keeps the log tail in the ${state} summary only when the job did not succeed`, async () => {
+			const jobId = `job-tail-${state}`;
+			const logLines = Array.from(
+				{ length: 250, },
+				(_, i,) =>
+					`[2026/10/12-14:59:15.${i}] [ActivityExecutor-67] [DEBUG] [dku.flow.activity] step ${i}`,
+			);
+			await withDataikuServer((req, res,) => {
+				const url = new URL(req.url ?? "/", "http://localhost",);
+				if (url.pathname === `/public/api/projects/TEST/jobs/${jobId}/`) {
+					sendJson(res, {
+						baseStatus: { def: { id: jobId, type: "RECURSIVE_BUILD", }, state, },
+						globalState: { done: success ? 2 : 0, failed: success ? 0 : 1, running: 0, total: 2, },
+					},);
+					return;
+				}
+				if (url.pathname === `/public/api/projects/TEST/jobs/${jobId}/log/`) {
+					res.statusCode = 200;
+					res.setHeader("Content-Type", "text/plain",);
+					res.end(`${logLines.join("\n",)}\n`,);
+					return;
+				}
+				res.statusCode = 404;
+				res.end("unexpected request",);
+			}, async (client,) => {
+				const result = await client.jobs.wait(jobId, { summary: true, pollIntervalMs: 1, },);
+				expect(result.success,).toBe(success,);
+				expect(result.logSummary?.state,).toBe(state,);
+				expect(result.logSummary?.lineCount,).toBe(250,);
+				if (success) {
+					expect(result.logSummary,).not.toHaveProperty("lines",);
+				} else {
+					expect(result.logSummary?.lines,).toEqual(logLines.slice(-20,),);
+				}
+			},);
+		});
+	}
+
 	it("returns a timeout result for non-terminal jobs without fetching logs", async () => {
 		const originalDateNow = Date.now;
 		Date.now = (() => {
@@ -1232,5 +1273,56 @@ describe("JobsResource.wait zero-activity builds", () => {
 			expect(result["failure"],).toBeUndefined();
 			expect(requests.some((request,) => request.includes("/datasets/",)),).toBe(false,);
 		},);
+	});
+
+	it("looks each dataset up once when its partitions are separate outputs", async () => {
+		const requests: string[] = [];
+		const partitions = ["2024-01", "2024-02", "2024-03", "2024-04",];
+		await withDataikuServer(async (req, res,) => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			requests.push(`${req.method} ${url.pathname}`,);
+			if (url.pathname === "/public/api/projects/TEST/jobs/job-parts/") {
+				sendJson(res, {
+					baseStatus: {
+						def: {
+							id: "job-parts",
+							type: "RECURSIVE_FORCED_BUILD",
+							projectKey: "TEST",
+							outputs: partitions.map((targetPartition,) => ({
+								type: "DATASET",
+								targetDatasetProjectKey: "TEST",
+								targetDataset: "orphan",
+								targetPartition,
+							})),
+						},
+						state: "DONE",
+					},
+					globalState: { done: 0, failed: 0, running: 0, total: 0, },
+				}, 200,);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/datasets/orphan") {
+				sendJson(res, { name: "orphan", managed: true, }, 200,);
+				return;
+			}
+			if (url.pathname === "/public/api/projects/TEST/flow/graph/") {
+				sendJson(res, FLOW_GRAPH, 200,);
+				return;
+			}
+			res.statusCode = 404;
+			res.end("unexpected request",);
+		}, async (client,) => {
+			const result = await client.jobs.wait("job-parts", {
+				pollIntervalMs: 1,
+				timeoutMs: 5_000,
+				projectKey: "TEST",
+			},);
+			expect(result.success,).toBe(false,);
+			expect(result.failure?.code,).toBe("nothing_to_build",);
+		},);
+		expect(
+			requests.filter((request,) => request === "GET /public/api/projects/TEST/datasets/orphan"),
+		)
+			.toHaveLength(1,);
 	});
 });

@@ -16,7 +16,7 @@ Malformed user/group listings and scenario run histories fail explicitly instead
 
 ## Platform support
 
-The published `dss` CLI requires Bun >= 1.4.3 and supports Linux, macOS, and Windows. CI runs Bun 1.4.3 on all three operating systems. The runtime dependency is pure JavaScript, so the same package also runs on every Bun-supported x64 and ARM64 system.
+The published `dss` CLI requires Bun >= 1.4.3 and supports Linux, macOS, and Windows. CI gates pushes and pull requests on Linux with Bun 1.4.3; releases and manual dispatches run Linux, macOS, and Windows. The runtime dependency is pure JavaScript, so the same package also runs on every Bun-supported x64 and ARM64 system.
 
 Run directly with Bun:
 
@@ -69,13 +69,6 @@ availability to every profile (core, ml, applications, infrastructure) in the sa
 persistent lab, and setup-only cases stay unselectable. The selector itself neither
 provisions beyond the selected cases nor cleans — combined with the `all` VERB the
 run still ends in the usual destructive cleanup.
-
-Core fixtures include deterministic CSVs with nulls, duplicates, Unicode and quoting;
-server-provisioned managed datasets; sync, Prepare, join, fuzzy-join, grouping and Python
-recipes; folders, scenarios, variables, wiki, notebooks, dashboards, insights, libraries,
-metrics and quality rules. Project export/import/duplicate cases use separate owned
-projects. Managed dataset types, paths and recipe output schemas come from DSS rather
-than tutorial-specific connection guesses.
 
 Profiles add to core: `ml` trains and deploys a small decision tree and checks clustering.
 `applications` Designer cases provision disposable owned templates when
@@ -182,11 +175,11 @@ registry changes; catalogue drift fails the offline gate. Plan/dry-run calls do 
 as executed live coverage.
 
 Regular `bun run verify` and `bun run lint` include the live runner and fixtures.
-Lint includes project-owned rules in `tools/oxlint/index.ts`: accumulator-copy, widen-then-assert, and chained-assertion errors, alongside the native accumulating-spread check.
+Lint includes the project-owned `dss/*` rules in `tools/oxlint/index.ts` (listed in [tools/oxlint/README.md](tools/oxlint/README.md)), alongside the native accumulating-spread check.
 For focused verification:
 
 ```sh
-bun run check:live
+bun run check:tests
 bun test tests/live-context.test.ts tests/live-runner.test.ts tests/live-coverage.test.ts
 ```
 
@@ -197,7 +190,7 @@ envelope, exit codes, `--fields` projection, command discovery, and planning/saf
 skill bundle rooted at [`skills/dataiku-dss/SKILL.md`](skills/dataiku-dss/SKILL.md). The short
 entrypoint routes agents to focused references; the installed command registry remains the source
 of truth for command syntax and schemas. Human
-essentials: exactly one compact JSON value on stdout per command (void success is `{ok:true}`),
+essentials: exactly one JSON value on stdout per command (void success is `{ok:true}`),
 failures as one structured JSON error object on stdout with a nonzero exit code, stderr reserved
 for JSONL diagnostics only, and exit codes `0` success / `1` usage error / `2` DSS or internal
 error / `3` transient DSS error / `4` failed long-running result or assertion. `--retries N`
@@ -209,21 +202,26 @@ pipeline exit semantics differ across platforms.
 
 `*.list` commands print compact items (identifiers, kind, next-step fields) by default; `--full`
 returns the DSS objects, `--contains TEXT` filters on identifiers, and `--limit N` caps the count
-with a `list_truncated` warning.
+with a `list_truncated` warning. An update's `--dry-run` reports `changes` (each differing `path`
+with `before` and `after`; long text as a unified `diff`) and `changeCount` instead of the two full
+objects; `--fields current,next` returns them.
 
 Discover the command surface with scoped calls:
 
 ```text
 dss commands run
 dss commands run --contains "propagate schema"
-dss commands run --fields dataset.create.usage,dataset.create.description,dataset.create.flags,dataset.create.examples
+dss commands run --fields dataset.create
+dss commands run --fields dataset.create --full
 dss commands run --output commands.json
 dss agent contract --fields protocol,agentContractVersion,cli,stdio,planning,compatibility
 ```
 
 `dss commands run` prints the compact resource/action summary, and `--contains TEXT` finds the top 5
-actions for a concept; registry entries never dump to stdout — they travel only via `--output PATH`.
-See the canonical skill for the full `--fields` projection rules and planning workflow.
+actions for a concept. `--fields RESOURCE.ACTION` prints a compact entry (usage, description, examples,
+side effects, and the JSON-body contract); `--full` adds flag metadata and JSON schemas, and a deep
+selector such as `dataset.create.flags` names one field. The whole registry travels only via
+`--output PATH`. See the canonical skill for the full `--fields` projection rules and planning workflow.
 
 ## Agent skill installation
 
@@ -257,13 +255,11 @@ Each entry in the `installed` array reports pre-install bundle state:
 
 ### Token-efficient skill structure
 
-The entrypoint contains bootstrap/discovery, output interpretation, and universal safety rules. Seven focused files under [references/](skills/dataiku-dss/references/) cover authentication, discovery, mutations, application releases, flow maps, coding, and troubleshooting. All are linked directly from `SKILL.md` with task-specific read conditions; agents should not preload the whole directory.
+The entrypoint contains bootstrap/discovery, output interpretation, and universal safety rules. Eight focused files under [references/](skills/dataiku-dss/references/) cover authentication, discovery, mutations, application releases, flow maps, coding, troubleshooting, and notifications. All are linked directly from `SKILL.md` with task-specific read conditions; agents should not preload the whole directory.
 
-The entrypoint measures **774 o200k_base tokens**, within its **825-token** budget. Current Claude V5 reconstruction and GLM5 counts are **1,297** and **776**. Safety rules and all seven reference links remain. Reference content consumes context only when read; all five agent installers ship the complete bundle.
+The entrypoint keeps the safety rules and all eight reference links within a pinned `o200k_base` token budget. Reference content consumes context only when read; all five agent installers ship the complete bundle.
 
-All seven references are token-budgeted (each measured `o200k_base` baseline plus 5% headroom). Per-file baselines live in [the token-budget tests](tests/cli/agent-token-budget.test.ts); run `bun run test:tokens` to check them.
-
-References total **3,797 o200k_base tokens**; including the entrypoint, the bundle totals **4,571**. This is a sum of file counts, not a recommendation to preload them. Runnable examples, sharing safeguards, and cleanup conditions are retained.
+The budgets (entrypoint, and per-reference baselines plus 5% headroom for the references measured there) live in [the token-budget tests](tests/cli/agent-token-budget.test.ts); run `bun run test:tokens` to check them. Runnable examples, sharing safeguards, and cleanup conditions are retained.
 
 This uses progressive disclosure from the [Agent Skills specification](https://agentskills.io/specification) and [Anthropic's authoring guidance](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices): concise metadata/instructions, direct relative reference links, and domain-focused documents. No scripts or assets are needed here; generated command metadata is queried from the CLI rather than duplicated in the skill.
 
@@ -291,7 +287,7 @@ Use environment variables for ephemeral runs. For disposable agent tests, set `D
 Credential precedence is flags first, then `DATAIKU_*` environment variables, then saved credentials in `DSS_CONFIG_DIR` or the platform config directory.
 Set `DATAIKU_DISABLE_ENV=1` when a test must ignore both `.env` files and `DATAIKU_*` environment variables.
 When `.env` loading is enabled, the CLI reads `.env` from the CLI build/root directory and from the command's current working directory; put test-specific `.env` files in the directory where you invoke `dss`. Only `DATAIKU_*`, `NODE_TLS_REJECT_UNAUTHORIZED`, and `NODE_EXTRA_CA_CERTS` are read from `.env`; other keys are ignored.
-Set `DSS_PRETTY=1` to indent stdout JSON (still one JSON value). Use it when the shell or agent harness cuts long lines (omp's bash tool cuts each line at 768 bytes), so a one-line result is not truncated. It is read from the process environment only, not from `.env`.
+Stdout is always one JSON value. A result of at most 760 bytes prints on one line; a longer one is line-wrapped (one array or object child per line, one-space indent per level, no line over 760 bytes except a single long string), so agent shells that cut each line at 768 bytes (omp's bash tool) deliver it whole, at 1–5% more tokens than compact JSON. `DSS_PRETTY=1` prints 2-space indented JSON; `DSS_PRETTY=0` forces one physical line. It is read from the process environment only, not from `.env`.
 
 POSIX shell:
 

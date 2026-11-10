@@ -36,7 +36,7 @@ export type CliExecOptions = { cwd?: string; env?: NodeJS.ProcessEnv; };
 export type CliFailure = { code: number | null; stdout: string; stderr: string; };
 
 // Hermetic default: never let the checkout's .env supply live credentials, and
-// keep stdout one line even when the developer shell sets DSS_PRETTY.
+// run in the default stdout layout even when the developer shell sets DSS_PRETTY.
 const DEFAULT_CLI_ENV: NodeJS.ProcessEnv = {
 	...process.env,
 	DATAIKU_DISABLE_ENV: "1",

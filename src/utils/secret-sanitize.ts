@@ -39,13 +39,35 @@ export interface SecretSanitizeOptions {
 }
 
 /**
- * Replace every exact occurrence of each secret so echoed errors cannot leak
- * it. Empty secrets are skipped (an empty needle would corrupt every string).
+ * The ways a secret is spelled inside a JSON string literal: the standard
+ * escape (`"` -> `\"`, `\` -> `\\`, control characters) and the ASCII-only
+ * escape some servers emit (`\u00e9`, either hex case). A secret echoed in a
+ * serialized JSON body appears in one of these, never as the raw text.
+ */
+function jsonEscapedForms(secret: string,): string[] {
+	const standard = JSON.stringify(secret,).slice(1, -1,);
+	const asciiOnly = (hexCase: "toLowerCase" | "toUpperCase",): string =>
+		standard.replace(
+			/[^\u0020-\u007e]/g,
+			(char,) => `\\u${char.charCodeAt(0,).toString(16,).padStart(4, "0",)[hexCase]()}`,
+		);
+	return [...new Set([standard, asciiOnly("toLowerCase",), asciiOnly("toUpperCase",),],),]
+		.filter((form,) => form !== secret);
+}
+
+/**
+ * Replace every exact occurrence of each secret, and of its JSON-escaped
+ * forms, so echoed errors and serialized bodies cannot leak it. Escaped forms
+ * go first and become the same marker, which keeps a JSON body valid. Empty
+ * secrets are skipped (an empty needle would corrupt every string).
  */
 export function replaceSecrets(text: string, secrets: readonly string[],): string {
 	let result = text;
 	for (const secret of secrets) {
 		if (secret !== "" && secret !== undefined && secret !== null) {
+			for (const form of jsonEscapedForms(secret,)) {
+				result = result.split(form,).join(SECRET_REDACTED,);
+			}
 			result = result.split(secret,).join(SECRET_REDACTED,);
 		}
 	}

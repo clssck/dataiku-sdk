@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir, } from "node:os";
 import { join, } from "node:path";
 import {
@@ -106,6 +116,45 @@ describe("credentials CRUD", () => {
 		saveCredentials({ url: "https://dss.example.com", apiKey: "key", },);
 		const stat = statSync(getCredentialsPath(),);
 		expect(stat.mode & 0o777,).toBe(0o600,);
+	});
+
+	it("saveCredentials narrows a pre-existing credentials file that had wider permissions", () => {
+		if (process.platform === "win32") return;
+		writeFileSync(getCredentialsPath(), "{}", "utf-8",);
+		chmodSync(getCredentialsPath(), 0o644,);
+		saveCredentials({ url: "https://dss.example.com", apiKey: "key", },);
+		expect(statSync(getCredentialsPath(),).mode & 0o777,).toBe(0o600,);
+		expect(loadCredentials()?.apiKey,).toBe("key",);
+	});
+
+	it("saveCredentials creates a missing config directory owner-only and leaves an existing one alone", () => {
+		if (process.platform === "win32") return;
+		const created = join(tmpDir, "fresh",);
+		process.env.DSS_CONFIG_DIR = created;
+		saveCredentials({ url: "https://dss.example.com", apiKey: "key", },);
+		expect(statSync(created,).mode & 0o777,).toBe(0o700,);
+
+		chmodSync(tmpDir, 0o755,);
+		process.env.DSS_CONFIG_DIR = tmpDir;
+		saveCredentials({ url: "https://dss.example.com", apiKey: "key", },);
+		expect(statSync(tmpDir,).mode & 0o777,).toBe(0o755,);
+	});
+
+	it("saveCredentials replaces a symlink at the destination instead of writing through it", () => {
+		if (process.platform === "win32") return;
+		const victim = join(tmpDir, "victim.txt",);
+		writeFileSync(victim, "untouched", "utf-8",);
+		symlinkSync(victim, getCredentialsPath(),);
+		saveCredentials({ url: "https://dss.example.com", apiKey: "key", },);
+		expect(readFileSync(victim, "utf-8",),).toBe("untouched",);
+		expect(loadCredentials()?.apiKey,).toBe("key",);
+		expect(statSync(getCredentialsPath(),).mode & 0o777,).toBe(0o600,);
+	});
+
+	it("saveCredentials leaves no temporary file behind", () => {
+		saveCredentials({ url: "https://dss.example.com", apiKey: "key", },);
+		saveCredentials({ url: "https://dss.example.com", apiKey: "key2", },);
+		expect(readdirSync(tmpDir,),).toEqual(["credentials.json",],);
 	});
 
 	it("saveCredentials writes valid JSON with 2-space indent and trailing newline", () => {

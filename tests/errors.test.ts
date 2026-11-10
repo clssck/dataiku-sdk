@@ -4,7 +4,21 @@ import {
 	classifyDataikuError,
 	DataikuError,
 	dataikuErrorCode,
+	redirectNotFollowedError,
 } from "../src/errors.js";
+
+describe("redirectNotFollowedError", () => {
+	it("is a non-retryable unexpected_response carrying only the target origin", () => {
+		const error = redirectNotFollowedError(302, "POST", "https://dss.example:8443",);
+		expect(error.status,).toBe(302,);
+		expect(error.statusText,).toBe("Found",);
+		expect(error.category,).toBe("unexpected_response",);
+		expect(dataikuErrorCode(error.category,),).toBe("unexpected_response",);
+		expect(error.retryable,).toBe(false,);
+		expect(error.retryHint,).toContain("DATAIKU_URL",);
+		expect(error.details,).toEqual({ redirectOrigin: "https://dss.example:8443", },);
+	});
+});
 
 describe("classifyDataikuError", () => {
 	describe("network/transport (status=0)", () => {

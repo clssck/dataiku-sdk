@@ -836,6 +836,23 @@ describe("CLI command behavioral smoke coverage", () => {
 					),
 				)
 					.toHaveProperty("cell-1", [{ startedOn: 1, },],);
+				// The request parameters are not a next state, so the preview is not a state diff.
+				expect(JSON.parse(
+					(await dss([
+						"notebook",
+						"clear-sql-history",
+						"sql-1",
+						"--cell-id",
+						"cell-1",
+						"--retain",
+						"2",
+						"--dry-run",
+					], { env: cliEnv(url,), },)).stdout,
+				),).toMatchObject({
+					dryRun: true,
+					current: { "cell-1": [{ startedOn: 1, },], },
+					request: { cellId: "cell-1", numRunsToRetain: 2, },
+				},);
 				expect(JSON.parse(
 					(await dss([
 						"notebook",
@@ -1130,13 +1147,11 @@ describe("CLI command behavioral smoke coverage", () => {
 						env: cliEnv(url,),
 					},)
 				).stdout,
-			) as {
-				current?: { payload?: string; };
-				next?: { article?: { name?: string; }; payload?: string; };
-			};
-			expect(wikiUpdateDryRun.current?.payload,).toBe("old",);
-			expect(wikiUpdateDryRun.next?.article?.name,).toBe("Dry Updated",);
-			expect(wikiUpdateDryRun.next?.payload,).toBe("dry",);
+			) as { changes?: unknown[]; };
+			expect(wikiUpdateDryRun.changes,).toEqual(expect.arrayContaining([
+				{ path: "payload", before: "old", after: "dry", },
+				expect.objectContaining({ path: "article.name", after: "Dry Updated", },),
+			],),);
 			expect(
 				JSON.parse(
 					(await dss(["wiki", "update", "article-1", "--name", "Updated", "--content", "new",], {
@@ -1361,9 +1376,12 @@ describe("CLI command behavioral smoke coverage", () => {
 						"--dry-run",
 					], { env: cliEnv(url,), },)
 				).stdout,
-			) as { current?: { listed?: boolean; }; next?: { listed?: boolean; }; };
-			expect(dashboardUpdateDryRun.current?.listed,).toBe(true,);
-			expect(dashboardUpdateDryRun.next?.listed,).toBe(false,);
+			) as { changes?: unknown[]; };
+			expect(dashboardUpdateDryRun.changes,).toEqual([{
+				path: "listed",
+				before: true,
+				after: false,
+			},],);
 			expect(JSON.parse(
 				(await dss([
 					"dashboard",
@@ -1440,9 +1458,10 @@ describe("CLI command behavioral smoke coverage", () => {
 						env: cliEnv(url,),
 					},)
 				).stdout,
-			) as { current?: { name?: string; }; next?: { name?: string; }; };
-			expect(insightUpdateDryRun.current?.name,).toBe("Insight 1",);
-			expect(insightUpdateDryRun.next?.name,).toBe("Dry insight update",);
+			) as { changes?: unknown[]; };
+			expect(insightUpdateDryRun.changes,).toEqual([
+				{ path: "name", before: "Insight 1", after: "Dry insight update", },
+			],);
 			expect(JSON.parse(
 				(await dss(["insight", "update", "insight-1", "--name", "Updated insight",], {
 					env: cliEnv(url,),
@@ -1644,9 +1663,14 @@ describe("CLI command behavioral smoke coverage", () => {
 						"--dry-run",
 					], { env: cliEnv(url,), },)
 				).stdout,
-			) as { current?: { displayName?: string; }; next?: { displayName?: string; }; };
-			expect(updateDryRun.current?.displayName,).toBe("Has rows",);
-			expect(updateDryRun.next?.displayName,).toBe("Dry rule",);
+			) as { changes?: unknown[]; current?: unknown; next?: unknown; };
+			expect(updateDryRun.changes,).toEqual([{
+				path: "displayName",
+				before: "Has rows",
+				after: "Dry rule",
+			},],);
+			expect(updateDryRun,).not.toHaveProperty("current",);
+			expect(updateDryRun,).not.toHaveProperty("next",);
 			expect(JSON.parse(
 				(
 					await dss([

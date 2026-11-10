@@ -2483,6 +2483,15 @@
 				"optional": [
 					[
 						{
+							"flag": "full"
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "output",
 							"value": "PATH"
 						}
@@ -10985,11 +10994,17 @@
 				"arg": "pluginId"
 			},
 			{
-				"flag": "creation-mode",
-				"values": [
-					"EMPTY",
-					"GIT_CLONE",
-					"GIT_EXPORT"
+				"optional": [
+					[
+						{
+							"flag": "creation-mode",
+							"values": [
+								"EMPTY",
+								"GIT_CLONE",
+								"GIT_EXPORT"
+							]
+						}
+					]
 				]
 			},
 			{

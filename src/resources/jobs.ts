@@ -6,6 +6,8 @@ import {
 	DEFAULT_POLL_INTERVAL_MS,
 	DEFAULT_TIMEOUT_MS,
 	isRequestDeadlineError,
+	pollRequestOptions,
+	validateWaitBudgetMs,
 } from "../utils/polling.js";
 import { asRecord, } from "../utils/records.js";
 import { redactCredentialPairs, } from "../utils/secret-sanitize.js";
@@ -64,7 +66,8 @@ export interface JobLogProgress {
 export interface JobLogSummary {
 	state: string;
 	lineCount: number;
-	lines: string[];
+	/** Log tail. Absent on a successful job: `job log` returns the full log. */
+	lines?: string[];
 	progress?: JobLogProgress;
 }
 
@@ -446,6 +449,7 @@ function summarizeJobLog(
 		...(progress ? { progress, } : {}),
 	};
 }
+
 /** Shape of the job status payload returned by the jobs status endpoint. */
 interface JobStatusPayload {
 	baseStatus?: {
@@ -609,6 +613,7 @@ export class JobsResource extends BaseResource {
 		targets: JobBuildTarget[],
 		opts?: JobBuildAndWaitOptions,
 	): Promise<JobWaitOutcome> {
+		validateWaitBudgetMs(opts?.timeoutMs,);
 		const { jobId, } = await this.buildOutputs(targets, opts,);
 		return this.wait(jobId, {
 			activity: opts?.activity,
@@ -730,9 +735,7 @@ export class JobsResource extends BaseResource {
 			try {
 				j = await this.client.get(
 					`/public/api/projects/${projectEnc}/jobs/${jobEnc}/`,
-					remainingMs > 0
-						? { timeoutMs: remainingMs, }
-						: { noRetry: true, },
+					pollRequestOptions(remainingMs,),
 				);
 			} catch (error) {
 				// The poll budget ran out mid-request: report the documented
@@ -804,8 +807,10 @@ export class JobsResource extends BaseResource {
 					}
 					: undefined;
 
+				const succeeded = success && failure === undefined;
+				if (succeeded) delete logSummary?.lines;
 				return {
-					success: success && failure === undefined,
+					success: succeeded,
 					jobId: def.id ?? jobId,
 					state,
 					type: def.type ?? "unknown",
@@ -853,6 +858,8 @@ export class JobsResource extends BaseResource {
 	): Promise<JobUnbuildableTarget[]> {
 		if (!Array.isArray(outputs,)) return [];
 		const writtenByProject = new Map<string, Set<string>>();
+		// Partitions of one dataset arrive as separate outputs: one lookup each dataset.
+		const detailsByDataset = new Map<string, Promise<{ managed?: boolean; }>>();
 		const unbuildable: JobUnbuildableTarget[] = [];
 		for (const output of outputs) {
 			const record = asRecord(output,);
@@ -863,7 +870,13 @@ export class JobsResource extends BaseResource {
 				: fallbackProjectKey;
 			if (projectKey === undefined) continue;
 			try {
-				const details = await this.client.datasets.get(id, projectKey,);
+				const datasetKey = JSON.stringify([projectKey, id,],);
+				let lookup = detailsByDataset.get(datasetKey,);
+				if (lookup === undefined) {
+					lookup = this.client.datasets.get(id, projectKey,);
+					detailsByDataset.set(datasetKey, lookup,);
+				}
+				const details = await lookup;
 				if (details.managed !== true) continue;
 				let written = writtenByProject.get(projectKey,);
 				if (written === undefined) {

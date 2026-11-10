@@ -585,7 +585,11 @@ describe("dataset assertions", () => {
 				], { env: cliEnv(url,), },);
 				expect(failure.code,).toBe(4,);
 				const report = JSON.parse(failure.stdout,) as {
-					details: { result: { failed: Array<{ ruleId: string; outcome: string | null; }>; }; };
+					details: {
+						result: {
+							failed: Array<{ ruleId: string; outcome: string | null; status: string | null; }>;
+						};
+					};
 				};
 				expect(report.details.result.failed,).toEqual([
 					{ ruleId: "r1", outcome: "UNKNOWN", status: null, },
@@ -603,7 +607,13 @@ describe("dataset assertions", () => {
 				expect(failure.code,).toBe(4,);
 				const report = JSON.parse(failure.stdout,) as {
 					details: {
-						result: { satisfied: boolean; checked: number; reason: string; failed: unknown[]; };
+						result: {
+							satisfied: boolean;
+							checked: number;
+							dataset: string;
+							reason: string;
+							failed: unknown[];
+						};
 					};
 				};
 				expect(report.details.result,).toEqual({

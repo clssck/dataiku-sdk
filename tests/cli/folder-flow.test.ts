@@ -111,29 +111,39 @@ describe("CLI managed folder commands", () => {
 			res.statusCode = 500;
 			res.end(`unexpected ${req.method} ${url.pathname}`,);
 		}, async (url,) => {
-			const result = JSON.parse(
-				(await dss([
-					"folder",
-					"update",
-					"exports",
-					"--data",
-					'{"tags":["agent"],"params":{"custom":true}}',
-					"--dry-run",
-				], { env: cliEnv(url,), },)).stdout,
-			) as {
+			const args = [
+				"folder",
+				"update",
+				"exports",
+				"--data",
+				'{"tags":["agent"],"params":{"custom":true}}',
+				"--dry-run",
+			];
+			const result = JSON.parse((await dss(args, { env: cliEnv(url,), },)).stdout,) as {
 				dryRun?: boolean;
 				folderId?: string;
-				next?: Record<string, unknown>;
+				changes?: unknown[];
+				changeCount?: number;
 			};
 			expect(result.dryRun,).toBe(true,);
 			expect(result.folderId,).toBe("folder-id",);
-			expect(result.next,).toMatchObject({
+			expect(result.changes,).toEqual([
+				{ path: "params.custom", after: true, },
+				{ path: "tags.0", before: "old", after: "agent", },
+			],);
+			expect(result.changeCount,).toBe(2,);
+			const { next, } = JSON.parse(
+				(await dss([...args, "--fields", "next",], { env: cliEnv(url,), },)).stdout,
+			) as { next?: Record<string, unknown>; };
+			expect(next,).toMatchObject({
 				id: "folder-id",
 				tags: ["agent",],
 				params: { connection: "filesystem", path: "/dataiku/TEST/exports", custom: true, },
 			},);
 		},);
 		expect(requests,).toEqual([
+			"GET /public/api/projects/TEST/managedfolders/",
+			"GET /public/api/projects/TEST/managedfolders/folder-id",
 			"GET /public/api/projects/TEST/managedfolders/",
 			"GET /public/api/projects/TEST/managedfolders/folder-id",
 		],);
@@ -545,9 +555,9 @@ describe("CLI flow zone commands", () => {
 			const result = JSON.parse(stdout,) as {
 				organized: boolean;
 				topologyUnchanged: boolean;
-				created: Array<{ id: string; name: string; }>;
+				created: Array<{ id: string; name: string; color: string; items: unknown[]; }>;
 				moved: Array<{ zoneId: string; items: unknown[]; }>;
-				pruned: Array<{ zoneId: string; items: unknown[]; }>;
+				pruned: Array<{ zoneId: string; fromZoneId: string; name: string; items: unknown[]; }>;
 			};
 			expect(result.organized,).toBe(true,);
 			expect(result.topologyUnchanged,).toBe(true,);

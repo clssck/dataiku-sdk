@@ -140,6 +140,19 @@ describe("DatasetsResource.preview", () => {
 	});
 });
 
+async function withDownloadDir(
+	run: (outputPath: string, tempDir: string,) => Promise<void>,
+): Promise<void> {
+	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dataiku-dataset-download-",),);
+	const outputPath = path.join(tempDir, "sample.csv",);
+	fs.writeFileSync(outputPath, "previous export\n",);
+	try {
+		await run(outputPath, tempDir,);
+	} finally {
+		fs.rmSync(tempDir, { recursive: true, force: true, },);
+	}
+}
+
 describe("DatasetsResource.download", () => {
 	it("writes an uncompressed CSV when the output path ends in .csv", async () => {
 		const warnings: { method: string; errors: string[]; }[] = [];
@@ -365,6 +378,72 @@ describe("DatasetsResource.download", () => {
 		expect(finishSessionIds,).toEqual(dataSessionIds.slice(0, 3,),);
 		for (const id of dataSessionIds) expect(id,).toMatch(/^[0-9a-f-]{36}$/,);
 		expect(new Set(dataSessionIds,).size,).toBe(4,);
+	});
+
+	describe("preserving the destination", () => {
+		it("keeps the previous file when the stream breaks mid-response", async () => {
+			await withTestServer((_req, res,) => {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+				res.setHeader("Content-Length", "1000",);
+				res.write("name\tcity\nAlice\tParis\n", () => res.socket?.destroy(),);
+			}, async (url,) => {
+				const client = new DataikuClient({
+					url,
+					apiKey: "test-key",
+					projectKey: "TEST",
+					retryMaxAttempts: 1,
+				},);
+				await withDownloadDir(async (outputPath, tempDir,) => {
+					await expect(client.datasets.download("sample", { outputPath, },),).rejects.toThrow();
+					expect(fs.readFileSync(outputPath, "utf8",),).toBe("previous export\n",);
+					expect(fs.readdirSync(tempDir,),).toEqual(["sample.csv",],);
+				},);
+			},);
+		});
+
+		it("keeps the previous file when finish-streaming fails", async () => {
+			await withTestServer((req, res,) => {
+				if (req.url?.includes("/finish-streaming/",)) {
+					res.statusCode = 500;
+					res.setHeader("Content-Type", "application/json",);
+					res.end(JSON.stringify({ message: "Stream was interrupted on the server", },),);
+					return;
+				}
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+				res.end("name\tcity\nAlice\tParis\n",);
+			}, async (url,) => {
+				const client = new DataikuClient({
+					url,
+					apiKey: "test-key",
+					projectKey: "TEST",
+					retryMaxAttempts: 1,
+				},);
+				await withDownloadDir(async (outputPath, tempDir,) => {
+					await expect(client.datasets.download("sample", { outputPath, },),).rejects
+						.toBeInstanceOf(DataikuError,);
+					expect(fs.readFileSync(outputPath, "utf8",),).toBe("previous export\n",);
+					expect(fs.readdirSync(tempDir,),).toEqual(["sample.csv",],);
+				},);
+			}, { handleFinishStreaming: true, },);
+		});
+
+		it("replaces the previous file after a complete download and leaves no temp file", async () => {
+			await withTestServer((_req, res,) => {
+				res.statusCode = 200;
+				res.setHeader("Content-Type", "text/tab-separated-values; charset=utf-8",);
+				res.end("name\tcity\nAlice\tParis\n",);
+			}, async (url,) => {
+				const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
+				await withDownloadDir(async (outputPath, tempDir,) => {
+					const result = await client.datasets.download("sample", { outputPath, },);
+					expect(result.rows,).toBe(1,);
+					expect(fs.readFileSync(outputPath, "utf8",),).toBe("name,city\nAlice,Paris\n",);
+					expect(fs.readdirSync(tempDir,),).toEqual(["sample.csv",],);
+				},);
+			},);
+		});
 	});
 });
 
@@ -1068,7 +1147,7 @@ describe("NotebooksResource.create", () => {
 		let observedBody: Record<string, unknown> | undefined;
 		// Stale identity from a previously spread notebook record: the create
 		// body must strip `id` (DSS rejects it) and override projectKey.
-		const notebook: SqlNotebookContent = {
+		const notebook: SqlNotebookContent & { id: string; projectKey: string; } = {
 			connection: "postgres",
 			cells: [{ id: "cell-1", type: "QUERY", code: "select 1", },],
 			id: "stale-id",

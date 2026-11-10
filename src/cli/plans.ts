@@ -41,6 +41,7 @@ import {
 	unknownJsonInput,
 } from "./coerce.js";
 import { parseCodeRunIntegerFlag, resolveCodeInputWithSource, } from "./commands/code.js";
+import { sanitizeConnectionSecrets, } from "./commands/connection.js";
 import { schemaPropagationOptionsFromFlags, } from "./commands/flow.js";
 import { messagingChannelPlanShape, } from "./commands/messaging-channel.js";
 import { mlTaskFieldsFromFlags, mlTaskReguessOptionsFromFlags, } from "./commands/ml-task.js";
@@ -49,6 +50,11 @@ import {
 	experimentsDatasetOptionsFromFlags,
 	inferenceInfoFromFlags,
 } from "./commands/mlflow.js";
+import {
+	pluginCreateDevInput,
+	pluginSettingsPlanPayload,
+	readSettingsInput,
+} from "./commands/plugin.js";
 import { projectLibraryPutPayload, } from "./commands/project-library.js";
 import { enqueueRecipeCreateWarnings, recipeCreateOptionsFromFlags, } from "./commands/recipe.js";
 import {
@@ -57,14 +63,21 @@ import {
 	scenarioTriggerFromFlags,
 } from "./commands/scenario.js";
 import { resolveSqlQueryInvocation, } from "./commands/sql.js";
+import { sanitizeUserSecrets, } from "./commands/user.js";
 import { buildRegistryEntry, type CommandRegistryEntry, splitPackageSpec, } from "./contract.js";
 import { ambientProjectKey, } from "./env.js";
 import { executionMode, } from "./flags.js";
 import { datasetSqlSourceFromFlags, } from "./helpers/dataset.js";
-import { flowZoneColor, flowZoneMoveItems, flowZoneName, } from "./helpers/flow-zone.js";
+import {
+	flowZoneColor,
+	flowZoneMoveItems,
+	flowZoneName,
+	readFlowZoneOrganizePlan,
+} from "./helpers/flow-zone.js";
 import { recipeBackupPath, recipeRunShouldWait, } from "./helpers/recipe.js";
 import { diagnosticsComputationFromFlags, } from "./helpers/trained-model.js";
 import { encodedProjectEndpointForPlan, planResult, } from "./output.js";
+import { requireEntryFlags, } from "./required-inputs.js";
 import { commandUsage, } from "./syntax.js";
 import type { CommandMeta, } from "./types.js";
 import { requireArgs, UsageError, } from "./usage.js";
@@ -345,46 +358,25 @@ function optionalPlanProjectScope(
 	return `?projectKey=${encodeURIComponent(projectKey.trim(),)}`;
 }
 
-function settingsConfigKeys(flags: Record<string, string | boolean>,): string[] {
-	const content = flags["content"];
-	if (typeof content !== "string") return [];
-	try {
-		const parsed: unknown = JSON.parse(content,);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed,)) return [];
-		return Object.keys(parsed as Record<string, unknown>,);
-	} catch {
-		return [];
-	}
-}
-
+/** Source `plugin contents-put` reads, in the handler's order: --file, --content, else stdin. */
 function contentSourceKind(flags: Record<string, string | boolean>,): string {
-	if (flags["stdin"] === true) return "stdin";
 	if (typeof flags["file"] === "string") return "file";
 	if (typeof flags["content"] === "string") return "content";
-	return "unknown";
+	return "stdin";
 }
 
 /**
- * Plan-safe view of a user create/update body: password values are replaced by
- * a fixed marker so secrets never appear in --plan output.
- */
-function redactedUserPayload(
-	payload: Record<string, unknown>,
-): Record<string, unknown> {
-	if (payload["password"] === undefined) return payload;
-	return { ...payload, password: "<omitted>", };
-}
-
-/**
- * Plan-safe view of a connection create/update body: the connection-type
- * specific `params` object may carry credentials (passwords, keys, tokens), so
- * the plan carries only the marker, never the raw params.
+ * Plan-safe view of a connection create/update body: credential-bearing keys
+ * are redacted at any depth, and the connection-type specific `params` object
+ * (whose credentials can sit under keys no sanitizer knows) is carried only as
+ * a marker, never as the raw params.
  */
 function redactedConnectionPayload(
 	payload: Record<string, unknown>,
 ): Record<string, unknown> {
-	if (payload["params"] === undefined) return payload;
-	return { ...payload, params: "<omitted; may include credentials>", };
+	const sanitized = sanitizeConnectionSecrets(payload,);
+	if (sanitized["params"] === undefined) return sanitized;
+	return { ...sanitized, params: "<omitted; may include credentials>", };
 }
 
 /** Required CSV flag for plans (comma-separated logins list). */
@@ -1989,7 +1981,7 @@ export function commandPlanShape(
 				endpoint: projectEndpoint(`/runnables/${encodeURIComponent(id,)}?wait=false`,),
 				identifiers: { id, },
 				payload: runPayload,
-				wait: action === "macro.run-and-wait" || flags["wait"] === true,
+				wait: action === "run-and-wait" || flags["wait"] === true,
 			};
 		}
 		case "macro.abort": {
@@ -2014,7 +2006,7 @@ export function commandPlanShape(
 			return {
 				method: "POST",
 				endpoint: "/public/api/admin/users",
-				payload: redactedUserPayload(requiredPlanJsonInput(flags, entry.usage,),),
+				payload: sanitizeUserSecrets(requiredPlanJsonInput(flags, entry.usage,),),
 			};
 		case "group.create":
 			return {
@@ -2237,7 +2229,7 @@ export function commandPlanShape(
 				method: "PUT",
 				endpoint: `/public/api/admin/users/${encodeURIComponent(id,)}`,
 				identifiers: { login: id, },
-				payload: redactedUserPayload(requiredPlanJsonInput(flags, entry.usage,),),
+				payload: sanitizeUserSecrets(requiredPlanJsonInput(flags, entry.usage,),),
 			};
 		case "user.delete":
 		case "group.delete":
@@ -2384,7 +2376,7 @@ export function commandPlanShape(
 				method: "POST",
 				endpoint: `${pluginRootEndpoint(id, "/settings",)}${scope}`,
 				identifiers: { pluginId: id, },
-				payload: { configKeys: settingsConfigKeys(flags,), },
+				payload: pluginSettingsPlanPayload(readSettingsInput(flags,),),
 			};
 		}
 		case "plugin.code-env-create": {
@@ -2422,20 +2414,7 @@ export function commandPlanShape(
 				payload: { force: parseBooleanOption(flags["force"], "--force",) ?? false, },
 			};
 		case "plugin.create-dev": {
-			const creationMode = requiredPlanFlag(flags, "creation-mode", entry.usage,);
-			const needsGit = creationMode !== "EMPTY";
-			// Mirrors PluginsResource.createDev: git fields are always present, null when unused.
-			const payload: Record<string, unknown> = {
-				pluginId: id,
-				creationMode,
-				gitRepository: needsGit && typeof flags["repository"] === "string"
-					? validatedPlanRepositoryUrl(flags["repository"], "repository", "--repository URL",)
-					: null,
-				gitCheckout: needsGit && typeof flags["checkout"] === "string" ? flags["checkout"] : null,
-				gitSubpath: creationMode === "GIT_EXPORT" && typeof flags["path-in-repository"] === "string"
-					? flags["path-in-repository"]
-					: null,
-			};
+			const { creationMode, payload, } = pluginCreateDevInput(id, flags,);
 			return {
 				method: "POST",
 				endpoint: "/public/api/plugins/actions/createDev",
@@ -3710,7 +3689,7 @@ export function commandPlanShape(
 				payload: {
 					projectKey: args[0],
 					name: args[1],
-					owner: (flags["owner"] as string | undefined) ?? null,
+					owner: flags["owner"] as string,
 					settings,
 					description: null,
 					permissions: [],
@@ -3931,12 +3910,39 @@ export function commandPlanShape(
 				),
 				identifiers: { dataset: id, },
 			};
-		case "flow-zone.organize":
+		case "flow-zone.organize": {
+			const organizePlan = readFlowZoneOrganizePlan(flags, entry.usage,);
+			const zonesEndpoint = projectEndpoint("/flow/zones",);
 			return {
+				exact: false,
+				reason:
+					"Apply reads the current zones and flow topology, then per listed zone creates, updates, or (with --recreate-on-move) recreates it, moves the missing items in, and with --sync moves unlisted items out to the default zone; which requests are sent depends on live DSS state. The payload is the parsed input plan.",
 				method: "POST",
-				endpoint: projectEndpoint("/flow/zones",),
-				payload: jsonInput(flags,),
+				endpoint: zonesEndpoint,
+				payload: organizePlan,
+				requests: [
+					{ sequence: 1, method: "GET", endpoint: zonesEndpoint, purpose: "read current zones", },
+					{
+						sequence: 2,
+						method: "GET",
+						endpoint: projectEndpoint("/flow/graph/",),
+						purpose: "read flow topology and check topologyFingerprint",
+					},
+					{
+						sequence: 3,
+						method: "POST",
+						endpoint: zonesEndpoint,
+						condition: "per listed zone that does not exist yet",
+					},
+					{
+						sequence: 4,
+						method: "POST",
+						endpoint: projectEndpoint("/flow/zones/{zoneId}/add-items",),
+						condition: "per zone with items to move in (and to the default zone with --sync)",
+					},
+				],
 			};
+		}
 		/* ---- project-git: mutations only; reads are never planned ---- */
 		case "project-git.set-remote": {
 			const remote = (flags["name"] as string | undefined) ?? "origin";
@@ -4284,6 +4290,7 @@ export function buildMutationPlan(
 	}
 	const requiredPositionals = entry.positionalArguments.filter((positional,) => positional.required);
 	requireArgs(args, requiredPositionals.length, meta.usage,);
+	requireEntryFlags(resource, action, flags, entry,);
 	const projectKey = projectKeyForPlan(entry, flags,);
 	const shape = commandPlanShape(resource, action, args, flags, entry, projectKey,);
 	return planResult(resource, action, {

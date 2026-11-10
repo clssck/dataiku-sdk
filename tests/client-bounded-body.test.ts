@@ -2,7 +2,8 @@ import { describe, expect, it, } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, } from "node:http";
 import { type AddressInfo, } from "node:net";
 import { DataikuClient, } from "../src/client.js";
-import { DataikuError, } from "../src/errors.js";
+import { DataikuError, RESPONSE_TOO_LARGE_STATUS_TEXT, } from "../src/errors.js";
+import { ProjectGitResource, } from "../src/resources/project-git.js";
 
 async function withDataikuServer(
 	handler: (req: IncomingMessage, res: ServerResponse,) => Promise<void> | void,
@@ -430,6 +431,60 @@ describe("DataikuClient bounded response bodies", () => {
 			expect((failure as Error).message,).toContain("still arriving after 1500ms",);
 			expect((failure as Error).message,).toContain("10x --request-timeout",);
 			expect(Date.now() - started,).toBeLessThan(3000,);
+		}, { requestTimeoutMs: 150, },);
+	});
+
+	it("Git requests reject a 2xx body that stalls after headers", async () => {
+		await withDataikuServer((_req, res,) => {
+			res.writeHead(200, { "Content-Type": "application/json", },);
+			res.write('{"currentBranch":',);
+		}, async (client,) => {
+			const failure = await new ProjectGitResource(client,).status("PROJ",).catch((
+				error: unknown,
+			) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as DataikuError).status,).toBe(0,);
+			expect((failure as DataikuError).statusText,).toBe("Request Timeout",);
+		}, { requestTimeoutMs: 150, },);
+	});
+
+	it("Git body reads honor the caller's absolute deadline over the request timeout", async () => {
+		await withDataikuServer((_req, res,) => {
+			res.writeHead(200, { "Content-Type": "application/json", },);
+			res.write("{",);
+		}, async (client,) => {
+			const failure = await client.requestGitText("GET", "/git", undefined, Date.now() + 150,)
+				.catch((error: unknown,) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as DataikuError).statusText,).toBe("Request Timeout",);
+		}, { requestTimeoutMs: 30_000, },);
+	}, 10_000,);
+
+	it("Git requests reject an oversized 2xx body with the too-large error", async () => {
+		await withDataikuServer((_req, res,) => {
+			res.writeHead(200, { "Content-Type": "application/json", },);
+			res.end(JSON.stringify({ currentBranch: "x".repeat(500,), },),);
+		}, async (client,) => {
+			const failure = await new ProjectGitResource(client,).status("PROJ",).catch((
+				error: unknown,
+			) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as DataikuError).statusText,).toBe(RESPONSE_TOO_LARGE_STATUS_TEXT,);
+			expect((failure as DataikuError).retryable,).toBe(false,);
+		}, { maxResponseBodyBytes: 64, },);
+	});
+
+	it("postRawBody rejects an acknowledgement body that stalls after 2xx headers", async () => {
+		await withDataikuServer((_req, res,) => {
+			res.writeHead(200,);
+			res.write("ok",);
+		}, async (client,) => {
+			const failure = await client.postRawBody("/upload", "payload",).catch((
+				error: unknown,
+			) => error);
+			expect(failure,).toBeInstanceOf(DataikuError,);
+			expect((failure as DataikuError).status,).toBe(0,);
+			expect((failure as DataikuError).statusText,).toBe("Request Timeout",);
 		}, { requestTimeoutMs: 150, },);
 	});
 });

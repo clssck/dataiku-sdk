@@ -820,6 +820,7 @@ describe("Project delete guards", () => {
 		creationTag: { lastModifiedOn: 42, },
 	};
 	const GUARDED_HASH = projectIncarnationHash("GUARDED", GUARDED_DETAILS,);
+	if (GUARDED_HASH === undefined) throw new Error("GUARDED_DETAILS must yield an incarnation hash",);
 
 	it("deletes with a matching incarnation guard", async () => {
 		let deletes = 0;

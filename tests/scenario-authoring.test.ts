@@ -42,6 +42,11 @@ const SCENARIO_BASE = "/public/api/projects/P/scenarios/s1";
 
 describe("temporalTrigger", () => {
 	const now = new Date(2026, 9, 13, 15, 30,);
+	/** `params.startingFrom` of a generated trigger, which `temporalTrigger` leaves untyped. */
+	const startingFrom = (spec: Parameters<typeof temporalTrigger>[0],) => {
+		const params = temporalTrigger(spec, now,).params;
+		return isRecord(params,) ? params["startingFrom"] : undefined;
+	};
 
 	it("builds the dataikuapi shapes for each frequency", () => {
 		expect(temporalTrigger({ frequency: "minutely", every: 15, },),).toEqual({
@@ -97,18 +102,16 @@ describe("temporalTrigger", () => {
 	});
 
 	it("starts at local midnight with milliseconds and a +HHMM offset, like dataikuapi", () => {
-		expect(temporalTrigger({ frequency: "daily", }, now,).params?.["startingFrom"],).toMatch(
+		expect(startingFrom({ frequency: "daily", },),).toMatch(
 			/^2026-10-13T00:00:00\.000[+-]\d{4}$/,
 		);
-		expect(
-			temporalTrigger({ frequency: "daily", startDate: "2026-11-02", }, now,).params?.["startingFrom"],
-		)
+		expect(startingFrom({ frequency: "daily", startDate: "2026-11-02", },),)
 			.toMatch(/^2026-11-02T00:00:00\.000[+-]\d{4}$/,);
 		// Monthly schedules start on January 1st (or the chosen day), not today.
-		expect(temporalTrigger({ frequency: "monthly", }, now,).params?.["startingFrom"],).toMatch(
+		expect(startingFrom({ frequency: "monthly", },),).toMatch(
 			/^2026-01-01T00:00:00\.000/,
 		);
-		expect(temporalTrigger({ frequency: "monthly", dayOfMonth: 5, }, now,).params?.["startingFrom"],)
+		expect(startingFrom({ frequency: "monthly", dayOfMonth: 5, },),)
 			.toMatch(
 				/^2026-01-05T00:00:00\.000/,
 			);

@@ -6,6 +6,7 @@ import {
 	DEFAULT_POLL_INTERVAL_MS,
 	DEFAULT_TIMEOUT_MS,
 	isRequestDeadlineError,
+	pollRequestOptions,
 } from "../utils/polling.js";
 import { BaseResource, } from "./base.js";
 
@@ -132,6 +133,26 @@ export class FuturesResource extends BaseResource {
 		const startedAt = Date.now();
 		let pollCount = 0;
 		let lastState: FutureState | undefined;
+		// The structured timeout carries the last observed state; with no
+		// observation yet it is a RUNNING task with no result.
+		const timedOutResult = (elapsedMs: number,): FutureWaitResult =>
+			this.client.safeParse(
+				FutureWaitResultSchema,
+				{
+					futureId,
+					jobId: lastState?.jobId,
+					state: lastState ? waitState(lastState,) : "RUNNING",
+					elapsedMs,
+					pollCount,
+					success: false,
+					timedOut: true,
+					hasResult: lastState?.hasResult === true,
+					alive: lastState?.alive,
+					aborted: lastState?.aborted,
+					unknown: lastState?.unknown,
+				},
+				"futures.wait",
+			);
 
 		while (true) {
 			const elapsedBeforeMs = Date.now() - startedAt;
@@ -140,23 +161,7 @@ export class FuturesResource extends BaseResource {
 			// the loop reports the structured timeout from the last observed
 			// state instead of issuing a request the budget cannot cover.
 			if (lastState !== undefined && elapsedBeforeMs >= timeoutMs) {
-				return this.client.safeParse(
-					FutureWaitResultSchema,
-					{
-						futureId,
-						jobId: lastState.jobId,
-						state: waitState(lastState,),
-						elapsedMs: elapsedBeforeMs,
-						pollCount,
-						success: false,
-						timedOut: true,
-						hasResult: lastState.hasResult === true,
-						alive: lastState.alive,
-						aborted: lastState.aborted,
-						unknown: lastState.unknown,
-					},
-					"futures.wait",
-				);
+				return timedOutResult(elapsedBeforeMs,);
 			}
 			pollCount += 1;
 			// Requests issued while budget remains are bounded by the remaining
@@ -166,26 +171,12 @@ export class FuturesResource extends BaseResource {
 			const remainingMs = timeoutMs - elapsedBeforeMs;
 			let state: FutureState;
 			try {
-				state = await this.get(
-					futureId,
-					remainingMs > 0 ? { timeoutMs: remainingMs, } : { noRetry: true, },
-				);
+				state = await this.get(futureId, pollRequestOptions(remainingMs,),);
 			} catch (error) {
 				// The poll budget ran out mid-request: report the structured
 				// timeout instead of letting the transport deadline error escape.
 				if (!isRequestDeadlineError(error, startedAt + timeoutMs,)) throw error;
-				return this.client.safeParse(
-					FutureWaitResultSchema,
-					{
-						futureId,
-						state: "RUNNING",
-						elapsedMs: Date.now() - startedAt,
-						pollCount,
-						success: false,
-						timedOut: true,
-					},
-					"futures.wait",
-				);
+				return timedOutResult(Date.now() - startedAt,);
 			}
 			lastState = state;
 			const elapsedMs = Date.now() - startedAt;

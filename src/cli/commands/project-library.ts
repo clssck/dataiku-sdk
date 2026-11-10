@@ -8,7 +8,7 @@ import {
 	validateLibraryPath,
 } from "../../resources/project-library.js";
 import { SHA256_HEX_PATTERN, } from "../../utils/stable-hash.js";
-import { numFlag, readStdinText, sha256Hex, } from "../coerce.js";
+import { numFlag, readStdinText, requireContentSource, sha256Hex, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { encodedProjectEndpoint, planResult, skipResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
@@ -226,6 +226,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = withUsage("pr
 			const pk = f["project-key"] as string | undefined;
 			const expectSha256 = expectSha256FromFlags(f,);
 			validateLibraryPath(a[0],);
+			requireContentSource(f, commandUsage("project-library", "put",),);
 			if (executionMode(f,).dryRun) {
 				return projectLibraryPlan("put", {
 					method: "POST",
@@ -268,6 +269,7 @@ export const projectLibraryCommands: Record<string, CommandMeta> = withUsage("pr
 			);
 			const pk = f["project-key"] as string | undefined;
 			validateLibraryPath(a[0],);
+			requireContentSource(f, commandUsage("project-library", "diff",),);
 			const maxLines = numFlag(f, ["max-lines",],);
 			const local: string | Uint8Array = typeof f["content"] === "string"
 				? f["content"] as string

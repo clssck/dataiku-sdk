@@ -17,7 +17,8 @@ describe("machine contract: stdio streams and failure codes", () => {
 		const { stdout, } = await dss(["agent", "contract", "--fields", "stdio",],);
 		const { stdio, } = JSON.parse(stdout,);
 		expect(stdio.stdout,).toMatchObject({
-			format: "compact-json",
+			format: "json",
+			lineWrapBytes: 760,
 			success: "single-json-value",
 			failure: "structured-error-object",
 			failureResultDetailLimitBytes: 65_536,

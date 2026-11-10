@@ -282,8 +282,10 @@ export function analyzeFlowMap(
 		sortedZones.push({ id: "default", name: "Default", items: [], },);
 	}
 	const zoneByNode = new Map<string, FlowZone>();
+	// `items` are the objects a zone owns; `shared` objects belong to another
+	// zone and are only displayed here, so they never claim ownership.
 	for (const zone of sortedZones) {
-		for (const item of zoneItems(zone,)) {
+		for (const item of zone.items ?? []) {
 			const nodeId = resolveZoneItemNodeId(item, map.projectKey, nodeIds,);
 			if (!nodeId) continue;
 			const previous = zoneByNode.get(nodeId,);

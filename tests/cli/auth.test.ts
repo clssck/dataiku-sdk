@@ -190,6 +190,33 @@ describe("CLI auth commands", () => {
 		}
 	});
 
+	it("dss auth login does not persist TLS settings that came from the environment", async () => {
+		const tmpDir = join(tmpdir(), `dss-cli-auth-tls-env-${Date.now()}`,);
+		const caPath = join(tmpDir, "env-ca.pem",);
+		mkdirSync(tmpDir, { recursive: true, },);
+		writeFileSync(caPath, "-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----\n", "utf-8",);
+		try {
+			await withCliServer((_req, res,) => {
+				sendJson(res, [],);
+			}, async (url,) => {
+				const { stdout, } = await dss(["auth", "login", "--url", url, "--api-key", "test-key",], {
+					env: {
+						PATH: process.env.PATH,
+						HOME: process.env.HOME,
+						DSS_CONFIG_DIR: tmpDir,
+						NODE_TLS_REJECT_UNAUTHORIZED: "0",
+						NODE_EXTRA_CA_CERTS: caPath,
+					},
+				},);
+				expect(JSON.parse(stdout,),).toMatchObject({ saved: true, },);
+				const creds = JSON.parse(readFileSync(join(tmpDir, "credentials.json",), "utf-8",),);
+				expect(creds,).toEqual({ url, apiKey: "test-key", },);
+			},);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true, },);
+		}
+	});
+
 	it("dss auth login does not save credentials when validation fails", async () => {
 		const tmpDir = join(tmpdir(), `dss-cli-auth-fail-${Date.now()}`,);
 		mkdirSync(tmpDir, { recursive: true, },);

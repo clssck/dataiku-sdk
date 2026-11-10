@@ -1,4 +1,7 @@
 import { describe, expect, it, } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync, } from "node:fs";
+import { tmpdir, } from "node:os";
+import { join, } from "node:path";
 import { cliEnv, dss, dssFailure, readBody, sendJson, withCliServer, } from "./_harness.js";
 
 type RecordedRequest = {
@@ -228,5 +231,54 @@ describe("Visual ML CLI endpoints", () => {
 				body: { datasetRef: "PROJ.ds", containerExecConfigName: "INHERIT", },
 			},
 		],);
+	});
+
+	it("rejects a blank --binary-classification-threshold instead of sending 0", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "dss-mlflow-threshold-",),);
+		try {
+			const archive = join(dir, "model.zip",);
+			writeFileSync(archive, "zip",);
+			const requests: RecordedRequest[] = [];
+			await withCliServer((req, res,) => {
+				requests.push({ method: req.method ?? "GET", path: req.url ?? "", },);
+				sendJson(res, {},);
+			}, async (url,) => {
+				const env = cliEnv(url,);
+				const base = [
+					"saved-model",
+					"import-mlflow-version",
+					"SM1",
+					"v1",
+					"--archive",
+					archive,
+					"--project-key",
+					"PROJ",
+				];
+				for (const extra of [["--dry-run",], [],]) {
+					const failure = await dssFailure([
+						...base,
+						"--binary-classification-threshold=",
+						...extra,
+					], { env, },);
+					expect(failure.code,).toBe(1,);
+					expect(JSON.parse(failure.stdout,),).toMatchObject({
+						code: "invalid_flag_value",
+						category: "usage",
+					},);
+				}
+				const preview = await dss([
+					...base,
+					"--binary-classification-threshold",
+					"0.7",
+					"--dry-run",
+				], { env, },);
+				expect(JSON.parse(preview.stdout,),).toMatchObject({
+					payload: { binaryClassificationThreshold: 0.7, },
+				},);
+			},);
+			expect(requests,).toEqual([],);
+		} finally {
+			rmSync(dir, { recursive: true, force: true, },);
+		}
 	});
 });

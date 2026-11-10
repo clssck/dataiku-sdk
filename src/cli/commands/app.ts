@@ -33,6 +33,7 @@ import {
 	VISUAL_UI_GATE,
 } from "../helpers/app-successor.js";
 import { CommandResultFailure, } from "../output.js";
+import { isCommandSafeId, } from "../result-shapes.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, requireNoArgs, UsageError, } from "../usage.js";
@@ -409,7 +410,10 @@ export const appCommands: Record<string, CommandMeta> = withUsage("app", {
 					instance,
 					jobId,
 					cleanupEligible: true,
-					recoveryCommands: [`dss future wait ${jobId}`, `dss app instances ${a[0]}`,],
+					recoveryCommands: [
+						...(isCommandSafeId(jobId,) ? [`dss future wait ${jobId}`,] : []),
+						`dss app instances ${a[0]}`,
+					],
 					remediation: CREATE_INSTANCE_INDETERMINATE_REMEDIATION,
 					...safeErrorSummary(error,),
 				};

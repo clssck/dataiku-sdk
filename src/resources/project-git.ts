@@ -839,19 +839,18 @@ export class ProjectGitResource extends BaseResource {
 		opts: { timeoutMs?: number; noRetry?: boolean; } = {},
 	): Promise<unknown> {
 		try {
-			const res = await this.client.requestGit(
+			const { status, text, } = await this.client.requestGitText(
 				method,
 				`${GIT_API_BASE}${path}`,
 				body,
 				opts.timeoutMs === undefined ? undefined : Date.now() + opts.timeoutMs,
 				opts.noRetry === true,
 			);
-			const text = await res.text();
 			if (text.trim() === "") return undefined;
 			try {
 				return JSON.parse(text,) as unknown;
 			} catch {
-				throw new DataikuError(res.status, "Invalid JSON response", nonJsonResponseBody(text,),);
+				throw new DataikuError(status, "Invalid JSON response", nonJsonResponseBody(text,),);
 			}
 		} catch (error) {
 			scrubErrorSecrets(error, secrets,);

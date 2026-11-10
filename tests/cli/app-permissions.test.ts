@@ -110,9 +110,11 @@ function snapshotHash(snapshot: {
 }
 
 function makeDir(): string {
-	return mkdirSync(join(tmpdir(), "dss-perm-", Math.random().toString(36,).slice(2,),), {
+	const created = mkdirSync(join(tmpdir(), "dss-perm-", Math.random().toString(36,).slice(2,),), {
 		recursive: true,
 	},);
+	if (created === undefined) throw new Error("makeDir: the generated directory already existed",);
+	return created;
 }
 
 it("keeps project incarnation stable when only app type changes", () => {

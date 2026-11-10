@@ -1,5 +1,6 @@
 import { type DssCredentials, loadCredentials, } from "../config.js";
 import { dataikuEnvironmentEnabled, envFileProvenance, } from "./env.js";
+import { enqueueCliWarning, } from "./output.js";
 import { UsageError, } from "./usage.js";
 
 export type TlsSettings = Pick<DssCredentials, "tlsRejectUnauthorized" | "caCertPath">;
@@ -98,6 +99,70 @@ export function resolveTlsSettings(
 	return { tlsRejectUnauthorized, caCertPath, };
 }
 
+const LOOPBACK_IPV4 = /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+
+/**
+ * Scheme and authority of a DSS URL, or undefined when it does not parse (the
+ * client reports that). `loopback` hosts (`localhost`, `127.0.0.0/8`, `::1`)
+ * keep their traffic on the machine, so plain HTTP there exposes nothing.
+ * The authority never includes userinfo, path or query.
+ */
+export function inspectTransport(
+	url: string,
+): { protocol: string; host: string; loopback: boolean; } | undefined {
+	try {
+		const { protocol, host, hostname, } = new URL(url,);
+		return {
+			protocol,
+			host,
+			loopback: hostname === "localhost" || hostname === "[::1]" || LOOPBACK_IPV4.test(hostname,),
+		};
+	} catch {
+		return undefined;
+	}
+}
+
+const emittedTransportWarnings = new Set<string>();
+
+function warnTransportOnce(code: string, warning: Record<string, unknown>,): void {
+	if (emittedTransportWarnings.has(code,)) return;
+	emittedTransportWarnings.add(code,);
+	enqueueCliWarning({ code, ...warning, },);
+}
+
+/**
+ * Tell the caller when the configured transport is unsafe: a key sent in
+ * cleartext, or certificate verification switched off. Warns, never refuses —
+ * plain-HTTP DSS hosts are legitimate. Names the host only, never userinfo, path
+ * or the key.
+ */
+function warnAboutTransport(
+	url: string,
+	tlsRejectUnauthorized: boolean | undefined,
+	tlsSource: CredentialSource | undefined,
+): void {
+	const transport = inspectTransport(url,);
+	const cleartext = transport?.protocol === "http:";
+	if (transport && cleartext && !transport.loopback) {
+		warnTransportOnce("insecure_transport", {
+			host: transport.host,
+			hint: "API key is sent in cleartext; use https.",
+		},);
+	}
+	// Verification is irrelevant without TLS; the cleartext warning covers it.
+	if (tlsRejectUnauthorized === false && !cleartext) {
+		const source = tlsSource === "flag" || tlsSource === "saved"
+			? tlsSource
+			: "NODE_TLS_REJECT_UNAUTHORIZED";
+		warnTransportOnce("tls_verification_disabled", {
+			source,
+			hint: source === "saved"
+				? "Server identity is not checked; re-enable with `dss auth login` without --insecure."
+				: "Server identity is not checked; unset it or use --ca-cert.",
+		},);
+	}
+}
+
 export const currentCommandContext: { resource?: string; action?: string; projectKey?: string; } =
 	{};
 
@@ -154,6 +219,7 @@ export function resolveCredentials(flags: Record<string, string | boolean>,): {
 
 	const tlsSettings = resolveTlsSettings(flags, saved ?? undefined, sources,);
 	assertCredentialBinding(sources,);
+	warnAboutTransport(url ?? "", tlsSettings.tlsRejectUnauthorized, sources.tlsRejectUnauthorized,);
 
 	return {
 		url: url ?? "",
@@ -169,12 +235,19 @@ export function resolveCredentials(flags: Record<string, string | boolean>,): {
  * and binding enforcement. The call throws before transmitting anything when
  * the project `.env` supplies the URL/TLS configuration while the API key
  * comes from another source.
+ *
+ * `effectiveTlsSettings` (environment included) is what the validation request
+ * uses. `tlsSettings` is what login persists: only values given explicitly as
+ * `--insecure` / `--ca-cert`, so one login in a shell with a transient
+ * `NODE_TLS_REJECT_UNAUTHORIZED=0` cannot switch verification off for every
+ * later command.
  */
 export function resolveLoginCredentials(flags: Record<string, string | boolean>,): {
 	url: string;
 	apiKey: string;
 	projectKey?: string;
 	tlsSettings: TlsSettings;
+	effectiveTlsSettings: TlsSettings;
 } {
 	const hasUrlFlag = typeof flags["url"] === "string";
 	const hasApiKeyFlag = typeof flags["api-key"] === "string";
@@ -201,7 +274,19 @@ export function resolveLoginCredentials(flags: Record<string, string | boolean>,
 		}
 	}
 
-	const tlsSettings = resolveTlsSettings(flags, undefined, sources,);
+	const effectiveTlsSettings = resolveTlsSettings(flags, undefined, sources,);
 	assertCredentialBinding(sources,);
-	return { url: url ?? "", apiKey: apiKey ?? "", projectKey, tlsSettings, };
+	const tlsSettings: TlsSettings = {
+		tlsRejectUnauthorized: sources.tlsRejectUnauthorized === "flag"
+			? effectiveTlsSettings.tlsRejectUnauthorized
+			: undefined,
+		caCertPath: sources.caCertPath === "flag" ? effectiveTlsSettings.caCertPath : undefined,
+	};
+	return {
+		url: url ?? "",
+		apiKey: apiKey ?? "",
+		projectKey,
+		tlsSettings,
+		effectiveTlsSettings,
+	};
 }

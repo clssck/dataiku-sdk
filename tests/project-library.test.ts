@@ -498,6 +498,20 @@ function bytesHandler(bytes: Uint8Array,): (req: RecordedRequest,) => unknown {
 	};
 }
 
+const lines = (count: number, prefix = "l",): string[] =>
+	Array.from({ length: count, }, (_v, i,) => `${prefix}${String(i + 1,)}`,);
+async function diffOf(remote: string[], local: string[], maxLines?: number,) {
+	const { client, } = recordingClient(
+		bytesHandler(Buffer.from(`${remote.join("\n",)}\n`, "utf8",),),
+	);
+	return new ProjectLibraryResource(client,).diffFile(
+		"python/a.py",
+		`${local.join("\n",)}\n`,
+		undefined,
+		maxLines === undefined ? undefined : { maxLines, },
+	);
+}
+
 describe("ProjectLibraryResource diffFile", () => {
 	it("renders a unified diff with counts for changed text", async () => {
 		const { client, requests, } = recordingClient(bytesHandler(Buffer.from("a\nb\nc\n", "utf8",),),);
@@ -558,6 +572,74 @@ describe("ProjectLibraryResource diffFile", () => {
 		expect(result.diff,).toContain("…",);
 		expect(result.added,).toBe(30,);
 		expect(result.removed,).toBe(30,);
+	});
+
+	describe("unified diff hunks", () => {
+		const header = "--- a/python/a.py\n+++ b/python/a.py\n";
+
+		it("keeps a late change in a long file inside a small, untruncated hunk", async () => {
+			const result = await diffOf([...lines(300,), "OLD",], [...lines(300,), "NEW",],);
+			expect(result.diffTruncated,).toBe(false,);
+			expect(result.diff,).toBe(
+				`${header}@@ -298,5 +298,5 @@\n l298\n l299\n l300\n-OLD\n+NEW\n \n`,
+			);
+		});
+
+		it("carries at most three lines of leading context", async () => {
+			const result = await diffOf([...lines(8,), "OLD", "x",], [...lines(8,), "NEW", "x",],);
+			expect(result.diff,).toBe(
+				`${header}@@ -6,6 +6,6 @@\n l6\n l7\n l8\n-OLD\n+NEW\n x\n \n`,
+			);
+		});
+
+		it("renders a change at the very start with trailing context only", async () => {
+			const result = await diffOf(["OLD", ...lines(10,),], ["NEW", ...lines(10,),],);
+			expect(result.diff,).toBe(
+				`${header}@@ -1,4 +1,4 @@\n-OLD\n+NEW\n l1\n l2\n l3\n`,
+			);
+		});
+
+		it("renders a change at the very end", async () => {
+			const result = await diffOf([...lines(10,), "OLD",], [...lines(10,), "NEW",],);
+			expect(result.diff,).toBe(
+				`${header}@@ -8,5 +8,5 @@\n l8\n l9\n l10\n-OLD\n+NEW\n \n`,
+			);
+		});
+
+		it("splits two changes separated by more than six equal lines", async () => {
+			const result = await diffOf(
+				["A0", ...lines(7,), "B0",],
+				["A1", ...lines(7,), "B1",],
+			);
+			expect(result.diff,).toBe(
+				`${header}@@ -1,4 +1,4 @@\n-A0\n+A1\n l1\n l2\n l3\n`
+					+ `@@ -6,5 +6,5 @@\n l5\n l6\n l7\n-B0\n+B1\n \n`,
+			);
+		});
+
+		it("merges two changes separated by six or fewer equal lines", async () => {
+			const result = await diffOf(
+				["A0", ...lines(6,), "B0",],
+				["A1", ...lines(6,), "B1",],
+			);
+			expect(result.diff,).toBe(
+				`${header}@@ -1,9 +1,9 @@\n-A0\n+A1\n l1\n l2\n l3\n l4\n l5\n l6\n-B0\n+B1\n \n`,
+			);
+		});
+
+		it("renders a pure insertion", async () => {
+			const result = await diffOf(lines(10,), [...lines(5,), "NEW", ...lines(10,).slice(5,),],);
+			expect(result.diff,).toBe(
+				`${header}@@ -3,6 +3,7 @@\n l3\n l4\n l5\n+NEW\n l6\n l7\n l8\n`,
+			);
+		});
+
+		it("renders a pure deletion", async () => {
+			const result = await diffOf(lines(10,), lines(10,).filter((l,) => l !== "l5"),);
+			expect(result.diff,).toBe(
+				`${header}@@ -2,7 +2,6 @@\n l2\n l3\n l4\n-l5\n l6\n l7\n l8\n`,
+			);
+		});
 	});
 
 	it("reports remote absence as an all-added diff", async () => {

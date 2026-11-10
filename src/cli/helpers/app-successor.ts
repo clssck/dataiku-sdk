@@ -6,6 +6,7 @@ import type { FutureWaitResult, } from "../../schemas.js";
 import { projectIncarnationHash, } from "../../utils/project-incarnation.js";
 import { stableHash, stringField, } from "../coerce.js";
 import { readIfExists, } from "../output.js";
+import { isCommandSafeId, } from "../result-shapes.js";
 import { UsageError, } from "../usage.js";
 import { appPermissionsHash, appPermissionsVerificationError, } from "./app-permissions.js";
 
@@ -826,7 +827,10 @@ export async function createSuccessorInstance(
 				pollCount: 0,
 				stage: "future-wait",
 				cleanupEligible: true,
-				recoveryCommands: [`dss future wait ${jobId}`, `dss app instances ${appId}`,],
+				recoveryCommands: [
+					...(isCommandSafeId(jobId,) ? [`dss future wait ${jobId}`,] : []),
+					`dss app instances ${appId}`,
+				],
 				remediation: SUCCESSOR_REMEDIATION,
 				...safeErrorSummary(error,),
 			};
@@ -875,9 +879,10 @@ export async function createSuccessorInstance(
 	if (!waited.success) {
 		return failure(waited.state, "future-wait", {
 			error: "The instance-creation future did not complete successfully.",
-			recoveryCommands: jobId !== undefined
-				? [`dss future wait ${jobId}`, `dss app instances ${appId}`,]
-				: [`dss app instances ${appId}`,],
+			recoveryCommands: [
+				...(isCommandSafeId(jobId,) ? [`dss future wait ${jobId}`,] : []),
+				`dss app instances ${appId}`,
+			],
 		},);
 	}
 

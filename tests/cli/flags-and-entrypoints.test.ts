@@ -274,6 +274,17 @@ describe("CLI flag value parsing", () => {
 			expect(JSON.parse(stdout,),).toBe(fullLog,);
 		},);
 	});
+
+	it("-p names the project like --project-key", async () => {
+		const paths: string[] = [];
+		await withCliServer((req, res,) => {
+			paths.push(req.url ?? "",);
+			sendJson(res, [],);
+		}, async (url,) => {
+			await dss(["dataset", "list", "-p", "OTHER",], { env: cliEnv(url,), },);
+		},);
+		expect(paths,).toEqual(["/public/api/projects/OTHER/datasets/",],);
+	});
 });
 
 describe("explicit boolean execution modes", () => {

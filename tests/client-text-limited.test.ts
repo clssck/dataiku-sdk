@@ -65,7 +65,7 @@ describe("DataikuClient.getTextLimited()", () => {
 		const originalFetch = globalThis.fetch;
 		const bytes = new TextEncoder().encode("\uFEFFé€😀abc\uFEFF東京",);
 		try {
-			globalThis.fetch = (async () =>
+			globalThis.fetch = Object.assign(async () =>
 				new Response(
 					new ReadableStream<Uint8Array>({
 						start(controller,) {
@@ -73,7 +73,7 @@ describe("DataikuClient.getTextLimited()", () => {
 							controller.close();
 						},
 					},),
-				)) as typeof fetch;
+				), { preconnect: originalFetch.preconnect, },);
 			expect(await client().getTextLimited("/log", bytes.length,),).toEqual({
 				text: "é€😀abc\uFEFF東京",
 				truncated: false,
@@ -88,7 +88,7 @@ describe("DataikuClient.getTextLimited()", () => {
 		const prefix = new TextEncoder().encode("prefix",);
 		const bytes = Uint8Array.of(...prefix, 0xF5, 0x80, 0x5A,);
 		try {
-			globalThis.fetch = (async () =>
+			globalThis.fetch = Object.assign(async () =>
 				new Response(
 					new ReadableStream<Uint8Array>({
 						start(controller,) {
@@ -96,7 +96,7 @@ describe("DataikuClient.getTextLimited()", () => {
 							controller.close();
 						},
 					},),
-				)) as typeof fetch;
+				), { preconnect: originalFetch.preconnect, },);
 			expect(await client().getTextLimited("/log", bytes.length - 1,),).toEqual({
 				text: "prefix",
 				truncated: true,
@@ -113,7 +113,7 @@ describe("DataikuClient.getTextLimited()", () => {
 		const originalFetch = globalThis.fetch;
 		const chunks = [Uint8Array.of(0x61, 0xF0,), Uint8Array.of(0x9F,), Uint8Array.of(0x98, 0x80,),];
 		try {
-			globalThis.fetch = (async () =>
+			globalThis.fetch = Object.assign(async () =>
 				new Response(
 					new ReadableStream<Uint8Array>({
 						start(controller,) {
@@ -121,7 +121,7 @@ describe("DataikuClient.getTextLimited()", () => {
 							controller.close();
 						},
 					},),
-				)) as typeof fetch;
+				), { preconnect: originalFetch.preconnect, },);
 			expect(await client().getTextLimited("/log", 3,),).toEqual({ text: "a", truncated: true, },);
 		} finally {
 			globalThis.fetch = originalFetch;

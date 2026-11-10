@@ -213,6 +213,45 @@ function validatedExpectHash(
 	return value.toLowerCase();
 }
 
+function createPlanShape(body: Record<string, unknown>,): MessagingChannelPlanShape {
+	return {
+		method: "POST",
+		endpoint: "/public/api/messaging-channels/",
+		identifiers: typeof body["id"] === "string" && body["id"] !== "" ? { id: body["id"], } : {},
+		payload: sanitizeMessagingChannelSecrets(body,),
+	};
+}
+
+function permissionsSetPlanShape(
+	channelId: string,
+	permissions: MessagingChannelPermission[],
+): MessagingChannelPlanShape {
+	return {
+		method: "PUT",
+		endpoint: `${channelEndpoint(channelId,)}/permissions`,
+		identifiers: { id: channelId, },
+		payload: permissions,
+	};
+}
+
+function sendPlanShape(input: SendInput, projectKey: string,): MessagingChannelPlanShape {
+	return {
+		method: "POST",
+		endpoint: `${channelEndpoint(input.channelId,)}/actions/send?${
+			mailSendQuery(projectKey, input.sendAsSingleMessage,).toString()
+		}`,
+		identifiers: { id: input.channelId, },
+		payload: {
+			upload: "multipart",
+			message: mailMessagePayload(input.message,),
+			attachments: input.attachments.map((attachment,) => ({
+				path: attachment.path,
+				fileName: basename(attachment.path,),
+			})),
+		},
+	};
+}
+
 /**
  * Offline request shape of a messaging-channel write, shared by `--plan` and
  * `--dry-run`. Credentials are redacted: a plan never carries a secret.
@@ -225,15 +264,8 @@ export function messagingChannelPlanShape(
 ): MessagingChannelPlanShape {
 	const usage = commandUsage(RESOURCE, action,);
 	switch (action) {
-		case "create": {
-			const { body, } = createInputFromFlags(flags, usage,);
-			return {
-				method: "POST",
-				endpoint: "/public/api/messaging-channels/",
-				identifiers: typeof body["id"] === "string" && body["id"] !== "" ? { id: body["id"], } : {},
-				payload: sanitizeMessagingChannelSecrets(body,),
-			};
-		}
+		case "create":
+			return createPlanShape(createInputFromFlags(flags, usage,).body,);
 		case "settings-set": {
 			const channelId = channelIdArg(args, usage,);
 			const patch = requiredJsonInput(
@@ -260,19 +292,11 @@ export function messagingChannelPlanShape(
 				],
 			};
 		}
-		case "permissions-set": {
-			const channelId = channelIdArg(args, usage,);
-			const permissions = permissionsFromValue(
-				unknownJsonInput(flags,),
-				"The permissions input",
+		case "permissions-set":
+			return permissionsSetPlanShape(
+				channelIdArg(args, usage,),
+				permissionsFromValue(unknownJsonInput(flags,), "The permissions input",),
 			);
-			return {
-				method: "PUT",
-				endpoint: `${channelEndpoint(channelId,)}/permissions`,
-				identifiers: { id: channelId, },
-				payload: permissions,
-			};
-		}
 		case "delete": {
 			const channelId = channelIdArg(args, usage,);
 			return {
@@ -289,21 +313,7 @@ export function messagingChannelPlanShape(
 					"missing_required_flag",
 				);
 			}
-			return {
-				method: "POST",
-				endpoint: `${channelEndpoint(input.channelId,)}/actions/send?${
-					mailSendQuery(projectKey, input.sendAsSingleMessage,).toString()
-				}`,
-				identifiers: { id: input.channelId, },
-				payload: {
-					upload: "multipart",
-					message: mailMessagePayload(input.message,),
-					attachments: input.attachments.map((attachment,) => ({
-						path: attachment.path,
-						fileName: basename(attachment.path,),
-					})),
-				},
-			};
+			return sendPlanShape(input, projectKey,);
 		}
 		default:
 			return {
@@ -352,13 +362,9 @@ export const messagingChannelCommands: Record<string, CommandMeta> = withUsage(R
 	},
 	create: {
 		handler: async (c, _a, f,) => {
-			const { request, secrets, } = createInputFromFlags(f, commandUsage(RESOURCE, "create",),);
+			const { request, body, secrets, } = createInputFromFlags(f, commandUsage(RESOURCE, "create",),);
 			if (executionMode(f,).dryRun) {
-				return dryRunPlan(
-					"create",
-					messagingChannelPlanShape("create", [], f, undefined,),
-					"none",
-				);
+				return dryRunPlan("create", createPlanShape(body,), "none",);
 			}
 			try {
 				return sanitizeMessagingChannelSecrets(
@@ -458,7 +464,7 @@ export const messagingChannelCommands: Record<string, CommandMeta> = withUsage(R
 			if (executionMode(f,).dryRun) {
 				return dryRunPlan(
 					"permissions-set",
-					messagingChannelPlanShape("permissions-set", a, f, undefined,),
+					permissionsSetPlanShape(channelId, permissions,),
 					"convergent",
 				);
 			}
@@ -508,11 +514,7 @@ export const messagingChannelCommands: Record<string, CommandMeta> = withUsage(R
 						);
 					},);
 				}
-				return dryRunPlan(
-					"send",
-					messagingChannelPlanShape("send", a, f, projectKey,),
-					"none",
-				);
+				return dryRunPlan("send", sendPlanShape(input, projectKey,), "none",);
 			}
 			await c.messagingChannels.send(input.channelId, input.message, {
 				projectKey,

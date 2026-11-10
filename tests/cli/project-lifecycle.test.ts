@@ -26,6 +26,7 @@ const LANDED_DETAILS = {
 	creationTag: { lastModifiedOn: 7, },
 };
 const LANDED_HASH = projectIncarnationHash("LANDED", LANDED_DETAILS,);
+if (LANDED_HASH === undefined) throw new Error("LANDED_DETAILS must yield an incarnation hash",);
 
 const hermeticEnv = {
 	PATH: process.env.PATH ?? "",

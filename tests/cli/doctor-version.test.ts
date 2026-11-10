@@ -39,16 +39,19 @@ describe("DataikuClient.getWithMetadata", () => {
 	},);
 
 	it("returns parsed JSON plus selected headers case-insensitively", async () => {
-		globalThis.fetch = (async () =>
-			new Response(JSON.stringify({ projectKey: "TEST", },), {
-				headers: {
-					"dSS-vErsIon": "12.4.3",
-					"dss-api-VERSION": "14.7.3",
-					Date: DATE_HEADER,
-					"X-Request-Id": "req-abc-123",
-					Authorization: "Bearer secret-should-not-leak",
-				},
-			},)) as typeof fetch;
+		globalThis.fetch = Object.assign(
+			async () =>
+				new Response(JSON.stringify({ projectKey: "TEST", },), {
+					headers: {
+						"dSS-vErsIon": "12.4.3",
+						"dss-api-VERSION": "14.7.3",
+						Date: DATE_HEADER,
+						"X-Request-Id": "req-abc-123",
+						Authorization: "Bearer secret-should-not-leak",
+					},
+				},),
+			{ preconnect: originalFetch.preconnect, },
+		);
 		const client = new DataikuClient({ url: "http://localhost", apiKey: "test-key", },);
 		const result = await client.getWithMetadata<{ projectKey: string; }>(
 			"/public/api/projects/",
@@ -72,7 +75,9 @@ describe("DataikuClient.getWithMetadata", () => {
 	});
 
 	it("leaves absent headers null and never invents values", async () => {
-		globalThis.fetch = (async () => new Response("[]",)) as typeof fetch;
+		globalThis.fetch = Object.assign(async () => new Response("[]",), {
+			preconnect: originalFetch.preconnect,
+		},);
 		const client = new DataikuClient({ url: "http://localhost", apiKey: "test-key", },);
 		const result = await client.getWithMetadata("/public/api/projects/",);
 		expect(result.data,).toEqual([],);

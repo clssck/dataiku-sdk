@@ -23,7 +23,8 @@ const TOKEN_BUDGETS = {
 	// Live agent traces showed most cost is extra turns, not output size; guidance that removes a
 	// turn is worth far more than its tokens (each turn re-reads the agent's ~17k-token context).
 	// +25 tokens: the Notifications reference row (scenario mail alerts, messaging channels, test reports).
-	skill: { baseline: 915, maxTokens: 945, },
+	// +19 tokens: compact discovery entries (non-default facts only) and dry-run `changes`.
+	skill: { baseline: 934, maxTokens: 945, },
 	// Intentional contract expansion: the 113-action resource surface (plugin,
 	// saved-model, user, data-collection, connection, project-folder, scenario,
 	// dataset, recipe, project, llm, knowledge-bank, group, macro additions)
@@ -34,26 +35,34 @@ const TOKEN_BUDGETS = {
 	// every entry), the --contains search command, and the list-shape note.
 	// The flow and mlflow resources plus ML diagnostics, Project Deployer, and
 	// smaller DSS 15 gap actions add 220 tokens of action names.
-	agentContract: { baseline: 3_806, maxTokens: 4_000, },
-	// Action names grow with the surface: +56 DSS 15 gap actions (1_577 before).
-	commandsRunDefault: { baseline: 1_801, maxTokens: 1_900, },
+	// agentContract 8: the scoped-discovery hint describes compact RESOURCE.ACTION entries and --full.
+	agentContract: { baseline: 4_126, maxTokens: 4_350, },
+	// Action names grow with the surface: +56 DSS 15 gap actions (1_577 before), scenario trigger-run actions.
+	commandsRunDefault: { baseline: 1_886, maxTokens: 1_990, },
 	registryExportStdout: { baseline: 17, maxTokens: 40, },
-	// Entries no longer repeat global flags or shell copies of examples (was 18_210 / 1_035);
-	// sync-hive-metastore, update-from-hive, and --columns/--partitions added 1.1k back.
-	datasetResource: { baseline: 15_718, maxTokens: 16_600, },
-	// --table/--schema/--catalog/--query/--query-file (SQL datasets) added ~200 tokens to the entry.
-	datasetCreate: { baseline: 1_077, maxTokens: 1_160, },
+	// A bare resource lists usage/description/sideEffect per action (was 15_718 as full entries).
+	datasetResource: { baseline: 1_614, maxTokens: 1_700, },
+	// RESOURCE.ACTION is compact (usage, description, examples, informative side-effect facts,
+	// payload contract); --full is the complete registry entry that used to be the default
+	// (1_077 before sync-hive-metastore, update-from-hive, --columns/--partitions, SQL datasets).
+	datasetCreate: { baseline: 221, maxTokens: 250, },
+	datasetCreateFull: { baseline: 1_182, maxTokens: 1_250, },
+	// The three-entry lookup before a write (get-payload, set-payload, run-and-wait): 2_256 full, 3_176 pretty.
+	compactEntries: { baseline: 478, maxTokens: 520, },
+	// A single write entry: set-payload is 833 tokens as the full entry, 1_163 pretty.
+	recipeSetPayload: { baseline: 196, maxTokens: 215, },
 	datasetCreateUsage: { baseline: 77, maxTokens: 90, },
 	datasetCreateDescription: { baseline: 11, maxTokens: 24, },
-	scopedBootstrap: { baseline: 278, maxTokens: 300, },
-	actionSummary: { baseline: 1_805, maxTokens: 1_900, },
-	fourFieldProjection: { baseline: 356, maxTokens: 390, },
+	scopedBootstrap: { baseline: 302, maxTokens: 330, },
+	actionSummary: { baseline: 1_949, maxTokens: 2_050, },
+	fourFieldProjection: { baseline: 392, maxTokens: 420, },
 	// Error envelopes no longer repeat `ok:false` or echo `resource`/`action` (was 92 / 71 / 242).
 	fieldsUsageFailure: { baseline: 87, maxTokens: 105, },
 	// The usage line in the hint replaces a ~850-token `commands run --fields` round trip.
 	unknownFlag: { baseline: 59, maxTokens: 75, },
 	// validResources lists every resource; flow and mlflow add two names.
-	unknownResourceRecovery: { baseline: 228, maxTokens: 255, },
+	// The default stdout layout wraps the 1_109-byte envelope: 251 tokens compact, 264 wrapped.
+	unknownResourceRecovery: { baseline: 264, maxTokens: 285, },
 	doctorFailure: { baseline: 105, maxTokens: 130, },
 	batchFailure: { baseline: 188, maxTokens: 220, },
 	cleanupFailure: { baseline: 99, maxTokens: 130, },
@@ -83,10 +92,12 @@ describe("agent-facing token budgets", () => {
 		// coding again for the grouping/prepare flags, troubleshooting for flow propagate-schema.
 		// discovery and troubleshooting: compact get defaults and the 100-line `job log` tail.
 		// troubleshooting again: one line for the compact `scenario get-run` failure/next fields.
+		// discovery: wrapped stdout, compact action entries and `--full`, dry-run `changes`;
+		// mutations: the facts an entry lists are the non-default ones.
 		const baselines = {
 			authentication: 504,
-			discovery: 621,
-			mutations: 602,
+			discovery: 730,
+			mutations: 531,
 			"app-releases": 872,
 			"flow-maps": 159,
 			coding: 362,
@@ -128,7 +139,8 @@ describe("agent-facing token budgets", () => {
 					baseline: [3408, 3289, 4044, 5680, 5680, 5680, 3298, 3714, 3223, 3289,],
 				},
 				{
-					args: ["commands", "run", "--fields", "dataset.create",],
+					// The baselines measure the complete entry; the compact default is budgeted with o200k above.
+					args: ["commands", "run", "--fields", "dataset.create", "--full",],
 					baseline: [1059, 1015, 1194, 1771, 1771, 1771, 1019, 1118, 1005, 1015,],
 				},
 				{
@@ -213,6 +225,9 @@ describe("agent-facing token budgets", () => {
 			commandsRunDefault,
 			datasetResource,
 			datasetCreate,
+			datasetCreateFull,
+			compactEntries,
+			recipeSetPayload,
 			usage,
 			description,
 			scopedBootstrap,
@@ -223,6 +238,14 @@ describe("agent-facing token budgets", () => {
 			dss(["commands", "run",],),
 			dss(["commands", "run", "--fields", "dataset",],),
 			dss(["commands", "run", "--fields", "dataset.create",],),
+			dss(["commands", "run", "--fields", "dataset.create", "--full",],),
+			dss([
+				"commands",
+				"run",
+				"--fields",
+				"recipe.get-payload,recipe.set-payload,scenario.run-and-wait",
+			],),
+			dss(["commands", "run", "--fields", "recipe.set-payload",],),
 			dss(["commands", "run", "--fields", "dataset.create.usage",],),
 			dss(["commands", "run", "--fields", "dataset.create.description",],),
 			dss([
@@ -258,6 +281,21 @@ describe("agent-facing token budgets", () => {
 			"dataset.create registry entry",
 			datasetCreate.stdout,
 			TOKEN_BUDGETS.datasetCreate,
+		);
+		expectWithinBudget(
+			"dataset.create full registry entry",
+			datasetCreateFull.stdout,
+			TOKEN_BUDGETS.datasetCreateFull,
+		);
+		expectWithinBudget(
+			"recipe.get-payload, recipe.set-payload, scenario.run-and-wait entries",
+			compactEntries.stdout,
+			TOKEN_BUDGETS.compactEntries,
+		);
+		expectWithinBudget(
+			"recipe.set-payload registry entry",
+			recipeSetPayload.stdout,
+			TOKEN_BUDGETS.recipeSetPayload,
 		);
 		expectWithinBudget(
 			"dataset.create usage projection",
@@ -309,14 +347,20 @@ describe("agent-facing token budgets", () => {
 		// full-registry size that `commands run` used to print to stdout.
 		expect(defaultTokens * 100,).toBeLessThan(LEGACY_FULL_REGISTRY_TOKENS,);
 		expect(actionTokens * 100,).toBeLessThan(LEGACY_FULL_REGISTRY_TOKENS,);
-		expect(datasetCreate.stdout.trim(),).not.toContain("\n",);
+		expect(
+			Math.max(...datasetCreate.stdout.trimEnd().split("\n",).map(line => Buffer.byteLength(line,)),),
+		)
+			.toBeLessThanOrEqual(760,);
 		const scoped = JSON.parse(datasetCreate.stdout,) as Record<string, Record<string, unknown>>;
 		expect(scoped["dataset.create"],).toMatchObject({
 			usage: expect.any(String,),
 			description: expect.any(String,),
 			examples: expect.any(Array,),
-			flags: expect.any(Array,),
+			sideEffect: "write",
 		},);
+		expect(scoped["dataset.create"],).not.toHaveProperty("flags",);
+		const full = JSON.parse(datasetCreateFull.stdout,) as Record<string, Record<string, unknown>>;
+		expect(full["dataset.create"],).toMatchObject({ flags: expect.any(Array,), },);
 	});
 
 	it("keeps the full registry export on disk and off stdout", async () => {

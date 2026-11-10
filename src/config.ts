@@ -1,6 +1,15 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync, } from "node:fs";
+import {
+	closeSync,
+	existsSync,
+	mkdirSync,
+	openSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	writeSync,
+} from "node:fs";
 import { homedir, } from "node:os";
-import { dirname, join, resolve, } from "node:path";
+import { basename, dirname, join, resolve, } from "node:path";
 
 export interface DssCredentials {
 	url: string;
@@ -54,13 +63,27 @@ export function loadCredentials(): DssCredentials | null {
 
 export function saveCredentials(creds: DssCredentials,): void {
 	const path = getCredentialsPath();
-	mkdirSync(dirname(path,), { recursive: true, },);
+	const dir = dirname(path,);
+	// Only a directory we create is narrowed; an existing one keeps the owner's choice.
+	if (!existsSync(dir,)) mkdirSync(dir, { recursive: true, mode: 0o700, },);
 	const data: Record<string, string | boolean> = { url: creds.url, apiKey: creds.apiKey, };
 	if (creds.projectKey) data.projectKey = creds.projectKey;
 	if (creds.tlsRejectUnauthorized !== undefined) {
 		data.tlsRejectUnauthorized = creds.tlsRejectUnauthorized;
 	}
 	if (creds.caCertPath) data.caCertPath = creds.caCertPath;
-	writeFileSync(path, `${JSON.stringify(data, null, 2,)}\n`, "utf-8",);
-	chmodSync(path, 0o600,);
+	// The key is private from the first byte: an exclusive, owner-only temp file,
+	// then a rename that replaces (never writes through) whatever sits at `path`.
+	const temporaryPath = join(dir, `.${basename(path,)}.tmp-${crypto.randomUUID()}`,);
+	try {
+		const fd = openSync(temporaryPath, "wx", 0o600,);
+		try {
+			writeSync(fd, `${JSON.stringify(data, null, 2,)}\n`,);
+		} finally {
+			closeSync(fd,);
+		}
+		renameSync(temporaryPath, path,);
+	} finally {
+		rmSync(temporaryPath, { force: true, },);
+	}
 }

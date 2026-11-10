@@ -1,4 +1,4 @@
-import { json, jsonInput, parseBooleanOption, requiredJsonInput, } from "../coerce.js";
+import { json, jsonInput, num, parseBooleanOption, requiredJsonInput, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { trainedModelCommands, } from "../helpers/trained-model.js";
 import { readIfExists, skipResult, } from "../output.js";
@@ -459,18 +459,10 @@ function mlflowImportOptions(f: Record<string, string | boolean>,): {
 	const setActive = f["set-active"] !== undefined
 		? parseBooleanOption(f["set-active"], "--set-active",)
 		: undefined;
-	const thresholdRaw = f["binary-classification-threshold"];
-	const binaryClassificationThreshold = thresholdRaw === undefined
-		? undefined
-		: Number(thresholdRaw,);
-	if (
-		binaryClassificationThreshold !== undefined && !Number.isFinite(binaryClassificationThreshold,)
-	) {
-		throw new UsageError(
-			"--binary-classification-threshold must be a number.",
-			"invalid_flag_value",
-		);
-	}
+	const binaryClassificationThreshold = num(
+		f["binary-classification-threshold"],
+		"--binary-classification-threshold",
+	);
 	return {
 		...(codeEnvName !== undefined ? { codeEnvName, } : {}),
 		...(containerExecConfigName !== undefined ? { containerExecConfigName, } : {}),

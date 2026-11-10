@@ -293,7 +293,8 @@ function unitServer(
 				manual = body.settings.flowDisplaySettings.zonesManualPositioning;
 				requests[requests.length - 1] = `${route} manual=${manual}`;
 				res.statusCode = 204;
-				return res.end();
+				res.end();
+				return;
 			case `POST ${base}/flow/zones`:
 				newZonePosition = manual ? { x: 628, y: 0, width: 428, height: 428, } : body.position;
 				return sendJson(res, {
@@ -307,7 +308,8 @@ function unitServer(
 			case `PUT ${base}/flow/zones/zone-new`:
 			case `DELETE ${base}/flow/zones/zone-prep`:
 				res.statusCode = 204;
-				return res.end();
+				res.end();
+				return;
 			case `POST ${base}/flow/zones/zone-new/add-items`:
 			case `GET ${base}/flow/zones/zone-new`:
 				return sendJson(res, {

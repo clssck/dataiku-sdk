@@ -15,7 +15,7 @@ describe("deepMerge", () => {
 	});
 
 	it("recursively merges nested plain objects", () => {
-		expect(
+		expect<unknown>(
 			deepMerge({ a: { x: 1, y: 2, }, }, { a: { y: 3, z: 4, }, },),
 		).toEqual({ a: { x: 1, y: 3, z: 4, }, },);
 	});
@@ -27,7 +27,7 @@ describe("deepMerge", () => {
 	});
 
 	it("replaces object with null", () => {
-		expect(
+		expect<unknown>(
 			deepMerge({ a: { x: 1, }, }, { a: null, },),
 		).toEqual({ a: null, },);
 	});
@@ -35,11 +35,11 @@ describe("deepMerge", () => {
 	it("replaces value with undefined", () => {
 		const result = deepMerge({ a: 1, }, { a: undefined, },);
 		expect("a" in result,).toBeTruthy();
-		expect(result.a,).toBe(undefined,);
+		expect<unknown>(result.a,).toBe(undefined,);
 	});
 
 	it("handles 3 levels of nesting", () => {
-		expect(
+		expect<unknown>(
 			deepMerge(
 				{ a: { b: { c: 1, d: 2, }, e: 3, }, },
 				{ a: { b: { c: 10, f: 4, }, g: 5, }, },
@@ -68,7 +68,7 @@ describe("deepMerge", () => {
 	});
 
 	it("replaces base object with array from patch", () => {
-		expect(
+		expect<unknown>(
 			deepMerge({ a: { x: 1, }, }, { a: [1, 2,], },),
 		).toEqual({ a: [1, 2,], },);
 	});

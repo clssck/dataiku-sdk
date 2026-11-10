@@ -11,6 +11,7 @@ import {
 	DataikuError,
 	type DataikuRetryMetadata,
 	nonJsonResponseBody,
+	redirectNotFollowedError,
 	RESPONSE_TOO_LARGE_STATUS_TEXT,
 } from "./errors.js";
 
@@ -342,6 +343,17 @@ function buildRetryMetadata(
 		delaysMs,
 		timedOut,
 	};
+}
+
+/** Origin (scheme://host[:port]) of a Location header; never its path, query, or userinfo. */
+function redirectOrigin(location: string | null, base: string,): string | undefined {
+	if (!location) return undefined;
+	try {
+		const target = new URL(location, base,);
+		return target.protocol === "http:" || target.protocol === "https:" ? target.origin : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 type FetchTlsOptions = {
@@ -1111,18 +1123,25 @@ export class DataikuClient {
 			headers: this.getAnyHeaders(),
 			body: payload,
 		},);
-		await response.text();
+		// The acknowledgement is unused, but reading it under the request deadline
+		// keeps a server that stalls after the 2xx headers from hanging the call.
+		await this.readBoundedBodyText(response, this.maxResponseBodyBytes,);
 	}
 
-	/** Git endpoints require Basic API-key authentication, unlike the bearer API. */
-	async requestGit(
+	/**
+	 * Git endpoints require Basic API-key authentication, unlike the bearer API.
+	 * The buffered text body follows the same bounded rules as {@link postText}:
+	 * byte cap `maxResponseBodyBytes`, and the caller's absolute `deadlineAt`
+	 * (else the request timeout) bounds the body read.
+	 */
+	async requestGitText(
 		method: string,
 		path: string,
 		body?: unknown,
 		deadlineAt?: number,
 		noRetry = false,
-	): Promise<Response> {
-		return this.fetchWithRetry(
+	): Promise<{ status: number; text: string; }> {
+		const res = await this.fetchWithRetry(
 			`${this.baseUrl}${path}`,
 			{
 				method,
@@ -1136,6 +1155,13 @@ export class DataikuClient {
 			noRetry ? 1 : undefined,
 			deadlineAt,
 		);
+		const { text, truncated, } = await this.readBoundedBodyText(
+			res,
+			this.maxResponseBodyBytes,
+			deadlineAt,
+		);
+		if (truncated) throw this.buildResponseTooLargeError(res, this.maxResponseBodyBytes,);
+		return { status: res.status, text, };
 	}
 
 	async postStream(path: string, body?: unknown,): Promise<Response> {
@@ -1677,6 +1703,9 @@ export class DataikuClient {
 				const requestInit: RequestInit = {
 					...init,
 					method,
+					// A followed redirect would replay a mutation as a GET (or forward its
+					// body to another origin) and report success for a request never applied.
+					...(method === "GET" ? {} : { redirect: "manual" as const, }),
 					signal: controller.signal,
 					...(this.session ? { session: this.session, } : {}),
 				};
@@ -1690,6 +1719,16 @@ export class DataikuClient {
 					status: res.status,
 					elapsedMs: Date.now() - startedAt,
 				},);
+				if (method !== "GET" && res.status >= 300 && res.status < 400) {
+					void res.body?.cancel().catch(() => {},);
+					throw redirectNotFollowedError(
+						res.status,
+						method,
+						redirectOrigin(res.headers.get("location",), url,),
+						buildRetryMetadata(method, retryEnabled, maxAttempts, attempt, delaysMs, false,),
+						this.requestIdFromHeaders(res.headers,),
+					);
+				}
 				if (!res.ok) {
 					// The status is already known; a body that misses the deadline must not
 					// turn a real 5xx/4xx into a bare transport timeout.

@@ -389,6 +389,7 @@ describe("argv schema canonical form", () => {
 		const contractSchemas = buildAgentContract()["schemas"] as Record<string, Schema>;
 		const registrySchema = contractSchemas["commandRegistry"] as Schema | undefined;
 		expect(registrySchema,).toBeDefined();
+		if (registrySchema === undefined) throw new Error("commandRegistry schema is missing",);
 		expect(validates(registrySchema, registry,),).toBe(true,);
 
 		const entrySchema = (registrySchema["additionalProperties"] as Schema)[

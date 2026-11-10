@@ -1,8 +1,9 @@
 import { DataikuClient, } from "../client.js";
 import { DataikuError, } from "../errors.js";
 import { ProjectSummaryArraySchema, safeParseSchema, } from "../schemas.js";
+import { sanitizeSecrets, } from "../utils/secret-sanitize.js";
 import { num, splitCsvFlag, stringField, } from "./coerce.js";
-import { currentCommandContext, resolveCredentials, } from "./runtime.js";
+import { currentCommandContext, inspectTransport, resolveCredentials, } from "./runtime.js";
 import { UsageError, } from "./usage.js";
 
 // ---------------------------------------------------------------------------
@@ -90,7 +91,8 @@ export interface DoctorResult {
 		hasUrl: boolean;
 		hasApiKey: boolean;
 		projectKey?: string;
-		tlsVerify: "strict" | "disabled";
+		/** `none`: a plain-HTTP URL, where there is no certificate to verify. */
+		tlsVerify: "strict" | "disabled" | "none";
 		caCert: "default" | "custom";
 	};
 	identity?: DoctorIdentity;
@@ -498,11 +500,13 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 }> {
 	const { url, apiKey, projectKey, tlsRejectUnauthorized, caCertPath, } = resolveCredentials(flags,);
 	const checks: DoctorCheck[] = [];
+	const transport = inspectTransport(url,);
+	const cleartext = transport?.protocol === "http:";
 	const context: DoctorResult["context"] = {
 		hasUrl: url.trim().length > 0,
 		hasApiKey: apiKey.trim().length > 0,
 		...(projectKey ? { projectKey, } : {}),
-		tlsVerify: tlsRejectUnauthorized === false ? "disabled" : "strict",
+		tlsVerify: cleartext ? "none" : tlsRejectUnauthorized === false ? "disabled" : "strict",
 		caCert: caCertPath ? "custom" : "default",
 	};
 
@@ -514,6 +518,16 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 			? "Dataiku URL and API key are configured."
 			: "Missing Dataiku URL and/or API key. Set DATAIKU_URL/DATAIKU_API_KEY or pass --url/--api-key.",
 	},);
+
+	// A fact, not a failure: plain-HTTP DSS hosts are supported.
+	if (transport && cleartext && !transport.loopback) {
+		checks.push({
+			name: "transport_security",
+			ok: true,
+			message: `${transport.host} is reached over plain HTTP: the API key travels in cleartext.`,
+			details: { scheme: "http", host: transport.host, cleartext: true, },
+		},);
+	}
 
 	let accessibleProjects: unknown[] | undefined;
 	let environmentVersion: DoctorVersionInfo | undefined;
@@ -640,7 +654,16 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 			),
 		);
 	}
-	return { result, exitCode: result.ok ? 0 : 2, };
+	// DataikuError text embeds server or intermediary body text; a proxy that
+	// echoes request headers would otherwise put the API key in the report.
+	return {
+		result: sanitizeSecrets(result, {
+			sensitiveKeys: {},
+			secrets: [apiKey,],
+			redactUrlUserinfo: true,
+		},),
+		exitCode: result.ok ? 0 : 2,
+	};
 }
 
 export async function runFixtures(

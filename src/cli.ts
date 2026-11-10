@@ -2,6 +2,7 @@
 
 import { homedir, } from "node:os";
 import { resolve, } from "node:path";
+import { redactArgv, } from "./cli/argv-redaction.js";
 import {
 	num,
 	resultRecord,
@@ -12,13 +13,7 @@ import {
 import { commands, } from "./cli/commands/index.js";
 import type { CommandRegistryEntry, } from "./cli/contract.js";
 import { ambientProjectKey, loadEnvFile, } from "./cli/env.js";
-import {
-	executionMode,
-	FLAG_ALIASES,
-	isFlagValueToken,
-	parseArgs,
-	rawPositionals,
-} from "./cli/flags.js";
+import { executionMode, parseArgs, rawPositionals, } from "./cli/flags.js";
 import { cleanupInputIdentifierField, cleanupLedgerEntry, } from "./cli/helpers/cleanup.js";
 import {
 	commandFailureExitCode,
@@ -32,6 +27,7 @@ import {
 	stdoutJson,
 	writeCommandResult,
 } from "./cli/output.js";
+import { requireEntryFlags, } from "./cli/required-inputs.js";
 import { shapeCommandResult, } from "./cli/result-shapes.js";
 import {
 	currentCommandContext,
@@ -40,6 +36,7 @@ import {
 } from "./cli/runtime.js";
 import { suggestSelectors, } from "./cli/selector-suggestions.js";
 import { commandSyntaxTree, commandUsage, } from "./cli/syntax.js";
+import type { CommandMeta, } from "./cli/types.js";
 import {
 	COMMANDS_RUN_HINT,
 	inferRequiresProject,
@@ -457,65 +454,26 @@ function validateSupportedCommandFlags(
 	}
 }
 
-function flagIsProvided(
-	flags: Record<string, string | boolean>,
-	name: string,
-	allowEmpty = false,
-): boolean {
-	const value = flags[name];
-	if (value === undefined || value === false) return false;
-	if (typeof value !== "string") return true;
-	return allowEmpty || value.length > 0;
-}
-
-function validateRequiredCommandInputs(
+/**
+ * The checks every dispatch path runs before a handler or plan builder:
+ * supported flags, required positionals, and the command's own `validate`
+ * hook. A missing positional is a usage error with the usage line, never a
+ * handler crash; required flags stay with the handlers' own validation, which
+ * names the specific alternatives.
+ */
+function validateCommandInvocation(
 	resource: string,
 	action: string,
-	args: string[],
-	flags: Record<string, string | boolean>,
-	entry: CommandRegistryEntry,
-): void {
-	const allowEmptyFlags: Record<string, true> = {};
-	for (const flag of entry.flags) {
-		if (flag.allowEmptyValue === true) allowEmptyFlags[flag.name] = true;
-	}
-	requireEntryPositionals(entry, args,);
-	for (const flagName of entry.requiredFlags) {
-		if (!flagIsProvided(flags, flagName, allowEmptyFlags[flagName] === true,)) {
-			throw new UsageError(
-				`--${flagName} is required. Usage: ${entry.usage}`,
-				"missing_required_flag",
-			);
-		}
-	}
-	for (const choice of entry.requiredOneOf ?? []) {
-		const satisfied = choice.oneOf.some((alternative,) =>
-			alternative.every((flagName,) =>
-				flagIsProvided(flags, flagName, allowEmptyFlags[flagName] === true,)
-			)
-		);
-		if (!satisfied) {
-			const alternatives = choice.oneOf.map((alternative,) =>
-				alternative.map((flagName,) => `--${flagName}`).join(" and ",)
-			).join(" or ",);
-			throw new UsageError(
-				`One of ${alternatives} is required for ${resource} ${action}. Usage: ${entry.usage}`,
-				"missing_required_flag",
-			);
-		}
-	}
-}
-
-function validateRegistryCommandInputs(
-	resource: string,
-	action: string,
+	meta: CommandMeta,
 	args: string[],
 	flags: Record<string, string | boolean>,
 ): void {
-	const entry = cachedCommandRegistry(resource,)?.[action];
-	if (!entry) return;
 	validateSupportedCommandFlags(resource, action, flags,);
-	validateRequiredCommandInputs(resource, action, args, flags, entry,);
+	const entry = cachedCommandRegistry(resource,)?.[action];
+	if (entry) requireEntryPositionals(entry, args,);
+	// Command-local validation runs for live, --plan, and --dry-run alike, so a
+	// bad identifier is a usage error before any plan is built or request made.
+	meta.validate?.(args, flags,);
 }
 
 function requireEntryPositionals(entry: CommandRegistryEntry, args: string[],): void {
@@ -619,7 +577,7 @@ async function validateMetaCommandInputs(
 	if (resource === "commands") commandRegistrySelectors(flags,);
 	if (resource === "cleanup" || resource === "batch") {
 		const entry = cachedCommandRegistry(resource,)?.run;
-		if (entry) validateRequiredCommandInputs(resource, "run", [], flags, entry,);
+		if (entry) requireEntryFlags(resource, "run", flags, entry,);
 	}
 	if (resource === "cleanup" && flags["apply"] === true && executionMode(flags,).dryRun) {
 		throw new UsageError("--dry-run and --apply are mutually exclusive.", "usage_error",);
@@ -662,8 +620,12 @@ async function validateBatchStep(
 	}
 	const meta = resourceActions[action];
 	if (!meta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
-	validateRegistryCommandInputs(resource, action, positional.slice(2,), flags,);
-	await validateDryRunHandlerPreconditions(meta.handler, positional.slice(2,), flags,);
+	const stepArgs = positional.slice(2,);
+	validateCommandInvocation(resource, action, meta, stepArgs, flags,);
+	const entry = cachedCommandRegistry(resource,)?.[action];
+	if (entry) requireEntryFlags(resource, action, flags, entry,);
+	// A local handler does real work (it reads files), so dry-run stops at the pure validation.
+	if (!meta.localHandler) await validateDryRunHandlerPreconditions(meta.handler, stepArgs, flags,);
 	return { positional, flags, resource, action, };
 }
 
@@ -673,8 +635,12 @@ function batchStepNeedsClient(argv: string[],): boolean {
 		if (executionMode(flags,).plan) return false;
 		const resource = positional[0];
 		if (!resource) return false;
-		const isMetaCommand = META_COMMAND_RESOURCES[resource] === true;
-		return !isMetaCommand;
+		if (META_COMMAND_RESOURCES[resource] === true) return false;
+		const action = positional[1];
+		const localHandler = Object.hasOwn(commands, resource,) && action !== undefined
+			? commands[resource]![action]?.localHandler
+			: undefined;
+		return localHandler === undefined;
 	} catch {
 		return true;
 	}
@@ -683,42 +649,6 @@ function batchStepNeedsClient(argv: string[],): boolean {
 function batchStepCommandContext(argv: string[],): { resource?: string; action?: string; } {
 	const [resource, action,] = rawPositionals(argv,);
 	return { resource, action, };
-}
-
-const SENSITIVE_ARGV_VALUE_FLAGS: Record<string, true> = {
-	"api-key": true,
-	repository: true,
-};
-
-function redactArgv(argv: string[],): string[] {
-	const redacted: string[] = [];
-	for (let index = 0; index < argv.length; index++) {
-		const arg = argv[index]!;
-		if (arg === "--") {
-			redacted.push(...argv.slice(index,),);
-			break;
-		}
-		if (arg.startsWith("--",)) {
-			const eqIdx = arg.indexOf("=",);
-			const rawFlagName = eqIdx === -1 ? arg.slice(2,) : arg.slice(2, eqIdx,);
-			const flagName = FLAG_ALIASES[rawFlagName] ?? rawFlagName;
-			if (SENSITIVE_ARGV_VALUE_FLAGS[flagName] === true) {
-				if (eqIdx !== -1) {
-					redacted.push(`${arg.slice(0, eqIdx + 1,)}***`,);
-				} else {
-					redacted.push(arg,);
-					const next = argv[index + 1];
-					if (next !== undefined && isFlagValueToken(next,)) {
-						redacted.push("***",);
-						index++;
-					}
-				}
-				continue;
-			}
-		}
-		redacted.push(arg,);
-	}
-	return redacted;
 }
 
 function validateBatchStepMode(argv: string[], index: number,): void {
@@ -756,8 +686,46 @@ function validateBatchStepMode(argv: string[], index: number,): void {
 	}
 }
 
-function validateBatchStepModes(steps: string[][],): void {
+/**
+ * Flags that only configure how the shared client is built. A batch builds one
+ * client from its own flags, so a step carrying one would be silently ignored.
+ * Meta commands (auth login, doctor) take their own connection flags.
+ */
+const BATCH_CONNECTION_FLAGS = [
+	"url",
+	"api-key",
+	"insecure",
+	"ca-cert",
+	"request-timeout",
+	"retries",
+	"verbose",
+] as const;
+
+function validateBatchStepConnectionFlags(argv: string[], index: number,): void {
+	let positional: string[];
+	let flags: Record<string, string | boolean>;
+	try {
+		({ positional, flags, } = parseArgs(argv,));
+	} catch {
+		return;
+	}
+	const resource = positional[0];
+	if (!resource || META_COMMAND_RESOURCES[resource] === true) return;
+	for (const flag of BATCH_CONNECTION_FLAGS) {
+		if (Object.hasOwn(flags, flag,)) {
+			throw new UsageError(
+				`Batch step ${index} sets --${flag}, which configures the connection shared by every step.`,
+				"usage_error",
+				`Remove --${flag} from the step and pass it on \`dss batch\` itself.`,
+				{ step: index, flag, },
+			);
+		}
+	}
+}
+
+function validateBatchSteps(steps: string[][],): void {
 	for (let index = 0; index < steps.length; index++) {
+		validateBatchStepConnectionFlags(steps[index]!, index,);
 		validateBatchStepMode(steps[index]!, index,);
 	}
 }
@@ -962,9 +930,11 @@ const COMMAND_SEARCH_LIMIT = 5;
 async function commandsRunResult(flags: Record<string, string | boolean>,): Promise<unknown> {
 	const query = flags["contains"];
 	if (typeof query === "string") {
-		if (flags["fields"] !== undefined || flags["output"] !== undefined) {
+		if (
+			flags["fields"] !== undefined || flags["output"] !== undefined || flags["full"] !== undefined
+		) {
 			throw new UsageError(
-				"--contains cannot be combined with --fields or --output.",
+				"--contains cannot be combined with --fields, --output or --full.",
 				"usage_error",
 				contract.COMMANDS_USAGE,
 			);
@@ -1047,7 +1017,9 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 	}
 	// On stdout a bare RESOURCE selector lists its actions (usage, description, side effect):
 	// the full entries (flags, schemas, examples) run 30-55 KB per resource, more than an agent
-	// can read in one result. RESOURCE.ACTION and --output keep the full entries.
+	// can read in one result. RESOURCE.ACTION is the compact entry (`compactCommandEntry`)
+	// unless --full asks for the registry entry; --output and deep selectors
+	// (RESOURCE.ACTION.FIELD) always resolve against the full entry.
 	const fullSelectors = typeof outputPath === "string"
 		? knownSelectors
 		: knownSelectors.filter((selector,) => selector.includes(".",));
@@ -1061,6 +1033,15 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 				() => Object.keys(contract.commandActionSummary(),).sort(),
 			),
 		);
+	}
+	if (typeof outputPath !== "string" && flags["full"] !== true) {
+		for (const selector of fullSelectors) {
+			const [selectedResource, selectedAction, ...path] = selector.split(".",);
+			if (path.length > 0) continue;
+			selectedRegistry[selector] = contract.compactCommandEntry(
+				registry[selectedResource!]![selectedAction!]!,
+			);
+		}
 	}
 	for (const resource of knownSelectors) {
 		if (fullSelectors.includes(resource,)) continue;
@@ -1270,6 +1251,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 			const context = batchStepCommandContext(argv,);
 			Object.assign(currentCommandContext, { ...context, projectKey: batchProjectKey, },);
 			try {
+				validateBatchStepConnectionFlags(argv, index,);
 				validateBatchStepMode(argv, index,);
 				const step = await validateBatchStep(argv,);
 				Object.assign(currentCommandContext, {
@@ -1288,7 +1270,10 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 				};
 			} catch (error) {
 				// Steps validate concurrently; the shared context may belong to a sibling.
-				const envelope = buildErrorReport(error, { ...context, projectKey: batchProjectKey, },);
+				const envelope = buildErrorReport(error, {
+					...context,
+					projectKey: explicitProjectKey(argv,) ?? batchProjectKey,
+				},);
 				return {
 					index,
 					args: redactArgv(argv,),
@@ -1305,7 +1290,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 		};
 	}
 
-	validateBatchStepModes(steps,);
+	validateBatchSteps(steps,);
 
 	let projectKey = typeof flags["project-key"] === "string"
 		? flags["project-key"]
@@ -1403,15 +1388,18 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 				}
 				const meta = resourceActions[action];
 				if (!meta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
-				validateSupportedCommandFlags(resource, action, stepFlags,);
+				const stepArgs = positional.slice(2,);
+				validateCommandInvocation(resource, action, meta, stepArgs, stepFlags,);
 				if (executionMode(stepFlags,).plan) {
 					result = (await loadPlanBuilders()).buildMutationPlan(
 						resource,
 						action,
 						meta,
-						positional.slice(2,),
+						stepArgs,
 						stepFlags,
 					);
+				} else if (meta.localHandler) {
+					result = await meta.localHandler(stepArgs, stepFlags,);
 				} else {
 					if (!client) {
 						throw new UsageError(
@@ -1423,7 +1411,6 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 					}
 					assertCleanupLedgerSupported(resource, action, stepFlags,);
 					await preflightCleanupLedgerForFlags(client, stepFlags,);
-					const stepArgs = positional.slice(2,);
 					result = await meta.handler(client, stepArgs, stepFlags,);
 					result = shapeCommandResult(resource, action, result, stepFlags,);
 					await recordCleanupLedgerEntry(
@@ -1455,7 +1442,14 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 				result: stepResult,
 			},);
 		} catch (error) {
-			const envelope = buildErrorReport(error,);
+			// The step's own --project-key names the failing project; the outer one applies only when the step has none.
+			const stepProjectKey = explicitProjectKey(argv,);
+			const envelope = buildErrorReport(
+				error,
+				stepProjectKey === undefined
+					? undefined
+					: { ...rawCommandContext(), projectKey: stepProjectKey, },
+			);
 			results.push({ index, args: redactArgv(argv,), resource, action, ok: false, error: envelope, },);
 			if (firstFailureExit === undefined) firstFailureExit = envelope.exitCode;
 		}
@@ -1549,6 +1543,10 @@ function rawFlagValue(argv: string[], flagName: string,): string | undefined {
 	return undefined;
 }
 
+function explicitProjectKey(argv: string[],): string | undefined {
+	return rawFlagValue(argv, "project-key",) ?? rawFlagValue(argv, "project",);
+}
+
 function commandIsProjectScoped(
 	resource: string | undefined,
 	action: string | undefined,
@@ -1562,12 +1560,12 @@ function rawCommandContext(): { resource?: string; action?: string; projectKey?:
 	const positionals = rawPositionals(argv,);
 	const resource = currentCommandContext.resource ?? positionals[0];
 	const action = currentCommandContext.action ?? positionals[1];
-	const explicitProjectKey = rawFlagValue(argv, "project-key",) ?? rawFlagValue(argv, "project",);
+	const explicit = explicitProjectKey(argv,);
 	const environmentProjectKey = ambientProjectKey();
 	return {
 		resource,
 		action,
-		projectKey: explicitProjectKey
+		projectKey: explicit
 			?? (commandIsProjectScoped(resource, action,)
 				? currentCommandContext.projectKey ?? environmentProjectKey
 				: undefined),
@@ -1945,16 +1943,8 @@ async function main(): Promise<void> {
 	const actionMeta = resourceActions[action];
 	if (!actionMeta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);
 	await loadCommandRuntime();
-	validateSupportedCommandFlags(resource, action, flags,);
 	const args = positional.slice(2,);
-	// A missing required positional is a usage error with the usage line, never
-	// a handler crash. Required flags stay with the handlers' own validation,
-	// which names the specific alternatives.
-	const registryEntry = cachedCommandRegistry(resource,)?.[action];
-	if (registryEntry) requireEntryPositionals(registryEntry, args,);
-	// Command-local validation runs for live, --plan, and --dry-run alike, so a
-	// bad identifier is a usage error before any plan is built or request made.
-	actionMeta.validate?.(args, flags,);
+	validateCommandInvocation(resource, action, actionMeta, args, flags,);
 	if (executionMode(flags,).plan) {
 		const plan = (await loadPlanBuilders()).buildMutationPlan(
 			resource,

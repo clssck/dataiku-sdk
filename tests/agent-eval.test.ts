@@ -169,6 +169,14 @@ describe("extractDssErrors", () => {
 			{ code: "forbidden", error: "it's c", exitCode: 2, },
 		],);
 	});
+
+	it("reads a line-wrapped error envelope, one top-level key per line", () => {
+		const text = '{\n "type":"error",\n "error":"c \\"q\\"",\n "code":"not_found",\n'
+			+ ' "details":{"a":1},\n "exitCode":2\n}\n';
+		expect(extractDssErrors(text,),).toEqual([
+			{ code: "not_found", error: 'c "q"', exitCode: 2, },
+		],);
+	});
 });
 
 const MUTATING_ACTIONS = ["scenario.run", "recipe.set-payload",];

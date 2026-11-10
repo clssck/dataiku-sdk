@@ -11,6 +11,7 @@
  * Imports no schema graph: the discovery schemas below are plain data.
  */
 import { isRecord, } from "../utils/records.js";
+import { formatUnifiedDiff, } from "../utils/unified-diff.js";
 import { shapeListResult, } from "./list-output.js";
 import { DATASET_GET_DROPPED_KEYS, PROJECT_GET_DROPPED_KEYS, } from "./read-shapes.js";
 
@@ -367,6 +368,17 @@ function runTrigger(run: Item,): Item | undefined {
 	return Object.keys(shaped,).length > 0 ? shaped : undefined;
 }
 
+const COMMAND_SAFE_ID = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
+
+/**
+ * Whether a server-derived identifier (recipe, scenario, project, job or future id) may be
+ * written into suggested command text. Whitespace, quotes, shell metacharacters, control
+ * characters, and a leading `-` (read as a flag) all fail.
+ */
+export function isCommandSafeId(value: unknown,): value is string {
+	return typeof value === "string" && value.length <= 256 && COMMAND_SAFE_ID.test(value,);
+}
+
 /**
  * Failure diagnosis of a raw `scenario get-run` report: the first failure
  * (`{ stepId, jobId, dataset, message }`) and the next command(s) to run as
@@ -394,9 +406,14 @@ export function scenarioRunDiagnosis(
 	}
 	const located = { ...failure, recipe: activity.recipe, inputs: activity.inputs, };
 	const next = failureNextSteps(located, scenarioId, run["runId"], projectKey, activity,);
+	const pkSafe = typeof projectKey !== "string" || projectKey === "" || isCommandSafeId(projectKey,);
+	// Server-reported names are placed in command text an agent may execute: omit the text, keep `failure` and `next`.
+	if (!isCommandSafeId(activity.recipe,) || !pkSafe) {
+		return next ? { failure: located, next, } : { failure: located, };
+	}
 	const pk = projectKeyArgs(projectKey,).join(" ",);
 	const suffix = pk === "" ? "" : ` ${pk}`;
-	const rerun = typeof scenarioId === "string"
+	const rerun = isCommandSafeId(scenarioId,)
 		? `; rerun: dss scenario run-and-wait ${scenarioId}${suffix}`
 		: "";
 	const hint =
@@ -485,10 +502,132 @@ const READ_SHAPERS: Record<string, (result: unknown,) => unknown> = {
 	"scenario.runs-by-date": shapeScenarioLastRuns,
 };
 
+const MAX_DRY_RUN_CHANGES = 50;
+/** Longest compact JSON (characters) of a changed value printed as is. */
+const DRY_RUN_VALUE_CHARS = 300;
+const DRY_RUN_DIFF_LINES = 60;
+
+type Difference = [path: string, before: unknown, after: unknown,];
+
+/**
+ * Leaf differences of two JSON values in encounter order: objects by key
+ * (`current` keys, then keys only in `next`), arrays of equal length by index;
+ * arrays of different length and values of different types are one difference.
+ * An absent key (or `undefined`) is `undefined`. Keeps the first
+ * MAX_DRY_RUN_CHANGES entries and counts the rest.
+ */
+function collectDifferences(
+	before: unknown,
+	after: unknown,
+	path: string,
+	state: { count: number; kept: Difference[]; },
+): void {
+	if (Array.isArray(before,) && Array.isArray(after,) && before.length === after.length) {
+		for (let index = 0; index < before.length; index++) {
+			collectDifferences(
+				before[index],
+				after[index],
+				path === "" ? `${index}` : `${path}.${index}`,
+				state,
+			);
+		}
+		return;
+	}
+	if (isRecord(before,) && isRecord(after,)) {
+		for (const key of Object.keys(before,)) {
+			collectDifferences(before[key], after[key], path === "" ? key : `${path}.${key}`, state,);
+		}
+		for (const key of Object.keys(after,)) {
+			if (Object.hasOwn(before, key,)) continue;
+			collectDifferences(undefined, after[key], path === "" ? key : `${path}.${key}`, state,);
+		}
+		return;
+	}
+	if (before === after) return;
+	state.count++;
+	if (state.kept.length < MAX_DRY_RUN_CHANGES) state.kept.push([path, before, after,],);
+}
+
+/**
+ * One reported difference `{ path, before?, after? }` (the same key names as
+ * `scenario update`'s `changes`; an absent side is omitted). For a value whose
+ * compact JSON exceeds DRY_RUN_VALUE_CHARS it gives `beforeBytes`/`afterBytes`
+ * instead (and, for multi-line strings, a unified line diff) so a big payload
+ * never prints twice.
+ */
+function describeDifference([path, before, after,]: Difference,): Item {
+	const beforeJson = before === undefined ? undefined : JSON.stringify(before,);
+	const afterJson = after === undefined ? undefined : JSON.stringify(after,);
+	if (
+		(beforeJson?.length ?? 0) <= DRY_RUN_VALUE_CHARS
+		&& (afterJson?.length ?? 0) <= DRY_RUN_VALUE_CHARS
+	) {
+		return {
+			path,
+			...(before === undefined ? {} : { before, }),
+			...(after === undefined ? {} : { after, }),
+		};
+	}
+	const beforeBytes = beforeJson === undefined
+		? undefined
+		: Buffer.byteLength(typeof before === "string" ? before : beforeJson,);
+	const afterBytes = afterJson === undefined
+		? undefined
+		: Buffer.byteLength(typeof after === "string" ? after : afterJson,);
+	const sizes = {
+		...(beforeBytes === undefined ? {} : { beforeBytes, }),
+		...(afterBytes === undefined ? {} : { afterBytes, }),
+	};
+	if (
+		typeof before === "string" && typeof after === "string"
+		&& (before.includes("\n",) || after.includes("\n",))
+	) {
+		return {
+			path,
+			...sizes,
+			diff: formatUnifiedDiff(before, after, path, DRY_RUN_DIFF_LINES,).diff,
+		};
+	}
+	return { path, ...sizes, };
+}
+
+/**
+ * A dry-run result that carries both `current` and `next` reports their
+ * difference instead (`changes`, `changeCount`, `changesTruncated`), in place
+ * of the two members; every other member is kept. A handler that already
+ * reports its own `changes`/`changeCount` (scenario update) keeps them and
+ * just loses the two copies.
+ */
+function describeDryRunChange(result: unknown,): unknown {
+	if (!isRecord(result,) || result["dryRun"] !== true) return result;
+	const { current, next, } = result;
+	if (
+		typeof current !== "object" || current === null || typeof next !== "object" || next === null
+	) {
+		return result;
+	}
+	const ownChanges = Object.hasOwn(result, "changes",) || Object.hasOwn(result, "changeCount",);
+	const state: { count: number; kept: Difference[]; } = { count: 0, kept: [], };
+	if (!ownChanges) collectDifferences(current, next, "", state,);
+	const described: Item = {};
+	for (const [key, value,] of Object.entries(result,)) {
+		if (key === "next") continue;
+		if (key !== "current") {
+			described[key] = value;
+		} else if (!ownChanges) {
+			described["changes"] = state.kept.map(describeDifference,);
+			described["changeCount"] = state.count;
+			if (state.count > state.kept.length) described["changesTruncated"] = true;
+		}
+	}
+	return described;
+}
+
 /**
  * Compact a command result for agents: `*.list` items (filter, cap, compact
- * fields) and the large read commands. `--full` and `--fields` bypass
- * the read shapers so the DSS object (or a projection of it) is returned.
+ * fields), the large read commands, and the difference a dry-run reports in
+ * place of its `current` and `next` copies. `--full` and `--fields` bypass
+ * all of it so the DSS object (or a projection of it) is returned.
  */
 export function shapeCommandResult(
 	resource: string,
@@ -496,8 +635,10 @@ export function shapeCommandResult(
 	result: unknown,
 	flags: Record<string, string | boolean>,
 ): unknown {
-	if (action === "list") return shapeListResult(resource, result, flags,);
+	const raw = flags["full"] === true || typeof flags["fields"] === "string";
+	const described = raw ? result : describeDryRunChange(result,);
+	if (action === "list") return shapeListResult(resource, described, flags,);
 	const shaper = READ_SHAPERS[`${resource}.${action}`];
-	if (!shaper || flags["full"] === true || typeof flags["fields"] === "string") return result;
-	return shaper(result,);
+	if (!shaper || raw) return described;
+	return shaper(described,);
 }
