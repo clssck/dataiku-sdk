@@ -3,18 +3,18 @@ import { ClientValidationError, DataikuError, unexpectedResponseError, } from ".
 import { isRequestDeadlineError, } from "../utils/polling.js";
 import { writeResponseToFile, } from "../utils/response-file.js";
 
-import {
-	ProjectDetailsSchema,
-	ProjectMetadataSchema,
-	ProjectSummaryArraySchema,
-	ProjectTagsSchema,
-} from "../schemas.js";
 import type {
 	FlowMapOptions,
 	ProjectDetails,
 	ProjectMetadata,
 	ProjectSummary,
 	ProjectTags,
+} from "../schemas.js";
+import {
+	ProjectDetailsSchema,
+	ProjectMetadataSchema,
+	ProjectSummaryArraySchema,
+	ProjectTagsSchema,
 } from "../schemas.js";
 import type { AnalyzedFlowMap, FlowMapRendering, } from "../utils/flow-analysis.js";
 import { analyzeFlowMap, flowTopologyFingerprint, renderFlowMap, } from "../utils/flow-analysis.js";
@@ -99,14 +99,14 @@ function computeRootsAndLeaves(
 	}
 
 	const roots = nodes
-		.filter((node,) => (inDegree.get(node.id,) ?? 0) === 0)
-		.map((node,) => node.id)
-		.sort((a, b,) => a.localeCompare(b,));
+		.filter((node,) => (inDegree.get(node.id,) ?? 0) === 0,)
+		.map((node,) => node.id,)
+		.sort((a, b,) => a.localeCompare(b,),);
 
 	const leaves = nodes
-		.filter((node,) => (outDegree.get(node.id,) ?? 0) === 0)
-		.map((node,) => node.id)
-		.sort((a, b,) => a.localeCompare(b,));
+		.filter((node,) => (outDegree.get(node.id,) ?? 0) === 0,)
+		.map((node,) => node.id,)
+		.sort((a, b,) => a.localeCompare(b,),);
 
 	return { roots, leaves, };
 }
@@ -117,7 +117,7 @@ function truncateFlowMap(
 	maxEdges: number | undefined,
 ): { map: NormalizedFlowMap; truncation: FlowMapTruncationSummary; } {
 	const nodes = maxNodes === undefined ? normalized.nodes : normalized.nodes.slice(0, maxNodes,);
-	const nodeIds = new Set(nodes.map((node,) => node.id),);
+	const nodeIds = new Set(nodes.map((node,) => node.id,),);
 	const edgesWithinNodes = normalized.edges.filter(
 		(edge,) => nodeIds.has(edge.from,) && nodeIds.has(edge.to,),
 	);
@@ -152,8 +152,8 @@ function truncateFlowMap(
 			stats: {
 				nodeCount: nodes.length,
 				edgeCount: edges.length,
-				datasets: nodes.filter((node,) => node.kind === "dataset").length,
-				recipes: nodes.filter((node,) => node.kind === "recipe").length,
+				datasets: nodes.filter((node,) => node.kind === "dataset",).length,
+				recipes: nodes.filter((node,) => node.kind === "recipe",).length,
 				roots: roots.length,
 				leaves: leaves.length,
 			},
@@ -772,12 +772,12 @@ export class ProjectsResource extends BaseResource {
 		}
 
 		const allDatasetNames = (datasetsMeta.value ?? [])
-			.map((d,) => d.name)
-			.filter((n,): n is string => typeof n === "string" && n.length > 0);
+			.map((d,) => d.name,)
+			.filter((n,): n is string => typeof n === "string" && n.length > 0,);
 
 		const allRecipeNames = (recipesMeta.value ?? [])
-			.map((r,) => r.name)
-			.filter((n,): n is string => typeof n === "string" && n.length > 0);
+			.map((r,) => r.name,)
+			.filter((n,): n is string => typeof n === "string" && n.length > 0,);
 
 		// Normalize the flow graph
 		const normalizedBase = normalizeFlowGraph(rawGraph, pk, {
@@ -793,7 +793,7 @@ export class ProjectsResource extends BaseResource {
 			datasetsMeta.warning,
 			recipesMeta.warning,
 			zonesMeta.warning,
-		].filter((w,): w is string => typeof w === "string" && w.length > 0);
+		].filter((w,): w is string => typeof w === "string" && w.length > 0,);
 
 		const normalized = metadataWarnings.length > 0
 			? {

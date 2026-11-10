@@ -5,11 +5,6 @@ import {
 	nonJsonResponseBody,
 	unexpectedResponseError,
 } from "../errors.js";
-import {
-	ProjectMetadataSchema,
-	RecipeSchemaUpdatesSchema,
-	RecipeSummaryArraySchema,
-} from "../schemas.js";
 import type {
 	BuildMode,
 	JobWaitResult,
@@ -20,6 +15,11 @@ import type {
 	RecipeSchemaUpdates,
 	RecipeSummary,
 	RecipeUpdateSchemaResult,
+} from "../schemas.js";
+import {
+	ProjectMetadataSchema,
+	RecipeSchemaUpdatesSchema,
+	RecipeSummaryArraySchema,
 } from "../schemas.js";
 import { deepMerge, } from "../utils/deep-merge.js";
 import { asRecord, } from "../utils/records.js";
@@ -138,7 +138,7 @@ export interface RecipeCloneResult {
 }
 
 function rootRecipeDefinitionFields(data: Record<string, unknown>,): string[] {
-	return Object.keys(data,).filter((key,) => RECIPE_DEFINITION_FIELDS.has(key,));
+	return Object.keys(data,).filter((key,) => RECIPE_DEFINITION_FIELDS.has(key,),);
 }
 
 /**
@@ -230,7 +230,7 @@ function recipeOutputItems(
 
 function rewriteRefs(value: unknown, rewrites: Record<string, string>,): unknown {
 	if (Object.keys(rewrites,).length === 0) return value;
-	if (Array.isArray(value,)) return value.map((item,) => rewriteRefs(item, rewrites,));
+	if (Array.isArray(value,)) return value.map((item,) => rewriteRefs(item, rewrites,),);
 	const record = asRecord(value,);
 	if (!record) return value;
 	const next: Record<string, unknown> = {};
@@ -312,12 +312,12 @@ function rewritePayloadText(
 ): string {
 	const entries = Object
 		.entries(rewrites,)
-		.filter(([from,],) => from.length > 0)
-		.sort(([left,], [right,],) => right.length - left.length);
+		.filter(([from,],) => from.length > 0,)
+		.sort(([left,], [right,],) => right.length - left.length,);
 	if (entries.length === 0) return payload;
 	const replacements = new Map(entries,);
 	const alternatives = entries
-		.map(([from,],) => escapedRegExp(from,))
+		.map(([from,],) => escapedRegExp(from,),)
 		.join("|",);
 	const pattern = new RegExp(
 		String.raw`(?<![A-Za-z0-9_$])(${alternatives})(?![A-Za-z0-9_$])`,
@@ -510,8 +510,8 @@ export class RecipesResource extends BaseResource {
 			this.client.folders.list(pk,),
 			this.client.modelEvaluationStores.list(pk,),
 		],);
-		const datasetNames = new Set(datasets.map((dataset,) => dataset.name),);
-		const storeIds = new Set(stores.map((store,) => store.id),);
+		const datasetNames = new Set(datasets.map((dataset,) => dataset.name,),);
+		const storeIds = new Set(stores.map((store,) => store.id,),);
 		const folderIdByRef = new Map<string, string>();
 		for (const folder of folders) {
 			folderIdByRef.set(folder.id, folder.id,);
@@ -554,13 +554,13 @@ export class RecipesResource extends BaseResource {
 			return { ref: item.ref, role: item.role, exists: false, };
 		};
 
-		const inputs = inputItems.map((item,) => resolveReference(item, false,));
-		const outputs = outputItems.map((item,) => resolveReference(item, true,));
+		const inputs = inputItems.map((item,) => resolveReference(item, false,),);
+		const outputs = outputItems.map((item,) => resolveReference(item, true,),);
 		const ambiguousOutputs = outputItems
-			.filter((item,) => !item.type && datasetNames.has(item.ref,) && folderIdByRef.has(item.ref,))
-			.map((item,) => item.ref);
-		const missingInputs = inputs.filter((item,) => !item.exists);
-		const missingOutputs = outputs.filter((item,) => !item.exists);
+			.filter((item,) => !item.type && datasetNames.has(item.ref,) && folderIdByRef.has(item.ref,),)
+			.map((item,) => item.ref,);
+		const missingInputs = inputs.filter((item,) => !item.exists,);
+		const missingOutputs = outputs.filter((item,) => !item.exists,);
 		const warnings: string[] = [];
 		if (outputItems.length === 0) warnings.push("Recipe has no declared outputs to build.",);
 		for (const ref of ambiguousOutputs) {
@@ -612,7 +612,7 @@ export class RecipesResource extends BaseResource {
 			this.client.datasets.list(pk,),
 			this.client.folders.list(pk,),
 		],);
-		const datasetNames = new Set(datasets.map((dataset,) => dataset.name),);
+		const datasetNames = new Set(datasets.map((dataset,) => dataset.name,),);
 		const folderIdByRef = new Map<string, string>();
 		for (const folder of folders) {
 			folderIdByRef.set(folder.id, folder.id,);
@@ -770,7 +770,7 @@ export class RecipesResource extends BaseResource {
 
 			let outputConnection = asString(rawConnection,);
 			if (!outputConnection) {
-				const managedDs = existingDs.find((d,) => d.managed && d.params?.connection);
+				const managedDs = existingDs.find((d,) => d.managed && d.params?.connection,);
 				if (managedDs?.params?.connection) {
 					outputConnection = managedDs.params.connection;
 				}
@@ -778,7 +778,7 @@ export class RecipesResource extends BaseResource {
 
 			if (!outputConnection) return;
 
-			const existingNames = new Set([...existingDs.map((d,) => d.name), ...createdDatasets,],);
+			const existingNames = new Set([...existingDs.map((d,) => d.name,), ...createdDatasets,],);
 			const outputRoles = outputs as Record<string, { items?: Array<{ ref?: string; }>; }>;
 			for (const role of Object.values(outputRoles,)) {
 				for (const item of role.items ?? []) {
@@ -809,9 +809,9 @@ export class RecipesResource extends BaseResource {
 			try {
 				const { graph, } = await this.client.projects.flowTopology(pk,);
 				producers = new Map(
-					graph.edges.filter((edge,) => edge.relation === "writes").map((
+					graph.edges.filter((edge,) => edge.relation === "writes",).map((
 						edge,
-					) => [edge.to, edge.from,]),
+					) => [edge.to, edge.from,],),
 				);
 			} catch (graphError) {
 				const reason = `could not read the flow graph to check for a recipe writing it (${
@@ -888,7 +888,7 @@ export class RecipesResource extends BaseResource {
 						column1: { name: key.left, table: 0, },
 						column2: { name: key.right, table: table2, },
 						type: "EQ",
-					})),
+					}),),
 				};
 			},);
 
@@ -939,7 +939,7 @@ export class RecipesResource extends BaseResource {
 								},
 							}
 							: {}),
-					})),
+					}),),
 				};
 			},);
 
@@ -1200,7 +1200,7 @@ export class RecipesResource extends BaseResource {
 		if (opts.outputRewrites) Object.assign(outputRewrites, opts.outputRewrites,);
 		if (opts.outputDataset !== undefined) {
 			const outputs = recipeOutputItems(source.recipe,).filter((item,) =>
-				item.type !== "MANAGED_FOLDER"
+				item.type !== "MANAGED_FOLDER",
 			);
 			if (outputs.length !== 1 && Object.keys(outputRewrites,).length === 0) {
 				throw new ClientValidationError(

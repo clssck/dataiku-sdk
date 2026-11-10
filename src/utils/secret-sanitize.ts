@@ -52,7 +52,7 @@ function jsonEscapedForms(secret: string,): string[] {
 			(char,) => `\\u${char.charCodeAt(0,).toString(16,).padStart(4, "0",)[hexCase]()}`,
 		);
 	return [...new Set([standard, asciiOnly("toLowerCase",), asciiOnly("toUpperCase",),],),]
-		.filter((form,) => form !== secret);
+		.filter((form,) => form !== secret,);
 }
 
 /**
@@ -106,7 +106,7 @@ export function sanitizeSecrets<T,>(value: T, options: SecretSanitizeOptions,): 
 		return stringPass(value,) as T;
 	}
 	if (Array.isArray(value,)) {
-		return value.map((item,) => sanitizeSecrets(item, options,)) as T;
+		return value.map((item,) => sanitizeSecrets(item, options,),) as T;
 	}
 	if (value !== null && typeof value === "object") {
 		const sanitized: Record<string, unknown> = {};
@@ -142,8 +142,8 @@ const CREDENTIAL_SETTING_SUFFIXES = ["mode", "type", "policy",] as const;
 /** Credential-like key (normalized fragment match, minus credential settings). */
 function isCredentialKey(key: string,): boolean {
 	const normalized = normalizeSecretKey(key,);
-	if (CREDENTIAL_SETTING_SUFFIXES.some((suffix,) => normalized.endsWith(suffix,))) return false;
-	return CREDENTIAL_KEY_FRAGMENTS.some((fragment,) => normalized.includes(fragment,));
+	if (CREDENTIAL_SETTING_SUFFIXES.some((suffix,) => normalized.endsWith(suffix,),)) return false;
+	return CREDENTIAL_KEY_FRAGMENTS.some((fragment,) => normalized.includes(fragment,),);
 }
 
 /** JSON-style `"key": "value"` pair with escape-aware string bodies. */

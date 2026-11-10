@@ -117,7 +117,7 @@ describe("DataQualityResource", () => {
 		}, async (url,) => {
 			const resource = new DataQualityResource(createClient(url,),);
 			const error = await resource.getRule("orders", "missing-rule",).catch((caught: unknown,) =>
-				caught
+				caught,
 			);
 			expect(error,).toBeInstanceOf(DataikuError,);
 			if (!(error instanceof DataikuError)) throw error;

@@ -132,7 +132,7 @@ export async function provisionCollaboration(ctx: LiveContext,): Promise<void> {
 		["flow-zone.create", "flow-zone.move", "flow-zone.get",],
 		async () => {
 			const zones = await ctx.run<Array<{ id: string; name: string; }>>(["flow-zone", "list",],);
-			const existing = zones.find((zone,) => zone.name === ZONE_BASELINE_NAME);
+			const existing = zones.find((zone,) => zone.name === ZONE_BASELINE_NAME,);
 			let createdId: string | undefined = existing?.id;
 			if (createdId === undefined) {
 				const created = await ctx.run<{ created: string; }>([
@@ -156,7 +156,7 @@ export async function provisionCollaboration(ctx: LiveContext,): Promise<void> {
 			],);
 			expect(zone.id,).toBe(zoneId,);
 			expect(
-				(zone.items ?? []).some((item,) => item.objectType === "DATASET" && item.objectId === dataset),
+				(zone.items ?? []).some((item,) => item.objectType === "DATASET" && item.objectId === dataset,),
 			).toBe(true,);
 		},
 	);
@@ -166,7 +166,7 @@ export async function provisionCollaboration(ctx: LiveContext,): Promise<void> {
 		["scenario.create", "scenario.run-and-wait",],
 		async () => {
 			const scenarios = await ctx.run<Array<{ id: string; }>>(["scenario", "list",],);
-			if (!scenarios.some((scenario,) => scenario.id === SCENARIO_BASELINE_ID)) {
+			if (!scenarios.some((scenario,) => scenario.id === SCENARIO_BASELINE_ID,)) {
 				await ctx.run([
 					"scenario",
 					"create",
@@ -192,7 +192,7 @@ export async function provisionCollaboration(ctx: LiveContext,): Promise<void> {
 
 	await ctx.check("collab.setup.insight", ["insight.create", "insight.get",], async () => {
 		const insights = await ctx.run<Array<{ id: string; name: string; }>>(["insight", "list",],);
-		const existing = insights.find((insight,) => insight.name === INSIGHT_BASELINE_NAME);
+		const existing = insights.find((insight,) => insight.name === INSIGHT_BASELINE_NAME,);
 		let insightId: string | undefined = existing?.id;
 		if (insightId === undefined) {
 			const created = await ctx.run<{ created: string; }>([
@@ -221,7 +221,7 @@ export async function provisionCollaboration(ctx: LiveContext,): Promise<void> {
 
 	await ctx.check("collab.setup.dashboard", ["dashboard.create", "dashboard.get",], async () => {
 		const dashboards = await ctx.run<Array<{ id: string; name: string; }>>(["dashboard", "list",],);
-		const existing = dashboards.find((dashboard,) => dashboard.name === DASHBOARD_BASELINE_NAME);
+		const existing = dashboards.find((dashboard,) => dashboard.name === DASHBOARD_BASELINE_NAME,);
 		let dashboardId: string | undefined = existing?.id;
 		if (dashboardId === undefined) {
 			const created = await ctx.run<{ created: string; }>([
@@ -266,7 +266,7 @@ export async function provisionCollaboration(ctx: LiveContext,): Promise<void> {
 		async () => {
 			if (!ctx.fixtures.notebookName) {
 				const notebooks = await ctx.run<Array<{ name: string; }>>(["notebook", "list-jupyter",],);
-				if (!notebooks.some((notebook,) => notebook.name === NOTEBOOK_BASELINE_NAME)) {
+				if (!notebooks.some((notebook,) => notebook.name === NOTEBOOK_BASELINE_NAME,)) {
 					const saved = await ctx.run<{ saved: string; created: boolean; hash: string; }>([
 						"notebook",
 						"save-jupyter",
@@ -307,7 +307,7 @@ export async function provisionCollaboration(ctx: LiveContext,): Promise<void> {
 			"wiki",
 			"list",
 		],);
-		const existing = articles.find((entry,) => entry.article.name === WIKI_BASELINE_NAME);
+		const existing = articles.find((entry,) => entry.article.name === WIKI_BASELINE_NAME,);
 		let articleId: string | undefined = existing?.article.id;
 		if (articleId === undefined) {
 			const created = await ctx.run<{ created: string; }>([
@@ -341,7 +341,7 @@ export async function provisionCollaboration(ctx: LiveContext,): Promise<void> {
 					"rules",
 					ds,
 				],);
-				const existing = rules.find((rule,) => rule.displayName === DQ_RULE_DISPLAY_NAME);
+				const existing = rules.find((rule,) => rule.displayName === DQ_RULE_DISPLAY_NAME,);
 				if (existing?.id) {
 					ruleIds.push(existing.id,);
 					continue;
@@ -461,7 +461,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 				"flow-zone",
 				"list",
 			],);
-			const zone = zones.find((entry,) => entry.name === ZONE_BASELINE_NAME);
+			const zone = zones.find((entry,) => entry.name === ZONE_BASELINE_NAME,);
 			expect(zone,).toBeTruthy();
 			const zoneId = requireString(zone?.id, "baseline flow zone id",);
 			const found = await ctx.run<Array<{ id: string; }>>([
@@ -470,7 +470,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 				"--dataset",
 				dataset,
 			],);
-			expect(found.some((entry,) => entry.id === zoneId),).toBe(true,);
+			expect(found.some((entry,) => entry.id === zoneId,),).toBe(true,);
 			const updated = await ctx.run<{ name?: string; color?: string; }>([
 				"flow-zone",
 				"update",
@@ -552,7 +552,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 			expect(reread.homeArticleId,).toBe(settings.homeArticleId,);
 			expect(JSON.stringify(reread.taxonomy,),).toBe(JSON.stringify(settings.taxonomy,),);
 			const list = await ctx.run<Array<{ article: { id: string; }; }>>(["wiki", "list",],);
-			expect(list.some((entry,) => entry.article.id === articleId),).toBe(true,);
+			expect(list.some((entry,) => entry.article.id === articleId,),).toBe(true,);
 			const updated = await ctx.run<{ article: { id: string; }; payload?: string; }>([
 				"wiki",
 				"update",
@@ -618,7 +618,9 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 					"get",
 					id,
 				],);
-				expect(withAttachment.article.attachments?.map((entry,) => entry.smartId),).toContain(smartId,);
+				expect(withAttachment.article.attachments?.map((entry,) => entry.smartId,),).toContain(
+					smartId,
+				);
 				await ctx.run(["wiki", "detach", id, smartId,],);
 				const withoutAttachment = await ctx.run<
 					{ article: { attachments?: Array<{ smartId: string; }>; }; }
@@ -627,7 +629,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 					"get",
 					id,
 				],);
-				expect(withoutAttachment.article.attachments?.map((entry,) => entry.smartId) ?? [],)
+				expect(withoutAttachment.article.attachments?.map((entry,) => entry.smartId,) ?? [],)
 					.not.toContain(smartId,);
 			} finally {
 				rmSync(attachDir, { recursive: true, force: true, },);
@@ -645,7 +647,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 	], async () => {
 		const name = requireString(ctx.fixtures.notebookName, "fixtures.notebookName",);
 		const list = await ctx.run<Array<{ name: string; }>>(["notebook", "list-jupyter",],);
-		expect(list.some((notebook,) => notebook.name === name),).toBe(true,);
+		expect(list.some((notebook,) => notebook.name === name,),).toBe(true,);
 		const before = await ctx.run<
 			{ metadata: Record<string, unknown>; nbformat: number; cells: Array<Record<string, unknown>>; }
 		>([
@@ -688,7 +690,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 
 	await ctx.check("collab.insight", ["insight.list", "insight.get", "insight.update",], async () => {
 		const list = await ctx.run<Array<{ id: string; }>>(["insight", "list",],);
-		expect(list.some((insight,) => insight.id === insightId),).toBe(true,);
+		expect(list.some((insight,) => insight.id === insightId,),).toBe(true,);
 		const details = await ctx.run<{ id: string; type?: string; params?: Record<string, unknown>; }>([
 			"insight",
 			"get",
@@ -699,7 +701,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 			details.params?.datasetSmartName,
 			"insight params.datasetSmartName",
 		);
-		const altDataset = Object.keys(ctx.fixtures.datasets,).find((name,) => name !== originalDataset)
+		const altDataset = Object.keys(ctx.fixtures.datasets,).find((name,) => name !== originalDataset,)
 			?? originalDataset;
 		if (altDataset !== originalDataset) {
 			const updated = await ctx.run<{ params?: Record<string, unknown>; }>([
@@ -774,7 +776,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 		["dashboard.list", "dashboard.get", "dashboard.update",],
 		async () => {
 			const list = await ctx.run<Array<{ id: string; }>>(["dashboard", "list",],);
-			expect(list.some((dashboard,) => dashboard.id === dashboardId),).toBe(true,);
+			expect(list.some((dashboard,) => dashboard.id === dashboardId,),).toBe(true,);
 			const got = await ctx.run<{ name: string; }>(["dashboard", "get", dashboardId,],);
 			expect(got.name,).toBe(DASHBOARD_BASELINE_NAME,);
 			const iteratedName = `${DASHBOARD_BASELINE_NAME} (iter ${String(ctx.iteration,)})`;
@@ -853,7 +855,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 			"project-library",
 			"list",
 		],);
-		const dir = contents.find((item,) => item.name === LIBRARY_DIR.split("/",)[0]);
+		const dir = contents.find((item,) => item.name === LIBRARY_DIR.split("/",)[0],);
 		expect(dir,).toBeTruthy();
 		const body = await ctx.run<string>(["project-library", "get", LIBRARY_FILE,],);
 		expect(body,).toBe(LIBRARY_BASELINE_CONTENT,);
@@ -997,7 +999,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 			"dataset-get",
 			dataset,
 		],);
-		const records = values.metrics.find((entry,) => entry.metric.id === "basic:COUNT_COLUMNS");
+		const records = values.metrics.find((entry,) => entry.metric.id === "basic:COUNT_COLUMNS",);
 		expect(records,).toBeTruthy();
 		const history = await ctx.run<{ values: unknown[]; }>([
 			"metrics",
@@ -1035,7 +1037,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 			"rules",
 			dataset,
 		],);
-		const baselineRule = rules.find((rule,) => rule.displayName === DQ_RULE_DISPLAY_NAME);
+		const baselineRule = rules.find((rule,) => rule.displayName === DQ_RULE_DISPLAY_NAME,);
 		expect(baselineRule,).toBeTruthy();
 		const ruleId = requireString(baselineRule?.id, "baseline data quality rule id",);
 		const got = await ctx.run<{ id?: string; type?: string; }>([

@@ -116,7 +116,7 @@ async function runDoctorCapabilities(
 		}
 		// Bun's Node-compatible server can still synthesize Date despite sendDate=false. An explicit
 		// empty value keeps semantic absence deterministic across runtimes.
-		if (!Object.keys(headers ?? {},).some((name,) => name.toLowerCase() === "date")) {
+		if (!Object.keys(headers ?? {},).some((name,) => name.toLowerCase() === "date",)) {
 			res.setHeader("Date", "",);
 		}
 		if (url.pathname === "/public/api/projects/") {
@@ -206,8 +206,8 @@ describe("doctor environment version provenance", () => {
 		expect(environment?.dssApiVersion,).toBeUndefined();
 		expect(environment?.instanceTime,).toBeUndefined();
 		// Non-existent feature/version-4 endpoints are never probed.
-		expect(requestedUrls.some((u,) => u.includes("features",)),).toBe(false,);
-		expect(requestedUrls.some((u,) => u.includes("v4",)),).toBe(false,);
+		expect(requestedUrls.some((u,) => u.includes("features",),),).toBe(false,);
+		expect(requestedUrls.some((u,) => u.includes("v4",),),).toBe(false,);
 	});
 
 	it("doctorEnvironment spreads only present header values", () => {
@@ -277,7 +277,7 @@ describe("doctor malformed project-list payloads", () => {
 				environment?: Record<string, unknown>;
 			};
 			expect(parsed.ok,).toBe(false,);
-			const connectivity = parsed.checks.find((check,) => check.name === "connectivity");
+			const connectivity = parsed.checks.find((check,) => check.name === "connectivity",);
 			expect(connectivity?.ok,).toBe(false,);
 			expect(connectivity?.details?.["reason"],).toBe("invalid_project_list",);
 			expect(connectivity?.details?.["errorCount"],).toBeGreaterThan(0,);

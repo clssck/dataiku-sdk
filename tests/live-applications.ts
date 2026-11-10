@@ -78,7 +78,7 @@ async function listEvidence(ctx: LiveContext, resource: "app" | "business-app",)
 			return asString(record?.[resource === "app" ? "appId" : "id"],)
 				?? asString(record?.["projectKey"],)
 				?? asString(record?.["id"],);
-		},).filter((id,): id is string => Boolean(id,));
+		},).filter((id,): id is string => Boolean(id,),);
 		const suffix = ids.length ? ` (ids: ${ids.slice(0, 5,).join(", ",)})` : "";
 		return `${resource} list returned ${String(list.length,)} ${label}(s)${suffix}`;
 	} catch (error) {
@@ -130,13 +130,13 @@ function unconfirmedDescendantGuard(
 	ctx: LiveContext,
 	precursorKey: string | null,
 ): () => boolean {
-	const snapshot = new Set(ctx.projects.map(project => project.key),);
+	const snapshot = new Set(ctx.projects.map(project => project.key,),);
 	return () =>
 		(precursorKey !== null
 			&& Boolean(
-				ctx.projects.find(project => project.key === precursorKey)?.pendingDependentCreation,
+				ctx.projects.find(project => project.key === precursorKey,)?.pendingDependentCreation,
 			))
-		|| ctx.projects.some(project => !snapshot.has(project.key,) && project.state === "pending");
+		|| ctx.projects.some(project => !snapshot.has(project.key,) && project.state === "pending",);
 }
 
 /**
@@ -258,7 +258,7 @@ async function exerciseApiServiceSettings(ctx: LiveContext, projectKey: string,)
 		projectKey,
 	],);
 	expect(
-		Array.isArray(created,) && created.some(item => asRecord(item,)?.["id"] === serviceId),
+		Array.isArray(created,) && created.some(item => asRecord(item,)?.["id"] === serviceId,),
 	).toBe(true,);
 
 	const settings = await ctx.run<JsonRecord>([
@@ -338,7 +338,7 @@ async function exerciseApiServicePredictionEndpoint(
 	const endpoints = Array.isArray(settings["endpoints"],)
 		? settings["endpoints"] as unknown[]
 		: [];
-	const added = endpoints.find(item => asRecord(item,)?.["id"] === "predict");
+	const added = endpoints.find(item => asRecord(item,)?.["id"] === "predict",);
 	expect(added === undefined,).toBe(false,);
 	expect((added as JsonRecord | undefined)?.["type"],).toBe("STD_PREDICTION",);
 	expect((added as JsonRecord | undefined)?.["modelRef"],).toBe(model.savedModelId,);
@@ -389,7 +389,7 @@ async function exerciseApiServicePackages(ctx: LiveContext, projectKey: string,)
 			projectKey,
 		],);
 		expect(
-			Array.isArray(packages,) && packages.some(item => asRecord(item,)?.["id"] === packageId),
+			Array.isArray(packages,) && packages.some(item => asRecord(item,)?.["id"] === packageId,),
 		).toBe(true,);
 		const archive = `${ctx.dir}/api-package-${ctx.iteration}.zip`;
 		const downloaded = await ctx.run<JsonRecord>([
@@ -419,7 +419,7 @@ async function exerciseApiServicePackages(ctx: LiveContext, projectKey: string,)
 			projectKey,
 		],);
 		expect(
-			Array.isArray(remaining,) && !remaining.some(item => asRecord(item,)?.["id"] === packageId),
+			Array.isArray(remaining,) && !remaining.some(item => asRecord(item,)?.["id"] === packageId,),
 		).toBe(true,);
 	} finally {
 		try {
@@ -547,7 +547,7 @@ async function exerciseWebappLifecycle(ctx: LiveContext, projectKey: string,): P
 	],);
 	const list = await ctx.run<unknown[]>(["webapp", "list", "--project-key", projectKey,],);
 	expect(
-		Array.isArray(list,) && list.some(item => asRecord(item,)?.["id"] === webappId),
+		Array.isArray(list,) && list.some(item => asRecord(item,)?.["id"] === webappId,),
 	).toBe(true,);
 	// Real settings change + restore through the documented `name` label
 	// (DSS ignores arbitrary params keys on STANDARD webapps — proven live —
@@ -929,8 +929,8 @@ async function exerciseOwnedTemplateDesignerFlow(
 	expect(validation["errors"],).toEqual([],);
 	const checks = Array.isArray(validation["checks"],) ? validation["checks"] : [];
 	for (const kind of ["scenario", "folder", "variable",] as const) {
-		const check = checks.map(entry => asRecord(entry,))
-			.find(entry => asString(entry?.["kind"],) === kind);
+		const check = checks.map(entry => asRecord(entry,),)
+			.find(entry => asString(entry?.["kind"],) === kind,);
 		expect(check?.["status"],).toBe("ok",);
 	}
 
@@ -963,7 +963,7 @@ async function exerciseOwnedTemplateDesignerFlow(
 	await ctx.run(["folder", "delete", folderId,], { projectKey, },);
 	const afterDeletion = await ctx.client.applications.validateAppManifest(persisted, projectKey,);
 	expect(afterDeletion.valid,).toBe(false,);
-	expect(afterDeletion.errors.some(issue => issue.code === "MISSING_FOLDER"),).toBe(true,);
+	expect(afterDeletion.errors.some(issue => issue.code === "MISSING_FOLDER",),).toBe(true,);
 }
 
 /**
@@ -1114,7 +1114,7 @@ async function exerciseAppTemplateSurface(
  * exact identity the run recorded at bind time.
  */
 function boundIncarnation(ctx: LiveContext, key: string,): string {
-	const project = ctx.projects.find(p => p.key === key);
+	const project = ctx.projects.find(p => p.key === key,);
 	if (project?.state !== "bound" || !project.incarnation) {
 		throw new Error(`No bound incarnation recorded for ${key}.`,);
 	}
@@ -1418,7 +1418,7 @@ async function exerciseAppPermissionsRestoreCycle(
 		const before = await ctx.client.projects.getPermissions(targetKey,);
 		const baseline = before.permissions ?? [];
 		const ownerLogin = ctx.owner;
-		const alreadyThere = baseline.some(rule => rule.user === ownerLogin && rule.admin === false);
+		const alreadyThere = baseline.some(rule => rule.user === ownerLogin && rule.admin === false,);
 		const added = alreadyThere
 			? undefined
 			: {
@@ -1436,7 +1436,7 @@ async function exerciseAppPermissionsRestoreCycle(
 			], { projectKey: targetKey, },);
 			const altered = await ctx.client.projects.getPermissions(targetKey,);
 			expect(
-				altered.permissions?.some(rule => rule.user === ownerLogin && rule.admin === false),
+				altered.permissions?.some(rule => rule.user === ownerLogin && rule.admin === false,),
 			).toBe(true,);
 		}
 
@@ -1452,7 +1452,7 @@ async function exerciseAppPermissionsRestoreCycle(
 		const after = await ctx.client.projects.getPermissions(targetKey,);
 		if (added) {
 			expect(
-				after.permissions?.some(rule => rule.user === ownerLogin && rule.admin === false),
+				after.permissions?.some(rule => rule.user === ownerLogin && rule.admin === false,),
 			).toBe(false,);
 		}
 		expect(after.permissions?.length,).toBe(baseline.length,);

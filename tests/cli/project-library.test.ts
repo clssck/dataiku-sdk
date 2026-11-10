@@ -33,13 +33,16 @@ function recordingClient(
 	results: Record<string, unknown> = {},
 ): { client: DataikuClient; calls: RecordedCall[]; } {
 	const calls: RecordedCall[] = [];
-	const projectLibrary = new Proxy({}, {
-		get: (_target, method: string,) => async (...args: unknown[]): Promise<unknown> => {
-			calls.push({ method, args, },);
-			if (method in results && results[method] instanceof Error) throw results[method];
-			return Promise.resolve(method in results ? results[method] : {},);
+	const projectLibrary = new Proxy(
+		{},
+		{
+			get: (_target, method: string,) => async (...args: unknown[]): Promise<unknown> => {
+				calls.push({ method, args, },);
+				if (method in results && results[method] instanceof Error) throw results[method];
+				return Promise.resolve(method in results ? results[method] : {},);
+			},
 		},
-	},);
+	);
 	return {
 		client: {
 			projectLibrary,
@@ -150,7 +153,7 @@ describe("project-library create overwrite guard", () => {
 			"project-key": "P",
 		},);
 		expect(result,).toMatchObject({ skipped: "python/exists.py", reason: "exists", },);
-		expect(calls.map((call,) => call.method),).toEqual(["hasLibraryItem",],);
+		expect(calls.map((call,) => call.method,),).toEqual(["hasLibraryItem",],);
 	});
 
 	it("creates when the item is absent with --if-not-exists", async () => {
@@ -160,7 +163,7 @@ describe("project-library create overwrite guard", () => {
 			"project-key": "P",
 		},);
 		expect(result,).toEqual({ created: "python/new.py", },);
-		expect(calls.map((call,) => call.method),).toEqual(["hasLibraryItem", "addFile",],);
+		expect(calls.map((call,) => call.method,),).toEqual(["hasLibraryItem", "addFile",],);
 	});
 
 	it("surfaces the resource already-exists error without --if-not-exists", async () => {
@@ -173,7 +176,7 @@ describe("project-library create overwrite guard", () => {
 		await expect(
 			run("create-file", client, ["python/exists.py",], { "project-key": "P", },),
 		).rejects.toThrow(/already exists/,);
-		expect(calls.map((call,) => call.method),).toEqual(["addFile",],);
+		expect(calls.map((call,) => call.method,),).toEqual(["addFile",],);
 	});
 
 	it("skips create-folder with --if-not-exists for an existing folder", async () => {
@@ -183,7 +186,7 @@ describe("project-library create overwrite guard", () => {
 			"project-key": "P",
 		},);
 		expect(result,).toMatchObject({ skipped: "python/mylib", reason: "exists", kind: "folder", },);
-		expect(calls.map((call,) => call.method),).toEqual(["hasLibraryItem",],);
+		expect(calls.map((call,) => call.method,),).toEqual(["hasLibraryItem",],);
 	});
 });
 
@@ -351,7 +354,7 @@ describe("project-library CLI end-to-end against a fake DSS", () => {
 			expect(failure.stdout,).toContain("assertion_failed",);
 		},);
 		// Only the precondition read happened; no write request reached DSS.
-		expect(requests.map((request,) => request.split(" ",)[0]),).toEqual(["GET",],);
+		expect(requests.map((request,) => request.split(" ",)[0],),).toEqual(["GET",],);
 		expect(remoteHash,).not.toBe("0".repeat(64,),);
 	});
 
@@ -412,6 +415,6 @@ describe("project-library CLI end-to-end against a fake DSS", () => {
 			const result = JSON.parse(stdout,) as Record<string, unknown>;
 			expect(result.skipped,).toBe("python/exists.py",);
 		},);
-		expect(requests.map((request,) => request.split(" ",)[0]),).toEqual(["GET",],);
+		expect(requests.map((request,) => request.split(" ",)[0],),).toEqual(["GET",],);
 	});
 });

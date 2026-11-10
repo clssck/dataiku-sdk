@@ -26,7 +26,7 @@ async function recordRequests(
 				body: text ? JSON.parse(text,) : undefined,
 			},);
 			respond(req, res,);
-		})()
+		})(),
 	);
 	const listening = Promise.withResolvers<void>();
 	server.listen(0, "127.0.0.1", () => listening.resolve(),);
@@ -43,7 +43,7 @@ async function recordRequests(
 		);
 	} finally {
 		const closed = Promise.withResolvers<void>();
-		server.close(() => closed.resolve());
+		server.close(() => closed.resolve(),);
 		await closed.promise;
 	}
 	return seen;
@@ -138,7 +138,7 @@ describe("dataset actions, checks, and data quality", () => {
 			await client.dataQuality.partitionsStatus("logs", { partitions: ["a", "b",], },);
 			await client.dataQuality.deleteHistory("logs", { partition: "ALL", },);
 		},);
-		expect(seen.map(({ method, url, },) => `${method} ${url}`),).toEqual([
+		expect(seen.map(({ method, url, },) => `${method} ${url}`,),).toEqual([
 			"POST /public/api/projects/TEST/datasets/logs/actions/synchronizeHiveMetastore",
 			"POST /public/api/projects/TEST/datasets/logs/actions/updateFromHive",
 			"POST /public/api/projects/TEST/datasets/logs/actions/runChecks/?partitions=2026-01",

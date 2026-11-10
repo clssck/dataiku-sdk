@@ -85,7 +85,7 @@ export function pickResultFields(item: unknown, fields: string[],): unknown {
 function projectionRecords(result: unknown,): Array<Record<string, unknown>> {
 	const items = Array.isArray(result,) ? result : [result,];
 	return items.filter((item,) =>
-		item !== null && typeof item === "object" && !Array.isArray(item,)
+		item !== null && typeof item === "object" && !Array.isArray(item,),
 	) as Array<Record<string, unknown>>;
 }
 
@@ -97,12 +97,12 @@ function warnUnknownProjectionFields(
 	const records = projectionRecords(result,);
 	if (records.length === 0) return;
 	const unknownFields = fields.filter((field,) =>
-		!records.some((record,) => resolveFieldPath(record, field,).found)
+		!records.some((record,) => resolveFieldPath(record, field,).found,),
 	);
 	if (unknownFields.length === 0) return;
 	const explicitNames = availableFieldNames?.();
 	const availableFields = explicitNames
-		?? [...new Set(unknownFields.flatMap((field,) => availableFieldsFor(records, field,)),),].sort();
+		?? [...new Set(unknownFields.flatMap((field,) => availableFieldsFor(records, field,),),),].sort();
 	enqueueCliWarning({
 		code: "field_projection_missing",
 		fields: unknownFields,
@@ -122,7 +122,7 @@ export function projectResultFields(
 	availableFieldNames?: () => string[],
 ): unknown {
 	warnUnknownProjectionFields(result, fields, availableFieldNames,);
-	if (Array.isArray(result,)) return result.map((item,) => pickResultFields(item, fields,));
+	if (Array.isArray(result,)) return result.map((item,) => pickResultFields(item, fields,),);
 	return pickResultFields(result, fields,);
 }
 
@@ -178,8 +178,8 @@ function wrapNode(
 	const entries = !isContainer
 		? undefined
 		: Array.isArray(node,)
-		? node.map((child,) => ["", child,] as const)
-		: Object.entries(node,).map(([key, child,],) => [`${JSON.stringify(key,)}:`, child,] as const);
+		? node.map((child,) => ["", child,] as const,)
+		: Object.entries(node,).map(([key, child,],) => [`${JSON.stringify(key,)}:`, child,] as const,);
 	if (
 		entries === undefined || entries.length === 0
 		|| depth + utf8Length(head,) + compactSize(node, memo,) + trailer.length

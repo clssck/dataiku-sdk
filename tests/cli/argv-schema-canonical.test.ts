@@ -26,7 +26,7 @@ function validates(schema: Schema, value: unknown,): boolean {
 	if (schema["enum"] !== undefined) {
 		if (
 			!(schema["enum"] as unknown[]).some((entry,) =>
-				JSON.stringify(entry,) === JSON.stringify(value,)
+				JSON.stringify(entry,) === JSON.stringify(value,),
 			)
 		) {
 			return false;
@@ -65,9 +65,8 @@ function validates(schema: Schema, value: unknown,): boolean {
 		}
 		if (typeof schema["contains"] === "object" && schema["contains"] !== null) {
 			const min = typeof schema["minContains"] === "number" ? (schema["minContains"]) : 1;
-			const matches = (value as unknown[]).filter((item,) =>
-				validates(schema["contains"] as Schema, item,)
-			).length;
+			const matches =
+				(value as unknown[]).filter((item,) => validates(schema["contains"] as Schema, item,),).length;
 			if (matches < min) return false;
 		}
 	} else if (type === "object") {
@@ -103,7 +102,7 @@ function validates(schema: Schema, value: unknown,): boolean {
 	}
 	if (schema["anyOf"] !== undefined) {
 		const subs = schema["anyOf"] as Schema[];
-		if (subs.length > 0 && !subs.some((sub,) => validates(sub, value,))) return false;
+		if (subs.length > 0 && !subs.some((sub,) => validates(sub, value,),)) return false;
 	}
 	return true;
 }
@@ -169,7 +168,7 @@ describe("argv schema canonical form", () => {
 			for (const [action, entry,] of Object.entries(actions,)) {
 				const schema = argvSchemaOf(entry,);
 				const head = prefixOf(schema,).map((item,) =>
-					typeof item["const"] === "string" ? item["const"] : "x"
+					typeof item["const"] === "string" ? item["const"] : "x",
 				);
 				// Entries that also need required flags fail both probes alike; skip them.
 				if (!argvValidates(schema, [...head, "--fields=a",],)) continue;
@@ -451,7 +450,7 @@ describe("argv schema canonical form", () => {
 		const successor = registry.app?.["create-successor-instance"];
 		expect(successor?.usage,).toContain("--record-cleanup PATH",);
 		expect(
-			successor?.flags.some((flag,) => flag.name === "record-cleanup" && flag.kind === "value"),
+			successor?.flags.some((flag,) => flag.name === "record-cleanup" && flag.kind === "value",),
 		).toBe(true,);
 		const setter = registry.app?.["set-manifest-version"];
 		expect(setter,).toBeDefined();

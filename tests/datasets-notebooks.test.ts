@@ -132,7 +132,7 @@ describe("DatasetsResource.preview", () => {
 				projectKey: "TEST",
 				requestTimeoutMs: 50,
 			},);
-			const error = await client.datasets.preview("sample",).catch((caught: unknown,) => caught);
+			const error = await client.datasets.preview("sample",).catch((caught: unknown,) => caught,);
 			expect(error,).toBeInstanceOf(DataikuError,);
 			expect((error as DataikuError).status,).toBe(0,);
 			expect((error as Error).message,).toContain("timed out after 50ms",);
@@ -750,7 +750,7 @@ describe("DatasetsResource TSV stream bounds", () => {
 				const failed = await client.datasets.download("sample", {
 					outputPath: path.join(tempDir, "all.csv",),
 					columns: ["name", "blob",],
-				},).catch((caught: unknown,) => caught);
+				},).catch((caught: unknown,) => caught,);
 				expect((failed as Error).message,).toContain('column "blob"',);
 
 				const result = await client.datasets.download("sample", {
@@ -866,7 +866,7 @@ describe("DatasetsResource spreadsheet-safe export", () => {
 			} finally {
 				fs.rmSync(tempDir, { recursive: true, force: true, },);
 			}
-		},).then(() => results);
+		},).then(() => results,);
 	}
 
 	it("neutralizes formula sigils in headers and cells by default", async () => {
@@ -1224,10 +1224,10 @@ describe("NotebooksResource.clearJupyterOutputs", () => {
 			await client.notebooks.clearJupyterOutputs(notebookName,);
 		},);
 
-		expect(requests.some((request,) => request.startsWith(`GET ${notebookPath}`,)),).toBe(
+		expect(requests.some((request,) => request.startsWith(`GET ${notebookPath}`,),),).toBe(
 			false,
 		);
-		expect(requests.some((request,) => request.startsWith(`PUT ${notebookPath}`,)),).toBe(
+		expect(requests.some((request,) => request.startsWith(`PUT ${notebookPath}`,),),).toBe(
 			false,
 		);
 	});

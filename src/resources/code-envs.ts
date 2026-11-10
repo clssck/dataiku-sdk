@@ -34,7 +34,7 @@ export class CodeEnvsResource extends BaseResource {
 		const raw = await this.client.get("/public/api/admin/code-envs/",);
 		const envs = this.client.safeParse(CodeEnvSummaryArraySchema, raw, "codeEnvs.list",);
 		if (opts?.envLang) {
-			return envs.filter((e,) => e.envLang === opts.envLang);
+			return envs.filter((e,) => e.envLang === opts.envLang,);
 		}
 		return envs;
 	}
@@ -323,11 +323,11 @@ function splitPackageList(raw: string | undefined,): string[] {
 	if (!raw) return [];
 	return raw
 		.split("\n",)
-		.map((line,) => line.trim())
-		.filter((line,) => line.length > 0);
+		.map((line,) => line.trim(),)
+		.filter((line,) => line.length > 0,);
 }
 
 function normalizePackageList(packages: CodeEnvPackageList,): string {
 	const lines = Array.isArray(packages,) ? packages : packages.split(/\r?\n/,);
-	return lines.map((line,) => line.trim()).filter((line,) => line.length > 0).join("\n",);
+	return lines.map((line,) => line.trim(),).filter((line,) => line.length > 0,).join("\n",);
 }

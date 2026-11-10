@@ -39,12 +39,12 @@ export function requireEntryFlags(
 	for (const choice of entry.requiredOneOf ?? []) {
 		const satisfied = choice.oneOf.some((alternative,) =>
 			alternative.every((flagName,) =>
-				flagIsProvided(flags, flagName, allowEmptyFlags[flagName] === true,)
-			)
+				flagIsProvided(flags, flagName, allowEmptyFlags[flagName] === true,),
+			),
 		);
 		if (!satisfied) {
 			const alternatives = choice.oneOf.map((alternative,) =>
-				alternative.map((flagName,) => `--${flagName}`).join(" and ",)
+				alternative.map((flagName,) => `--${flagName}`,).join(" and ",),
 			).join(" or ",);
 			throw new UsageError(
 				`One of ${alternatives} is required for ${resource} ${action}. Usage: ${entry.usage}`,

@@ -205,7 +205,7 @@ describe("CLI planned command coverage", () => {
 		const result = JSON.parse(stdout,) as {
 			payload: { recipePrototype: { inputs: { main: { items: Array<{ ref: string; }>; }; }; }; };
 		};
-		expect(result.payload.recipePrototype.inputs.main.items.map((item,) => item.ref),).toEqual([
+		expect(result.payload.recipePrototype.inputs.main.items.map((item,) => item.ref,),).toEqual([
 			"source_a",
 			"source_b",
 			"source_c",

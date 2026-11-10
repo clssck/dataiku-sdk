@@ -386,7 +386,7 @@ describe("CLI install-skill command", () => {
 		try {
 			const args = ["install-skill", "--agent", "claude", "--target", tmpDir,];
 			const first = firstEntryOf((await dss(args,)).stdout,);
-			const references = first.files.filter((file,) => file.relativePath.startsWith("references/",));
+			const references = first.files.filter((file,) => file.relativePath.startsWith("references/",),);
 			const stale = references[0];
 			const missing = references[1];
 			writeFileSync(stale.path, "outdated reference",);
@@ -402,11 +402,11 @@ describe("CLI install-skill command", () => {
 				changed: true,
 				actualSha256: first.expectedSha256,
 			},);
-			expect(plan.files.find((file,) => file.path === stale.path),).toMatchObject({
+			expect(plan.files.find((file,) => file.path === stale.path,),).toMatchObject({
 				status: "stale",
 				changed: true,
 			},);
-			expect(plan.files.find((file,) => file.path === missing.path),).toMatchObject({
+			expect(plan.files.find((file,) => file.path === missing.path,),).toMatchObject({
 				status: "missing",
 				changed: true,
 			},);

@@ -11,7 +11,7 @@ function lineBytes(output: string,): number[] {
 
 /** Lines over budget that hold more than one scalar-sized piece, i.e. should have been broken. */
 function overBudgetLines(output: string,): string[] {
-	return output.replace(/\n$/, "",).split("\n",).filter((line,) => bytes(line,) > budget);
+	return output.replace(/\n$/, "",).split("\n",).filter((line,) => bytes(line,) > budget,);
 }
 
 const longStringValue = "x".repeat(5_000,);
@@ -147,7 +147,7 @@ describe("stdoutJson default layout", () => {
 
 	it("handles top-level values that serialize to undefined as before", () => {
 		expect(stdoutJson(undefined,),).toBe("undefined\n",);
-		expect(stdoutJson(() => 1),).toBe("undefined\n",);
+		expect(stdoutJson(() => 1,),).toBe("undefined\n",);
 	});
 
 	it("prints one over-budget string whole", () => {

@@ -19,12 +19,12 @@ export function compareStrings(a: string, b: string,): number {
 export function stableJson(value: unknown,): string {
 	if (value === undefined) return "undefined";
 	if (value === null || typeof value !== "object") return JSON.stringify(value,);
-	if (Array.isArray(value,)) return `[${value.map((item,) => stableJson(item,)).join(",",)}]`;
+	if (Array.isArray(value,)) return `[${value.map((item,) => stableJson(item,),).join(",",)}]`;
 	const entries = Object.entries(value as Record<string, unknown>,).sort(([a,], [b,],) =>
-		compareStrings(a, b,)
+		compareStrings(a, b,),
 	);
 	return `{${
-		entries.map(([key, item,],) => `${JSON.stringify(key,)}:${stableJson(item,)}`).join(",",)
+		entries.map(([key, item,],) => `${JSON.stringify(key,)}:${stableJson(item,)}`,).join(",",)
 	}}`;
 }
 

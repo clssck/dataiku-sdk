@@ -95,14 +95,14 @@ function renderAlternatives(
 	sep: string | undefined,
 	omitOptional: boolean,
 ): string {
-	return alternatives.map((alternative,) => renderNodes(alternative, omitOptional,)).join(
+	return alternatives.map((alternative,) => renderNodes(alternative, omitOptional,),).join(
 		sep ?? "|",
 	);
 }
 
 /** Render a node sequence as usage text; `omitOptional` drops every `[...]` group. */
 export function renderNodes(nodes: SyntaxNode[], omitOptional = false,): string {
-	return nodes.map((node,) => renderNode(node, omitOptional,)).filter((part,) => part !== "").join(
+	return nodes.map((node,) => renderNode(node, omitOptional,),).filter((part,) => part !== "",).join(
 		" ",
 	);
 }
@@ -174,7 +174,7 @@ function flagNodes(nodes: SyntaxNode[],): FlagNode[] {
 
 /** Whether the syntax lists `--name` (the raw spelling, not an alias). */
 export function syntaxHasFlag(nodes: SyntaxNode[], name: string,): boolean {
-	return flagNodes(nodes,).some((node,) => node.flag === name);
+	return flagNodes(nodes,).some((node,) => node.flag === name,);
 }
 
 /** Leading literal words after `dss` (resource and, when present, action). */
@@ -192,8 +192,8 @@ function canonicalFlag(name: string,): string {
 }
 
 function knownCanonicalFlags(nodes: FlagNode[],): string[] {
-	return unique(nodes.map((node,) => canonicalFlag(node.flag,)),).filter((flag,) =>
-		KNOWN_LONG_FLAGS.has(flag,)
+	return unique(nodes.map((node,) => canonicalFlag(node.flag,),),).filter((flag,) =>
+		KNOWN_LONG_FLAGS.has(flag,),
 	);
 }
 
@@ -214,7 +214,7 @@ function deriveRequired(
 	nodes: SyntaxNode[],
 ): { requiredFlags: string[]; requiredOneOf: CommandFlagChoice[]; } {
 	const requiredFlags = knownCanonicalFlags(
-		nodes.filter((node,): node is FlagNode => typeof node !== "string" && "flag" in node),
+		nodes.filter((node,): node is FlagNode => typeof node !== "string" && "flag" in node,),
 	);
 	const requiredOneOf: CommandFlagChoice[] = [];
 	for (const node of nodes) {
@@ -227,7 +227,7 @@ function deriveRequired(
 		// A choice with a flagless alternative (a positional, e.g. sql query's
 		// `(SQL | --sql QUERY | ...)`) cannot be expressed as a flag-only choice:
 		// requiring one of the flags would be false. The handler stays the authority.
-		if (alternatives.some((alternative,) => alternative.length === 0)) continue;
+		if (alternatives.some((alternative,) => alternative.length === 0,)) continue;
 		requiredOneOf.push({ oneOf: alternatives, },);
 	}
 	return { requiredFlags: unique(requiredFlags,), requiredOneOf, };
@@ -260,10 +260,10 @@ function derivePositionals(nodes: SyntaxNode[],): CommandPositionalMetadata[] {
 		if (!("arg" in node)) return;
 		const arg: ArgNode = node;
 		// A positional inside a required choice that offers a flag instead is optional.
-		const flagAlternative = context.oneOf?.some((alternative,) => flagNodes(alternative,).length > 0)
+		const flagAlternative = context.oneOf?.some((alternative,) => flagNodes(alternative,).length > 0,)
 			?? false;
 		const required = !context.optional && !flagAlternative;
-		const existing = positionals.find((positional,) => positional.name === arg.arg);
+		const existing = positionals.find((positional,) => positional.name === arg.arg,);
 		if (existing) existing.required ||= required;
 		else positionals.push({ name: arg.arg, required, },);
 	},);
@@ -273,7 +273,7 @@ function derivePositionals(nodes: SyntaxNode[],): CommandPositionalMetadata[] {
 /** Usage-level contract fields of a syntax tree (flags, requirements, value hints, positionals, inputs). */
 export function deriveSyntax(nodes: SyntaxNode[],): CommandSyntax {
 	const flags = flagNodes(nodes,);
-	const has = (name: string,) => flags.some((node,) => node.flag === name);
+	const has = (name: string,) => flags.some((node,) => node.flag === name,);
 	const aliases: Record<string, string[]> = {};
 	for (const [raw, canonical,] of Object.entries(FLAG_ALIASES,)) {
 		if (has(raw,)) (aliases[canonical] ??= []).push(raw,);
@@ -285,7 +285,7 @@ export function deriveSyntax(nodes: SyntaxNode[],): CommandSyntax {
 		inputContract: {
 			...(has("stdin",) ? { stdin: true, } : {}),
 			...(flags.some((node,) =>
-					node.flag === "data" && (node.value !== undefined || node.values !== undefined)
+					node.flag === "data" && (node.value !== undefined || node.values !== undefined),
 				)
 				? { dataFlag: true, }
 				: {}),
@@ -295,7 +295,7 @@ export function deriveSyntax(nodes: SyntaxNode[],): CommandSyntax {
 		aliases,
 		dryRun: has("dry-run",),
 		producesLocalFile: flags.some((node,) =>
-			(node.flag === "output" || node.flag === "output-file") && node.value === "PATH"
+			(node.flag === "output" || node.flag === "output-file") && node.value === "PATH",
 		),
 	};
 }

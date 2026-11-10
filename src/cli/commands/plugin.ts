@@ -44,7 +44,7 @@ function pluginFoldersEndpoint(pluginId: string, path: string,): string {
 function encodePluginPathForPlan(path: string,): string {
 	return validatePluginPath(path,)
 		.split("/",)
-		.map((segment,) => encodeURIComponent(segment,))
+		.map((segment,) => encodeURIComponent(segment,),)
 		.join("/",);
 }
 

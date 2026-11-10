@@ -921,7 +921,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 			}, async (url,) => {
 				writeFileSync(
 					ledgerPath,
-					`${entries.map((entry,) => JSON.stringify({ ...entry, dssUrl: url, },)).join("\n",)}\n`,
+					`${entries.map((entry,) => JSON.stringify({ ...entry, dssUrl: url, },),).join("\n",)}\n`,
 				);
 				const applied = JSON.parse(
 					(await dss(["cleanup", "--file", ledgerPath, "--apply",], { env: cliEnv(url,), },)).stdout,
@@ -1632,13 +1632,13 @@ describe("machine contract: project-git mutation plans", () => {
 			checkout: "v2",
 		};
 		for (const path of ["lib/../utils", "libs/./x", "../utils", "libs//utils", "", "/",]) {
-			expect(() => plan("set-library", [path,], setFlags,)).toThrow(
+			expect(() => plan("set-library", [path,], setFlags,),).toThrow(
 				"Git library reference path",
 			);
-			expect(() => plan("remove-library", [path,], { "project-key": "P", },)).toThrow(
+			expect(() => plan("remove-library", [path,], { "project-key": "P", },),).toThrow(
 				"Git library reference path",
 			);
-			expect(() => plan("reset-library", [path,], { "project-key": "P", },)).toThrow(
+			expect(() => plan("reset-library", [path,], { "project-key": "P", },),).toThrow(
 				"Git library reference path",
 			);
 			expect(

@@ -40,13 +40,13 @@ function buildFakeDss() {
 				return;
 			}
 			await route(req, res,);
-		})()
+		})(),
 	);
 	return {
 		routes,
 		misses,
 		async start(): Promise<string> {
-			await new Promise<void>((resolve,) => server.listen(0, "127.0.0.1", resolve,));
+			await new Promise<void>((resolve,) => server.listen(0, "127.0.0.1", resolve,),);
 			const { port, } = server.address() as AddressInfo;
 			return `http://127.0.0.1:${String(port,)}`;
 		},
@@ -152,10 +152,10 @@ describe("PluginsResource against a fake DSS (all documented endpoints)", () => 
 	});
 
 	it("updates only the selected installed plugin from Git", async () => {
-		const installed = [{ id: "my-plugin", version: "1.0.0", }, {
-			id: "unrelated",
-			version: "1.0.0",
-		},];
+		const installed = [
+			{ id: "my-plugin", version: "1.0.0", },
+			{ id: "unrelated", version: "1.0.0", },
+		];
 		await withFakeDss(routes => {
 			routes.set("POST /public/api/plugins/my-plugin/actions/updateFromGit", async (req, res,) => {
 				const body = JSON.parse((await readBody(req,)).toString("utf8",),);
@@ -173,10 +173,10 @@ describe("PluginsResource against a fake DSS (all documented endpoints)", () => 
 				gitRepositoryUrl: "git@github.com:acme/p.git",
 				gitCheckout: "release",
 			},);
-			expect(await plugins.list(),).toEqual([{ id: "my-plugin", version: "2.0.0", }, {
-				id: "unrelated",
-				version: "1.0.0",
-			},],);
+			expect(await plugins.list(),).toEqual([
+				{ id: "my-plugin", version: "2.0.0", },
+				{ id: "unrelated", version: "1.0.0", },
+			],);
 		},);
 	});
 

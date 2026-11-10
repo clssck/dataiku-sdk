@@ -338,7 +338,7 @@ describe("ApplicationsResource", () => {
 			const resource = new ApplicationsResource(createClient(url,),);
 			const error = await resource.deleteInstance("APP INSTANCE", {
 				expectedProjectIncarnationHash: expectedHash,
-			},).catch((caught: unknown,) => caught);
+			},).catch((caught: unknown,) => caught,);
 			expect(error,).toBeInstanceOf(ClientValidationError,);
 			if (!(error instanceof ClientValidationError)) throw error;
 			expect(error.message,).toContain("not the project incarnation authorized for deletion",);
@@ -407,7 +407,7 @@ describe("ApplicationsResource", () => {
 		}, async (url,) => {
 			const resource = new ApplicationsResource(createClient(url,),);
 			const error = await resource.deleteInstance("ORDINARY PROJECT",).catch((caught: unknown,) =>
-				caught
+				caught,
 			);
 			expect(error,).toBeInstanceOf(ClientValidationError,);
 			if (!(error instanceof ClientValidationError)) throw error;
@@ -446,7 +446,7 @@ describe("ApplicationsResource", () => {
 		}, async (url,) => {
 			const resource = new ApplicationsResource(createClient(url,),);
 			const error = await resource.deleteInstance("ORDINARY PROJECT",).catch((caught: unknown,) =>
-				caught
+				caught,
 			);
 			expect(error,).toBeInstanceOf(ClientValidationError,);
 			if (!(error instanceof ClientValidationError)) throw error;
@@ -491,7 +491,9 @@ describe("ApplicationsResource", () => {
 					retryMaxAttempts: 1,
 				},),
 			);
-			const error = await resource.deleteInstance("APP INSTANCE",).catch((caught: unknown,) => caught);
+			const error = await resource.deleteInstance("APP INSTANCE",).catch((caught: unknown,) =>
+				caught,
+			);
 			expect(error,).toBeInstanceOf(DataikuError,);
 			expect(error,).not.toBeInstanceOf(ClientValidationError,);
 			if (!(error instanceof DataikuError)) throw error;
@@ -656,34 +658,36 @@ describe("ApplicationsResource", () => {
 				{ kind: "folder", status: "failed", checked: 2, malformed: 1, missing: 1, },
 				{ kind: "variable", status: "failed", checked: 3, malformed: 0, missing: 1, },
 			],);
-			expect(result.errors.map(({ code, path: jsonPath, },) => ({ code, path: jsonPath, })),).toEqual([
-				{
-					code: "MISSING_SCENARIO",
-					path: '$["homepageSections"][0]["tiles"][1]["scenarioId"]',
-				},
-				{
-					code: "INVALID_REFERENCE_VALUE",
-					path: '$["homepageSections"][0]["tiles"][2]["scenarioId"]',
-				},
-				{
-					code: "MISSING_FOLDER",
-					path: '$["homepageSections"][0]["tiles"][4]["folderId"]',
-				},
-				{
-					code: "INVALID_REFERENCE_VALUE",
-					path: '$["homepageSections"][0]["tiles"][5]["folderId"]',
-				},
-				{
-					code: "MISSING_VARIABLE",
-					path: '$["homepageSections"][0]["tiles"][6]["params"][2]["name"]',
-				},
-			],);
+			expect(result.errors.map(({ code, path: jsonPath, },) => ({ code, path: jsonPath, }),),).toEqual(
+				[
+					{
+						code: "MISSING_SCENARIO",
+						path: '$["homepageSections"][0]["tiles"][1]["scenarioId"]',
+					},
+					{
+						code: "INVALID_REFERENCE_VALUE",
+						path: '$["homepageSections"][0]["tiles"][2]["scenarioId"]',
+					},
+					{
+						code: "MISSING_FOLDER",
+						path: '$["homepageSections"][0]["tiles"][4]["folderId"]',
+					},
+					{
+						code: "INVALID_REFERENCE_VALUE",
+						path: '$["homepageSections"][0]["tiles"][5]["folderId"]',
+					},
+					{
+						code: "MISSING_VARIABLE",
+						path: '$["homepageSections"][0]["tiles"][6]["params"][2]["name"]',
+					},
+				],
+			);
 			expect(result.references.map(({ kind, path: jsonPath, value, exists, },) => ({
 				kind,
 				path: jsonPath,
 				value,
 				exists,
-			})),).toEqual([
+			}),),).toEqual([
 				{
 					kind: "scenario",
 					path: '$["homepageSections"][0]["tiles"][0]["scenarioId"]',
@@ -770,12 +774,14 @@ describe("ApplicationsResource", () => {
 					exists: false,
 				},
 			],);
-			expect(result.errors.map(({ code, path: jsonPath, },) => ({ code, path: jsonPath, })),).toEqual([
-				{
-					code: "MISSING_FOLDER",
-					path: '$["homepageSections"][0]["tiles"][0]["folderId"]',
-				},
-			],);
+			expect(result.errors.map(({ code, path: jsonPath, },) => ({ code, path: jsonPath, }),),).toEqual(
+				[
+					{
+						code: "MISSING_FOLDER",
+						path: '$["homepageSections"][0]["tiles"][0]["folderId"]',
+					},
+				],
+			);
 		},);
 	});
 
@@ -837,7 +843,7 @@ describe("ApplicationsResource", () => {
 				{ kind: "folder", status: "failed", checked: 0, malformed: 1, missing: 0, },
 				{ kind: "variable", status: "failed", checked: 0, malformed: 1, missing: 0, },
 			],);
-			expect(result.errors.map((error,) => error.path),).toEqual([
+			expect(result.errors.map((error,) => error.path,),).toEqual([
 				'$["homepageSections"][0]["tiles"][0]["scenarioId"]',
 				'$["homepageSections"][0]["tiles"][1]["folderId"]',
 				'$["homepageSections"][0]["tiles"][2]["params"][0]["name"]',
@@ -1042,7 +1048,7 @@ describe("ApplicationsResource", () => {
 			caught = await resource.setManifestVersion({
 				version: "2.0.0",
 				expectHash: "0".repeat(64,),
-			},).catch((error: unknown,) => error);
+			},).catch((error: unknown,) => error,);
 		},);
 
 		expect(caught,).toBeInstanceOf(ClientValidationError,);
@@ -1189,7 +1195,7 @@ describe("ApplicationsResource", () => {
 		expect(state.requests.length,).toBeGreaterThanOrEqual(2,);
 		expect(
 			state.requests.slice(1,).every((request,) =>
-				request === "PUT /public/api/projects/TEST/app-manifest"
+				request === "PUT /public/api/projects/TEST/app-manifest",
 			),
 		).toBe(true,);
 	});

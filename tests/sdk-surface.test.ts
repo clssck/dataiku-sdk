@@ -1,4 +1,9 @@
 import { describe, expect, it, } from "bun:test";
+import type {
+	ProjectArchiveInspection,
+	ProjectArchiveIssue,
+	ProjectArchiveIssueSeverity,
+} from "../src/index.js";
 import {
 	AnalysesResource,
 	ApiServicesResource,
@@ -39,11 +44,6 @@ import {
 	SqlResource,
 	VariablesResource,
 	WikiResource,
-} from "../src/index.js";
-import type {
-	ProjectArchiveInspection,
-	ProjectArchiveIssue,
-	ProjectArchiveIssueSeverity,
 } from "../src/index.js";
 
 const SDK_SURFACE: Array<

@@ -367,6 +367,6 @@ function collectDifferences(
 export function diffAppPermissions(backup: unknown, current: unknown,): AppPermissionsDiff {
 	const differences: AppPermissionsDifference[] = [];
 	collectDifferences("", backup, current, differences,);
-	differences.sort((a, b,) => compareStrings(a.path, b.path,));
+	differences.sort((a, b,) => compareStrings(a.path, b.path,),);
 	return { changed: differences.length > 0, differences, };
 }

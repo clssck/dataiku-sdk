@@ -119,7 +119,7 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 			return c.savedModels.updateSettings(a[0], settings, projectKey,).then(() => ({
 				updated: a[0],
 				resource: "saved-model",
-			}));
+			}),);
 		},
 		description:
 			"Save the settings of a saved model. The payload must be the complete settings document as returned by `saved-model get` (GET-then-PUT workflow, per the official client).",
@@ -202,7 +202,7 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 		handler: async (c, a, f,) => {
 			const usage = commandUsage("saved-model", "delete-versions",);
 			requireArgs(a, 2, usage,);
-			const versions = a[1].split(",",).map((v,) => v.trim()).filter((v,) => v.length > 0);
+			const versions = a[1].split(",",).map((v,) => v.trim(),).filter((v,) => v.length > 0,);
 			if (versions.length === 0) {
 				throw new UsageError(
 					"<versionsCSV> must contain at least one version id.",
@@ -241,7 +241,7 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 			);
 			const projectKey = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.savedModels.get(a[0], projectKey,));
+				const current = await readIfExists(() => c.savedModels.get(a[0], projectKey,),);
 				if (!current) return skipResult("saved-model", a[0], "missing",);
 				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "saved-model", id: a[0], current, };
@@ -370,7 +370,7 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 				metadata,
 				containerExecConfigName === undefined ? undefined : { containerExecConfigName, },
 				projectKey,
-			).then(() => ({ updated: a[0], versionId: a[1], resource: "saved-model", }));
+			).then(() => ({ updated: a[0], versionId: a[1], resource: "saved-model", }),);
 		},
 		description:
 			"Save the external-ml metadata of a saved-model version. The payload must be the full metadata document as returned by external-metadata-get (GET-then-PUT). DSS requires the containerExecConfigName query parameter; it defaults to NONE for an external API caller (LOCAL-CONFIG resolution) when --container-exec-config is omitted.",

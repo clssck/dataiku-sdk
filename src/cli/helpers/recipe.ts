@@ -60,13 +60,13 @@ function splitBackupDir(absolute: string,): { base: string; tail: string[]; } {
 		for (const candidateBase of bases) {
 			const rel = relativePath(candidateBase, absolute,);
 			if (rel === "" || rel.startsWith("..",) || parsePath(rel,).root) continue;
-			return { base: canonical, tail: rel.split(sep,).filter((part,) => part.length > 0), };
+			return { base: canonical, tail: rel.split(sep,).filter((part,) => part.length > 0,), };
 		}
 	}
 	const { root, } = parsePath(absolute,);
 	return {
 		base: root,
-		tail: relativePath(root, absolute,).split(sep,).filter((part,) => part.length > 0),
+		tail: relativePath(root, absolute,).split(sep,).filter((part,) => part.length > 0,),
 	};
 }
 

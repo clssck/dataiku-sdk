@@ -21,13 +21,13 @@ function commandSuggestions(resource: string, action: string | undefined,): stri
 		return [];
 	}
 	return suggestSelectors(action ? `${resource}.${action}` : resource, actionsByResource,)
-		.map((selector,) => `dss ${selector.replace(".", " ",)}`);
+		.map((selector,) => `dss ${selector.replace(".", " ",)}`,);
 }
 
 function suggestionHint(suggestions: string[],): string {
 	return suggestions.length > 0
 		? `Did you mean ${
-			suggestions.map((command,) => `\`${command}\``).join(" or ",)
+			suggestions.map((command,) => `\`${command}\``,).join(" or ",)
 		}? ${COMMANDS_RUN_HINT}`
 		: COMMANDS_RUN_HINT;
 }

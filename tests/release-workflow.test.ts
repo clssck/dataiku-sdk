@@ -147,5 +147,5 @@ it("refuses a changed local candidate before contacting the registry", () => {
 		path.join(fixture.directory, "package.tgz",),
 		Buffer.alloc(fixture.bytes.length, 0,),
 	);
-	expect(() => verifyCandidate(fixture.directory,)).toThrow("integrity mismatch",);
+	expect(() => verifyCandidate(fixture.directory,),).toThrow("integrity mismatch",);
 });

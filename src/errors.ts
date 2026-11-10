@@ -461,7 +461,7 @@ export function classifyDataikuError(status: number, body: string,): DataikuErro
 	const isServerNotFoundLike = status >= 500
 		&& (lowerBody.includes("not found",) || lowerBody.includes("does not exist",))
 		&& ["dataset", "recipe", "scenario", "project", "folder",].some((token,) =>
-			lowerBody.includes(token,)
+			lowerBody.includes(token,),
 		);
 	if (isServerFilesystemNotFoundLike || isServerNotFoundLike) {
 		return {

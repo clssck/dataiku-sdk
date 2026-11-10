@@ -78,27 +78,27 @@ describe("CLI flow visualization", () => {
 				};
 				rendering: { format: string; content: string; };
 			};
-			const byId = new Map(result.map.nodes.map((node,) => [node.id, node,]),);
+			const byId = new Map(result.map.nodes.map((node,) => [node.id, node,],),);
 
 			expect(byId.get("raw",),).toMatchObject({ layer: 0, zoneId: "zone-raw", },);
 			expect(byId.get("prepare",),).toMatchObject({ layer: 1, zoneId: "default", },);
-			expect(result.map.zones.find((zone,) => zone.id === "zone-raw")?.position,).toEqual({
+			expect(result.map.zones.find((zone,) => zone.id === "zone-raw",)?.position,).toEqual({
 				x: 100,
 				y: 200,
 			},);
 			expect(result.map.components,).toHaveLength(1,);
-			expect(result.map.diagnostics.map((diagnostic,) => diagnostic.code),).toEqual([
+			expect(result.map.diagnostics.map((diagnostic,) => diagnostic.code,),).toEqual([
 				"cross_zone_edges",
 				"default_zone_items",
 			],);
 			expect(result.map.topologyFingerprint,).toMatch(/^[0-9a-f]{64}$/,);
 			// Deduplicated output: names equal to ids, zoneName, nodeIds, empty warnings and an uncut truncation are omitted.
-			expect(result.map.nodes.some((node,) => "zoneName" in node),).toBe(false,);
-			expect(result.map.nodes.every((node,) => !("name" in node) || node.name !== node.id),).toBe(
+			expect(result.map.nodes.some((node,) => "zoneName" in node,),).toBe(false,);
+			expect(result.map.nodes.every((node,) => !("name" in node) || node.name !== node.id,),).toBe(
 				true,
 			);
-			expect(result.map.zones.some((zone,) => "nodeIds" in zone),).toBe(false,);
-			expect(result.map.components.some((component,) => "nodeIds" in (component as object)),).toBe(
+			expect(result.map.zones.some((zone,) => "nodeIds" in zone,),).toBe(false,);
+			expect(result.map.components.some((component,) => "nodeIds" in (component as object),),).toBe(
 				false,
 			);
 			expect(result.map,).not.toHaveProperty("warnings",);
@@ -118,7 +118,7 @@ describe("CLI flow visualization", () => {
 				zones: Array<{ id: string; name: string; items: unknown[]; }>;
 			};
 			expect(plan.topologyFingerprint,).toMatch(/^[0-9a-f]{64}$/,);
-			expect(plan.zones.find((zone,) => zone.id === "zone-raw"),).toMatchObject({
+			expect(plan.zones.find((zone,) => zone.id === "zone-raw",),).toMatchObject({
 				name: "Raw & Sources",
 				items: [{ objectType: "DATASET", objectId: "raw", },],
 			},);
@@ -138,7 +138,7 @@ describe("CLI flow visualization", () => {
 			};
 			expect(preview.dryRun,).toBe(true,);
 			expect(preview.topologyFingerprint,).toBe(plan.topologyFingerprint,);
-			expect(preview.planned.every((step,) => step.moveItems.length === 0),).toBe(true,);
+			expect(preview.planned.every((step,) => step.moveItems.length === 0,),).toBe(true,);
 		},);
 	});
 
@@ -348,7 +348,7 @@ describe("CLI flow-zone organize recipe units and positions", () => {
 				zones: { Raw: ["clean",], Prep: ["prepare",], },
 			},],);
 		},);
-		expect(requests.every((request,) => request.startsWith("GET ",)),).toBe(true,);
+		expect(requests.every((request,) => request.startsWith("GET ",),),).toBe(true,);
 	});
 
 	it("moves a recipe's outputs with it and never prunes them under --sync", async () => {
@@ -407,7 +407,7 @@ describe("CLI flow-zone organize recipe units and positions", () => {
 				requestedPosition: { x: 5, y: 6, },
 			},],);
 		},);
-		expect(requests.every((request,) => request.startsWith("GET ",)),).toBe(true,);
+		expect(requests.every((request,) => request.startsWith("GET ",),),).toBe(true,);
 	});
 
 	it("--recreate-on-move places the replacement zone with manual positioning briefly off, keeping items and metadata", async () => {
@@ -435,7 +435,7 @@ describe("CLI flow-zone organize recipe units and positions", () => {
 		},);
 		const base = "/public/api/projects/TEST/flow/zones";
 		const settings = "/public/api/projects/TEST/settings";
-		expect(requests.filter((request,) => !request.startsWith("GET ",)),).toEqual([
+		expect(requests.filter((request,) => !request.startsWith("GET ",),),).toEqual([
 			`PUT ${settings} manual=false`,
 			`POST ${base}`,
 			`PUT ${base}/zone-new`,

@@ -124,7 +124,7 @@ export const dashboardCommands: Record<string, CommandMeta> = withUsage("dashboa
 			if (listed !== undefined) payload.listed = listed;
 			const pk = f["project-key"] as string | undefined;
 			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
-				const existing = (await c.dashboards.list(pk,)).find((dashboard,) => dashboard.name === name);
+				const existing = (await c.dashboards.list(pk,)).find((dashboard,) => dashboard.name === name,);
 				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("dashboard", existing.id, "exists", { current: existing, },);
 				}
@@ -190,7 +190,7 @@ export const dashboardCommands: Record<string, CommandMeta> = withUsage("dashboa
 			requireArgs(a, 1, commandUsage("dashboard", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.dashboards.get(a[0], pk,));
+				const current = await readIfExists(() => c.dashboards.get(a[0], pk,),);
 				if (!current) return skipResult("dashboard", a[0], "missing",);
 				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "dashboard", id: a[0], current, };

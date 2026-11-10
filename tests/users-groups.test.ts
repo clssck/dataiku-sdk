@@ -36,7 +36,7 @@ async function withTestServer(
 		await run(`http://127.0.0.1:${String(port,)}`, requests,);
 	} finally {
 		await new Promise<void>((resolvePromise,) => {
-			server.close(() => resolvePromise());
+			server.close(() => resolvePromise(),);
 		},);
 	}
 }

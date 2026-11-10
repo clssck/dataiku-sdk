@@ -160,7 +160,7 @@ export class UsersResource extends BaseResource {
 	async resyncMulti(logins: string[],): Promise<FutureState> {
 		if (
 			!Array.isArray(logins,) || logins.length === 0
-			|| logins.some((l,) => typeof l !== "string" || l.trim().length === 0)
+			|| logins.some((l,) => typeof l !== "string" || l.trim().length === 0,)
 		) {
 			throw new ClientValidationError(
 				"users.resyncMulti: logins must be a non-empty array of logins.",

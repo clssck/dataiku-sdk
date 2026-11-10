@@ -1271,7 +1271,7 @@ describe("JobsResource.wait zero-activity builds", () => {
 		await runZeroActivityBuild("orphan", { managed: true, total: 1, }, (result, requests,) => {
 			expect(result["success"],).toBe(true,);
 			expect(result["failure"],).toBeUndefined();
-			expect(requests.some((request,) => request.includes("/datasets/",)),).toBe(false,);
+			expect(requests.some((request,) => request.includes("/datasets/",),),).toBe(false,);
 		},);
 	});
 
@@ -1293,7 +1293,7 @@ describe("JobsResource.wait zero-activity builds", () => {
 								targetDatasetProjectKey: "TEST",
 								targetDataset: "orphan",
 								targetPartition,
-							})),
+							}),),
 						},
 						state: "DONE",
 					},
@@ -1321,7 +1321,7 @@ describe("JobsResource.wait zero-activity builds", () => {
 			expect(result.failure?.code,).toBe("nothing_to_build",);
 		},);
 		expect(
-			requests.filter((request,) => request === "GET /public/api/projects/TEST/datasets/orphan"),
+			requests.filter((request,) => request === "GET /public/api/projects/TEST/datasets/orphan",),
 		)
 			.toHaveLength(1,);
 	});

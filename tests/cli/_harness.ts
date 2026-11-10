@@ -148,7 +148,7 @@ export function cliEnv(url: string,): NodeJS.ProcessEnv {
 export function putItemRefs(body: Record<string, unknown> | undefined,): string[] {
 	const recipe = (body?.recipe ?? {}) as Record<string, unknown>;
 	const inputs = (recipe.inputs ?? {}) as Record<string, { items?: Array<{ ref?: string; }>; }>;
-	return (inputs.main?.items ?? []).map((item,) => item.ref ?? "");
+	return (inputs.main?.items ?? []).map((item,) => item.ref ?? "",);
 }
 
 export function execProcessLogLine(msg: string,): string {

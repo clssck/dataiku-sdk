@@ -136,14 +136,14 @@ function mailBodyFromFlags(flags: Record<string, string | boolean>, usage: strin
 	const sources = (["body", "body-file", "stdin",] as const).filter((name,) =>
 		name === "stdin"
 			? parseBooleanOption(flags[name], "--stdin",) === true
-			: flags[name] !== undefined
+			: flags[name] !== undefined,
 	);
 	if (sources.length !== 1) {
 		throw new UsageError(
 			sources.length === 0
 				? `--body, --body-file, or --stdin is required (message body). Usage: ${usage}`
 				: `Conflicting input sources: ${
-					sources.map((name,) => `--${name}`).join(" or ",)
+					sources.map((name,) => `--${name}`,).join(" or ",)
 				}. Provide exactly one.`,
 			sources.length === 0 ? "missing_required_flag" : "conflicting_input_sources",
 		);
@@ -184,7 +184,7 @@ function sendInputFromFlags(
 			...(typeof from === "string" && from.trim() ? { from: from.trim(), } : {}),
 			plainText: flags["plain-text"] === true,
 		},
-		attachments: splitCsvFlag(flags["attachment"],).map((path,) => ({ path, })),
+		attachments: splitCsvFlag(flags["attachment"],).map((path,) => ({ path, }),),
 		sendAsSingleMessage: flags["single-message"] === true,
 	};
 }
@@ -193,7 +193,7 @@ function sendInputFromFlags(
 function changedPaths(before: unknown, after: unknown, prefix = "",): string[] {
 	if (isRecord(before,) && isRecord(after,)) {
 		return [...new Set([...Object.keys(before,), ...Object.keys(after,),],),].flatMap((key,) =>
-			changedPaths(before[key], after[key], prefix ? `${prefix}.${key}` : key,)
+			changedPaths(before[key], after[key], prefix ? `${prefix}.${key}` : key,),
 		);
 	}
 	return stableJson(before,) === stableJson(after,) ? [] : [prefix,];
@@ -247,7 +247,7 @@ function sendPlanShape(input: SendInput, projectKey: string,): MessagingChannelP
 			attachments: input.attachments.map((attachment,) => ({
 				path: attachment.path,
 				fileName: basename(attachment.path,),
-			})),
+			}),),
 		},
 	};
 }
@@ -481,7 +481,7 @@ export const messagingChannelCommands: Record<string, CommandMeta> = withUsage(R
 		handler: async (c, a, f,) => {
 			const channelId = channelIdArg(a, commandUsage(RESOURCE, "delete",),);
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.messagingChannels.get(channelId,));
+				const current = await readIfExists(() => c.messagingChannels.get(channelId,),);
 				if (!current) return skipResult(RESOURCE, channelId, "missing",);
 				if (executionMode(f,).dryRun) {
 					return dryRunPlan(
@@ -528,7 +528,7 @@ export const messagingChannelCommands: Record<string, CommandMeta> = withUsage(R
 				cc: input.message.cc ?? [],
 				bcc: input.message.bcc ?? [],
 				subject: input.message.subject,
-				attachments: input.attachments.map((attachment,) => basename(attachment.path,)),
+				attachments: input.attachments.map((attachment,) => basename(attachment.path,),),
 				sendAsSingleMessage: input.sendAsSingleMessage,
 			};
 		},

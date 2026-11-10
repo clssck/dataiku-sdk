@@ -75,7 +75,7 @@ export function addFlowZoneFlagItems(
 }
 
 export function parseFlowZoneObject(value: string,): FlowZoneItemInput {
-	const parts = value.split(":",).map((part,) => part.trim()).filter((part,) => part.length > 0);
+	const parts = value.split(":",).map((part,) => part.trim(),).filter((part,) => part.length > 0,);
 	if (parts.length === 2) {
 		return { objectType: flowZoneObjectType(parts[0],), objectId: parts[1], };
 	}
@@ -111,7 +111,7 @@ export function flowZoneContains(zone: FlowZone, object: FlowZoneItemInput,): bo
 	return flowZoneItems(zone,).some((item,) =>
 		item.objectId === object.objectId
 		&& item.objectType === object.objectType
-		&& (object.projectKey === undefined || item.projectKey === object.projectKey)
+		&& (object.projectKey === undefined || item.projectKey === object.projectKey),
 	);
 }
 
@@ -389,11 +389,11 @@ export function findFlowZoneForPlan(
 	plan: FlowZoneOrganizeZonePlan,
 ): FlowZone | undefined {
 	if (plan.id) {
-		const byId = zones.find((zone,) => zone.id === plan.id);
+		const byId = zones.find((zone,) => zone.id === plan.id,);
 		if (byId) return byId;
 	}
 	if (!plan.name) return undefined;
-	const byName = zones.filter((zone,) => zone.name === plan.name);
+	const byName = zones.filter((zone,) => zone.name === plan.name,);
 	if (byName.length > 1) {
 		throw new UsageError(
 			`Multiple flow zones named "${plan.name}" exist; use id.`,
@@ -419,7 +419,7 @@ export function flowZoneExplicitItems(zone: FlowZone,): FlowZoneItemInput[] {
 		objectId: item.objectId,
 		objectType: item.objectType,
 		...(item.projectKey ? { projectKey: item.projectKey, } : {}),
-	}));
+	}),);
 }
 
 export function flowZonePlanFromZones(
@@ -429,7 +429,7 @@ export function flowZonePlanFromZones(
 	return {
 		topologyFingerprint,
 		zones: [...zones,]
-			.sort((a, b,) => compareStrings(a.id, b.id,))
+			.sort((a, b,) => compareStrings(a.id, b.id,),)
 			.map((zone,) => {
 				const position = flowZoneCurrentPosition(zone,);
 				return {
@@ -438,7 +438,7 @@ export function flowZonePlanFromZones(
 					...(zone.color ? { color: zone.color, } : {}),
 					...(position ? { position, } : {}),
 					items: flowZoneExplicitItems(zone,).sort((a, b,) =>
-						compareStrings(flowZoneItemKey(a,), flowZoneItemKey(b,),)
+						compareStrings(flowZoneItemKey(a,), flowZoneItemKey(b,),),
 					),
 				};
 			},),
@@ -451,7 +451,7 @@ export function flowZoneMoveDelta(
 ): FlowZoneItemInput[] {
 	if (!existing) return plannedItems;
 	const existingKeys = new Set(flowZoneExplicitItems(existing,).map(flowZoneItemKey,),);
-	return plannedItems.filter((item,) => !existingKeys.has(flowZoneItemKey(item,),));
+	return plannedItems.filter((item,) => !existingKeys.has(flowZoneItemKey(item,),),);
 }
 
 export function flowZonePruneItems(
@@ -460,7 +460,7 @@ export function flowZonePruneItems(
 ): FlowZoneItemInput[] {
 	if (!existing) return [];
 	return flowZoneExplicitItems(existing,).filter((item,) =>
-		!plannedItemKeys.has(flowZoneItemKey(item,),)
+		!plannedItemKeys.has(flowZoneItemKey(item,),),
 	);
 }
 
@@ -532,7 +532,7 @@ function flowNodeObjectType(
  * object the recipe writes.
  */
 function flowZoneUnits(graph: NormalizedFlowMap,): Map<string, string[]> {
-	const kindById = new Map(graph.nodes.map((node,) => [node.id, node.kind,]),);
+	const kindById = new Map(graph.nodes.map((node,) => [node.id, node.kind,],),);
 	const units = new Map<string, string[]>();
 	for (const node of graph.nodes) {
 		if (node.kind === "recipe") units.set(node.id, [node.id,],);
@@ -574,14 +574,14 @@ export function applyFlowZoneUnits(
 			if (!item.projectKey || item.projectKey === projectKey) zoneIndexById.set(item.objectId, index,);
 		}
 	},);
-	const nodeById = new Map(graph.nodes.map((node,) => [node.id, node,]),);
+	const nodeById = new Map(graph.nodes.map((node,) => [node.id, node,],),);
 	const knownTypes = explicitTypesById(zones,);
 	const conflicts: Array<{ recipe: string; zones: Record<string, string[]>; }> = [];
-	const implied = plan.zones.map((): FlowZoneItemInput[] => []);
+	const implied = plan.zones.map((): FlowZoneItemInput[] => [],);
 	for (const [recipe, members,] of flowZoneUnits(graph,)) {
-		const planned = members.filter((member,) => zoneIndexById.has(member,));
+		const planned = members.filter((member,) => zoneIndexById.has(member,),);
 		if (planned.length === 0) continue;
-		const indexes = new Set(planned.map((member,) => zoneIndexById.get(member,)!),);
+		const indexes = new Set(planned.map((member,) => zoneIndexById.get(member,)!,),);
 		if (indexes.size > 1) {
 			const byZone: Record<string, string[]> = {};
 			for (const member of planned) {
@@ -616,7 +616,7 @@ export function applyFlowZoneUnits(
 					...zonePlan,
 					items: [...zonePlan.items, ...implied[index],],
 					impliedItems: implied[index],
-				}
+				},
 		),
 	};
 }
@@ -645,7 +645,7 @@ export function flowZoneUnassignedItems(
 		const objectType = flowNodeObjectType(node, knownTypes,);
 		if (objectType) items.push({ objectType, objectId: node.id, },);
 	}
-	return items.sort((a, b,) => compareStrings(flowZoneItemKey(a,), flowZoneItemKey(b,),));
+	return items.sort((a, b,) => compareStrings(flowZoneItemKey(a,), flowZoneItemKey(b,),),);
 }
 
 export function flowZoneValidationBucket(
@@ -759,7 +759,7 @@ export async function resolveFlowZoneIdFromFlags(
 	const zone = typeof flags["zone"] === "string" ? flags["zone"].trim() : "";
 	if (!zone) return undefined;
 	const zones = await client.flowZones.list(projectKey,);
-	const match = zones.find((candidate,) => candidate.id === zone || candidate.name === zone);
+	const match = zones.find((candidate,) => candidate.id === zone || candidate.name === zone,);
 	if (!match) throw new UsageError(`Flow zone not found: ${zone}`, "invalid_enum",);
 	return match.id;
 }

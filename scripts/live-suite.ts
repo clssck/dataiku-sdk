@@ -158,10 +158,10 @@ export function parseLiveSuiteArgs(argv: string[],): LiveSuiteOptions {
 			throw new UsageRequestError("--case is only valid for run/all",);
 		}
 		const available = Object.entries(LIVE_CASES,).filter(([, c,],) =>
-			c.phase === "run" && (profile === "all" || c.profile === "core" || c.profile === profile)
-		).map(([id,],) => id);
+			c.phase === "run" && (profile === "all" || c.profile === "core" || c.profile === profile),
+		).map(([id,],) => id,);
 		for (const selected of cases) {
-			if (!available.some(id => matchesLiveCase(id, selected,))) {
+			if (!available.some(id => matchesLiveCase(id, selected,),)) {
 				throw new UsageRequestError(
 					`Unknown or inactive live case ${selected}; available run cases: ${available.join(", ",)}`,
 				);
@@ -475,9 +475,9 @@ async function probeLiveCapabilities(
 	capabilities["owner"] = owner;
 	capabilities["connection"] = connection;
 	capabilities["probes"] = probes;
-	const blockers = probes.filter((probe,) => !probe.ok);
+	const blockers = probes.filter((probe,) => !probe.ok,);
 	if (blockers.length > 0 || owner === "" || connection === "") {
-		const reasons = blockers.map((probe,) => `${probe.name}: ${probe.reason ?? "unresolved"}`);
+		const reasons = blockers.map((probe,) => `${probe.name}: ${probe.reason ?? "unresolved"}`,);
 		throw new Error(
 			`Live capability preflight failed:\n  - ${
 				reasons.join("\n  - ",)
@@ -534,24 +534,24 @@ export function evaluateCleanupIntegrity(
 ): IntegrityReport {
 	const deletedOwned = new Set(
 		manifest.projects
-			.filter((project,) => project.state === "deleted")
-			.map((project,) => project.key),
+			.filter((project,) => project.state === "deleted",)
+			.map((project,) => project.key,),
 	);
 	const deleted = (key: string,): boolean => !Object.hasOwn(after, key,);
 	const missing = Object.keys(beforeCleanup,).filter((key,) =>
-		deleted(key,) && !deletedOwned.has(key,)
+		deleted(key,) && !deletedOwned.has(key,),
 	);
 	const changed = Object.entries(beforeCleanup,)
-		.filter(([key, identity,],) => !deleted(key,) && after[key] !== identity)
-		.map(([key,],) => key);
-	const unexplained = Object.keys(after,).filter((key,) => !Object.hasOwn(beforeCleanup, key,));
+		.filter(([key, identity,],) => !deleted(key,) && after[key] !== identity,)
+		.map(([key,],) => key,);
+	const unexplained = Object.keys(after,).filter((key,) => !Object.hasOwn(beforeCleanup, key,),);
 	return {
 		verified: missing.length === 0 && changed.length === 0 && unexplained.length === 0,
 		missing,
 		changed,
 		unreadable: [],
 		unexplained,
-		deletedOwned: [...deletedOwned,].filter((key,) => deleted(key,)),
+		deletedOwned: [...deletedOwned,].filter((key,) => deleted(key,),),
 	};
 }
 
@@ -565,7 +565,7 @@ export async function verifyProjectIntegrity(
 	manifest: LiveManifest,
 	beforeProjects: Record<string, string>,
 ): Promise<IntegrityReport> {
-	const ownedKeys = new Set(manifest.projects.map((project,) => project.key),);
+	const ownedKeys = new Set(manifest.projects.map((project,) => project.key,),);
 	const missing: string[] = [];
 	const changed: string[] = [];
 	const unreadable: string[] = [];
@@ -914,7 +914,7 @@ async function runSetupVerb(
 	const manifestPath = state.layout.manifestPath;
 	if (
 		state.manifest?.cleanup.status === "passed"
-		&& state.manifest.projects.every(project => project.state === "deleted")
+		&& state.manifest.projects.every(project => project.state === "deleted",)
 	) {
 		state.manifest = undefined;
 		state.pointer = undefined;
@@ -931,7 +931,7 @@ async function runSetupVerb(
 			if (anyOwned) {
 				throw new Error(
 					`Live lab ${existing.runId} at ${state.layout.labDir} is incomplete but owns projects (${
-						existing.projects.map((p,) => p.key).join(", ",)
+						existing.projects.map((p,) => p.key,).join(", ",)
 					}); run \`bun run test:live clean\` before setting up again.`,
 				);
 			}
@@ -948,7 +948,7 @@ async function runSetupVerb(
 		},);
 		const details = await client.projects.get(existing.projectKey,);
 		const identity = projectIncarnationHash(existing.projectKey, details,);
-		const bound = existing.projects.find((project,) => project.key === existing.projectKey);
+		const bound = existing.projects.find((project,) => project.key === existing.projectKey,);
 		if (!identity || (bound?.incarnation !== undefined && bound.incarnation !== identity)) {
 			throw new Error(
 				`Lab identity verification failed for ${existing.projectKey}: the main project was rebuilt or replaced. Run \`bun run test:live clean\` then setup again.`,
@@ -1070,7 +1070,7 @@ export async function verifyLiveRoot(
 		);
 	}
 	const owned = manifest.projects.find(project =>
-		project.key === manifest.projectKey && project.state === "bound"
+		project.key === manifest.projectKey && project.state === "bound",
 	);
 	if (
 		!owned?.incarnation || owned.incarnation !== projectIncarnationHash(manifest.projectKey, details,)
@@ -1161,7 +1161,7 @@ async function runRunVerb(
 	// cases may end there without failing the suite.
 	const requiredFailures = fresh.cases.filter((c,) =>
 		c.status === "failed"
-		|| (c.required !== false && c.status !== "passed")
+		|| (c.required !== false && c.status !== "passed"),
 	);
 	const report: SuiteReport = {
 		runId: fresh.runId,
@@ -1177,7 +1177,7 @@ async function runRunVerb(
 		},
 		phases: {
 			setup: { status: "passed", durationMs: 0, },
-			run: child.code === 0 && legacy.every(result => result.code === 0) && integrity.verified
+			run: child.code === 0 && legacy.every(result => result.code === 0,) && integrity.verified
 				? {
 					status: requiredFailures.length === 0 ? "passed" : "failed",
 					durationMs: child.durationMs,
@@ -1187,7 +1187,7 @@ async function runRunVerb(
 					status: "failed",
 					durationMs: child.durationMs,
 					error: `case suite exit ${child.code}; legacy exits ${
-						legacy.map(result => result.code).join(",",) || "not selected"
+						legacy.map(result => result.code,).join(",",) || "not selected"
 					}; integrity ${
 						integrity.unreadable.length > 0
 							? `unverified (unreadable projects: ${integrity.unreadable.join(",",)})`
@@ -1227,7 +1227,7 @@ async function runRunVerb(
 	await writeSuiteReport(path.join(iterationDir, "report.json",), report, state.credentials,);
 	process.stdout.write(
 		`live run ${report.phases["run"]?.status}: ${
-			fresh.cases.filter((c,) => c.status === "passed").length
+			fresh.cases.filter((c,) => c.status === "passed",).length
 		} passed, ${requiredFailures.length} required failures — ${
 			path.join(iterationDir, "report.json",)
 		}\n`,
@@ -1267,7 +1267,7 @@ async function runCleanVerb(
 	await writeCleanupReport(state, fresh, fresh.cleanup, integrity, Date.now() - started,);
 	process.stdout.write(
 		`clean ${fresh.cleanup.status}: ${
-			fresh.projects.filter(project => project.state === "deleted").length
+			fresh.projects.filter(project => project.state === "deleted",).length
 		}/${fresh.projects.length} owned projects deleted; external projects unchanged: ${
 			integrity.verified ? "yes" : "NO"
 		}\n`,

@@ -57,11 +57,11 @@ export async function exerciseProjectLifecycle(ctx: LiveContext,): Promise<void>
 		if (errors.length) {
 			throw new AggregateError(
 				errors,
-				errors.map(e => e instanceof Error ? e.message : String(e,)).join("; ",),
+				errors.map(e => e instanceof Error ? e.message : String(e,),).join("; ",),
 			);
 		}
 		const remaining = await ctx.client.projects.list();
-		expect(remaining.some(project => projects.includes(project.projectKey,)),).toBe(false,);
-		expect(remaining.some(project => project.projectKey === ctx.projectKey),).toBe(true,);
+		expect(remaining.some(project => projects.includes(project.projectKey,),),).toBe(false,);
+		expect(remaining.some(project => project.projectKey === ctx.projectKey,),).toBe(true,);
 	},);
 }

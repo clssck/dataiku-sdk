@@ -77,7 +77,7 @@ export function shapeListResult(
 		const contains = flags["contains"];
 		if (typeof contains === "string" && contains.length > 0) {
 			const needle = contains.toLowerCase();
-			items = items.filter((item,) => itemMatches(item, needle,));
+			items = items.filter((item,) => itemMatches(item, needle,),);
 		}
 		const limit = num(flags["limit"], "--limit",);
 		if (limit !== undefined && items.length > limit) {
@@ -94,7 +94,7 @@ export function shapeListResult(
 	if (!fields || flags["full"] === true || typeof flags["fields"] === "string") return items;
 	return items.map((item,) =>
 		Object.fromEntries(
-			Object.entries(fields,).map(([name, spec,],) => [name, compactValue(record(item,), spec,),]),
-		)
+			Object.entries(fields,).map(([name, spec,],) => [name, compactValue(record(item,), spec,),],),
+		),
 	);
 }

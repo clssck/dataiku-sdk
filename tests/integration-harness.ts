@@ -120,8 +120,8 @@ export async function resolveStorageConnection(client: DataikuClient,): Promise<
 	const admin = await resolveAdminManagedStorageConnection(client, "allowManagedDatasets",);
 	if (admin) return admin;
 	const inferred = await client.connections.infer({ projectKey: process.env.DATAIKU_PROJECT_KEY, },)
-		.catch(() => [] as ConnectionSummary[]);
-	const managed = inferred.find((connection,) => connection.managed === true);
+		.catch(() => [] as ConnectionSummary[],);
+	const managed = inferred.find((connection,) => connection.managed === true,);
 	return managed?.name ?? inferred[0]?.name ?? "filesystem_managed";
 }
 
@@ -133,12 +133,12 @@ export async function resolveStorageConnection(client: DataikuClient,): Promise<
 export async function selectSafeDataset(): Promise<string | undefined> {
 	const manifest = await getLiveManifest();
 	const manifestDatasets = Object.values(manifest?.fixtures.datasets ?? {},)
-		.filter((name,): name is string => typeof name === "string" && name.length > 0);
+		.filter((name,): name is string => typeof name === "string" && name.length > 0,);
 	if (manifestDatasets.length > 0) return manifestDatasets[0];
 	const projectKey = detectProjectKey(process.env, manifest?.projectKey,);
 	if (!projectKey) return undefined;
 	const fixturesResult = await dss(["fixtures", "--project-key", projectKey,],)
-		.catch(() => undefined);
+		.catch(() => undefined,);
 	if (!fixturesResult) return undefined;
 	try {
 		const parsed = parseJsonOutput<{ safeDataset?: { name?: unknown; } | null; }>(

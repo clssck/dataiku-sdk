@@ -23,7 +23,7 @@ async function withDataikuServer(
 		);
 	} finally {
 		const closed = Promise.withResolvers<void>();
-		server.close(() => closed.resolve());
+		server.close(() => closed.resolve(),);
 		await closed.promise;
 	}
 }

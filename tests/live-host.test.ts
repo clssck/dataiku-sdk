@@ -84,7 +84,7 @@ describe.skipIf(!sseAvailable,)("owned host cleanup", () => {
 			expect(failed.stderr,).toContain("PermissionError",);
 			const retried = await run(entry, "delete",);
 			if (retried.code) throw new Error(retried.stderr,);
-			expect(await lstat(entry.path,).catch(() => null),).toBeNull();
+			expect(await lstat(entry.path,).catch(() => null,),).toBeNull();
 		}, run,);
 	});
 },);
@@ -97,7 +97,7 @@ describe.skipIf(!available,)("owned host fixtures", () => {
 			expect(init.code,).toBe(0,);
 			const started = await host(entry, "start", [repo,],);
 			if (started.code) throw new Error(started.stderr,);
-			const line = started.stdout.split("\n",).find(row => row.startsWith("HOST_RESULT=",))!;
+			const line = started.stdout.split("\n",).find(row => row.startsWith("HOST_RESULT=",),)!;
 			const daemon = JSON.parse(line.slice("HOST_RESULT=".length,),) as HostDaemon;
 			entry.daemon = daemon;
 			const url = `http://127.0.0.1:${daemon.port}/fixture.git`;
@@ -108,7 +108,7 @@ describe.skipIf(!available,)("owned host fixtures", () => {
 			delete entry.daemon;
 			const deleted = await host(entry, "delete",);
 			if (deleted.code) throw new Error(deleted.stderr,);
-			expect(await lstat(entry.path,).catch(() => null),).toBeNull();
+			expect(await lstat(entry.path,).catch(() => null,),).toBeNull();
 			expect((await command(["git", "ls-remote", url,],)).code,).not.toBe(0,);
 		},);
 	}, 30000,);
@@ -146,7 +146,7 @@ describe.skipIf(!available,)("owned host fixtures", () => {
 				.toBe(0,);
 			const started = await host(entry, "start", [repo,],);
 			if (started.code) throw new Error(started.stderr,);
-			const line = started.stdout.split("\n",).find(row => row.startsWith("HOST_RESULT=",))!;
+			const line = started.stdout.split("\n",).find(row => row.startsWith("HOST_RESULT=",),)!;
 			entry.daemon = JSON.parse(line.slice("HOST_RESULT=".length,),) as HostDaemon;
 			const url = `http://127.0.0.1:${entry.daemon.port}/fixture.git`;
 			const work = `${entry.path}/work`;
@@ -201,15 +201,15 @@ async function readSse(url: string, want: number,) {
 		while ((split = text.indexOf("\n\n", consumed,)) >= 0) {
 			const block = text.slice(consumed, split,);
 			consumed = split + 2;
-			if (block.split("\n",).some(line => line.startsWith(":",))) heartbeat = true;
+			if (block.split("\n",).some(line => line.startsWith(":",),)) heartbeat = true;
 			const data = block.split("\n",)
-				.filter(line => line.startsWith("data: ",))
-				.map(line => line.slice("data: ".length,))
+				.filter(line => line.startsWith("data: ",),)
+				.map(line => line.slice("data: ".length,),)
 				.join("\n",);
 			if (data) records.push(JSON.parse(data,) as SseRecord,);
 		}
 	}
-	await reader.cancel().catch(() => undefined);
+	await reader.cancel().catch(() => undefined,);
 	return { records, heartbeat, };
 }
 
@@ -220,7 +220,7 @@ describe.skipIf(!sseAvailable,)("owned SSE host fixtures", () => {
 			await fixture(async entry => {
 				const started = await host(entry, "start", [], "sse",);
 				if (started.code) throw new Error(started.stderr,);
-				const line = started.stdout.split("\n",).find(row => row.startsWith("HOST_RESULT=",))!;
+				const line = started.stdout.split("\n",).find(row => row.startsWith("HOST_RESULT=",),)!;
 				const daemon = JSON.parse(line.slice("HOST_RESULT=".length,),) as HostDaemon;
 				expect(daemon.service,).toBe("sse",);
 				expect(daemon.repositories,).toEqual([],);
@@ -246,8 +246,8 @@ describe.skipIf(!sseAvailable,)("owned SSE host fixtures", () => {
 				delete entry.daemon;
 				const deleted = await host(entry, "delete",);
 				if (deleted.code) throw new Error(deleted.stderr,);
-				expect(await lstat(entry.path,).catch(() => null),).toBeNull();
-				expect(await lstat(`/proc/${daemon.pid}`,).catch(() => null),).toBeNull();
+				expect(await lstat(entry.path,).catch(() => null,),).toBeNull();
+				expect(await lstat(`/proc/${daemon.pid}`,).catch(() => null,),).toBeNull();
 				let refused = false;
 				try {
 					await fetch(`${base}/events`, { signal: AbortSignal.timeout(3000,), },);
@@ -263,15 +263,15 @@ describe.skipIf(!sseAvailable,)("owned SSE host fixtures", () => {
 	it("fails closed on forged service modes and unknown receipt services", async () => {
 		await fixture(async entry => {
 			const repo = `${entry.path}/forged.git`;
-			expect(() => hostDirectoryScript(entry, "start", [repo,], "sse",)).toThrow(/SSE/,);
-			expect(() => hostDirectoryScript(entry, "delete", [repo,], "sse",)).toThrow(/SSE/,);
+			expect(() => hostDirectoryScript(entry, "start", [repo,], "sse",),).toThrow(/SSE/,);
+			expect(() => hostDirectoryScript(entry, "delete", [repo,], "sse",),).toThrow(/SSE/,);
 			const unknownService: string = "git";
-			expect(() => hostDirectoryScript(entry, "start", [], unknownService as "sse",))
+			expect(() => hostDirectoryScript(entry, "start", [], unknownService as "sse",),)
 				.toThrow(/Unsupported/,);
-			expect(() => hostDirectoryScript(entry, "start", [],)).toThrow(/requires repositories/,);
+			expect(() => hostDirectoryScript(entry, "start", [],),).toThrow(/requires repositories/,);
 			const started = await host(entry, "start", [], "sse",);
 			if (started.code) throw new Error(started.stderr,);
-			const line = started.stdout.split("\n",).find(row => row.startsWith("HOST_RESULT=",))!;
+			const line = started.stdout.split("\n",).find(row => row.startsWith("HOST_RESULT=",),)!;
 			entry.daemon = JSON.parse(line.slice("HOST_RESULT=".length,),) as HostDaemon;
 			const receipt = `${entry.path}/.daemon.json`;
 			const original = await readFile(receipt, "utf8",);

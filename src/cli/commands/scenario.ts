@@ -220,7 +220,7 @@ export function scenarioTriggerFromFlags(
 		return raw;
 	}
 	const frequency = SCENARIO_TRIGGER_FREQUENCIES.find((candidate,) =>
-		candidate === flags["frequency"]
+		candidate === flags["frequency"],
 	);
 	if (frequency === undefined) {
 		throw new UsageError(
@@ -253,7 +253,7 @@ export function scenarioReporterFromFlags(
 	const raw = jsonInput(flags,);
 	const mailFlags = ["channel", "recipient", "subject", "message", "condition", "phase",];
 	if (raw !== undefined) {
-		const clash = mailFlags.find((name,) => flags[name] !== undefined);
+		const clash = mailFlags.find((name,) => flags[name] !== undefined,);
 		if (clash !== undefined) {
 			throw new UsageError(
 				`--${clash} builds a mail reporter; pass it or --data/--data-file/--stdin, not both. Usage: ${usage}`,
@@ -480,7 +480,7 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 			requireArgs(a, 1, commandUsage("scenario", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.scenarios.get(a[0], { projectKey: pk, },));
+				const current = await readIfExists(() => c.scenarios.get(a[0], { projectKey: pk, },),);
 				if (!current) return skipResult("scenario", a[0], "missing",);
 				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "scenario", id: a[0], current, };
@@ -506,7 +506,7 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 			};
 			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const list = await c.scenarios.list(pk,);
-				const existing = list.find((s,) => s.id === a[0]);
+				const existing = list.find((s,) => s.id === a[0],);
 				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("scenario", a[0], "exists", { current: existing, },);
 				}
@@ -806,7 +806,7 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 			const triggers = await c.scenarios.listItems("trigger", a[0], {
 				projectKey: f["project-key"] as string | undefined,
 			},);
-			return triggers.map((trigger, index,) => ({ index, ...asRecord(trigger,), }));
+			return triggers.map((trigger, index,) => ({ index, ...asRecord(trigger,), }),);
 		},
 		description:
 			"List the automatic triggers of a scenario with their 0-based index (the --index of trigger-remove). Triggers only fire while the scenario is active (scenario active-set).",
@@ -848,7 +848,7 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 			return reporters.map((reporter, index,) =>
 				f["full"] === true
 					? { index, ...asRecord(sanitizeMessagingChannelSecrets(reporter,),), }
-					: compactReporter(reporter, index,)
+					: compactReporter(reporter, index,),
 			);
 		},
 		description:
@@ -863,7 +863,7 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 			// a channel may be hidden from this key yet usable by the scenario's run-as user.
 			const channel = f["channel"];
 			if (typeof channel === "string") {
-				const known = (await c.messagingChannels.list()).map((entry,) => entry.id);
+				const known = (await c.messagingChannels.list()).map((entry,) => entry.id,);
 				if (!known.includes(channel,)) {
 					enqueueCliWarning({
 						code: "reporter_channel_unknown",

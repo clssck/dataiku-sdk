@@ -60,7 +60,7 @@ async function withServer(
 		await run(url, records,);
 	} finally {
 		await new Promise<void>((resolvePromise,) => {
-			server.close(() => resolvePromise());
+			server.close(() => resolvePromise(),);
 		},);
 	}
 }
@@ -896,7 +896,7 @@ describe("ProjectGitResource futures", () => {
 				},);
 				expect(result,).toEqual({ success: true, },);
 				expect(polls,).toBe(3,);
-				expect(records.every((record,) => record.url.endsWith("?peek=false",)),).toBe(true,);
+				expect(records.every((record,) => record.url.endsWith("?peek=false",),),).toBe(true,);
 			},
 		);
 	});

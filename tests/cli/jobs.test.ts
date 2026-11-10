@@ -379,7 +379,7 @@ describe("CLI job log diagnostics", () => {
 				earlyLinesDropped: true,
 				reason: "byte_cap",
 			},),);
-			expect(emitted.map((warning,) => warning["code"]),).toContain("no_error_lines",);
+			expect(emitted.map((warning,) => warning["code"],),).toContain("no_error_lines",);
 		},);
 	});
 });

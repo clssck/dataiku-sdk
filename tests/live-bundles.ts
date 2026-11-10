@@ -47,7 +47,7 @@ async function withOwnedProject(
 	if (errors.length) {
 		throw new AggregateError(
 			errors,
-			errors.map(e => e instanceof Error ? e.message : String(e,)).join("; ",),
+			errors.map(e => e instanceof Error ? e.message : String(e,),).join("; ",),
 		);
 	}
 }
@@ -72,7 +72,7 @@ export async function exerciseBundles(ctx: LiveContext,): Promise<void> {
 	], () =>
 		withOwnedProject(ctx, "bundle", async (projectKey,) => {
 			const bundleId = `${BUNDLE_ID_PREFIX}_i${String(ctx.iteration,)}`;
-			expect((await listExported(ctx, projectKey,)).some(b => b.bundleId === bundleId),).toBe(
+			expect((await listExported(ctx, projectKey,)).some(b => b.bundleId === bundleId,),).toBe(
 				false,
 			);
 			// The instance configuration forbids disabling Project Standards
@@ -94,7 +94,7 @@ export async function exerciseBundles(ctx: LiveContext,): Promise<void> {
 			// 400 "Bundle <id> already exists for project <key>"), so the
 			// official-client "create or overwrite" wording is wrong for this
 			// server; every export here targets a fresh id.
-			const first = (await listExported(ctx, projectKey,)).find(b => b.bundleId === bundleId);
+			const first = (await listExported(ctx, projectKey,)).find(b => b.bundleId === bundleId,);
 			expect(first,).toBeTruthy();
 			const details = await ctx.run<unknown>(["bundle", "get-exported", bundleId,], { projectKey, },);
 			expect(JSON.stringify(details,),).toContain(`"${bundleId}"`,);
@@ -119,7 +119,7 @@ export async function exerciseBundles(ctx: LiveContext,): Promise<void> {
 				bundleId,
 			], { projectKey, },);
 			expect(deleted.deleted,).toBe(true,);
-			expect((await listExported(ctx, projectKey,)).some(b => b.bundleId === bundleId),).toBe(
+			expect((await listExported(ctx, projectKey,)).some(b => b.bundleId === bundleId,),).toBe(
 				false,
 			);
 		},),);

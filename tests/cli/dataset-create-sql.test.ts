@@ -67,7 +67,7 @@ describe("dataset create over SQL tables and queries", () => {
 				"DB",
 			], { env: cliEnv(url,), },);
 
-			expect(recorded.map((entry,) => entry.call),).toEqual([
+			expect(recorded.map((entry,) => entry.call,),).toEqual([
 				"POST /public/api/projects/TEST/datasets/",
 				"POST /public/api/projects/TEST/datasets/sales/actions/testAndDetectSettings/externalSQL",
 				"PUT /public/api/projects/TEST/datasets/sales/schema",
@@ -122,7 +122,7 @@ describe("dataset create over SQL tables and queries", () => {
 					},
 					managed: false,
 				},);
-				expect(recorded.map((entry,) => entry.call).slice(1,),).toEqual([
+				expect(recorded.map((entry,) => entry.call,).slice(1,),).toEqual([
 					"POST /public/api/projects/TEST/datasets/open_orders/actions/testAndDetectSettings/externalSQL",
 					"PUT /public/api/projects/TEST/datasets/open_orders/schema",
 				],);
@@ -155,7 +155,7 @@ describe("dataset create over SQL tables and queries", () => {
 				"SELECT 1 AS a",
 			], { env: cliEnv(url,), },);
 
-			expect(recorded.map((entry,) => entry.call),).toEqual([
+			expect(recorded.map((entry,) => entry.call,),).toEqual([
 				"POST /public/api/projects/TEST/datasets/",
 				"POST /public/api/projects/TEST/datasets/sales/actions/testAndDetectSettings/externalSQL",
 			],);
@@ -193,7 +193,7 @@ describe("dataset create over SQL tables and queries", () => {
 				"SALES",
 			], { env: cliEnv(url,), },);
 			expect(
-				recorded.map((entry,) => entry.call).includes(
+				recorded.map((entry,) => entry.call,).includes(
 					"DELETE /public/api/projects/TEST/datasets/sales",
 				),
 			)

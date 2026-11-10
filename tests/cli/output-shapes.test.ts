@@ -55,7 +55,7 @@ describe("discovery outputShape is resource-scoped", () => {
 			const types = new Set(
 				record.type !== undefined
 					? [record.type,]
-					: (record.anyOf ?? record.oneOf ?? []).map((branch,) => branch.type),
+					: (record.anyOf ?? record.oneOf ?? []).map((branch,) => branch.type,),
 			);
 			const multiType = MULTI_TYPE_OUTPUTS[key] === true;
 			if ((!multiType && types.size !== 1) || !types.has(declared,)) {

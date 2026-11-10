@@ -96,7 +96,7 @@ export function measureAgentText(
 	// The native ordinary-text encoder does not reject reserved special-token
 	// spellings. Delegate those inputs to JS to preserve its validation contract.
 	const native = backend === "auto" && nativeCounter
-		&& !specialTokens.some(token => text.includes(token,));
+		&& !specialTokens.some(token => text.includes(token,),);
 	return {
 		encoding: AGENT_TOKEN_ENCODING,
 		tokens: native ? countNativeTokens(text,) : encoder.encode(text,).length,

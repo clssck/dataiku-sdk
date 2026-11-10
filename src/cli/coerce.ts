@@ -107,7 +107,7 @@ export function normalizeLineEndings(value: string,): string {
 
 export function splitCsvFlag(v: string | boolean | undefined,): string[] {
 	if (typeof v !== "string") return [];
-	return v.split(",",).map((item,) => item.trim()).filter((item,) => item.length > 0);
+	return v.split(",",).map((item,) => item.trim(),).filter((item,) => item.length > 0,);
 }
 
 export function recipeInputDatasetsFromFlags(
@@ -274,7 +274,7 @@ function selectSingleSource(
 	if (provided.length > 1) {
 		throw new UsageError(
 			`Conflicting input sources: ${
-				provided.map((name,) => `--${name}`).join(" or ",)
+				provided.map((name,) => `--${name}`,).join(" or ",)
 			}. Provide exactly one.`,
 			"conflicting_input_sources",
 			undefined,

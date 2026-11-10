@@ -265,7 +265,7 @@ export async function provisionCoreFixtures(ctx: LiveContext,): Promise<void> {
 	// Managed folder baseline + a marker file.
 	await ctx.run(["folder", "create", "--name", "dss_sdk_live_core_folder",],);
 	const folderList = await ctx.run<Array<{ id: string; name?: string; }>>(["folder", "list",],);
-	const folder = folderList.find((entry,) => entry.name === "dss_sdk_live_core_folder");
+	const folder = folderList.find((entry,) => entry.name === "dss_sdk_live_core_folder",);
 	if (!folder) throw new Error("Core folder was not created in the run project",);
 	ctx.fixtures.folderId = folder.id;
 	const markerPath = await ctx.writeFile("core/baseline-readme.txt", FOLDER_MARKER,);
@@ -371,7 +371,7 @@ export async function exerciseCoreFixtures(ctx: LiveContext,): Promise<void> {
 			"dataset",
 			"list",
 		],);
-		const listed = new Set(list.map((entry,) => entry.name),);
+		const listed = new Set(list.map((entry,) => entry.name,),);
 		for (const name of [...UPLOAD_DATASETS, ...MANAGED_RECIPE_OUTPUTS,]) {
 			expect(listed.has(name,),).toBe(true,);
 		}
@@ -384,7 +384,7 @@ export async function exerciseCoreFixtures(ctx: LiveContext,): Promise<void> {
 			"schema",
 			"customers",
 		],);
-		expect(schema.columns.map((column,) => column.name),).toEqual([
+		expect(schema.columns.map((column,) => column.name,),).toEqual([
 			"id",
 			"name",
 			"city",
@@ -399,9 +399,9 @@ export async function exerciseCoreFixtures(ctx: LiveContext,): Promise<void> {
 		}>(["dataset", "preview", "customers", "--max-rows", "100",],);
 		expect(preview.rowCount,).toBe(CORE_EXPECTED_ROWS.customers,);
 		expect(preview.truncated,).toBe(false,);
-		const names = preview.rows.map((row,) => row[1]);
+		const names = preview.rows.map((row,) => row[1],);
 		// Duplicates and Unicode survive a full round trip through DSS.
-		expect(names.filter((name,) => name === "Alice"),).toHaveLength(2,);
+		expect(names.filter((name,) => name === "Alice",),).toHaveLength(2,);
 		expect(names,).toContain("Chloé",);
 		expect(names,).toContain("北京 Man",);
 
@@ -544,7 +544,7 @@ export async function exerciseCoreFixtures(ctx: LiveContext,): Promise<void> {
 				"files",
 				uploadName,
 			],);
-			expect(caseFiles.map((file,) => file.filename),).toEqual([`case-${iter}.csv`,],);
+			expect(caseFiles.map((file,) => file.filename,),).toEqual([`case-${iter}.csv`,],);
 			await ctx.run(["dataset", "clear", uploadName,],);
 			expect(await ctx.run<unknown[]>(["dataset", "files", uploadName,],),).toEqual([],);
 		} finally {
@@ -580,7 +580,7 @@ export async function exerciseCoreFixtures(ctx: LiveContext,): Promise<void> {
 				"contents",
 				folderId,
 			],);
-			const entry = contents.find((item,) => item.path === remotePath);
+			const entry = contents.find((item,) => item.path === remotePath,);
 			expect(entry,).toBeDefined();
 			expect(entry?.size,).toBe(payload.byteLength,);
 
@@ -605,7 +605,7 @@ export async function exerciseCoreFixtures(ctx: LiveContext,): Promise<void> {
 		["recipe.list", "recipe.get", "recipe.validate-graph",],
 		async () => {
 			const recipes = await ctx.run<Array<{ name: string; type?: string; }>>(["recipe", "list",],);
-			const listed = new Set(recipes.map((entry,) => entry.name),);
+			const listed = new Set(recipes.map((entry,) => entry.name,),);
 			for (const [name,] of Object.entries(ctx.fixtures.recipes,)) {
 				expect(listed.has(name,),).toBe(true,);
 			}
@@ -674,9 +674,9 @@ export async function exerciseCoreFixtures(ctx: LiveContext,): Promise<void> {
 			"--max-rows",
 			"100",
 		],);
-		const orderIdIndex = joined.columns.findIndex((column,) => column.name === "order_id");
+		const orderIdIndex = joined.columns.findIndex((column,) => column.name === "order_id",);
 		expect(orderIdIndex,).toBeGreaterThanOrEqual(0,);
-		const o1Rows = joined.rows.filter((row,) => row[orderIdIndex] === "O1");
+		const o1Rows = joined.rows.filter((row,) => row[orderIdIndex] === "O1",);
 		expect(o1Rows,).toHaveLength(2,);
 
 		const prepared = await ctx.run<{ columns: Array<{ name: string; }>; rows: string[][]; }>([
@@ -686,7 +686,7 @@ export async function exerciseCoreFixtures(ctx: LiveContext,): Promise<void> {
 			"--max-rows",
 			"100",
 		],);
-		expect(prepared.columns.map((column,) => column.name),).toContain("line_total",);
+		expect(prepared.columns.map((column,) => column.name,),).toContain("line_total",);
 
 		const grouped = await ctx.run<
 			{ columns: Array<{ name: string; }>; rows: string[][]; rowCount: number; }
@@ -704,7 +704,7 @@ export async function exerciseCoreFixtures(ctx: LiveContext,): Promise<void> {
 			"schema",
 			"orders_enriched",
 		],);
-		expect(enriched.columns.map((column,) => column.name),).toContain("enriched_marker",);
+		expect(enriched.columns.map((column,) => column.name,),).toContain("enriched_marker",);
 	},);
 
 	// --- Case-owned recipe lifecycle (payload, graph edits, delete). ---------

@@ -158,7 +158,7 @@ describe("live sandbox ownership", () => {
 					["project", "delete", "USER_WORK", "--plan",],
 					ctx.manifest,
 					ctx.projectKey,
-				)
+				),
 			).toThrow();
 			expect(() =>
 				assertLiveCommandScope(
@@ -172,7 +172,7 @@ describe("live sandbox ownership", () => {
 					],
 					ctx.manifest,
 					ctx.projectKey,
-				)
+				),
 			).not.toThrow();
 		},);
 	});
@@ -287,7 +287,7 @@ describe("live sandbox ownership", () => {
 					new LiveRunContext(ctx.manifestPath, ctx.manifest, {
 						...ctx.credentials,
 						url: "http://127.0.0.1:1",
-					},)
+					},),
 				).toThrow();
 				await expect(ctx.cleanup(),).rejects.toThrow();
 				ctx.manifest.projects[0].state = "pending";
@@ -617,7 +617,7 @@ describe("live sandbox ownership", () => {
 				).rejects.toThrow();
 				// No plugin.json write was ever issued; the entry is never adopted
 				// into a deletable state despite the ledger recording it.
-				expect(requests.filter(r => r.includes("plugin.json",)),).toEqual([],);
+				expect(requests.filter(r => r.includes("plugin.json",),),).toEqual([],);
 				expect(ctx.manifest.globals[0].state,).toBe("unconfirmed",);
 				await expect(
 					ctx.deleteGlobal("plugin", ctx.manifest.globals[0].name,),
@@ -711,7 +711,7 @@ describe("live sandbox ownership", () => {
 			await fixture(url, async ctx => {
 				await expect(ctx.reservePluginCodeEnv("FOREIGN_PLUGIN",),).rejects.toThrow();
 				// No reservation was created for a foreign or pending parent.
-				expect(ctx.manifest.globals.filter(g => g.kind === "code-env"),).toEqual([],);
+				expect(ctx.manifest.globals.filter(g => g.kind === "code-env",),).toEqual([],);
 			},);
 		},);
 	});
@@ -741,7 +741,7 @@ describe("live sandbox ownership", () => {
 				},);
 				await expect(ctx.reservePluginCodeEnv("PLUG",),).rejects.toThrow();
 				// Only the parent remains; no code-env entry was pushed.
-				expect(ctx.manifest.globals.filter(g => g.kind === "code-env"),).toEqual([],);
+				expect(ctx.manifest.globals.filter(g => g.kind === "code-env",),).toEqual([],);
 			},);
 		},);
 	});
@@ -784,7 +784,7 @@ describe("live sandbox ownership", () => {
 				},);
 				const name = await ctx.reservePluginCodeEnv("PLUG",);
 				expect(name,).toBe("plugin_PLUG_managed",);
-				expect(ctx.manifest.globals.find(g => g.kind === "code-env")!.state,).toBe("pending",);
+				expect(ctx.manifest.globals.find(g => g.kind === "code-env",)!.state,).toBe("pending",);
 				const entry = await ctx.bindGlobal("code-env", name, `PYTHON/${name}`,);
 				// Strict identity: the echoed envName/envLang matched the
 				// reservation exactly; the plugin fixture asserts its deployment
@@ -1008,7 +1008,7 @@ describe("live sandbox ownership", () => {
 				await expect(
 					ctx.run(["project-deployer", "upload-bundle", archive,], { projectKey: ctx.projectKey, },),
 				).rejects.toThrow();
-				expect(requests.filter(r => r.startsWith("POST",) && r.includes("project-deployer",)),)
+				expect(requests.filter(r => r.startsWith("POST",) && r.includes("project-deployer",),),)
 					.toEqual([],);
 			},);
 		},);
@@ -1215,7 +1215,7 @@ describe("live sandbox ownership", () => {
 		// The selected case executed, the delete was attempted, and the failed
 		// cleanup surfaced as the case error instead of a silent pass.
 		expect(events.includes("check:infrastructure.group",),).toBe(true,);
-		expect(events.filter(e => e === "delete").length,).toBe(1,);
+		expect(events.filter(e => e === "delete",).length,).toBe(1,);
 		expect(errors.length,).toBe(1,);
 		expect(String(errors[0],),).toContain("teardown refused",);
 	});
@@ -1275,7 +1275,7 @@ describe("live sandbox ownership", () => {
 		// the resource preserved — never a delete mid-build.
 		expect(events.includes("record:CREATE_JOB_1",),).toBe(true,);
 		expect(events.includes("bind:code-env",),).toBe(true,);
-		const messages = errors.map(e => String(e,)).join(" | ",);
+		const messages = errors.map(e => String(e,),).join(" | ",);
 		expect(messages,).toContain("carried no jobId",);
 		expect(events.includes("delete",),).toBe(false,);
 	});
@@ -1324,11 +1324,11 @@ describe("live sandbox ownership", () => {
 		// Terminality was never confirmed (unknown ≠ terminal): the create-future
 		// failure must preserve the env instead of deleting it mid-build, and no
 		// bind may run against a half-built env.
-		const messages = errors.map(e => String(e,)).join(" | ",);
+		const messages = errors.map(e => String(e,),).join(" | ",);
 		expect(messages,).toContain("preserved for inspection",);
 		expect(events.includes("delete",),).toBe(false,);
 		expect(events.includes("bind:code-env",),).toBe(false,);
-		expect(events.filter(e => e === "future.abort").length,).toBe(1,);
+		expect(events.filter(e => e === "future.abort",).length,).toBe(1,);
 	});
 	it("permits a code-env reservation when the definition 500s and the authoritative list lacks it", async () => {
 		let requested = "";
@@ -1408,9 +1408,11 @@ describe("live owned host receipts", () => {
 				state: "bound",
 			};
 			for (
-				const changes of [{ path: "/tmp/unrelated", }, { nonce: [nonce,], }, {
-					projectKey: "FOREIGN",
-				},]
+				const changes of [
+					{ path: "/tmp/unrelated", },
+					{ nonce: [nonce,], },
+					{ projectKey: "FOREIGN", },
+				]
 			) {
 				await writeLiveJson(ctx.manifestPath, {
 					...ctx.manifest,
@@ -1550,14 +1552,14 @@ describe("live app-create reservation safety", () => {
 				const manifest = await loadLiveManifest(ctx.manifestPath,);
 				expect(manifest.cases.at(-1,)?.status,).toBe("blocked",);
 				expect(manifest.commands.at(-1,)?.exitCode,).not.toBe(0,);
-				expect(manifest.projects.some(project => project.key === targetKey),).toBe(false,);
-				expect(manifest.projects.find(project => project.key === otherKey)?.state,).toBe("pending",);
-				expect(manifest.projects.find(project => project.key === ctx.projectKey)?.state,).toBe(
+				expect(manifest.projects.some(project => project.key === targetKey,),).toBe(false,);
+				expect(manifest.projects.find(project => project.key === otherKey,)?.state,).toBe("pending",);
+				expect(manifest.projects.find(project => project.key === ctx.projectKey,)?.state,).toBe(
 					"bound",
 				);
-				expect(requests.filter(request => request.startsWith("DELETE",)),).toEqual([],);
+				expect(requests.filter(request => request.startsWith("DELETE",),),).toEqual([],);
 				// Exactly one target read: the CLI preflight probe, never a cleanup readback.
-				expect(requests.filter(request => request.includes(targetKey,)),).toEqual([
+				expect(requests.filter(request => request.includes(targetKey,),),).toEqual([
 					`GET /public/api/projects/${targetKey}/`,
 				],);
 			},);
@@ -1602,9 +1604,9 @@ describe("live app-create reservation safety", () => {
 					],),
 				).rejects.toThrow();
 				const manifest = await loadLiveManifest(ctx.manifestPath,);
-				expect(requests.some(request => request.startsWith("POST",)),).toBe(true,);
-				expect(manifest.projects.find(project => project.key === targetKey)?.state,).toBe("pending",);
-				expect(requests.filter(request => request.startsWith("DELETE",)),).toEqual([],);
+				expect(requests.some(request => request.startsWith("POST",),),).toBe(true,);
+				expect(manifest.projects.find(project => project.key === targetKey,)?.state,).toBe("pending",);
+				expect(requests.filter(request => request.startsWith("DELETE",),),).toEqual([],);
 			},);
 		},);
 	});
@@ -1642,8 +1644,8 @@ describe("live app-create reservation safety", () => {
 					],),
 				).rejects.toThrow();
 				const manifest = await loadLiveManifest(ctx.manifestPath,);
-				expect(manifest.projects.find(project => project.key === targetKey)?.state,).toBe("pending",);
-				expect(requests.filter(request => request.startsWith("DELETE",)),).toEqual([],);
+				expect(manifest.projects.find(project => project.key === targetKey,)?.state,).toBe("pending",);
+				expect(requests.filter(request => request.startsWith("DELETE",),),).toEqual([],);
 			},);
 		},);
 	});
@@ -1671,8 +1673,8 @@ describe("live app-create reservation safety", () => {
 				},);
 			}
 			const manifest = await loadLiveManifest(ctx.manifestPath,);
-			expect(manifest.cases.map(kase => kase.status),).toEqual(
-				samples.map(sample => sample.expected),
+			expect(manifest.cases.map(kase => kase.status,),).toEqual(
+				samples.map(sample => sample.expected,),
 			);
 		},);
 	});
@@ -1698,11 +1700,11 @@ describe("live app-create reservation safety", () => {
 				await ctx.save();
 				const next = await ctx.reserveProject("appinst",);
 				expect(next,).not.toBe(retired,);
-				expect(ctx.manifest.projects.filter(project => project.key === next),).toHaveLength(1,);
-				const retiredEntry = ctx.manifest.projects.find(project => project.key === retired);
+				expect(ctx.manifest.projects.filter(project => project.key === next,),).toHaveLength(1,);
+				const retiredEntry = ctx.manifest.projects.find(project => project.key === retired,);
 				expect(retiredEntry?.state,).toBe("deleted",);
 				expect(retiredEntry?.incarnation,).toBe(incarnation,);
-				expect(new Set(ctx.manifest.projects.map(project => project.key),).size,).toBe(
+				expect(new Set(ctx.manifest.projects.map(project => project.key,),).size,).toBe(
 					ctx.manifest.projects.length,
 				);
 				expect(() =>
@@ -1716,7 +1718,7 @@ describe("live app-create reservation safety", () => {
 						],
 						ctx.manifest,
 						ctx.projectKey,
-					)
+					),
 				).not.toThrow();
 			},);
 		},);
@@ -1791,7 +1793,7 @@ describe("live app delete bookkeeping", () => {
 		await withCliServer(appInstanceDeleteHandler(requests,), async url => {
 			await fixture(url, async ctx => {
 				const key = withOwnedAppInstance(ctx,);
-				const incarnation = ctx.manifest.projects.find(project => project.key === key)!.incarnation!;
+				const incarnation = ctx.manifest.projects.find(project => project.key === key,)!.incarnation!;
 				await ctx.run([
 					"app",
 					"delete-instance",
@@ -1802,20 +1804,20 @@ describe("live app delete bookkeeping", () => {
 				],);
 				// The verified receipt alone retires the owned entry and
 				// persists the retirement.
-				expect(ctx.manifest.projects.find(project => project.key === key)?.state,).toBe("deleted",);
+				expect(ctx.manifest.projects.find(project => project.key === key,)?.state,).toBe("deleted",);
 				expect(
-					(await loadLiveManifest(ctx.manifestPath,)).projects.find(project => project.key === key)
+					(await loadLiveManifest(ctx.manifestPath,)).projects.find(project => project.key === key,)
 						?.state,
 				).toBe("deleted",);
 				// Exactly one guarded DELETE, and no request of any kind after
 				// it: a later probe would only ever see the masked 403.
 				expect(
-					requests.filter(request => request.startsWith("DELETE",))
-						.map(request => request.split("?",)[0]),
+					requests.filter(request => request.startsWith("DELETE",),)
+						.map(request => request.split("?",)[0],),
 				).toEqual([
 					`DELETE /public/api/projects/${key}`,
 				],);
-				const deleteAt = requests.findIndex(request => request.startsWith("DELETE",));
+				const deleteAt = requests.findIndex(request => request.startsWith("DELETE",),);
 				expect(requests.slice(deleteAt + 1,),).toEqual([],);
 				// Cleanup after the booked deletion is a no-op, not a re-probe
 				// that would hit the masked 403.
@@ -1835,7 +1837,7 @@ describe("live app delete bookkeeping", () => {
 			async url => {
 				await fixture(url, async ctx => {
 					const key = withOwnedAppInstance(ctx,);
-					const incarnation = ctx.manifest.projects.find(project => project.key === key)!.incarnation!;
+					const incarnation = ctx.manifest.projects.find(project => project.key === key,)!.incarnation!;
 					await expect(
 						ctx.run([
 							"app",
@@ -1848,22 +1850,22 @@ describe("live app delete bookkeeping", () => {
 					).rejects.toThrow(LiveCommandError,);
 					// A failed delete is ambiguous, never a retirement: the
 					// receipt stays bound with its recorded incarnation.
-					expect(ctx.manifest.projects.find(project => project.key === key)?.state,).toBe("bound",);
-					expect(ctx.manifest.projects.find(project => project.key === key)?.incarnation,)
+					expect(ctx.manifest.projects.find(project => project.key === key,)?.state,).toBe("bound",);
+					expect(ctx.manifest.projects.find(project => project.key === key,)?.incarnation,)
 						.toBe(incarnation,);
 					expect(
-						(await loadLiveManifest(ctx.manifestPath,)).projects.find(project => project.key === key)
+						(await loadLiveManifest(ctx.manifestPath,)).projects.find(project => project.key === key,)
 							?.state,
 					).toBe("bound",);
-					const firstDeleteAt = requests.findIndex(request => request.startsWith("DELETE",));
+					const firstDeleteAt = requests.findIndex(request => request.startsWith("DELETE",),);
 					expect(firstDeleteAt,).toBeGreaterThanOrEqual(0,);
 					expect(requests.slice(firstDeleteAt + 1,),).toEqual([],);
 					// The target is still alive: the explicit delete verifies the
 					// live identity with a GET, then deletes the actual target.
 					await ctx.deleteProject(key,);
 					expect(
-						requests.filter(request => request.startsWith("DELETE",))
-							.map(request => request.split("?",)[0]),
+						requests.filter(request => request.startsWith("DELETE",),)
+							.map(request => request.split("?",)[0],),
 					).toEqual([
 						`DELETE /public/api/projects/${key}`,
 						`DELETE /public/api/projects/${key}`,
@@ -1873,10 +1875,10 @@ describe("live app delete bookkeeping", () => {
 					);
 					expect(
 						requests.slice(firstDeleteAt + 1, secondDeleteAt,).filter(request =>
-							request.startsWith(`GET /public/api/projects/${key}`,)
+							request.startsWith(`GET /public/api/projects/${key}`,),
 						),
 					).not.toEqual([],);
-					expect(ctx.manifest.projects.find(project => project.key === key)?.state,).toBe("deleted",);
+					expect(ctx.manifest.projects.find(project => project.key === key,)?.state,).toBe("deleted",);
 				},);
 			},
 		);
@@ -2062,10 +2064,10 @@ describe("live generated app creation", () => {
 				"--name",
 				"generated",
 			];
-			expect(() => assertLiveCommandScope(GENERATED_DIRECT, ctx.manifest, ctx.projectKey, grant,))
+			expect(() => assertLiveCommandScope(GENERATED_DIRECT, ctx.manifest, ctx.projectKey, grant,),)
 				.not.toThrow();
 			// Without the grant, the same shape is refused.
-			expect(() => assertLiveCommandScope(GENERATED_DIRECT, ctx.manifest, ctx.projectKey,))
+			expect(() => assertLiveCommandScope(GENERATED_DIRECT, ctx.manifest, ctx.projectKey,),)
 				.toThrow(/private one-shot authorization/,);
 			// The grant cannot ride a different app id...
 			expect(() =>
@@ -2074,10 +2076,10 @@ describe("live generated app creation", () => {
 					ctx.manifest,
 					ctx.projectKey,
 					grant,
-				)
+				),
 			).toThrow(/private one-shot authorization/,);
 			// ...nor a different creation mode.
-			expect(() => assertLiveCommandScope(successor, ctx.manifest, ctx.projectKey, grant,))
+			expect(() => assertLiveCommandScope(successor, ctx.manifest, ctx.projectKey, grant,),)
 				.toThrow(/private one-shot authorization/,);
 			// ...and it never retargets an explicit key onto the strict path.
 			expect(() =>
@@ -2092,7 +2094,7 @@ describe("live generated app creation", () => {
 					ctx.manifest,
 					ctx.projectKey,
 					grant,
-				)
+				),
 			).toThrow(/requires a reserved project target/,);
 		},);
 	});
@@ -2108,20 +2110,20 @@ describe("live generated app creation", () => {
 					requests,
 					onPost: async () => {
 						markerAtPost = (await loadLiveManifest(ctx.manifestPath,)).projects
-							.find(project => project.key === templateKey)?.pendingDependentCreation;
+							.find(project => project.key === templateKey,)?.pendingDependentCreation;
 					},
 				},);
 				await expect(ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,),)
 					.rejects.toThrow();
 				expect(markerAtPost,).toMatchObject({ appId: "template-app", mode: "direct", },);
 				expect(
-					ctx.manifest.projects.find(project => project.key === templateKey)
+					ctx.manifest.projects.find(project => project.key === templateKey,)
 						?.pendingDependentCreation?.outcome,
 				).toBe("indeterminate",);
 				// No future identity was adopted, and cleanup was never authorized.
-				expect(ctx.manifest.projects.filter(project => project.key.startsWith("APP_",)),)
+				expect(ctx.manifest.projects.filter(project => project.key.startsWith("APP_",),),)
 					.toEqual([],);
-				expect(requests.some(request => request.startsWith("DELETE",)),).toBe(false,);
+				expect(requests.some(request => request.startsWith("DELETE",),),).toBe(false,);
 				expect(await cleanupEntries(ctx,),).toEqual([],);
 				// The precursor itself stays until the marker is cleared.
 				await expect(ctx.deleteProject(templateKey,),).rejects.toThrow(
@@ -2129,7 +2131,7 @@ describe("live generated app creation", () => {
 				);
 				const manifest = await loadLiveManifest(ctx.manifestPath,);
 				expect(
-					manifest.projects.find(project => project.key === templateKey)
+					manifest.projects.find(project => project.key === templateKey,)
 						?.pendingDependentCreation?.appId,
 				).toBe("template-app",);
 			},);
@@ -2142,17 +2144,17 @@ describe("live generated app creation", () => {
 				const templateKey = await withAppPrecursor(ctx,);
 				const target = await ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,);
 				expect(target,).toMatch(/^APP_[0-9A-F]{32}$/,);
-				const child = ctx.manifest.projects.find(project => project.key === target);
+				const child = ctx.manifest.projects.find(project => project.key === target,);
 				expect(child?.state,).toBe("bound",);
 				const incarnation = child?.incarnation;
 				expect(incarnation,).toBe(projectIncarnationHash(target, details(target, 1,),),);
 				expect(
-					ctx.manifest.projects.find(project => project.key === templateKey)
+					ctx.manifest.projects.find(project => project.key === templateKey,)
 						?.pendingDependentCreation,
 				).toBeUndefined();
 				const entries = await cleanupEntries(ctx,);
 				const created = entries.filter(entry =>
-					entry.resource === "project" && entry.projectKey === target
+					entry.resource === "project" && entry.projectKey === target,
 				);
 				expect(created,).toHaveLength(1,);
 				expect(created[0]?.cleanup.argv,).toEqual([
@@ -2164,14 +2166,14 @@ describe("live generated app creation", () => {
 					"--expect-project-incarnation",
 					incarnation!,
 				],);
-				expect(requests.some(request => request.startsWith("DELETE",)),).toBe(false,);
+				expect(requests.some(request => request.startsWith("DELETE",),),).toBe(false,);
 				// The one-shot grant is consumed by that single execution.
 				await expect(ctx.run(GENERATED_DIRECT,),).rejects.toThrow(
 					/private one-shot authorization/,
 				);
 				// The bound generated key round-trips through manifest validation.
 				const manifest = await loadLiveManifest(ctx.manifestPath,);
-				expect(manifest.projects.find(project => project.key === target)?.state,).toBe("bound",);
+				expect(manifest.projects.find(project => project.key === target,)?.state,).toBe("bound",);
 			},);
 		},);
 	});
@@ -2185,14 +2187,14 @@ describe("live generated app creation", () => {
 					await expect(ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,),)
 						.rejects.toThrow(/does not match the receipt/,);
 					// Nothing was recorded: no child receipt, no cleanup authority.
-					expect(ctx.manifest.projects.filter(project => project.key.startsWith("APP_",)),)
+					expect(ctx.manifest.projects.filter(project => project.key.startsWith("APP_",),),)
 						.toEqual([],);
 					expect(
-						ctx.manifest.projects.find(project => project.key === templateKey)
+						ctx.manifest.projects.find(project => project.key === templateKey,)
 							?.pendingDependentCreation?.outcome,
 					).toBe("indeterminate",);
 					expect(await cleanupEntries(ctx,),).toEqual([],);
-					expect(requests.some(request => request.startsWith("DELETE",)),).toBe(false,);
+					expect(requests.some(request => request.startsWith("DELETE",),),).toBe(false,);
 				},);
 			},
 		);
@@ -2210,7 +2212,7 @@ describe("live generated app creation", () => {
 			});
 			const write = (projects: Array<Record<string, unknown>>,) =>
 				writeLiveJson(ctx.manifestPath, { ...ctx.manifest, projects, },);
-			const anchor = ctx.manifest.projects.map(project => ({ ...project, }));
+			const anchor = ctx.manifest.projects.map(project => ({ ...project, }),);
 			// A foreign APP_ key with a valid shape and incarnation but no
 			// receipt-derived origin is rejected outright.
 			await write([...anchor, child(generated("A",),),],);
@@ -2250,7 +2252,7 @@ describe("live generated app creation", () => {
 				child(successor, { generatedFrom: instance, },),
 			],);
 			const manifest = await loadLiveManifest(ctx.manifestPath,);
-			expect(manifest.projects.find(project => project.key === successor)?.generatedFrom,).toBe(
+			expect(manifest.projects.find(project => project.key === successor,)?.generatedFrom,).toBe(
 				instance,
 			);
 			// A forward reference to a project validated later in the same
@@ -2275,7 +2277,7 @@ describe("live generated app creation", () => {
 					await expect(ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,),)
 						.rejects.toThrow(/requires an APP_TEMPLATE precursor/,);
 					expect(
-						ctx.manifest.projects.find(project => project.key === templateKey)
+						ctx.manifest.projects.find(project => project.key === templateKey,)
 							?.pendingDependentCreation,
 					).toBeUndefined();
 				},);
@@ -2289,7 +2291,7 @@ describe("live generated app creation", () => {
 					await expect(ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,),)
 						.rejects.toThrow(/does not match the precursor manifest id/,);
 					expect(
-						ctx.manifest.projects.find(project => project.key === templateKey)
+						ctx.manifest.projects.find(project => project.key === templateKey,)
 							?.pendingDependentCreation,
 					).toBeUndefined();
 				},);
@@ -2310,7 +2312,7 @@ describe("live generated app creation", () => {
 						// Read the persisted manifest while the POST is in
 						// flight: the in-flight marker must already be on disk.
 						markerAtPost = (await loadLiveManifest(ctx.manifestPath,)).projects
-							.find(project => project.key === templateKey)?.pendingDependentCreation;
+							.find(project => project.key === templateKey,)?.pendingDependentCreation;
 					},
 				},);
 				await expect(ctx.runGeneratedAppCreation(GENERATED_DIRECT, templateKey,),)
@@ -2319,16 +2321,16 @@ describe("live generated app creation", () => {
 				// DSS refused the request itself: no project exists, so the
 				// precursor is clean again and nothing was adopted.
 				expect(
-					ctx.manifest.projects.find(project => project.key === templateKey)
+					ctx.manifest.projects.find(project => project.key === templateKey,)
 						?.pendingDependentCreation,
 				).toBeUndefined();
-				expect(ctx.manifest.projects.filter(project => project.key.startsWith("APP_",)),)
+				expect(ctx.manifest.projects.filter(project => project.key.startsWith("APP_",),),)
 					.toEqual([],);
 				expect(await cleanupEntries(ctx,),).toEqual([],);
-				expect(requests.some(request => request.startsWith("DELETE",)),).toBe(false,);
+				expect(requests.some(request => request.startsWith("DELETE",),),).toBe(false,);
 				const manifest = await loadLiveManifest(ctx.manifestPath,);
 				expect(
-					manifest.projects.find(project => project.key === templateKey)
+					manifest.projects.find(project => project.key === templateKey,)
 						?.pendingDependentCreation,
 				).toBeUndefined();
 			},);
@@ -2359,9 +2361,9 @@ describe("live generated app creation", () => {
 				const target = await ctx.runGeneratedAppCreation(argv, templateKey,);
 				expect(retargeted,).toBe(true,);
 				expect(target,).toMatch(/^APP_[0-9A-F]{32}$/,);
-				expect(ctx.manifest.projects.find(project => project.key === target)?.state,).toBe("bound",);
+				expect(ctx.manifest.projects.find(project => project.key === target,)?.state,).toBe("bound",);
 				expect(requests,).toContain("POST /public/api/apps/template-app/instances",);
-				expect(requests.some(request => request.includes("other-app",)),).toBe(false,);
+				expect(requests.some(request => request.includes("other-app",),),).toBe(false,);
 			},);
 		},);
 	});

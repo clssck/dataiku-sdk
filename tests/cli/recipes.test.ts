@@ -183,8 +183,8 @@ describe("recipe create prepare flags and naming", () => {
 		const plan = JSON.parse(stdout,) as {
 			requests: Array<{ payloadEdits?: { steps?: Array<{ type: string; }>; }; }>;
 		};
-		const steps = plan.requests.find((request,) => request.payloadEdits)?.payloadEdits?.steps ?? [];
-		return { steps: steps.map((step,) => step.type), stderr, };
+		const steps = plan.requests.find((request,) => request.payloadEdits,)?.payloadEdits?.steps ?? [];
+		return { steps: steps.map((step,) => step.type,), stderr, };
 	}
 
 	it("warns on --plan when a --formula after --rename names the renamed-away column", async () => {
@@ -211,7 +211,7 @@ describe("recipe create prepare flags and naming", () => {
 				"TEST",
 			], { env: cliEnv(url,), },);
 			const event = JSON.parse(stderr,) as { warnings: Array<Record<string, unknown>>; };
-			expect(event.warnings.map((warning,) => [warning.code, warning.flag,]),).toEqual([
+			expect(event.warnings.map((warning,) => [warning.code, warning.flag,],),).toEqual([
 				["recipe_formula_uses_renamed_column", "--filter",],
 			],);
 		},);
@@ -620,7 +620,7 @@ describe("recipe diff and local file validation", () => {
 });
 
 const columns = (names: string[],) => ({
-	columns: names.map((name,) => ({ name, type: "string", })),
+	columns: names.map((name,) => ({ name, type: "string", }),),
 });
 
 const payloadStdout = async (
@@ -1076,7 +1076,7 @@ describe("CLI recipe get-payload and set-payload", () => {
 		expect(requests,).toContain("GET /public/api/projects/TEST/managedfolders/",);
 		const jobRequests = requests.filter((request,) =>
 			request.startsWith("POST /public/api/projects/TEST/jobs/",)
-			|| request.startsWith("GET /public/api/projects/TEST/jobs/job-folder",)
+			|| request.startsWith("GET /public/api/projects/TEST/jobs/job-folder",),
 		);
 		expect(jobRequests,).toEqual([
 			"POST /public/api/projects/TEST/jobs/",
@@ -1258,7 +1258,7 @@ describe("recipe set-payload backup hardening", () => {
 		try {
 			const backupPath = join(baseDir, "backup.json",);
 			writeRecipeBackup(backupPath, "first",);
-			expect(() => writeRecipeBackup(backupPath, "second",)).toThrow(/already exists/,);
+			expect(() => writeRecipeBackup(backupPath, "second",),).toThrow(/already exists/,);
 			expect(readFileSync(backupPath, "utf-8",),).toBe("first",);
 			if (process.platform !== "win32") expect(statSync(backupPath,).mode & 0o777,).toBe(0o600,);
 		} finally {
@@ -1273,7 +1273,7 @@ describe("recipe set-payload backup hardening", () => {
 			writeFileSync(target, "original", "utf-8",);
 			const backupPath = join(baseDir, "backup.json",);
 			symlinkSync(target, backupPath,);
-			expect(() => writeRecipeBackup(backupPath, "second",)).toThrow(/already exists/,);
+			expect(() => writeRecipeBackup(backupPath, "second",),).toThrow(/already exists/,);
 			expect(readFileSync(target, "utf-8",),).toBe("original",);
 		} finally {
 			rmSync(baseDir, { recursive: true, force: true, },);
@@ -1286,7 +1286,7 @@ describe("recipe set-payload backup hardening", () => {
 			const realDir = join(baseDir, "real",);
 			mkdirSync(realDir,);
 			symlinkSync(realDir, join(baseDir, "link",),);
-			expect(() => ensureRecipeBackupDir(join(baseDir, "link", "nested",),)).toThrow(
+			expect(() => ensureRecipeBackupDir(join(baseDir, "link", "nested",),),).toThrow(
 				/symlink/,
 			);
 		} finally {
@@ -1305,13 +1305,13 @@ describe("recipe set-payload backup hardening", () => {
 		process.env.TMPDIR = linkedTmp;
 		try {
 			const backupDir = join(linkedTmp, "nested", ".dss-backups", "recipes",);
-			expect(() => ensureRecipeBackupDir(backupDir,)).not.toThrow();
+			expect(() => ensureRecipeBackupDir(backupDir,),).not.toThrow();
 			expect(lstatSync(join(realTmp, "nested", ".dss-backups", "recipes",),).isDirectory(),).toBe(
 				true,
 			);
 
 			symlinkSync(join(realTmp, "nested",), join(realTmp, "planted",),);
-			expect(() => ensureRecipeBackupDir(join(linkedTmp, "planted", "recipes",),)).toThrow(
+			expect(() => ensureRecipeBackupDir(join(linkedTmp, "planted", "recipes",),),).toThrow(
 				/symlink/,
 			);
 		} finally {
@@ -1323,6 +1323,6 @@ describe("recipe set-payload backup hardening", () => {
 	});
 
 	it("ensureRecipeBackupDir refuses the filesystem root as backup directory", () => {
-		expect(() => ensureRecipeBackupDir("/",)).toThrow(/filesystem root/,);
+		expect(() => ensureRecipeBackupDir("/",),).toThrow(/filesystem root/,);
 	});
 });

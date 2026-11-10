@@ -47,6 +47,6 @@ export function validateGitReferencePath(path: string,): string {
 export function encodeGitReferencePath(path: string,): string {
 	return validateGitReferencePath(path,)
 		.split("/",)
-		.map((segment,) => encodeURIComponent(segment,))
+		.map((segment,) => encodeURIComponent(segment,),)
 		.join("/",);
 }

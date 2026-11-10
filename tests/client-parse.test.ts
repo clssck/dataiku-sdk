@@ -80,7 +80,7 @@ describe("DataikuClient transport retries", () => {
 		},);
 		const refused = new DataikuClient({ url: closedUrl, apiKey: "test", },);
 		const startedAt = Date.now();
-		const error = await refused.projects.list().catch((caught: unknown,) => caught);
+		const error = await refused.projects.list().catch((caught: unknown,) => caught,);
 		expect(Date.now() - startedAt,).toBeLessThan(1_000,);
 		expect(error,).toMatchObject({ status: 0, category: "validation", retryable: false, },);
 		expect(error,).toMatchObject({ retry: { attempts: 1, retries: 0, }, },);
@@ -158,7 +158,7 @@ describe("DataikuClient constructor configuration", () => {
 			DATAIKU_URL: undefined,
 			DATAIKU_API_KEY: undefined,
 		}, () => {
-			expect(() => new DataikuClient()).toThrow(
+			expect(() => new DataikuClient(),).toThrow(
 				"Dataiku URL and API key are required: pass {url, apiKey} or set DATAIKU_URL/DATAIKU_API_KEY",
 			);
 		},);

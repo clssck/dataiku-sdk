@@ -24,7 +24,7 @@ async function withServer(run: (client: DataikuClient,) => Promise<void>,): Prom
 			},);
 			res.setHeader("Content-Type", "application/json",);
 			res.end(req.url?.includes("/models/",) ? '[{"runId":"r1","artifactPath":"model"}]' : "{}",);
-		})()
+		})(),
 	);
 	const listening = Promise.withResolvers<void>();
 	server.listen(0, "127.0.0.1", () => listening.resolve(),);
@@ -41,7 +41,7 @@ async function withServer(run: (client: DataikuClient,) => Promise<void>,): Prom
 		);
 	} finally {
 		const closed = Promise.withResolvers<void>();
-		server.close(() => closed.resolve());
+		server.close(() => closed.resolve(),);
 		await closed.promise;
 	}
 	return seen;

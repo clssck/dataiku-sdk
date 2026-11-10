@@ -48,7 +48,7 @@ export const insightCommands: Record<string, CommandMeta> = withUsage("insight",
 			const pk = f["project-key"] as string | undefined;
 			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const existing = name
-					? (await c.insights.list(pk,)).find((insight,) => insight.name === name)
+					? (await c.insights.list(pk,)).find((insight,) => insight.name === name,)
 					: undefined;
 				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("insight", existing.id, "exists", { current: existing, },);
@@ -150,7 +150,7 @@ export const insightCommands: Record<string, CommandMeta> = withUsage("insight",
 			requireArgs(a, 1, commandUsage("insight", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.insights.get(a[0], pk,));
+				const current = await readIfExists(() => c.insights.get(a[0], pk,),);
 				if (!current) return skipResult("insight", a[0], "missing",);
 				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "insight", id: a[0], current, };

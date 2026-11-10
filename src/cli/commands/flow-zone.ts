@@ -151,7 +151,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zon
 			if (f["summary"] !== true) return zones;
 			const objects = flowZoneMoveItems(f,);
 			const object = objects.length === 1 ? objects[0] : undefined;
-			return zones.map((zone,) => flowZoneSummary(zone, object,));
+			return zones.map((zone,) => flowZoneSummary(zone, object,),);
 		},
 		description: "List flow zones in a project, optionally as compact summaries.",
 		examples: ["dss flow-zone list", "dss flow-zone list --summary --object RECIPE:compute_orders",],
@@ -166,9 +166,9 @@ export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zon
 				return zones
 					.filter((zone,) =>
 						zone.id.toLowerCase().includes(normalized,)
-						|| zone.name.toLowerCase().includes(normalized,)
+						|| zone.name.toLowerCase().includes(normalized,),
 					)
-					.map((zone,) => flowZoneDetailSummary(zone,));
+					.map((zone,) => flowZoneDetailSummary(zone,),);
 			}
 			if (objects.length !== 1) {
 				throw new UsageError(
@@ -177,8 +177,8 @@ export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zon
 			}
 			const object = objects[0];
 			return zones
-				.filter((zone,) => flowZoneContains(zone, object,))
-				.map((zone,) => flowZoneSummary(zone, object,));
+				.filter((zone,) => flowZoneContains(zone, object,),)
+				.map((zone,) => flowZoneSummary(zone, object,),);
 		},
 		description: "Find flow zones by name/id or by contained flow object.",
 		examples: [
@@ -206,7 +206,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zon
 			};
 			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const list = await c.flowZones.list(pk,);
-				const existing = list.find((zone,) => zone.name === name);
+				const existing = list.find((zone,) => zone.name === name,);
 				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("flow-zone", existing.id, "exists", { current: existing, },);
 				}
@@ -259,7 +259,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zon
 			const zoneId = flowZoneId(a[0],);
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() =>
-					c.flowZones.get(zoneId, f["project-key"] as string | undefined,)
+					c.flowZones.get(zoneId, f["project-key"] as string | undefined,),
 				);
 				if (!current) return skipResult("flow-zone", zoneId, "missing",);
 				if (executionMode(f,).dryRun) {
@@ -352,9 +352,9 @@ export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zon
 			const targets = plan.zones.map((zonePlan,) => ({
 				zonePlan,
 				existing: findFlowZoneForPlan(zones, zonePlan,),
-			}));
+			}),);
 			const planned = targets.map(({ zonePlan, existing, },) =>
-				flowZoneOrganizeStep(zonePlan, existing, sync, plannedItemKeys,)
+				flowZoneOrganizeStep(zonePlan, existing, sync, plannedItemKeys,),
 			);
 			const repositions = targets.flatMap(({ zonePlan, existing, },) => {
 				const requestedPosition = existing && flowZoneRepositionTarget(zonePlan, existing,);
@@ -375,7 +375,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zon
 				: undefined;
 			if (validation) throwFlowZoneValidationError(validation,);
 			const writesPositions = repositions.length > 0
-				|| targets.some(({ zonePlan, existing, },) => !existing && zonePlan.position !== undefined);
+				|| targets.some(({ zonePlan, existing, },) => !existing && zonePlan.position !== undefined,);
 			const positioning = writesPositions ? await readManualPositioning(c, pk,) : undefined;
 			if (positioning?.error !== undefined) {
 				enqueueCliWarning({
@@ -481,7 +481,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zon
 							zone = await c.flowZones.update(replacedId, { name, color, projectKey: pk, },);
 							updated.push(zone,);
 						}
-						const index = currentZones.findIndex((candidate,) => candidate.id === replacedId);
+						const index = currentZones.findIndex((candidate,) => candidate.id === replacedId,);
 						if (index !== -1) currentZones[index] = zone;
 					}
 
@@ -528,11 +528,11 @@ export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zon
 					"Items were organized; inspect the zones with dss flow-zone list.",
 					{
 						positionsNotApplied,
-						created: created.map((zone,) => zone.id),
+						created: created.map((zone,) => zone.id,),
 						recreated: recreated.map(({ replacedZoneId, zone, },) => ({
 							replacedZoneId,
 							zoneId: zone.id,
-						})),
+						}),),
 					},
 				);
 			}

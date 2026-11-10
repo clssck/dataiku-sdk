@@ -42,7 +42,7 @@ export const SQL_DATASET_TYPES = [
 
 export function isSqlDatasetType(dsType: string,): boolean {
 	const lower = dsType.toLowerCase();
-	return SQL_DATASET_TYPES.some((type,) => type.toLowerCase() === lower);
+	return SQL_DATASET_TYPES.some((type,) => type.toLowerCase() === lower,);
 }
 
 /**

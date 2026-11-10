@@ -110,7 +110,7 @@ async function writeKeepingDerivedOutputSchemas(
 	}
 	const derivedOutputs = await c.recipes.computeSchemaUpdates(recipeName, projectKey,).then(
 		(before,) =>
-			before.computables.filter((computable,) => !schemaUpdateIsPending(computable,)).map(
+			before.computables.filter((computable,) => !schemaUpdateIsPending(computable,),).map(
 				schemaUpdateComputableId,
 			),
 		// Unknown before-state: only empty schemas are safe to fill.
@@ -407,7 +407,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
 				const current = await readIfExists(() =>
-					c.recipes.get(a[0], { projectKey: pk, includePayload: true, },)
+					c.recipes.get(a[0], { projectKey: pk, includePayload: true, },),
 				);
 				if (!current) return skipResult("recipe", a[0], "missing",);
 				if (executionMode(f,).dryRun) {
@@ -460,7 +460,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 				: undefined;
 			if ((f["if-not-exists"] === true || executionMode(f,).dryRun) && name) {
 				const list = await c.recipes.list(pk,);
-				const existing = list.find((r,) => r.name === name);
+				const existing = list.find((r,) => r.name === name,);
 				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("recipe", name, "exists", { current: existing, },);
 				}
@@ -594,7 +594,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 					string,
 					{ items?: Array<{ ref?: string; type?: string; }>; }
 				>,
-			).flatMap((role,) => role.items ?? []).filter((item,) => typeof item.ref === "string");
+			).flatMap((role,) => role.items ?? [],).filter((item,) => typeof item.ref === "string",);
 			const plannedOutputRewrites = { ...outputRewrites, };
 			if (opts.outputDataset !== undefined && outputItems.length === 1) {
 				plannedOutputRewrites[outputItems[0].ref!] = opts.outputDataset;
@@ -715,7 +715,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 			const pk = f["project-key"] as string | undefined;
 			const { recipe, } = await c.recipes.get(a[0], { projectKey: pk, },);
 			const items = recipeRoleInputItems(recipe, role,);
-			const present = items.some((item,) => recipeInputItemRef(item,) === a[1]);
+			const present = items.some((item,) => recipeInputItemRef(item,) === a[1],);
 			if (present) {
 				if (f["if-not-exists"] === true) {
 					return skipResult("recipe", a[0], "exists", { dataset: a[1], role, },);
@@ -726,7 +726,9 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 				);
 			}
 			const nextItems = [...items, { ref: a[1], deps: [], },];
-			const inputs = nextItems.map(recipeInputItemRef,).filter((ref,): ref is string => Boolean(ref,));
+			const inputs = nextItems.map(recipeInputItemRef,).filter((ref,): ref is string =>
+				Boolean(ref,),
+			);
 			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
@@ -763,7 +765,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 			const pk = f["project-key"] as string | undefined;
 			const { recipe, } = await c.recipes.get(a[0], { projectKey: pk, },);
 			const items = recipeRoleInputItems(recipe, role,);
-			const present = items.some((item,) => recipeInputItemRef(item,) === a[1]);
+			const present = items.some((item,) => recipeInputItemRef(item,) === a[1],);
 			if (!present) {
 				if (f["if-exists"] === true) {
 					return skipResult("recipe", a[0], "missing", { dataset: a[1], role, },);
@@ -773,8 +775,10 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 					"validation_failed",
 				);
 			}
-			const nextItems = items.filter((item,) => recipeInputItemRef(item,) !== a[1]);
-			const inputs = nextItems.map(recipeInputItemRef,).filter((ref,): ref is string => Boolean(ref,));
+			const nextItems = items.filter((item,) => recipeInputItemRef(item,) !== a[1],);
+			const inputs = nextItems.map(recipeInputItemRef,).filter((ref,): ref is string =>
+				Boolean(ref,),
+			);
 			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
@@ -1002,8 +1006,8 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 					actual: stableHash(recipeCodeEnv(current.recipe,),),
 					unchanged: backup.codeEnvHash === stableHash(recipeCodeEnv(current.recipe,),),
 				},
-			].filter((check,) => typeof check.expected === "string");
-			const failures = checks.filter((check,) => !check.unchanged);
+			].filter((check,) => typeof check.expected === "string",);
+			const failures = checks.filter((check,) => !check.unchanged,);
 			return {
 				unchanged: failures.length === 0,
 				resource: "recipe",

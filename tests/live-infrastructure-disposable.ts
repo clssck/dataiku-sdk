@@ -99,7 +99,7 @@ async function withOwnedGlobal<T,>(
 	if (errors.length) {
 		throw new AggregateError(
 			errors,
-			errors.map(e => e instanceof Error ? e.message : String(e,)).join("; ",),
+			errors.map(e => e instanceof Error ? e.message : String(e,),).join("; ",),
 		);
 	}
 	if (!succeeded) throw new Error("unreachable: withOwnedGlobal body did not produce a result",);
@@ -151,10 +151,10 @@ class UnsettledOwnedFutureError extends Error {
  * owning resource must never proceed on an unconfirmed future.
  */
 async function settleOwnedFuture(ctx: LiveContext, futureId: string,): Promise<boolean> {
-	const first = await ctx.run<FutureState>(["future", "peek", futureId,],).catch(() => undefined);
+	const first = await ctx.run<FutureState>(["future", "peek", futureId,],).catch(() => undefined,);
 	if (isTerminalFutureState(first,)) return true;
-	await ctx.run(["future", "abort", futureId,],).catch(() => undefined);
-	const second = await ctx.run<FutureState>(["future", "peek", futureId,],).catch(() => undefined);
+	await ctx.run(["future", "abort", futureId,],).catch(() => undefined,);
+	const second = await ctx.run<FutureState>(["future", "peek", futureId,],).catch(() => undefined,);
 	return isTerminalFutureState(second,);
 }
 
@@ -281,10 +281,10 @@ function listExists(list: unknown, id: string,): boolean {
 			if (typeof item === "string") return item === id || item === needle;
 			const record = asRecord(item,);
 			return record !== undefined
-				&& Object.values(record,).some(v => v === id || v === needle);
+				&& Object.values(record,).some(v => v === id || v === needle,);
 		},);
 	}
-	return Object.keys(asRecord(list,) ?? {},).some(key => key === id || key === needle);
+	return Object.keys(asRecord(list,) ?? {},).some(key => key === id || key === needle,);
 }
 
 async function assertListed(ctx: LiveContext, kind: string, id: string,): Promise<void> {
@@ -361,7 +361,7 @@ async function meaningLifecycle(ctx: LiveContext,): Promise<void> {
 	// an uncleanable owned global, so this case reuses the already-bound owned
 	// meaning from an earlier run for list/get/update readback, then reports
 	// the cleanup block with the exact evidence.
-	const bound = ctx.globals.find(global => global.kind === "meaning" && global.state === "bound");
+	const bound = ctx.globals.find(global => global.kind === "meaning" && global.state === "bound",);
 	if (bound === undefined) {
 		throw new LiveCapabilityError(
 			"no bound owned meaning is available and creating one would leak an uncleanable global: DSS exposes no public meaning deletion route (DELETE /meanings/{id} answers 405)",
@@ -416,7 +416,7 @@ async function workspaceLifecycle(ctx: LiveContext,): Promise<void> {
 			},),
 		],);
 		const objects = await ctx.run<Array<JsonRecord>>(["workspace", "list-objects", id,],);
-		if (!objects.some(object => asString(asRecord(object["htmlLink"],)?.["url"],))) {
+		if (!objects.some(object => asString(asRecord(object["htmlLink"],)?.["url"],),)) {
 			throw new Error("workspace add-object did not persist the html link",);
 		}
 		// Full GET/merge/PUT with a CHANGED documented field, then read-back:
@@ -445,13 +445,13 @@ async function workspaceLifecycle(ctx: LiveContext,): Promise<void> {
 		],);
 		const linkId = asString(
 			objectsBeforeRemoval.find(object =>
-				asString(asRecord(object["htmlLink"],)?.["url"],) === "https://example.com/live-lab"
+				asString(asRecord(object["htmlLink"],)?.["url"],) === "https://example.com/live-lab",
 			)?.["id"],
 		);
 		if (!linkId) throw new Error("workspace list-objects returned no id for the html link",);
 		await ctx.run(["workspace", "remove-object", id, linkId,],);
 		const objectsAfterRemoval = await ctx.run<Array<JsonRecord>>(["workspace", "list-objects", id,],);
-		if (objectsAfterRemoval.some(object => asString(object["id"],) === linkId)) {
+		if (objectsAfterRemoval.some(object => asString(object["id"],) === linkId,)) {
 			throw new Error("workspace remove-object left the html link in place",);
 		}
 	},);
@@ -493,7 +493,7 @@ async function dataCollectionLifecycle(ctx: LiveContext,): Promise<void> {
 			throw new Error("data-collection settings-set did not persist the changed description",);
 		}
 		const objects = await ctx.run<Array<JsonRecord>>(["data-collection", "list-objects", id,],);
-		if (dataset && !objects.some(object => asString(object["id"],) === dataset)) {
+		if (dataset && !objects.some(object => asString(object["id"],) === dataset,)) {
 			throw new Error("data-collection add-object did not persist the dataset reference",);
 		}
 		if (dataset) {
@@ -505,7 +505,7 @@ async function dataCollectionLifecycle(ctx: LiveContext,): Promise<void> {
 				dataset,
 			],);
 			const after = await ctx.run<Array<JsonRecord>>(["data-collection", "list-objects", id,],);
-			if (after.some(object => asString(object["id"],) === dataset)) {
+			if (after.some(object => asString(object["id"],) === dataset,)) {
 				throw new Error("data-collection remove-dataset did not remove the dataset reference",);
 			}
 		}
@@ -528,7 +528,7 @@ async function projectFolderLifecycle(ctx: LiveContext,): Promise<void> {
 		// root folder's childrenIds carrying the created id.
 		const rootAfterCreate = await ctx.run<JsonRecord>(["project-folder", "root",],);
 		const rootChildren = rootAfterCreate["childrenIds"];
-		if (!Array.isArray(rootChildren,) || !rootChildren.some(childId => childId === id)) {
+		if (!Array.isArray(rootChildren,) || !rootChildren.some(childId => childId === id,)) {
 			throw new Error(`project-folder ${id} missing from the root folder childrenIds`,);
 		}
 		ctx.fixtures.projectFolderId = id;
@@ -583,7 +583,7 @@ async function projectFolderLifecycle(ctx: LiveContext,): Promise<void> {
 			await ctx.run(["project-folder", "move", childId, id,],);
 			const parent = await ctx.run<JsonRecord>(["project-folder", "get", id,],);
 			const children = parent["childrenIds"];
-			if (!Array.isArray(children,) || !children.some(entryId => entryId === childId)) {
+			if (!Array.isArray(children,) || !children.some(entryId => entryId === childId,)) {
 				throw new Error("project-folder move did not list the child under its new parent",);
 			}
 		},);
@@ -891,10 +891,10 @@ export async function withOwnedCodeEnv<T,>(
 		// then delete that bound env. A missing env leaves the reservation
 		// pending (never deleted blind).
 		const failed = await ctx.bindGlobal("code-env", name, `${"PYTHON"}/${name}`,).catch(() =>
-			undefined
+			undefined,
 		);
 		if (failed !== undefined && failed.state === "bound") {
-			await ctx.deleteGlobal("code-env", failed.id!,).catch(() => undefined);
+			await ctx.deleteGlobal("code-env", failed.id!,).catch(() => undefined,);
 		}
 		throw waitError;
 	}
@@ -976,7 +976,7 @@ export async function withOwnedCodeEnv<T,>(
 			for (const spec of options.packages) {
 				const base = spec.split("=",)[0] ?? spec;
 				if (
-					!after.requestedPackages.some(line => line === spec || line.split("=",)[0] === base)
+					!after.requestedPackages.some(line => line === spec || line.split("=",)[0] === base,)
 				) {
 					throw new Error(
 						`code-env ${handle.envName} requested packages missing ${spec} after the build`,
@@ -1226,7 +1226,7 @@ async function projectFolderMoveProject(ctx: LiveContext,): Promise<void> {
 		const projectKeys = landed["projectKeys"];
 		if (
 			!Array.isArray(projectKeys,)
-			|| !projectKeys.some(key => key === project)
+			|| !projectKeys.some(key => key === project,)
 		) throw new Error(`move-project did not land ${project} in the destination folder`,);
 	} catch (error) {
 		bodyError = error;
@@ -1249,7 +1249,7 @@ async function projectFolderMoveProject(ctx: LiveContext,): Promise<void> {
 	if (errors.length) {
 		throw new AggregateError(
 			errors,
-			errors.map(e => e instanceof Error ? e.message : String(e,)).join("; ",),
+			errors.map(e => e instanceof Error ? e.message : String(e,),).join("; ",),
 		);
 	}
 }

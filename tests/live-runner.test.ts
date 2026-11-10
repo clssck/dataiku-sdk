@@ -45,7 +45,7 @@ function manifestWithProjects(
 			state,
 			...(state === "bound" ? { incarnation: "a".repeat(64,), } : {}),
 			createdAt: "2026-01-01T00:00:00.000Z",
-		})),
+		}),),
 		cases: [],
 		commands: [],
 		iteration: 1,
@@ -139,12 +139,12 @@ function detailsFor(key: string, name = key,) {
 }
 async function run(statuses: Record<string, number>, changed: string[] = [],) {
 	const keys = ["UNCHANGED", ...changed, ...Object.keys(statuses,),];
-	const before = Object.fromEntries(keys.map(key => [key, stableHash(detailsFor(key,),),]),);
+	const before = Object.fromEntries(keys.map(key => [key, stableHash(detailsFor(key,),),],),);
 	let report: Awaited<ReturnType<typeof verifyProjectIntegrity>> | undefined;
 	await withCliServer((req, res,) => {
 		const match = /\/public\/api\/projects\/([^/]+)\/?$/.exec(req.url ?? "",);
 		if (!match) {
-			sendJson(res, keys.map(projectKey => ({ projectKey, })),);
+			sendJson(res, keys.map(projectKey => ({ projectKey, }),),);
 			return;
 		}
 		const key = decodeURIComponent(match[1],);
@@ -211,12 +211,12 @@ describe("parseLiveSuiteArgs", () => {
 
 	it("defaults the profile to core and rejects unknown profiles", () => {
 		expect(parseLiveSuiteArgs(["status",],).profile,).toBe("core",);
-		expect(() => parseLiveSuiteArgs(["run", "--profile", "nope",],)).toThrow(/Unknown profile/,);
+		expect(() => parseLiveSuiteArgs(["run", "--profile", "nope",],),).toThrow(/Unknown profile/,);
 	});
 
 	it("requires exactly one verb", () => {
-		expect(() => parseLiveSuiteArgs([],)).toThrow(/verb is required/,);
-		expect(() => parseLiveSuiteArgs(["run", "clean",],)).toThrow(/Exactly one verb/,);
+		expect(() => parseLiveSuiteArgs([],),).toThrow(/verb is required/,);
+		expect(() => parseLiveSuiteArgs(["run", "clean",],),).toThrow(/Exactly one verb/,);
 	});
 
 	it("maps --help to a non-mutating status request", () => {
@@ -361,19 +361,19 @@ describe("readPointer", () => {
 
 describe("live selection preflight", () => {
 	it("does not expand an empty explicit selection into a full run", () => {
-		expect(() => parseLiveSuiteArgs(["all", "--case", " , ",],)).toThrow();
-		expect(() => parseLiveSuiteArgs(["run", "--case", "core.*", "--case", "",],)).toThrow();
+		expect(() => parseLiveSuiteArgs(["all", "--case", " , ",],),).toThrow();
+		expect(() => parseLiveSuiteArgs(["run", "--case", "core.*", "--case", "",],),).toThrow();
 		expect(parseLiveSuiteArgs(["all", "--case", "", "--help",],).help,).toBe(true,);
 	});
 	it("rejects unknown, setup-only and inactive-profile selections", () => {
 		for (const id of ["missing.*", "collab.setup.*", "ml.*",]) {
-			expect(() => parseLiveSuiteArgs(["all", "--case", id,],)).toThrow();
+			expect(() => parseLiveSuiteArgs(["all", "--case", id,],),).toThrow();
 		}
 		expect(parseLiveSuiteArgs(["run", "--profile", "ml", "--case", "ml.*",],).cases,).toEqual([
 			"ml.*",
 		],);
 		for (const verb of ["setup", "clean", "status",]) {
-			expect(() => parseLiveSuiteArgs([verb, "--case", "core.*",],)).toThrow();
+			expect(() => parseLiveSuiteArgs([verb, "--case", "core.*",],),).toThrow();
 		}
 	});
 	it("rejects invalid all selections before requests or state creation", async () => {
@@ -530,7 +530,7 @@ describe("graceful interruption", () => {
 							else child.kill("SIGINT",);
 							const code = await Promise.race([
 								child.exited,
-								Bun.sleep(30_000,).then(() => "timeout" as const),
+								Bun.sleep(30_000,).then(() => "timeout" as const,),
 							],);
 							expect(code, "the first signal must exit 130",).toBe(130,);
 							expect(await findInTree(dir, "lock",), "no stale lab lock may remain",).toBeUndefined();
@@ -560,7 +560,7 @@ describe("live root preflight", () => {
 			const result = await verifyLiveRoot(
 				new DataikuClient({ url, apiKey: "offline-key", retryMaxAttempts: 1, },),
 				manifestWithProjects([{ key: "LAB", state: "bound", },],),
-			).catch(error => error);
+			).catch(error => error,);
 			expect(result,).toBeInstanceOf(DataikuError,);
 			expect(result.status,).toBe(403,);
 		},);
@@ -587,7 +587,7 @@ describe("live root preflight", () => {
 				const result = await verifyLiveRoot(
 					new DataikuClient({ url, apiKey: "offline-key", retryMaxAttempts: 1, },),
 					manifestWithProjects([{ key: "LAB", state: "bound", },],),
-				).catch(error => error);
+				).catch(error => error,);
 				if (mode === "transport") expect(result,).toBeInstanceOf(DataikuError,);
 				else if (mode === "missing") expect(result.cause.status,).toBe(404,);
 				else {
@@ -646,7 +646,7 @@ describe("failed cleanup recovery", () => {
 					new Response(child.stderr,).text(),
 				],);
 				expect(await child.exited,).toBe(1,);
-				expect(methods.every(method => method === "GET"),).toBe(true,);
+				expect(methods.every(method => method === "GET",),).toBe(true,);
 				const report = JSON.parse(await fs.readFile(path.join(dir, "cleanup-report.json",), "utf8",),);
 				expect(report.cleanup.status,).toBe("failed",);
 				expect(report.integrity.verified,).toBe(false,);

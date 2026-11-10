@@ -156,7 +156,7 @@ const TRAVERSAL_PATHS = [
 describe("project library path validation", () => {
 	it("rejects traversal, empty, control, and ambiguous paths without any request", async () => {
 		for (const path of TRAVERSAL_PATHS) {
-			const { client, requests, } = recordingClient(() => undefined);
+			const { client, requests, } = recordingClient(() => undefined,);
 			const resource = new ProjectLibraryResource(client,);
 			expect(() => validateLibraryPath(path,), `validateLibraryPath(${JSON.stringify(path,)}`,)
 				.toThrow(
@@ -181,13 +181,13 @@ describe("project library path validation", () => {
 
 	it("rejects invalid rename names before any request", async () => {
 		for (const name of ["", ".", "..", "a/b", "a\\b", "a.", "a ", " a", "\u0001a", "  ",]) {
-			const { client, requests, } = recordingClient(() => undefined);
+			const { client, requests, } = recordingClient(() => undefined,);
 			const resource = new ProjectLibraryResource(client,);
 			await expect(resource.rename("python/old.py", name,),).rejects.toBeInstanceOf(
 				ClientValidationError,
 			);
 			expect(requests, `no request for rename target ${JSON.stringify(name,)}`,).toEqual([],);
-			expect(() => validateLibraryName(name,)).toThrow(ClientValidationError,);
+			expect(() => validateLibraryName(name,),).toThrow(ClientValidationError,);
 		}
 	});
 
@@ -199,8 +199,8 @@ describe("project library path validation", () => {
 	it("normalizes move destinations and rejects traversals", () => {
 		expect(validateLibraryDestinationPath("/",),).toBe("/",);
 		expect(validateLibraryDestinationPath("python/mylib",),).toBe("/python/mylib",);
-		expect(() => validateLibraryDestinationPath("../escape",)).toThrow(ClientValidationError,);
-		expect(() => validateLibraryDestinationPath("a/..",)).toThrow(ClientValidationError,);
+		expect(() => validateLibraryDestinationPath("../escape",),).toThrow(ClientValidationError,);
+		expect(() => validateLibraryDestinationPath("a/..",),).toThrow(ClientValidationError,);
 	});
 });
 
@@ -279,7 +279,7 @@ describe("ProjectLibraryResource create overwrite guard", () => {
 			await expect(resource.addFile("python/exists.py",),).rejects.toThrow(/already exists/,);
 		},);
 
-		expect(requests.map((request,) => request.method),).toEqual(["GET",],);
+		expect(requests.map((request,) => request.method,),).toEqual(["GET",],);
 		expect(requests[0].url,).toBe(
 			"/public/api/projects/TEST/libraries/contents/python/exists.py",
 		);
@@ -321,9 +321,9 @@ describe("ProjectLibraryResource create overwrite guard", () => {
 			await expect(resource.hasLibraryItem("python/absent.py",),).resolves.toBe(false,);
 		},);
 
-		expect(requests.map((request,) => request.method),).toEqual(["GET", "GET", "GET",],);
+		expect(requests.map((request,) => request.method,),).toEqual(["GET", "GET", "GET",],);
 		expect(
-			requests.every((request,) => request.url === "/public/api/projects/TEST/libraries/contents"),
+			requests.every((request,) => request.url === "/public/api/projects/TEST/libraries/contents",),
 		).toBe(true,);
 	});
 
@@ -421,7 +421,7 @@ describe("ProjectLibraryResource expectSha256 precondition", () => {
 			},);
 		},);
 
-		expect(requests.map((request,) => request.method),).toEqual(["GET",],);
+		expect(requests.map((request,) => request.method,),).toEqual(["GET",],);
 	});
 
 	it("writes when the remote hash matches and reports beforeSha256", async () => {
@@ -451,7 +451,7 @@ describe("ProjectLibraryResource expectSha256 precondition", () => {
 			},);
 		},);
 
-		expect(requests.map((request,) => request.method),).toEqual(["GET", "POST",],);
+		expect(requests.map((request,) => request.method,),).toEqual(["GET", "POST",],);
 	});
 
 	it("fails the precondition when the remote file is absent", async () => {
@@ -476,11 +476,11 @@ describe("ProjectLibraryResource expectSha256 precondition", () => {
 			expect(validation.details,).toMatchObject({ actualSha256: null, },);
 		},);
 
-		expect(requests.map((request,) => request.method),).toEqual(["GET",],);
+		expect(requests.map((request,) => request.method,),).toEqual(["GET",],);
 	});
 
 	it("rejects a malformed precondition hash before any request", async () => {
-		const { client, requests, } = recordingClient(() => undefined);
+		const { client, requests, } = recordingClient(() => undefined,);
 		const resource = new ProjectLibraryResource(client,);
 		await expect(
 			resource.addOrUpdateFile("python/a.py", "content", undefined, { expectSha256: "nothex", },),
@@ -635,7 +635,7 @@ describe("ProjectLibraryResource diffFile", () => {
 		});
 
 		it("renders a pure deletion", async () => {
-			const result = await diffOf(lines(10,), lines(10,).filter((l,) => l !== "l5"),);
+			const result = await diffOf(lines(10,), lines(10,).filter((l,) => l !== "l5",),);
 			expect(result.diff,).toBe(
 				`${header}@@ -2,7 +2,6 @@\n l2\n l3\n l4\n-l5\n l6\n l7\n l8\n`,
 			);
@@ -643,7 +643,7 @@ describe("ProjectLibraryResource diffFile", () => {
 	});
 
 	it("reports remote absence as an all-added diff", async () => {
-		const { client, } = recordingClient(() => undefined);
+		const { client, } = recordingClient(() => undefined,);
 		const resource = new ProjectLibraryResource(client,);
 		const result = await resource.diffFile("python/absent.py", "one\ntwo\n",);
 		expect(result.remoteAbsent,).toBe(true,);
@@ -657,7 +657,7 @@ describe("ProjectLibraryResource diffFile", () => {
 
 describe("ProjectLibraryResource rename and move validation", () => {
 	it("rejects multi-segment rename names before any request", async () => {
-		const { client, requests, } = recordingClient(() => undefined);
+		const { client, requests, } = recordingClient(() => undefined,);
 		const resource = new ProjectLibraryResource(client,);
 		await expect(resource.rename("python/old.py", "sub/new.py",),).rejects.toThrow(
 			/single segment/,
@@ -765,7 +765,7 @@ describe("ProjectLibraryResource legacy behavior", () => {
 			await expect(resource.addFile("python/new.py",),).rejects.toBeInstanceOf(DataikuError,);
 		},);
 
-		expect(requests.map((request,) => request.method),).toEqual(["GET",],);
+		expect(requests.map((request,) => request.method,),).toEqual(["GET",],);
 	});
 });
 

@@ -21,8 +21,8 @@ describe("safeParseSchema", () => {
 		expect(result.data as unknown,).toBe(data,);
 		if (!result.success) {
 			expect(result.errors.length,).toBeGreaterThan(0,);
-			expect(result.errors.some((e,) => e.includes("/projectKey",)),).toBe(true,);
-			expect(result.errors.some((e,) => e.includes("/name",)),).toBe(true,);
+			expect(result.errors.some((e,) => e.includes("/projectKey",),),).toBe(true,);
+			expect(result.errors.some((e,) => e.includes("/name",),),).toBe(true,);
 		}
 	});
 
@@ -44,7 +44,7 @@ describe("safeParseSchema", () => {
 		const result = safeParseSchema(ProjectSummaryArraySchema, data,);
 		expect(result.success,).toBe(false,);
 		if (!result.success) {
-			expect(result.errors.some((e,) => e.includes("/1",)),).toBe(true,);
+			expect(result.errors.some((e,) => e.includes("/1",),),).toBe(true,);
 		}
 	});
 
@@ -56,8 +56,8 @@ describe("safeParseSchema", () => {
 		expect(result.success,).toBe(false,);
 		expect(result.data as unknown,).toBe(data,);
 		if (!result.success) {
-			expect(result.errors.some((e,) => e.includes("1n",)),).toBe(true,);
-			expect(result.errors.some((e,) => e.includes("Expected",)),).toBe(true,);
+			expect(result.errors.some((e,) => e.includes("1n",),),).toBe(true,);
+			expect(result.errors.some((e,) => e.includes("Expected",),),).toBe(true,);
 		}
 	});
 });
@@ -110,8 +110,8 @@ describe("DataikuClient.safeParse", () => {
 		},).not.toThrow();
 		expect(warnings,).toHaveLength(1,);
 		expect(warnings[0].method,).toBe("datasets.list",);
-		expect(warnings[0].errors.some((e,) => e.includes("1n",)),).toBe(true,);
-		expect(warnings[0].errors.some((e,) => e.includes("Expected",)),).toBe(true,);
+		expect(warnings[0].errors.some((e,) => e.includes("1n",),),).toBe(true,);
+		expect(warnings[0].errors.some((e,) => e.includes("Expected",),),).toBe(true,);
 	});
 
 	it("does not fire callback on valid data", () => {

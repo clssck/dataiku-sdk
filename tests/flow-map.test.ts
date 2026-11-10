@@ -107,12 +107,12 @@ describe("normalizeFlowGraph", () => {
 			expect(result.edges,).toHaveLength(2,);
 
 			// Edges are sorted by from, then to
-			const readEdge = result.edges.find((e,) => e.from === "ds_in");
+			const readEdge = result.edges.find((e,) => e.from === "ds_in",);
 			expect(readEdge,).toBeTruthy();
 			expect(readEdge!.to,).toBe("compute_r",);
 			expect(readEdge!.relation,).toBe("reads",);
 
-			const writeEdge = result.edges.find((e,) => e.from === "compute_r");
+			const writeEdge = result.edges.find((e,) => e.from === "compute_r",);
 			expect(writeEdge,).toBeTruthy();
 			expect(writeEdge!.to,).toBe("ds_out",);
 			expect(writeEdge!.relation,).toBe("writes",);
@@ -143,7 +143,7 @@ describe("normalizeFlowGraph", () => {
 				"P",
 			);
 
-			const edge = result.edges.find((e,) => e.from === "d" && e.to === "r");
+			const edge = result.edges.find((e,) => e.from === "d" && e.to === "r",);
 			expect(edge,).toBeTruthy();
 			expect(edge!.relation,).toBe("reads",);
 		});
@@ -159,7 +159,7 @@ describe("normalizeFlowGraph", () => {
 				"P",
 			);
 
-			const edge = result.edges.find((e,) => e.from === "r" && e.to === "d");
+			const edge = result.edges.find((e,) => e.from === "r" && e.to === "d",);
 			expect(edge,).toBeTruthy();
 			expect(edge!.relation,).toBe("writes",);
 		});
@@ -175,7 +175,7 @@ describe("normalizeFlowGraph", () => {
 				"P",
 			);
 
-			const edge = result.edges.find((e,) => e.from === "r1" && e.to === "r2");
+			const edge = result.edges.find((e,) => e.from === "r1" && e.to === "r2",);
 			expect(edge,).toBeTruthy();
 			expect(edge!.relation,).toBe("depends_on",);
 		});
@@ -191,7 +191,7 @@ describe("normalizeFlowGraph", () => {
 				"P",
 			);
 
-			const edge = result.edges.find((e,) => e.from === "x" && e.to === "d");
+			const edge = result.edges.find((e,) => e.from === "x" && e.to === "d",);
 			expect(edge,).toBeTruthy();
 			expect(edge!.relation,).toBe("unknown",);
 		});
@@ -207,7 +207,7 @@ describe("normalizeFlowGraph", () => {
 				"P",
 			);
 
-			const edge = result.edges.find((e,) => e.from === "f" && e.to === "r");
+			const edge = result.edges.find((e,) => e.from === "f" && e.to === "r",);
 			expect(edge,).toBeTruthy();
 			expect(edge!.relation,).toBe("reads",);
 		});
@@ -223,7 +223,7 @@ describe("normalizeFlowGraph", () => {
 				"P",
 			);
 
-			const edge = result.edges.find((e,) => e.from === "r" && e.to === "f");
+			const edge = result.edges.find((e,) => e.from === "r" && e.to === "f",);
 			expect(edge,).toBeTruthy();
 			expect(edge!.relation,).toBe("writes",);
 		});
@@ -242,7 +242,7 @@ describe("normalizeFlowGraph", () => {
 				{ folderNamesById: { abc123: "My Reports", }, },
 			);
 
-			const node = result.nodes.find((n,) => n.id === "abc123");
+			const node = result.nodes.find((n,) => n.id === "abc123",);
 			expect(node,).toBeTruthy();
 			expect(node!.name,).toBe("My Reports",);
 			expect(node!.kind,).toBe("folder",);
@@ -259,7 +259,7 @@ describe("normalizeFlowGraph", () => {
 				{ folderNamesById: {}, },
 			);
 
-			const node = result.nodes.find((n,) => n.id === "f1");
+			const node = result.nodes.find((n,) => n.id === "f1",);
 			expect(node,).toBeTruthy();
 			expect(node!.name,).toBe("f1",);
 		});
@@ -279,7 +279,7 @@ describe("normalizeFlowGraph", () => {
 
 			expect(result.nodes,).toHaveLength(1,);
 			expect(result.nodes[0].id,).toBe("good",);
-			const warn = result.warnings.find((w,) => w.includes("bad",));
+			const warn = result.warnings.find((w,) => w.includes("bad",),);
 			expect(warn,).toBeTruthy();
 			expect(warn!.includes("not an object",),).toBe(true,);
 		});
@@ -294,7 +294,7 @@ describe("normalizeFlowGraph", () => {
 				"P",
 			);
 
-			const warn = result.warnings.find((w,) => w.includes("predecessors",));
+			const warn = result.warnings.find((w,) => w.includes("predecessors",),);
 			expect(warn,).toBeTruthy();
 			expect(warn!.includes("non-array",),).toBe(true,);
 		});
@@ -305,7 +305,7 @@ describe("normalizeFlowGraph", () => {
 				"P",
 			);
 
-			const warn = result.warnings.find((w,) => w.includes("nodes",));
+			const warn = result.warnings.find((w,) => w.includes("nodes",),);
 			expect(warn,).toBeTruthy();
 		});
 	});
@@ -335,10 +335,10 @@ describe("normalizeFlowGraph", () => {
 			expect(result.stats.roots,).toBe(result.roots.length,);
 			expect(result.stats.leaves,).toBe(result.leaves.length,);
 			expect(result.stats.datasets,).toBe(
-				result.nodes.filter((n,) => n.kind === "dataset").length,
+				result.nodes.filter((n,) => n.kind === "dataset",).length,
 			);
 			expect(result.stats.recipes,).toBe(
-				result.nodes.filter((n,) => n.kind === "recipe").length,
+				result.nodes.filter((n,) => n.kind === "recipe",).length,
 			);
 		});
 	});
@@ -355,7 +355,7 @@ describe("normalizeFlowGraph", () => {
 				"P",
 			);
 
-			const matches = result.nodes.filter((n,) => n.id === "ds1");
+			const matches = result.nodes.filter((n,) => n.id === "ds1",);
 			expect(matches,).toHaveLength(1,);
 			expect(matches[0].name,).toBe("my_dataset",);
 			expect(matches[0].kind,).toBe("dataset",);
@@ -442,7 +442,7 @@ describe("normalizeFlowGraph", () => {
 			);
 
 			expect(
-				result.nodes.map((n,) => n.id),
+				result.nodes.map((n,) => n.id,),
 			).toEqual(["a_node", "m_node", "z_node",],);
 		});
 
@@ -473,12 +473,12 @@ describe("normalizeFlowGraph", () => {
 				"P",
 			);
 
-			const placeholder = result.nodes.find((n,) => n.id === "missing_ds");
+			const placeholder = result.nodes.find((n,) => n.id === "missing_ds",);
 			expect(placeholder,).toBeTruthy();
 			expect(placeholder!.kind,).toBe("other",);
 			expect(placeholder!.name,).toBe("missing_ds",);
 
-			const warn = result.warnings.find((w,) => w.includes("missing_ds",));
+			const warn = result.warnings.find((w,) => w.includes("missing_ds",),);
 			expect(warn,).toBeTruthy();
 			expect(warn!.includes("placeholder",),).toBe(true,);
 		});

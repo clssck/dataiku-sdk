@@ -128,15 +128,15 @@ async function previewRows(
 		| { columns?: Array<{ name?: string; }>; rows?: unknown[][]; }
 		| undefined;
 	return {
-		columns: (json?.columns ?? []).map((column,) => String(column.name ?? "",)),
+		columns: (json?.columns ?? []).map((column,) => String(column.name ?? "",),),
 		rows: (json?.rows ?? []).map((row,) =>
 			row.map((cell,) =>
 				typeof cell === "string"
 					? cell
 					: cell === null || cell === undefined
 					? ""
-					: JSON.stringify(cell,)
-			)
+					: JSON.stringify(cell,),
+			),
 		),
 	};
 }
@@ -150,7 +150,7 @@ export function mentionsNumber(text: string, number: string,): boolean {
 	// A number must not be glued to a word, dot, or dash (dates, run ids, versions).
 	const found = text.replace(/,(?=\d{3}\b)/g, "",).match(/(?<![\w.-])-?\d+(?:\.\d+)?(?![\w.-]*\d)/g,)
 		?? [];
-	return found.some((candidate,) => Number(candidate,) === target);
+	return found.some((candidate,) => Number(candidate,) === target,);
 }
 
 // ---------------------------------------------------------------------------
@@ -297,7 +297,7 @@ const scenarioFix: EvalCase = {
 			return { ok: false, reason: "recipe code still references amount_euro", };
 		}
 		const missing = ["54.9", "107.685", "19.8",].filter((value,) =>
-			!mentionsNumber(outcome.answer, value,)
+			!mentionsNumber(outcome.answer, value,),
 		);
 		if (missing.length > 0) return { ok: false, reason: `answer is missing ${missing.join(", ",)}`, };
 		return {
@@ -340,7 +340,7 @@ const dataQuestion: EvalCase = {
 		if (outcome.mutatingCalls.length > 0) {
 			problems.push(
 				`agent made mutating dss calls: ${
-					outcome.mutatingCalls.map((argv,) => argv.join(" ",)).join(" | ",)
+					outcome.mutatingCalls.map((argv,) => argv.join(" ",),).join(" | ",)
 				}`,
 			);
 		}
@@ -389,10 +389,10 @@ const buildFlow: EvalCase = {
 			return { ok: false, reason: `no country column (columns: ${preview.columns.join(",",)})`, };
 		}
 		const expectedCountries = Object.keys(EXPECTED_REVENUE,);
-		const countries = preview.rows.map((row,) => row[countryIndex] ?? "");
+		const countries = preview.rows.map((row,) => row[countryIndex] ?? "",);
 		if (
 			preview.rows.length !== expectedCountries.length
-			|| expectedCountries.some((c,) => !countries.includes(c,))
+			|| expectedCountries.some((c,) => !countries.includes(c,),)
 		) {
 			return {
 				ok: false,
@@ -406,7 +406,7 @@ const buildFlow: EvalCase = {
 			&& preview.rows.every((row,) => {
 				const expected = EXPECTED_REVENUE[row[countryIndex] ?? ""];
 				return expected !== undefined && Math.abs(Number(row[index],) - expected,) < 0.01;
-			},)
+			},),
 		);
 		return matching.length > 0
 			? {

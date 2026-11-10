@@ -231,7 +231,7 @@ export function encodeLibraryPath(path: string,): string {
 	const normalized = validateLibraryPath(path,);
 	return normalized
 		.split("/",)
-		.map((segment,) => encodeURIComponent(segment,))
+		.map((segment,) => encodeURIComponent(segment,),)
 		.join("/",);
 }
 
@@ -287,7 +287,7 @@ export class ProjectLibraryResource extends BaseResource {
 		const segments = valid.split("/",);
 		let items = await this.listContents(projectKey,);
 		for (const segment of segments) {
-			const next = items.find((item,) => item.name === segment);
+			const next = items.find((item,) => item.name === segment,);
 			if (!next) return false;
 			items = next.children ?? [];
 		}

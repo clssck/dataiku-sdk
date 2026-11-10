@@ -167,32 +167,33 @@ describe("CLI boolean flag does not swallow next positional", () => {
 	});
 });
 
-const sqlServer = (seen: { sql?: string; },) =>
-async (
-	req: IncomingMessage,
-	res: ServerResponse,
-) => {
-	const url = new URL(req.url ?? "/", "http://localhost",);
-	if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
-		const body: unknown = JSON.parse(await readBody(req,),);
-		if (body && typeof body === "object" && "query" in body && typeof body.query === "string") {
-			seen.sql = body.query;
+const sqlServer =
+	(seen: { sql?: string; },) =>
+	async (
+		req: IncomingMessage,
+		res: ServerResponse,
+	) => {
+		const url = new URL(req.url ?? "/", "http://localhost",);
+		if (req.method === "POST" && url.pathname === "/public/api/sql/queries/") {
+			const body: unknown = JSON.parse(await readBody(req,),);
+			if (body && typeof body === "object" && "query" in body && typeof body.query === "string") {
+				seen.sql = body.query;
+			}
+			sendJson(res, { queryId: "q1", schema: [{ name: "one", type: "int", },], },);
+			return;
 		}
-		sendJson(res, { queryId: "q1", schema: [{ name: "one", type: "int", },], },);
-		return;
-	}
-	if (url.pathname === "/public/api/sql/queries/q1/stream") {
-		res.setHeader("Content-Type", "application/json",);
-		res.end("[[1]]",);
-		return;
-	}
-	if (url.pathname === "/public/api/sql/queries/q1/finish-streaming") {
-		res.end("",);
-		return;
-	}
-	res.statusCode = 404;
-	res.end("not found",);
-};
+		if (url.pathname === "/public/api/sql/queries/q1/stream") {
+			res.setHeader("Content-Type", "application/json",);
+			res.end("[[1]]",);
+			return;
+		}
+		if (url.pathname === "/public/api/sql/queries/q1/finish-streaming") {
+			res.end("",);
+			return;
+		}
+		res.statusCode = 404;
+		res.end("not found",);
+	};
 
 describe("CLI flag value parsing", () => {
 	it("missing value for --target fails fast", async () => {

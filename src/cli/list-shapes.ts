@@ -132,10 +132,10 @@ export function compactListOutputSchemas(): Record<string, Record<string, unknow
 					type: "object",
 					additionalProperties: false,
 					properties: Object.fromEntries(
-						Object.entries(fields,).map(([name, spec,],) => [name, spec.schema,]),
+						Object.entries(fields,).map(([name, spec,],) => [name, spec.schema,],),
 					),
 				},
 			},
-		]),
+		],),
 	);
 }

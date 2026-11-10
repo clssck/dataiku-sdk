@@ -40,7 +40,7 @@ export const wikiCommands: Record<string, CommandMeta> = withUsage("wiki", {
 			const content = textInput(f,);
 			const pk = f["project-key"] as string | undefined;
 			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
-				const existing = (await c.wiki.list(pk,)).find((article,) => article.article.name === name);
+				const existing = (await c.wiki.list(pk,)).find((article,) => article.article.name === name,);
 				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("wiki", existing.article.id, "exists", { current: existing, },);
 				}
@@ -118,7 +118,7 @@ export const wikiCommands: Record<string, CommandMeta> = withUsage("wiki", {
 			requireArgs(a, 1, commandUsage("wiki", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.wiki.get(a[0], pk,));
+				const current = await readIfExists(() => c.wiki.get(a[0], pk,),);
 				if (!current) return skipResult("wiki", a[0], "missing",);
 				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "wiki", article: a[0], current, };
@@ -160,7 +160,7 @@ export const wikiCommands: Record<string, CommandMeta> = withUsage("wiki", {
 			const dryRun = executionMode(f,).dryRun;
 			if (dryRun || ifExists) {
 				const current = ifExists
-					? await readIfExists(() => c.wiki.get(a[0], pk,))
+					? await readIfExists(() => c.wiki.get(a[0], pk,),)
 					: await c.wiki.get(a[0], pk,);
 				const attachment = current && findWikiAttachment(current, a[1],);
 				if (!current || !attachment) {

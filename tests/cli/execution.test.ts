@@ -1333,7 +1333,7 @@ describe("CLI execution behavior", () => {
 			expect(result.context.hasApiKey,).toBe(true,);
 			expect(result.context.projectKey,).toBe("TEST",);
 			expect(result.permissions,).toBeUndefined();
-			expect(result.checks.map((check,) => [check.name, check.ok,]),).toEqual([
+			expect(result.checks.map((check,) => [check.name, check.ok,],),).toEqual([
 				["credentials_present", true,],
 				["connectivity", true,],
 				["default_project", true,],
@@ -1525,7 +1525,7 @@ describe("CLI execution behavior", () => {
 				permissions: Record<string, string>;
 			};
 			expect(result.ok,).toBe(false,);
-			const connectivity = result.checks.find((check,) => check.name === "connectivity");
+			const connectivity = result.checks.find((check,) => check.name === "connectivity",);
 			expect(connectivity?.details?.category,).toBe("unexpected_response",);
 			// The requests never reached DSS, so no permission was evaluated.
 			for (const [permission, status,] of Object.entries(result.permissions,)) {
@@ -1797,7 +1797,7 @@ describe("CLI execution behavior", () => {
 		}, async (url,) => {
 			const { stderr, } = await dss(["project", "list", "--verbose",], { env: cliEnv(url,), },);
 			const events = stderr.trim().split("\n",).map((line,) =>
-				JSON.parse(line,) as Record<string, unknown>
+				JSON.parse(line,) as Record<string, unknown>,
 			);
 			expect(events,).toContainEqual(expect.objectContaining({ type: "trace", phase: "request", },),);
 			expect(events,).toContainEqual(

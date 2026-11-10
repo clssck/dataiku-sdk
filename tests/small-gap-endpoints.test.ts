@@ -21,7 +21,7 @@ describe("remaining DSS 15 endpoints", () => {
 				}
 				res.setHeader("Content-Type", "application/json",);
 				res.end("{}",);
-			})()
+			})(),
 		);
 		const listening = Promise.withResolvers<void>();
 		server.listen(0, "127.0.0.1", () => listening.resolve(),);
@@ -48,7 +48,7 @@ describe("remaining DSS 15 endpoints", () => {
 			await client.projects.pushToGitRemote("origin",);
 		} finally {
 			const closed = Promise.withResolvers<void>();
-			server.close(() => closed.resolve());
+			server.close(() => closed.resolve(),);
 			await closed.promise;
 		}
 		expect(seen,).toEqual([

@@ -22,7 +22,7 @@ export function readCandidate(directory,) {
 	if (
 		!value || value.name !== packageName || !/^\d+\.\d+\.\d+$/.test(value.version,)
 		|| ![value.version, value.commit, value.baseRevision, value.integrity,].every((field,) =>
-			typeof field === "string"
+			typeof field === "string",
 		)
 		|| !/^[a-f0-9]{40}$/.test(value.commit,) || !/^[a-f0-9]{40}$/.test(value.baseRevision,)
 		|| !/^sha512-[A-Za-z0-9+/]{86}==$/.test(value.integrity,)
@@ -220,7 +220,9 @@ if (import.meta.main) {
 		process.stdout.write(
 			`${JSON.stringify(await verifyPublishedCandidate(path.resolve(first,),),)}\n`,
 		);
-	} else {throw new Error(
+	} else {
+		throw new Error(
 			"Usage: release-candidate.mjs prepare BUMP DIRECTORY | restore DIRECTORY | verify DIRECTORY",
-		);}
+		);
+	}
 }

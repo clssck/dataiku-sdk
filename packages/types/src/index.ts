@@ -95,112 +95,164 @@ export function safeParseSchema<S extends TSchema,>(
 // Projects
 // ---------------------------------------------------------------------------
 
-export const ProjectSummarySchema = Type.Object({
-	projectKey: Type.String(),
-	name: Type.String(),
-	shortDesc: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const ProjectSummarySchema = Type.Object(
+	{ projectKey: Type.String(), name: Type.String(), shortDesc: Type.Optional(Type.String(),), },
+	{ additionalProperties: true, },
+);
 export type ProjectSummary = Static<typeof ProjectSummarySchema>;
 
-export const ProjectDetailsSchema = Type.Object({
-	projectKey: Type.String(),
-	name: Type.String(),
-	shortDesc: Type.Optional(Type.String(),),
-	projectStatus: Type.Optional(Type.String(),),
-	projectAppType: Type.Optional(Type.String(),),
-	creationTag: Type.Optional(Type.Object({
-		versionNumber: Type.Optional(Type.Number(),),
-		lastModifiedOn: Type.Optional(Type.Union([Type.Number(), Type.String(),],),),
-	}, { additionalProperties: true, },),),
-	ownerLogin: Type.Optional(Type.String(),),
-	tags: Type.Optional(Type.Array(Type.String(),),),
-	versionTag: Type.Optional(Type.Object({
-		versionNumber: Type.Number(),
-		lastModifiedOn: Type.Number(),
-	}, { additionalProperties: true, },),),
-}, { additionalProperties: true, },);
+export const ProjectDetailsSchema = Type.Object(
+	{
+		projectKey: Type.String(),
+		name: Type.String(),
+		shortDesc: Type.Optional(Type.String(),),
+		projectStatus: Type.Optional(Type.String(),),
+		projectAppType: Type.Optional(Type.String(),),
+		creationTag: Type.Optional(
+			Type.Object(
+				{
+					versionNumber: Type.Optional(Type.Number(),),
+					lastModifiedOn: Type.Optional(Type.Union([Type.Number(), Type.String(),],),),
+				},
+				{ additionalProperties: true, },
+			),
+		),
+		ownerLogin: Type.Optional(Type.String(),),
+		tags: Type.Optional(Type.Array(Type.String(),),),
+		versionTag: Type.Optional(
+			Type.Object(
+				{ versionNumber: Type.Number(), lastModifiedOn: Type.Number(), },
+				{ additionalProperties: true, },
+			),
+		),
+	},
+	{ additionalProperties: true, },
+);
 export type ProjectDetails = Static<typeof ProjectDetailsSchema>;
 
-export const ProjectMetadataSchema = Type.Object({
-	label: Type.Optional(Type.String(),),
-	shortDesc: Type.Optional(Type.String(),),
-	description: Type.Optional(Type.String(),),
-	tags: Type.Optional(Type.Array(Type.String(),),),
-	customFields: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
-	checklists: Type.Optional(Type.Object({
-		checklists: Type.Optional(Type.Array(Type.Object({
-			title: Type.String(),
-			items: Type.Optional(Type.Array(Type.Object({
-				done: Type.Boolean(),
-			}, { additionalProperties: true, },),),),
-		}, { additionalProperties: true, },),),),
-	}, { additionalProperties: true, },),),
-}, { additionalProperties: true, },);
+export const ProjectMetadataSchema = Type.Object(
+	{
+		label: Type.Optional(Type.String(),),
+		shortDesc: Type.Optional(Type.String(),),
+		description: Type.Optional(Type.String(),),
+		tags: Type.Optional(Type.Array(Type.String(),),),
+		customFields: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
+		checklists: Type.Optional(
+			Type.Object(
+				{
+					checklists: Type.Optional(
+						Type.Array(
+							Type.Object(
+								{
+									title: Type.String(),
+									items: Type.Optional(
+										Type.Array(Type.Object({ done: Type.Boolean(), }, { additionalProperties: true, },),),
+									),
+								},
+								{ additionalProperties: true, },
+							),
+						),
+					),
+				},
+				{ additionalProperties: true, },
+			),
+		),
+	},
+	{ additionalProperties: true, },
+);
 export type ProjectMetadata = Static<typeof ProjectMetadataSchema>;
 
-export const ProjectTagsSchema = Type.Object({
-	tags: Type.Record(
-		Type.String(),
-		Type.Object(
-			{ color: Type.Optional(Type.String(),), },
+export const ProjectTagsSchema = Type.Object(
+	{
+		tags: Type.Record(
+			Type.String(),
+			Type.Object(
+				{ color: Type.Optional(Type.String(),), },
+				{ additionalProperties: true, },
+			),
 			{ additionalProperties: true, },
 		),
-		{ additionalProperties: true, },
-	),
-}, { additionalProperties: true, },);
+	},
+	{ additionalProperties: true, },
+);
 export type ProjectTags = Static<typeof ProjectTagsSchema>;
 
 // ---------------------------------------------------------------------------
 // Datasets
 // ---------------------------------------------------------------------------
 
-export const DatasetSummarySchema = Type.Object({
-	name: Type.String(),
-	type: Type.Optional(Type.String(),),
-	shortDesc: Type.Optional(Type.String(),),
-	managed: Type.Optional(Type.Boolean(),),
-	params: Type.Optional(Type.Object({
-		connection: Type.Optional(Type.String(),),
-		uploadConnection: Type.Optional(Type.String(),),
-		schema: Type.Optional(Type.String(),),
-		catalog: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),
-}, { additionalProperties: true, },);
+export const DatasetSummarySchema = Type.Object(
+	{
+		name: Type.String(),
+		type: Type.Optional(Type.String(),),
+		shortDesc: Type.Optional(Type.String(),),
+		managed: Type.Optional(Type.Boolean(),),
+		params: Type.Optional(
+			Type.Object(
+				{
+					connection: Type.Optional(Type.String(),),
+					uploadConnection: Type.Optional(Type.String(),),
+					schema: Type.Optional(Type.String(),),
+					catalog: Type.Optional(Type.String(),),
+				},
+				{ additionalProperties: true, },
+			),
+		),
+	},
+	{ additionalProperties: true, },
+);
 export type DatasetSummary = Static<typeof DatasetSummarySchema>;
 
-export const DatasetSchemaSchema = Type.Object({
-	columns: Type.Array(Type.Object({
-		name: Type.String(),
-		type: Type.String(),
-		comment: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),
-}, { additionalProperties: true, },);
+export const DatasetSchemaSchema = Type.Object(
+	{
+		columns: Type.Array(
+			Type.Object(
+				{ name: Type.String(), type: Type.String(), comment: Type.Optional(Type.String(),), },
+				{ additionalProperties: true, },
+			),
+		),
+	},
+	{ additionalProperties: true, },
+);
 export type DatasetSchema = Static<typeof DatasetSchemaSchema>;
 
-export const DatasetDetailsSchema = Type.Object({
-	name: Type.String(),
-	type: Type.Optional(Type.String(),),
-	projectKey: Type.Optional(Type.String(),),
-	managed: Type.Optional(Type.Boolean(),),
-	params: Type.Optional(Type.Object({
-		connection: Type.Optional(Type.String(),),
-		uploadConnection: Type.Optional(Type.String(),),
-		path: Type.Optional(Type.String(),),
-		table: Type.Optional(Type.String(),),
-		schema: Type.Optional(Type.String(),),
-		catalog: Type.Optional(Type.String(),),
-		folderSmartId: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),
-	formatType: Type.Optional(Type.String(),),
-	formatParams: Type.Optional(Type.Object({
-		separator: Type.Optional(Type.String(),),
-		charset: Type.Optional(Type.String(),),
-		compress: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),
-	schema: Type.Optional(DatasetSchemaSchema,),
-	tags: Type.Optional(Type.Array(Type.String(),),),
-	shortDesc: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const DatasetDetailsSchema = Type.Object(
+	{
+		name: Type.String(),
+		type: Type.Optional(Type.String(),),
+		projectKey: Type.Optional(Type.String(),),
+		managed: Type.Optional(Type.Boolean(),),
+		params: Type.Optional(
+			Type.Object(
+				{
+					connection: Type.Optional(Type.String(),),
+					uploadConnection: Type.Optional(Type.String(),),
+					path: Type.Optional(Type.String(),),
+					table: Type.Optional(Type.String(),),
+					schema: Type.Optional(Type.String(),),
+					catalog: Type.Optional(Type.String(),),
+					folderSmartId: Type.Optional(Type.String(),),
+				},
+				{ additionalProperties: true, },
+			),
+		),
+		formatType: Type.Optional(Type.String(),),
+		formatParams: Type.Optional(
+			Type.Object(
+				{
+					separator: Type.Optional(Type.String(),),
+					charset: Type.Optional(Type.String(),),
+					compress: Type.Optional(Type.String(),),
+				},
+				{ additionalProperties: true, },
+			),
+		),
+		schema: Type.Optional(DatasetSchemaSchema,),
+		tags: Type.Optional(Type.Array(Type.String(),),),
+		shortDesc: Type.Optional(Type.String(),),
+	},
+	{ additionalProperties: true, },
+);
 export type DatasetDetails = Static<typeof DatasetDetailsSchema>;
 
 export const DatasetCreateOptionsSchema = Type.Object({
@@ -222,25 +274,28 @@ export type DatasetCreateOptions = Static<typeof DatasetCreateOptionsSchema>;
 // Recipes
 // ---------------------------------------------------------------------------
 
-export const RecipeSummarySchema = Type.Object({
-	name: Type.String(),
-	type: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const RecipeSummarySchema = Type.Object(
+	{ name: Type.String(), type: Type.Optional(Type.String(),), },
+	{ additionalProperties: true, },
+);
 export type RecipeSummary = Static<typeof RecipeSummarySchema>;
 
-export const RecipeDetailsSchema = Type.Object({
-	name: Type.String(),
-	type: Type.Optional(Type.String(),),
-	projectKey: Type.Optional(Type.String(),),
-	inputs: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
-	outputs: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
-	params: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
-	payload: Type.Optional(Type.String(),),
-	versionTag: Type.Optional(Type.Object({
-		versionNumber: Type.Number(),
-	}, { additionalProperties: true, },),),
-	neverBuilt: Type.Optional(Type.Boolean(),),
-}, { additionalProperties: true, },);
+export const RecipeDetailsSchema = Type.Object(
+	{
+		name: Type.String(),
+		type: Type.Optional(Type.String(),),
+		projectKey: Type.Optional(Type.String(),),
+		inputs: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
+		outputs: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
+		params: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
+		payload: Type.Optional(Type.String(),),
+		versionTag: Type.Optional(
+			Type.Object({ versionNumber: Type.Number(), }, { additionalProperties: true, },),
+		),
+		neverBuilt: Type.Optional(Type.Boolean(),),
+	},
+	{ additionalProperties: true, },
+);
 export type RecipeDetails = Static<typeof RecipeDetailsSchema>;
 
 export const RecipeCreateOptionsSchema = Type.Object({
@@ -308,23 +363,32 @@ export const RecipeCreateResultSchema = Type.Object({
 export type RecipeCreateResult = Static<typeof RecipeCreateResultSchema>;
 
 /** One output from GET /recipes/{name}/schema-update (dataikuapi compute_schema_updates). */
-export const RecipeSchemaUpdateComputableSchema = Type.Object({
-	type: Type.String(),
-	id: Type.Optional(Type.String(),),
-	datasetName: Type.Optional(Type.String(),),
-	previousSchemaWasEmpty: Type.Optional(Type.Boolean(),),
-	incompatibilities: Type.Optional(Type.Array(Type.String(),),),
-	newSchema: Type.Optional(Type.Object({
-		columns: Type.Array(Type.Record(Type.String(), Type.Unknown(),),),
-	}, { additionalProperties: true, },),),
-}, { additionalProperties: true, },);
+export const RecipeSchemaUpdateComputableSchema = Type.Object(
+	{
+		type: Type.String(),
+		id: Type.Optional(Type.String(),),
+		datasetName: Type.Optional(Type.String(),),
+		previousSchemaWasEmpty: Type.Optional(Type.Boolean(),),
+		incompatibilities: Type.Optional(Type.Array(Type.String(),),),
+		newSchema: Type.Optional(
+			Type.Object(
+				{ columns: Type.Array(Type.Record(Type.String(), Type.Unknown(),),), },
+				{ additionalProperties: true, },
+			),
+		),
+	},
+	{ additionalProperties: true, },
+);
 export type RecipeSchemaUpdateComputable = Static<typeof RecipeSchemaUpdateComputableSchema>;
 
-export const RecipeSchemaUpdatesSchema = Type.Object({
-	totalIncompatibilities: Type.Optional(Type.Number(),),
-	computables: Type.Array(RecipeSchemaUpdateComputableSchema,),
-	recipeChanges: Type.Optional(Type.Array(Type.Unknown(),),),
-}, { additionalProperties: true, },);
+export const RecipeSchemaUpdatesSchema = Type.Object(
+	{
+		totalIncompatibilities: Type.Optional(Type.Number(),),
+		computables: Type.Array(RecipeSchemaUpdateComputableSchema,),
+		recipeChanges: Type.Optional(Type.Array(Type.Unknown(),),),
+	},
+	{ additionalProperties: true, },
+);
 export type RecipeSchemaUpdates = Static<typeof RecipeSchemaUpdatesSchema>;
 
 export const RecipeUpdateSchemaResultSchema = Type.Object({
@@ -346,19 +410,31 @@ export type RecipeUpdateSchemaResult = Static<typeof RecipeUpdateSchemaResultSch
 // Jobs
 // ---------------------------------------------------------------------------
 
-export const JobSummarySchema = Type.Object({
-	def: Type.Optional(Type.Object({
-		id: Type.Optional(Type.String(),),
-		type: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),
-	baseStatus: Type.Optional(Type.Object({
-		def: Type.Optional(Type.Object({
-			id: Type.Optional(Type.String(),),
-			type: Type.Optional(Type.String(),),
-		}, { additionalProperties: true, },),),
-		state: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),
-}, { additionalProperties: true, },);
+export const JobSummarySchema = Type.Object(
+	{
+		def: Type.Optional(
+			Type.Object(
+				{ id: Type.Optional(Type.String(),), type: Type.Optional(Type.String(),), },
+				{ additionalProperties: true, },
+			),
+		),
+		baseStatus: Type.Optional(
+			Type.Object(
+				{
+					def: Type.Optional(
+						Type.Object(
+							{ id: Type.Optional(Type.String(),), type: Type.Optional(Type.String(),), },
+							{ additionalProperties: true, },
+						),
+					),
+					state: Type.Optional(Type.String(),),
+				},
+				{ additionalProperties: true, },
+			),
+		),
+	},
+	{ additionalProperties: true, },
+);
 export type JobSummary = Static<typeof JobSummarySchema>;
 
 export const JobWaitResultSchema = Type.Object({
@@ -396,33 +472,39 @@ export const JobMonitorAggregateSchema = Type.Object({
 },);
 export type JobMonitorAggregate = Static<typeof JobMonitorAggregateSchema>;
 
-export const FutureStateSchema = Type.Object({
-	jobId: Type.Optional(Type.String(),),
-	hasResult: Type.Optional(Type.Boolean(),),
-	aborted: Type.Optional(Type.Boolean(),),
-	abortable: Type.Optional(Type.Boolean(),),
-	alive: Type.Optional(Type.Boolean(),),
-	unknown: Type.Optional(Type.Boolean(),),
-	startTime: Type.Optional(Type.Number(),),
-	runningTime: Type.Optional(Type.Number(),),
-	result: Type.Optional(Type.Unknown(),),
-}, { additionalProperties: true, },);
+export const FutureStateSchema = Type.Object(
+	{
+		jobId: Type.Optional(Type.String(),),
+		hasResult: Type.Optional(Type.Boolean(),),
+		aborted: Type.Optional(Type.Boolean(),),
+		abortable: Type.Optional(Type.Boolean(),),
+		alive: Type.Optional(Type.Boolean(),),
+		unknown: Type.Optional(Type.Boolean(),),
+		startTime: Type.Optional(Type.Number(),),
+		runningTime: Type.Optional(Type.Number(),),
+		result: Type.Optional(Type.Unknown(),),
+	},
+	{ additionalProperties: true, },
+);
 export type FutureState = Static<typeof FutureStateSchema>;
 
-export const FutureWaitResultSchema = Type.Object({
-	futureId: Type.String(),
-	jobId: Type.Optional(Type.String(),),
-	state: Type.String(),
-	elapsedMs: Type.Number(),
-	pollCount: Type.Number(),
-	success: Type.Boolean(),
-	timedOut: Type.Optional(Type.Boolean(),),
-	hasResult: Type.Boolean(),
-	alive: Type.Optional(Type.Boolean(),),
-	aborted: Type.Optional(Type.Boolean(),),
-	unknown: Type.Optional(Type.Boolean(),),
-	result: Type.Optional(Type.Unknown(),),
-}, { additionalProperties: true, },);
+export const FutureWaitResultSchema = Type.Object(
+	{
+		futureId: Type.String(),
+		jobId: Type.Optional(Type.String(),),
+		state: Type.String(),
+		elapsedMs: Type.Number(),
+		pollCount: Type.Number(),
+		success: Type.Boolean(),
+		timedOut: Type.Optional(Type.Boolean(),),
+		hasResult: Type.Boolean(),
+		alive: Type.Optional(Type.Boolean(),),
+		aborted: Type.Optional(Type.Boolean(),),
+		unknown: Type.Optional(Type.Boolean(),),
+		result: Type.Optional(Type.Unknown(),),
+	},
+	{ additionalProperties: true, },
+);
 export type FutureWaitResult = Static<typeof FutureWaitResultSchema>;
 
 export const BuildModeSchema = Type.Union([
@@ -437,61 +519,87 @@ export type BuildMode = Static<typeof BuildModeSchema>;
 // Scenarios
 // ---------------------------------------------------------------------------
 
-export const ScenarioSummarySchema = Type.Object({
-	id: Type.String(),
-	name: Type.Optional(Type.String(),),
-	active: Type.Optional(Type.Boolean(),),
-}, { additionalProperties: true, },);
+export const ScenarioSummarySchema = Type.Object(
+	{
+		id: Type.String(),
+		name: Type.Optional(Type.String(),),
+		active: Type.Optional(Type.Boolean(),),
+	},
+	{ additionalProperties: true, },
+);
 export type ScenarioSummary = Static<typeof ScenarioSummarySchema>;
 
-export const ScenarioDetailsSchema = Type.Object({
-	id: Type.String(),
-	name: Type.Optional(Type.String(),),
-	active: Type.Optional(Type.Boolean(),),
-	type: Type.Optional(Type.String(),),
-	projectKey: Type.Optional(Type.String(),),
-	params: Type.Optional(Type.Object({
-		steps: Type.Optional(Type.Array(Type.Unknown(),),),
-		triggers: Type.Optional(Type.Array(Type.Unknown(),),),
-		reporters: Type.Optional(Type.Array(Type.Unknown(),),),
-		customScript: Type.Optional(Type.Object({
-			script: Type.Optional(Type.String(),),
-		}, { additionalProperties: true, },),),
-	}, { additionalProperties: true, },),),
-	versionTag: Type.Optional(Type.Object({
-		versionNumber: Type.Number(),
-	}, { additionalProperties: true, },),),
-}, { additionalProperties: true, },);
+export const ScenarioDetailsSchema = Type.Object(
+	{
+		id: Type.String(),
+		name: Type.Optional(Type.String(),),
+		active: Type.Optional(Type.Boolean(),),
+		type: Type.Optional(Type.String(),),
+		projectKey: Type.Optional(Type.String(),),
+		params: Type.Optional(
+			Type.Object(
+				{
+					steps: Type.Optional(Type.Array(Type.Unknown(),),),
+					triggers: Type.Optional(Type.Array(Type.Unknown(),),),
+					reporters: Type.Optional(Type.Array(Type.Unknown(),),),
+					customScript: Type.Optional(
+						Type.Object({ script: Type.Optional(Type.String(),), }, { additionalProperties: true, },),
+					),
+				},
+				{ additionalProperties: true, },
+			),
+		),
+		versionTag: Type.Optional(
+			Type.Object({ versionNumber: Type.Number(), }, { additionalProperties: true, },),
+		),
+	},
+	{ additionalProperties: true, },
+);
 export type ScenarioDetails = Static<typeof ScenarioDetailsSchema>;
 
-export const ScenarioStatusSchema = Type.Object({
-	id: Type.Optional(Type.String(),),
-	name: Type.Optional(Type.String(),),
-	active: Type.Optional(Type.Boolean(),),
-	running: Type.Optional(Type.Boolean(),),
-	nextRun: Type.Optional(Type.Number(),),
-	lastRun: Type.Optional(Type.Object({
-		runId: Type.Optional(Type.String(),),
-		outcome: Type.Optional(Type.String(),),
-		start: Type.Optional(Type.Number(),),
-		end: Type.Optional(Type.Number(),),
-		trigger: Type.Optional(Type.Object({
-			type: Type.Optional(Type.String(),),
-		}, { additionalProperties: true, },),),
-	}, { additionalProperties: true, },),),
-}, { additionalProperties: true, },);
+export const ScenarioStatusSchema = Type.Object(
+	{
+		id: Type.Optional(Type.String(),),
+		name: Type.Optional(Type.String(),),
+		active: Type.Optional(Type.Boolean(),),
+		running: Type.Optional(Type.Boolean(),),
+		nextRun: Type.Optional(Type.Number(),),
+		lastRun: Type.Optional(
+			Type.Object(
+				{
+					runId: Type.Optional(Type.String(),),
+					outcome: Type.Optional(Type.String(),),
+					start: Type.Optional(Type.Number(),),
+					end: Type.Optional(Type.Number(),),
+					trigger: Type.Optional(
+						Type.Object({ type: Type.Optional(Type.String(),), }, { additionalProperties: true, },),
+					),
+				},
+				{ additionalProperties: true, },
+			),
+		),
+	},
+	{ additionalProperties: true, },
+);
 export type ScenarioStatus = Static<typeof ScenarioStatusSchema>;
 
-export const ScenarioStepRunSchema = Type.Object({
-	name: Type.Optional(Type.String(),),
-	type: Type.Optional(Type.String(),),
-	outcome: Type.String(),
-	warningCount: Type.Optional(Type.Number(),),
-	warnings: Type.Optional(Type.Array(Type.Object({
-		type: Type.String(),
-		count: Type.Optional(Type.Number(),),
-	}, { additionalProperties: false, },),),),
-}, { additionalProperties: false, },);
+export const ScenarioStepRunSchema = Type.Object(
+	{
+		name: Type.Optional(Type.String(),),
+		type: Type.Optional(Type.String(),),
+		outcome: Type.String(),
+		warningCount: Type.Optional(Type.Number(),),
+		warnings: Type.Optional(
+			Type.Array(
+				Type.Object(
+					{ type: Type.String(), count: Type.Optional(Type.Number(),), },
+					{ additionalProperties: false, },
+				),
+			),
+		),
+	},
+	{ additionalProperties: false, },
+);
 export type ScenarioStepRun = Static<typeof ScenarioStepRunSchema>;
 
 export const ScenarioWaitResultSchema = Type.Object({
@@ -514,34 +622,44 @@ export type ScenarioWaitResult = Static<typeof ScenarioWaitResultSchema>;
 // ---------------------------------------------------------------------------
 
 /** A macro definition as returned by GET /projects/{pk}/runnables/{runnableType}. */
-export const MacroDefinitionSchema = Type.Object({
-	runnableType: Type.String(),
-	ownerPluginId: Type.Optional(Type.String(),),
-	meta: Type.Optional(Type.Object({
-		label: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),
-	longDescription: Type.Optional(Type.String(),),
-	resultType: Type.Optional(Type.String(),),
-	extension: Type.Optional(Type.String(),),
-	mimeType: Type.Optional(Type.String(),),
-	resultLabel: Type.Optional(Type.String(),),
-	params: Type.Optional(Type.Array(Type.Object({
-		name: Type.String(),
-		type: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),),
-	adminParams: Type.Optional(Type.Array(Type.Unknown(),),),
-}, { additionalProperties: true, },);
+export const MacroDefinitionSchema = Type.Object(
+	{
+		runnableType: Type.String(),
+		ownerPluginId: Type.Optional(Type.String(),),
+		meta: Type.Optional(
+			Type.Object({ label: Type.Optional(Type.String(),), }, { additionalProperties: true, },),
+		),
+		longDescription: Type.Optional(Type.String(),),
+		resultType: Type.Optional(Type.String(),),
+		extension: Type.Optional(Type.String(),),
+		mimeType: Type.Optional(Type.String(),),
+		resultLabel: Type.Optional(Type.String(),),
+		params: Type.Optional(
+			Type.Array(
+				Type.Object(
+					{ name: Type.String(), type: Type.Optional(Type.String(),), },
+					{ additionalProperties: true, },
+				),
+			),
+		),
+		adminParams: Type.Optional(Type.Array(Type.Unknown(),),),
+	},
+	{ additionalProperties: true, },
+);
 export type MacroDefinition = Static<typeof MacroDefinitionSchema>;
 
 /** One entry of GET /projects/{pk}/runnables (array[Macro]). */
-export const MacroSummarySchema = Type.Object({
-	runnableType: Type.Optional(Type.String(),),
-	/** Owning plugin id as the server returns it (live identifiers are server-authored). */
-	ownerPluginId: Type.Optional(Type.String(),),
-	meta: Type.Optional(Type.Object({
-		label: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),
-}, { additionalProperties: true, },);
+export const MacroSummarySchema = Type.Object(
+	{
+		runnableType: Type.Optional(Type.String(),),
+		/** Owning plugin id as the server returns it (live identifiers are server-authored). */
+		ownerPluginId: Type.Optional(Type.String(),),
+		meta: Type.Optional(
+			Type.Object({ label: Type.Optional(Type.String(),), }, { additionalProperties: true, },),
+		),
+	},
+	{ additionalProperties: true, },
+);
 export type MacroSummary = Static<typeof MacroSummarySchema>;
 
 export const MacroSummaryArraySchema = Type.Array(MacroSummarySchema,);
@@ -553,34 +671,41 @@ export type MacroSummaryArray = Static<typeof MacroSummaryArraySchema>;
  * When finished: `running: false`; on failure `resultError`/`storedError` carry
  * details, otherwise `type` is filled.
  */
-export const MacroStateSchema = Type.Object({
-	exists: Type.Optional(Type.Boolean(),),
-	running: Type.Optional(Type.Boolean(),),
-	empty: Type.Optional(Type.Boolean(),),
-	type: Type.Optional(Type.String(),),
-	progress: Type.Optional(Type.Unknown(),),
-	resultError: Type.Optional(Type.Unknown(),),
-	storedError: Type.Optional(Type.Unknown(),),
-}, { additionalProperties: true, },);
+export const MacroStateSchema = Type.Object(
+	{
+		exists: Type.Optional(Type.Boolean(),),
+		running: Type.Optional(Type.Boolean(),),
+		empty: Type.Optional(Type.Boolean(),),
+		type: Type.Optional(Type.String(),),
+		progress: Type.Optional(Type.Unknown(),),
+		resultError: Type.Optional(Type.Unknown(),),
+		storedError: Type.Optional(Type.Unknown(),),
+	},
+	{ additionalProperties: true, },
+);
 export type MacroState = Static<typeof MacroStateSchema>;
 
 /** Run trigger response of POST /projects/{pk}/runnables/{runnableType}. */
-export const MacroRunStartSchema = Type.Object({
-	runId: Type.String(),
-}, { additionalProperties: true, },);
+export const MacroRunStartSchema = Type.Object(
+	{ runId: Type.String(), },
+	{ additionalProperties: true, },
+);
 export type MacroRunStart = Static<typeof MacroRunStartSchema>;
 
 /** Result of {@link MacrosResource.runAndWait}: bounded client-side polling. */
-export const MacroWaitResultSchema = Type.Object({
-	runnableType: Type.String(),
-	runId: Type.String(),
-	running: Type.Boolean(),
-	success: Type.Boolean(),
-	elapsedMs: Type.Number(),
-	pollCount: Type.Number(),
-	timedOut: Type.Optional(Type.Boolean(),),
-	state: Type.Optional(MacroStateSchema,),
-}, { additionalProperties: true, },);
+export const MacroWaitResultSchema = Type.Object(
+	{
+		runnableType: Type.String(),
+		runId: Type.String(),
+		running: Type.Boolean(),
+		success: Type.Boolean(),
+		elapsedMs: Type.Number(),
+		pollCount: Type.Number(),
+		timedOut: Type.Optional(Type.Boolean(),),
+		state: Type.Optional(MacroStateSchema,),
+	},
+	{ additionalProperties: true, },
+);
 export type MacroWaitResult = Static<typeof MacroWaitResultSchema>;
 
 // ---------------------------------------------------------------------------
@@ -599,38 +724,47 @@ export const FlowZoneObjectTypeSchema = Type.Union([
 ],);
 export type FlowZoneObjectType = Static<typeof FlowZoneObjectTypeSchema>;
 
-export const FlowZoneItemSchema = Type.Object({
-	objectId: Type.String(),
-	objectType: FlowZoneObjectTypeSchema,
-	projectKey: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const FlowZoneItemSchema = Type.Object(
+	{
+		objectId: Type.String(),
+		objectType: FlowZoneObjectTypeSchema,
+		projectKey: Type.Optional(Type.String(),),
+	},
+	{ additionalProperties: true, },
+);
 export type FlowZoneItem = Static<typeof FlowZoneItemSchema>;
 
-export const FlowZonePositionSchema = Type.Object({
-	x: Type.Number(),
-	y: Type.Number(),
-}, { additionalProperties: false, },);
+export const FlowZonePositionSchema = Type.Object(
+	{ x: Type.Number(), y: Type.Number(), },
+	{ additionalProperties: false, },
+);
 export type FlowZonePosition = Static<typeof FlowZonePositionSchema>;
 
-export const FlowZoneSchema = Type.Object({
-	id: Type.String(),
-	name: Type.String(),
-	color: Type.Optional(Type.String(),),
-	projectKey: Type.Optional(Type.String(),),
-	items: Type.Optional(Type.Array(FlowZoneItemSchema,),),
-	shared: Type.Optional(Type.Array(FlowZoneItemSchema,),),
-	position: Type.Optional(FlowZonePositionSchema,),
-}, { additionalProperties: true, },);
+export const FlowZoneSchema = Type.Object(
+	{
+		id: Type.String(),
+		name: Type.String(),
+		color: Type.Optional(Type.String(),),
+		projectKey: Type.Optional(Type.String(),),
+		items: Type.Optional(Type.Array(FlowZoneItemSchema,),),
+		shared: Type.Optional(Type.Array(FlowZoneItemSchema,),),
+		position: Type.Optional(FlowZonePositionSchema,),
+	},
+	{ additionalProperties: true, },
+);
 export type FlowZone = Static<typeof FlowZoneSchema>;
 
 export const FlowZoneArraySchema = Type.Array(FlowZoneSchema,);
 
-export const FlowZoneCreateOptionsSchema = Type.Object({
-	name: Type.String(),
-	color: Type.Optional(Type.String(),),
-	projectKey: Type.Optional(Type.String(),),
-	position: Type.Optional(FlowZonePositionSchema,),
-}, { additionalProperties: false, },);
+export const FlowZoneCreateOptionsSchema = Type.Object(
+	{
+		name: Type.String(),
+		color: Type.Optional(Type.String(),),
+		projectKey: Type.Optional(Type.String(),),
+		position: Type.Optional(FlowZonePositionSchema,),
+	},
+	{ additionalProperties: false, },
+);
 export type FlowZoneCreateOptions = Static<typeof FlowZoneCreateOptionsSchema>;
 
 /**
@@ -638,85 +772,103 @@ export type FlowZoneCreateOptions = Static<typeof FlowZoneCreateOptionsSchema>;
  * ignores `position`; repositioning an existing zone goes through
  * `flowZones.recreate`, which creates a replacement zone at the new position.
  */
-export const FlowZoneUpdateOptionsSchema = Type.Object({
-	name: Type.Optional(Type.String(),),
-	color: Type.Optional(Type.String(),),
-	projectKey: Type.Optional(Type.String(),),
-}, { additionalProperties: false, },);
+export const FlowZoneUpdateOptionsSchema = Type.Object(
+	{
+		name: Type.Optional(Type.String(),),
+		color: Type.Optional(Type.String(),),
+		projectKey: Type.Optional(Type.String(),),
+	},
+	{ additionalProperties: false, },
+);
 export type FlowZoneUpdateOptions = Static<typeof FlowZoneUpdateOptionsSchema>;
 
 // ---------------------------------------------------------------------------
 // Folders
 // ---------------------------------------------------------------------------
 
-export const FolderCreateOptionsSchema = Type.Object({
-	name: Type.String(),
-	type: Type.Optional(Type.String(),),
-	connection: Type.Optional(Type.String(),),
-	path: Type.Optional(Type.String(),),
-	params: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
-	projectKey: Type.Optional(Type.String(),),
-}, { additionalProperties: false, },);
-export type FolderCreateOptions = Static<typeof FolderCreateOptionsSchema>;
-
-export const FolderSummarySchema = Type.Object({
-	id: Type.String(),
-	name: Type.Optional(Type.String(),),
-	type: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
-export type FolderSummary = Static<typeof FolderSummarySchema>;
-
-export const FolderDetailsSchema = Type.Object({
-	id: Type.String(),
-	name: Type.Optional(Type.String(),),
-	type: Type.Optional(Type.String(),),
-	projectKey: Type.Optional(Type.String(),),
-	params: Type.Optional(Type.Object({
+export const FolderCreateOptionsSchema = Type.Object(
+	{
+		name: Type.String(),
+		type: Type.Optional(Type.String(),),
 		connection: Type.Optional(Type.String(),),
 		path: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),
-	tags: Type.Optional(Type.Array(Type.String(),),),
-}, { additionalProperties: true, },);
+		params: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
+		projectKey: Type.Optional(Type.String(),),
+	},
+	{ additionalProperties: false, },
+);
+export type FolderCreateOptions = Static<typeof FolderCreateOptionsSchema>;
+
+export const FolderSummarySchema = Type.Object(
+	{ id: Type.String(), name: Type.Optional(Type.String(),), type: Type.Optional(Type.String(),), },
+	{ additionalProperties: true, },
+);
+export type FolderSummary = Static<typeof FolderSummarySchema>;
+
+export const FolderDetailsSchema = Type.Object(
+	{
+		id: Type.String(),
+		name: Type.Optional(Type.String(),),
+		type: Type.Optional(Type.String(),),
+		projectKey: Type.Optional(Type.String(),),
+		params: Type.Optional(
+			Type.Object(
+				{ connection: Type.Optional(Type.String(),), path: Type.Optional(Type.String(),), },
+				{ additionalProperties: true, },
+			),
+		),
+		tags: Type.Optional(Type.Array(Type.String(),),),
+	},
+	{ additionalProperties: true, },
+);
 export type FolderDetails = Static<typeof FolderDetailsSchema>;
 
-export const FolderItemSchema = Type.Object({
-	path: Type.String(),
-	size: Type.Optional(Type.Number(),),
-	lastModified: Type.Optional(Type.Number(),),
-}, { additionalProperties: true, },);
+export const FolderItemSchema = Type.Object(
+	{
+		path: Type.String(),
+		size: Type.Optional(Type.Number(),),
+		lastModified: Type.Optional(Type.Number(),),
+	},
+	{ additionalProperties: true, },
+);
 export type FolderItem = Static<typeof FolderItemSchema>;
 
 // ---------------------------------------------------------------------------
 // Variables
 // ---------------------------------------------------------------------------
 
-export const ProjectVariablesSchema = Type.Object({
-	standard: Type.Record(Type.String(), Type.Unknown(),),
-	local: Type.Record(Type.String(), Type.Unknown(),),
-}, { additionalProperties: true, },);
+export const ProjectVariablesSchema = Type.Object(
+	{
+		standard: Type.Record(Type.String(), Type.Unknown(),),
+		local: Type.Record(Type.String(), Type.Unknown(),),
+	},
+	{ additionalProperties: true, },
+);
 export type ProjectVariables = Static<typeof ProjectVariablesSchema>;
 
 // ---------------------------------------------------------------------------
 // Connections
 // ---------------------------------------------------------------------------
 
-export const ConnectionSummarySchema = Type.Object({
-	name: Type.String(),
-	types: Type.Optional(Type.Array(Type.String(),),),
-	managed: Type.Optional(Type.Boolean(),),
-	dbSchemas: Type.Optional(Type.Array(Type.String(),),),
-}, { additionalProperties: true, },);
+export const ConnectionSummarySchema = Type.Object(
+	{
+		name: Type.String(),
+		types: Type.Optional(Type.Array(Type.String(),),),
+		managed: Type.Optional(Type.Boolean(),),
+		dbSchemas: Type.Optional(Type.Array(Type.String(),),),
+	},
+	{ additionalProperties: true, },
+);
 export type ConnectionSummary = Static<typeof ConnectionSummarySchema>;
 
 // ---------------------------------------------------------------------------
 // Code Envs
 // ---------------------------------------------------------------------------
 
-export const CodeEnvSummarySchema = Type.Object({
-	envName: Type.String(),
-	envLang: Type.String(),
-	deploymentMode: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const CodeEnvSummarySchema = Type.Object(
+	{ envName: Type.String(), envLang: Type.String(), deploymentMode: Type.Optional(Type.String(),), },
+	{ additionalProperties: true, },
+);
 export type CodeEnvSummary = Static<typeof CodeEnvSummarySchema>;
 
 export const CodeEnvDetailsSchema = Type.Object({
@@ -730,50 +882,52 @@ export const CodeEnvDetailsSchema = Type.Object({
 },);
 export type CodeEnvDetails = Static<typeof CodeEnvDetailsSchema>;
 
-export const CodeEnvLogSummarySchema = Type.Object({
-	name: Type.String(),
-}, { additionalProperties: true, },);
+export const CodeEnvLogSummarySchema = Type.Object(
+	{ name: Type.String(), },
+	{ additionalProperties: true, },
+);
 export type CodeEnvLogSummary = Static<typeof CodeEnvLogSummarySchema>;
 
 export const CodeEnvLogSummaryArraySchema = Type.Array(CodeEnvLogSummarySchema,);
 export type CodeEnvLogSummaryArray = Static<typeof CodeEnvLogSummaryArraySchema>;
 
-export const CodeEnvLogResultSchema = Type.Object({
-	log: Type.String(),
-	bytes: Type.Number(),
-	truncated: Type.Boolean(),
-	tailed: Type.Boolean(),
-}, { additionalProperties: false, },);
+export const CodeEnvLogResultSchema = Type.Object(
+	{ log: Type.String(), bytes: Type.Number(), truncated: Type.Boolean(), tailed: Type.Boolean(), },
+	{ additionalProperties: false, },
+);
 export type CodeEnvLogResult = Static<typeof CodeEnvLogResultSchema>;
 
-export const CodeEnvGetLogOptionsSchema = Type.Object({
-	maxBytes: Type.Optional(Type.Number(),),
-	maxLines: Type.Optional(Type.Number(),),
-}, { additionalProperties: false, },);
+export const CodeEnvGetLogOptionsSchema = Type.Object(
+	{ maxBytes: Type.Optional(Type.Number(),), maxLines: Type.Optional(Type.Number(),), },
+	{ additionalProperties: false, },
+);
 export type CodeEnvGetLogOptions = Static<typeof CodeEnvGetLogOptionsSchema>;
 
-export const CodeEnvUpdateImagesOptionsSchema = Type.Object({
-	envVersion: Type.Optional(Type.String(),),
-	wait: Type.Optional(Type.Boolean(),),
-}, { additionalProperties: false, },);
+export const CodeEnvUpdateImagesOptionsSchema = Type.Object(
+	{ envVersion: Type.Optional(Type.String(),), wait: Type.Optional(Type.Boolean(),), },
+	{ additionalProperties: false, },
+);
 export type CodeEnvUpdateImagesOptions = Static<typeof CodeEnvUpdateImagesOptionsSchema>;
 
-export const CodeEnvVersionForProjectSchema = Type.Object({
-	version: Type.Optional(Type.String(),),
-	bundleId: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const CodeEnvVersionForProjectSchema = Type.Object(
+	{ version: Type.Optional(Type.String(),), bundleId: Type.Optional(Type.String(),), },
+	{ additionalProperties: true, },
+);
 export type CodeEnvVersionForProject = Static<typeof CodeEnvVersionForProjectSchema>;
 
 export const CodeEnvActionResultSchema = Type.Record(Type.String(), Type.Unknown(),);
 export type CodeEnvActionResult = Static<typeof CodeEnvActionResultSchema>;
 
-export const CodeEnvCreateOptionsSchema = Type.Object({
-	envLang: Type.String(),
-	envName: Type.String(),
-	deploymentMode: Type.String(),
-	params: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
-	wait: Type.Optional(Type.Boolean(),),
-}, { additionalProperties: false, },);
+export const CodeEnvCreateOptionsSchema = Type.Object(
+	{
+		envLang: Type.String(),
+		envName: Type.String(),
+		deploymentMode: Type.String(),
+		params: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
+		wait: Type.Optional(Type.Boolean(),),
+	},
+	{ additionalProperties: false, },
+);
 export type CodeEnvCreateOptions = Static<typeof CodeEnvCreateOptionsSchema>;
 
 export const CodeEnvPackageListSchema = Type.Union([
@@ -782,23 +936,30 @@ export const CodeEnvPackageListSchema = Type.Union([
 ],);
 export type CodeEnvPackageList = Static<typeof CodeEnvPackageListSchema>;
 
-export const CodeEnvSetPackagesOptionsSchema = Type.Object({
-	packages: CodeEnvPackageListSchema,
-	installCorePackages: Type.Optional(Type.Boolean(),),
-	expectHash: Type.Optional(Type.String(),),
-}, { additionalProperties: false, },);
+export const CodeEnvSetPackagesOptionsSchema = Type.Object(
+	{
+		packages: CodeEnvPackageListSchema,
+		installCorePackages: Type.Optional(Type.Boolean(),),
+		expectHash: Type.Optional(Type.String(),),
+	},
+	{ additionalProperties: false, },
+);
 export type CodeEnvSetPackagesOptions = Static<typeof CodeEnvSetPackagesOptionsSchema>;
 
-export const CodeEnvUpdatePackagesOptionsSchema = Type.Object({
-	forceRebuildEnv: Type.Optional(Type.Boolean(),),
-	versionToUpdate: Type.Optional(Type.String(),),
-	wait: Type.Optional(Type.Boolean(),),
-}, { additionalProperties: false, },);
+export const CodeEnvUpdatePackagesOptionsSchema = Type.Object(
+	{
+		forceRebuildEnv: Type.Optional(Type.Boolean(),),
+		versionToUpdate: Type.Optional(Type.String(),),
+		wait: Type.Optional(Type.Boolean(),),
+	},
+	{ additionalProperties: false, },
+);
 export type CodeEnvUpdatePackagesOptions = Static<typeof CodeEnvUpdatePackagesOptionsSchema>;
 
-export const CodeEnvWaitOptionsSchema = Type.Object({
-	wait: Type.Optional(Type.Boolean(),),
-}, { additionalProperties: false, },);
+export const CodeEnvWaitOptionsSchema = Type.Object(
+	{ wait: Type.Optional(Type.Boolean(),), },
+	{ additionalProperties: false, },
+);
 export type CodeEnvWaitOptions = Static<typeof CodeEnvWaitOptionsSchema>;
 
 export const CodeEnvUsageArraySchema = Type.Array(CodeEnvActionResultSchema,);
@@ -808,108 +969,138 @@ export type CodeEnvUsage = CodeEnvActionResult;
 // Wiki, Dashboards, Insights
 // ---------------------------------------------------------------------------
 
-export const WikiTaxonomyNodeSchema = Type.Object({
-	id: Type.String(),
-	children: Type.Array(Type.Unknown(),),
-}, { additionalProperties: true, },);
+export const WikiTaxonomyNodeSchema = Type.Object(
+	{ id: Type.String(), children: Type.Array(Type.Unknown(),), },
+	{ additionalProperties: true, },
+);
 export type WikiTaxonomyNode = Static<typeof WikiTaxonomyNodeSchema>;
 
-export const WikiSettingsSchema = Type.Object({
-	projectKey: Type.Optional(Type.String(),),
-	taxonomy: Type.Optional(Type.Array(WikiTaxonomyNodeSchema,),),
-	homeArticleId: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const WikiSettingsSchema = Type.Object(
+	{
+		projectKey: Type.Optional(Type.String(),),
+		taxonomy: Type.Optional(Type.Array(WikiTaxonomyNodeSchema,),),
+		homeArticleId: Type.Optional(Type.String(),),
+	},
+	{ additionalProperties: true, },
+);
 export type WikiSettings = Static<typeof WikiSettingsSchema>;
 
 /** One entry of a wiki article's `attachments` (uploaded FILE or linked DSS object). */
-export const WikiArticleAttachmentSchema = Type.Object({
-	attachmentType: Type.Optional(Type.String(),),
-	smartId: Type.Optional(Type.String(),),
-	taggableType: Type.Optional(Type.String(),),
-	details: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
-}, { additionalProperties: true, },);
+export const WikiArticleAttachmentSchema = Type.Object(
+	{
+		attachmentType: Type.Optional(Type.String(),),
+		smartId: Type.Optional(Type.String(),),
+		taggableType: Type.Optional(Type.String(),),
+		details: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
+	},
+	{ additionalProperties: true, },
+);
 export type WikiArticleAttachment = Static<typeof WikiArticleAttachmentSchema>;
 
-export const WikiArticleMetadataSchema = Type.Object({
-	id: Type.String(),
-	name: Type.Optional(Type.String(),),
-	projectKey: Type.Optional(Type.String(),),
-	attachments: Type.Optional(Type.Array(WikiArticleAttachmentSchema,),),
-}, { additionalProperties: true, },);
+export const WikiArticleMetadataSchema = Type.Object(
+	{
+		id: Type.String(),
+		name: Type.Optional(Type.String(),),
+		projectKey: Type.Optional(Type.String(),),
+		attachments: Type.Optional(Type.Array(WikiArticleAttachmentSchema,),),
+	},
+	{ additionalProperties: true, },
+);
 export type WikiArticleMetadata = Static<typeof WikiArticleMetadataSchema>;
 
-export const WikiArticleDataSchema = Type.Object({
-	article: WikiArticleMetadataSchema,
-	payload: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const WikiArticleDataSchema = Type.Object(
+	{ article: WikiArticleMetadataSchema, payload: Type.Optional(Type.String(),), },
+	{ additionalProperties: true, },
+);
 export type WikiArticleData = Static<typeof WikiArticleDataSchema>;
 
-export const DashboardSummarySchema = Type.Object({
-	id: Type.String(),
-	name: Type.String(),
-	projectKey: Type.Optional(Type.String(),),
-	owner: Type.Optional(Type.String(),),
-	listed: Type.Optional(Type.Boolean(),),
-	numPages: Type.Optional(Type.Number(),),
-	numTiles: Type.Optional(Type.Number(),),
-}, { additionalProperties: true, },);
+export const DashboardSummarySchema = Type.Object(
+	{
+		id: Type.String(),
+		name: Type.String(),
+		projectKey: Type.Optional(Type.String(),),
+		owner: Type.Optional(Type.String(),),
+		listed: Type.Optional(Type.Boolean(),),
+		numPages: Type.Optional(Type.Number(),),
+		numTiles: Type.Optional(Type.Number(),),
+	},
+	{ additionalProperties: true, },
+);
 export type DashboardSummary = Static<typeof DashboardSummarySchema>;
 
-export const DashboardDetailsSchema = Type.Object({
-	id: Type.String(),
-	name: Type.String(),
-	projectKey: Type.Optional(Type.String(),),
-	owner: Type.Optional(Type.String(),),
-	listed: Type.Optional(Type.Boolean(),),
-	pages: Type.Optional(Type.Array(Type.Unknown(),),),
-}, { additionalProperties: true, },);
+export const DashboardDetailsSchema = Type.Object(
+	{
+		id: Type.String(),
+		name: Type.String(),
+		projectKey: Type.Optional(Type.String(),),
+		owner: Type.Optional(Type.String(),),
+		listed: Type.Optional(Type.Boolean(),),
+		pages: Type.Optional(Type.Array(Type.Unknown(),),),
+	},
+	{ additionalProperties: true, },
+);
 export type DashboardDetails = Static<typeof DashboardDetailsSchema>;
 
-export const InsightSummarySchema = Type.Object({
-	id: Type.String(),
-	name: Type.String(),
-	type: Type.Optional(Type.String(),),
-	projectKey: Type.Optional(Type.String(),),
-	owner: Type.Optional(Type.String(),),
-	listed: Type.Optional(Type.Boolean(),),
-}, { additionalProperties: true, },);
+export const InsightSummarySchema = Type.Object(
+	{
+		id: Type.String(),
+		name: Type.String(),
+		type: Type.Optional(Type.String(),),
+		projectKey: Type.Optional(Type.String(),),
+		owner: Type.Optional(Type.String(),),
+		listed: Type.Optional(Type.Boolean(),),
+	},
+	{ additionalProperties: true, },
+);
 export type InsightSummary = Static<typeof InsightSummarySchema>;
 
-export const InsightDetailsSchema = Type.Object({
-	id: Type.String(),
-	name: Type.String(),
-	type: Type.Optional(Type.String(),),
-	projectKey: Type.Optional(Type.String(),),
-	owner: Type.Optional(Type.String(),),
-	listed: Type.Optional(Type.Boolean(),),
-}, { additionalProperties: true, },);
+export const InsightDetailsSchema = Type.Object(
+	{
+		id: Type.String(),
+		name: Type.String(),
+		type: Type.Optional(Type.String(),),
+		projectKey: Type.Optional(Type.String(),),
+		owner: Type.Optional(Type.String(),),
+		listed: Type.Optional(Type.Boolean(),),
+	},
+	{ additionalProperties: true, },
+);
 export type InsightDetails = Static<typeof InsightDetailsSchema>;
 
-export const DataQualityRuleSchema = Type.Object({
-	id: Type.String(),
-	displayName: Type.Optional(Type.String(),),
-	name: Type.Optional(Type.String(),),
-	type: Type.Optional(Type.String(),),
-	enabled: Type.Optional(Type.Boolean(),),
-	autoRun: Type.Optional(Type.Boolean(),),
-	computeOnBuildMode: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const DataQualityRuleSchema = Type.Object(
+	{
+		id: Type.String(),
+		displayName: Type.Optional(Type.String(),),
+		name: Type.Optional(Type.String(),),
+		type: Type.Optional(Type.String(),),
+		enabled: Type.Optional(Type.Boolean(),),
+		autoRun: Type.Optional(Type.Boolean(),),
+		computeOnBuildMode: Type.Optional(Type.String(),),
+	},
+	{ additionalProperties: true, },
+);
 export type DataQualityRule = Static<typeof DataQualityRuleSchema>;
 
-export const DataQualityRulesSchema = Type.Object({
-	checks: Type.Array(DataQualityRuleSchema,),
-	monitor: Type.Optional(Type.Unknown(),),
-	displayedState: Type.Optional(Type.Unknown(),),
-}, { additionalProperties: true, },);
+export const DataQualityRulesSchema = Type.Object(
+	{
+		checks: Type.Array(DataQualityRuleSchema,),
+		monitor: Type.Optional(Type.Unknown(),),
+		displayedState: Type.Optional(Type.Unknown(),),
+	},
+	{ additionalProperties: true, },
+);
 export type DataQualityRules = Static<typeof DataQualityRulesSchema>;
 
-export const DataQualityRuleResultSchema = Type.Object({
-	id: Type.Optional(Type.String(),),
-	name: Type.Optional(Type.String(),),
-	ruleId: Type.Optional(Type.String(),),
-	outcome: Type.Optional(Type.String(),),
-	status: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const DataQualityRuleResultSchema = Type.Object(
+	{
+		id: Type.Optional(Type.String(),),
+		name: Type.Optional(Type.String(),),
+		ruleId: Type.Optional(Type.String(),),
+		outcome: Type.Optional(Type.String(),),
+		status: Type.Optional(Type.String(),),
+	},
+	{ additionalProperties: true, },
+);
 export type DataQualityRuleResult = Static<typeof DataQualityRuleResultSchema>;
 
 export const DataQualityStatusByPartitionSchema = Type.Record(Type.String(), Type.Unknown(),);
@@ -928,79 +1119,103 @@ export type DataQualityTimelineEntry = Static<typeof DataQualityTimelineEntrySch
 
 export type DataQualityStatusByPartition = Static<typeof DataQualityStatusByPartitionSchema>;
 
-export const DataQualityComputeResultSchema = Type.Object({
-	jobId: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const DataQualityComputeResultSchema = Type.Object(
+	{ jobId: Type.Optional(Type.String(),), },
+	{ additionalProperties: true, },
+);
 export type DataQualityComputeResult = Static<typeof DataQualityComputeResultSchema>;
 
 // ---------------------------------------------------------------------------
 // Jupyter Notebooks
 // ---------------------------------------------------------------------------
 
-export const JupyterCellSchema = Type.Object({
-	cell_type: Type.String(),
-	// nbformat permits a cell's source to be either a single string or an
-	// array of strings; DSS returns whichever form the notebook carries.
-	source: Type.Union([Type.String(), Type.Array(Type.String(),),],),
-	metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
-	outputs: Type.Optional(Type.Array(Type.Unknown(),),),
-	execution_count: Type.Optional(Type.Union([Type.Null(), Type.Number(),],),),
-}, { additionalProperties: true, },);
+export const JupyterCellSchema = Type.Object(
+	{
+		cell_type: Type.String(),
+		// nbformat permits a cell's source to be either a single string or an
+		// array of strings; DSS returns whichever form the notebook carries.
+		source: Type.Union([Type.String(), Type.Array(Type.String(),),],),
+		metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown(),),),
+		outputs: Type.Optional(Type.Array(Type.Unknown(),),),
+		execution_count: Type.Optional(Type.Union([Type.Null(), Type.Number(),],),),
+	},
+	{ additionalProperties: true, },
+);
 export type JupyterCell = Static<typeof JupyterCellSchema>;
 
-export const JupyterNotebookSummarySchema = Type.Object({
-	name: Type.String(),
-	projectKey: Type.String(),
-	language: Type.String(),
-	kernelSpec: Type.Optional(Type.Object({
+export const JupyterNotebookSummarySchema = Type.Object(
+	{
 		name: Type.String(),
-		display_name: Type.Optional(Type.String(),),
-		language: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),
-}, { additionalProperties: true, },);
+		projectKey: Type.String(),
+		language: Type.String(),
+		kernelSpec: Type.Optional(
+			Type.Object(
+				{
+					name: Type.String(),
+					display_name: Type.Optional(Type.String(),),
+					language: Type.Optional(Type.String(),),
+				},
+				{ additionalProperties: true, },
+			),
+		),
+	},
+	{ additionalProperties: true, },
+);
 export type JupyterNotebookSummary = Static<typeof JupyterNotebookSummarySchema>;
 
-export const JupyterNotebookContentSchema = Type.Object({
-	metadata: Type.Record(Type.String(), Type.Unknown(),),
-	nbformat: Type.Number(),
-	nbformat_minor: Type.Number(),
-	cells: Type.Array(JupyterCellSchema,),
-}, { additionalProperties: true, },);
+export const JupyterNotebookContentSchema = Type.Object(
+	{
+		metadata: Type.Record(Type.String(), Type.Unknown(),),
+		nbformat: Type.Number(),
+		nbformat_minor: Type.Number(),
+		cells: Type.Array(JupyterCellSchema,),
+	},
+	{ additionalProperties: true, },
+);
 export type JupyterNotebookContent = Static<typeof JupyterNotebookContentSchema>;
 
-export const NotebookSessionSchema = Type.Object({
-	sessionId: Type.String(),
-	kernelId: Type.Optional(Type.String(),),
-	projectKey: Type.Optional(Type.String(),),
-	notebookName: Type.Optional(Type.String(),),
-	sessionCreator: Type.Optional(Type.String(),),
-	kernelExecutionState: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const NotebookSessionSchema = Type.Object(
+	{
+		sessionId: Type.String(),
+		kernelId: Type.Optional(Type.String(),),
+		projectKey: Type.Optional(Type.String(),),
+		notebookName: Type.Optional(Type.String(),),
+		sessionCreator: Type.Optional(Type.String(),),
+		kernelExecutionState: Type.Optional(Type.String(),),
+	},
+	{ additionalProperties: true, },
+);
 export type NotebookSession = Static<typeof NotebookSessionSchema>;
 
 // ---------------------------------------------------------------------------
 // SQL Notebooks
 // ---------------------------------------------------------------------------
 
-export const SqlNotebookCellSchema = Type.Object({
-	id: Type.String(),
-	type: Type.String(),
-	name: Type.Optional(Type.String(),),
-	/**
-	 * Cell source. DSS enforces a JSON string here: an array fails to parse
-	 * server-side (`Expected a string but was BEGIN_ARRAY ... $.cells[0].code`),
-	 * so the official-client example's line-array form does not apply to SQL.
-	 */
-	code: Type.String(),
-}, { additionalProperties: true, },);
+export const SqlNotebookCellSchema = Type.Object(
+	{
+		id: Type.String(),
+		type: Type.String(),
+		name: Type.Optional(Type.String(),),
+		/**
+		 * Cell source. DSS enforces a JSON string here: an array fails to parse
+		 * server-side (`Expected a string but was BEGIN_ARRAY ... $.cells[0].code`),
+		 * so the official-client example's line-array form does not apply to SQL.
+		 */
+		code: Type.String(),
+	},
+	{ additionalProperties: true, },
+);
 export type SqlNotebookCell = Static<typeof SqlNotebookCellSchema>;
 
-export const SqlNotebookSummarySchema = Type.Object({
-	id: Type.String(),
-	projectKey: Type.Optional(Type.String(),),
-	language: Type.String(),
-	connection: Type.String(),
-}, { additionalProperties: true, },);
+export const SqlNotebookSummarySchema = Type.Object(
+	{
+		id: Type.String(),
+		projectKey: Type.Optional(Type.String(),),
+		language: Type.String(),
+		connection: Type.String(),
+	},
+	{ additionalProperties: true, },
+);
 export type SqlNotebookSummary = Static<typeof SqlNotebookSummarySchema>;
 
 /**
@@ -1010,10 +1225,10 @@ export type SqlNotebookSummary = Static<typeof SqlNotebookSummarySchema>;
  * `additionalProperties`; requests supply `connection` + `cells` (and
  * optionally `name` as the display handle).
  */
-export const SqlNotebookContentSchema = Type.Object({
-	connection: Type.String(),
-	cells: Type.Array(SqlNotebookCellSchema,),
-}, { additionalProperties: true, },);
+export const SqlNotebookContentSchema = Type.Object(
+	{ connection: Type.String(), cells: Type.Array(SqlNotebookCellSchema,), },
+	{ additionalProperties: true, },
+);
 export type SqlNotebookContent = Static<typeof SqlNotebookContentSchema>;
 
 /** Execution history of a SQL notebook: cell ID to the runs recorded for it. */
@@ -1027,17 +1242,16 @@ export type SqlNotebookHistory = Static<typeof SqlNotebookHistorySchema>;
 // SQL Queries
 // ---------------------------------------------------------------------------
 
-export const SqlQuerySchemaSchema = Type.Object({
-	name: Type.String(),
-	type: Type.String(),
-}, { additionalProperties: true, },);
+export const SqlQuerySchemaSchema = Type.Object(
+	{ name: Type.String(), type: Type.String(), },
+	{ additionalProperties: true, },
+);
 export type SqlQuerySchema = Static<typeof SqlQuerySchemaSchema>;
 
-export const SqlQueryResultSchema = Type.Object({
-	queryId: Type.String(),
-	hasResults: Type.Boolean(),
-	schema: Type.Array(SqlQuerySchemaSchema,),
-}, { additionalProperties: true, },);
+export const SqlQueryResultSchema = Type.Object(
+	{ queryId: Type.String(), hasResults: Type.Boolean(), schema: Type.Array(SqlQuerySchemaSchema,), },
+	{ additionalProperties: true, },
+);
 export type SqlQueryResult = Static<typeof SqlQueryResultSchema>;
 
 export const SqlQueryResponseSchema = Type.Object({
@@ -1068,58 +1282,76 @@ export type FlowMapOptions = Static<typeof FlowMapOptionsSchema>;
  * DSS 14.7.3 source; DSS additionally returns extension fields, which are
  * preserved by `additionalProperties: true`.
  */
-export const ProjectGitStatusSchema = Type.Object({
-	currentBranch: Type.Optional(Type.String(),),
-	remotes: Type.Optional(Type.Array(Type.Object({
-		name: Type.Optional(Type.String(),),
-		url: Type.Optional(Type.String(),),
-	}, { additionalProperties: true, },),),),
-	trackingCount: Type.Optional(Type.Object({
-		ahead: Type.Optional(Type.Number(),),
-		behind: Type.Optional(Type.Number(),),
-	}, { additionalProperties: true, },),),
-	clean: Type.Optional(Type.Boolean(),),
-	hasUncommittedChanges: Type.Optional(Type.Boolean(),),
-	added: Type.Optional(Type.Array(Type.String(),),),
-	changed: Type.Optional(Type.Array(Type.String(),),),
-	removed: Type.Optional(Type.Array(Type.String(),),),
-	missing: Type.Optional(Type.Array(Type.String(),),),
-	modified: Type.Optional(Type.Array(Type.String(),),),
-	conflicting: Type.Optional(Type.Array(Type.String(),),),
-	untracked: Type.Optional(Type.Array(Type.String(),),),
-	untrackedFolders: Type.Optional(Type.Array(Type.String(),),),
-	originProjectKey: Type.Optional(Type.String(),),
-	trackingCountWithOriginProject: Type.Optional(Type.Object({
-		ahead: Type.Optional(Type.Number(),),
-		behind: Type.Optional(Type.Number(),),
-	}, { additionalProperties: true, },),),
-}, { additionalProperties: true, },);
+export const ProjectGitStatusSchema = Type.Object(
+	{
+		currentBranch: Type.Optional(Type.String(),),
+		remotes: Type.Optional(
+			Type.Array(
+				Type.Object(
+					{ name: Type.Optional(Type.String(),), url: Type.Optional(Type.String(),), },
+					{ additionalProperties: true, },
+				),
+			),
+		),
+		trackingCount: Type.Optional(
+			Type.Object(
+				{ ahead: Type.Optional(Type.Number(),), behind: Type.Optional(Type.Number(),), },
+				{ additionalProperties: true, },
+			),
+		),
+		clean: Type.Optional(Type.Boolean(),),
+		hasUncommittedChanges: Type.Optional(Type.Boolean(),),
+		added: Type.Optional(Type.Array(Type.String(),),),
+		changed: Type.Optional(Type.Array(Type.String(),),),
+		removed: Type.Optional(Type.Array(Type.String(),),),
+		missing: Type.Optional(Type.Array(Type.String(),),),
+		modified: Type.Optional(Type.Array(Type.String(),),),
+		conflicting: Type.Optional(Type.Array(Type.String(),),),
+		untracked: Type.Optional(Type.Array(Type.String(),),),
+		untrackedFolders: Type.Optional(Type.Array(Type.String(),),),
+		originProjectKey: Type.Optional(Type.String(),),
+		trackingCountWithOriginProject: Type.Optional(
+			Type.Object(
+				{ ahead: Type.Optional(Type.Number(),), behind: Type.Optional(Type.Number(),), },
+				{ additionalProperties: true, },
+			),
+		),
+	},
+	{ additionalProperties: true, },
+);
 export type ProjectGitStatus = Static<typeof ProjectGitStatusSchema>;
 
-export const ProjectGitRemoteSchema = Type.Object({
-	url: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const ProjectGitRemoteSchema = Type.Object(
+	{ url: Type.Optional(Type.String(),), },
+	{ additionalProperties: true, },
+);
 export type ProjectGitRemote = Static<typeof ProjectGitRemoteSchema>;
 
 /**
  * Result of a Git mutation. DSS answers with HTTP 200 even for failures, so
  * `success` is the field callers must inspect before trusting the operation.
  */
-export const ProjectGitActionResultSchema = Type.Object({
-	success: Type.Optional(Type.Boolean(),),
-	output: Type.Optional(Type.Unknown(),),
-	logs: Type.Optional(Type.Unknown(),),
-	messages: Type.Optional(Type.Unknown(),),
-}, { additionalProperties: true, },);
+export const ProjectGitActionResultSchema = Type.Object(
+	{
+		success: Type.Optional(Type.Boolean(),),
+		output: Type.Optional(Type.Unknown(),),
+		logs: Type.Optional(Type.Unknown(),),
+		messages: Type.Optional(Type.Unknown(),),
+	},
+	{ additionalProperties: true, },
+);
 export type ProjectGitActionResult = Static<typeof ProjectGitActionResultSchema>;
 
-export const ProjectGitTagSchema = Type.Object({
-	name: Type.Optional(Type.String(),),
-	shortName: Type.Optional(Type.String(),),
-	commit: Type.Optional(Type.Unknown(),),
-	annotations: Type.Optional(Type.Unknown(),),
-	readOnly: Type.Optional(Type.Boolean(),),
-}, { additionalProperties: true, },);
+export const ProjectGitTagSchema = Type.Object(
+	{
+		name: Type.Optional(Type.String(),),
+		shortName: Type.Optional(Type.String(),),
+		commit: Type.Optional(Type.Unknown(),),
+		annotations: Type.Optional(Type.Unknown(),),
+		readOnly: Type.Optional(Type.Boolean(),),
+	},
+	{ additionalProperties: true, },
+);
 export type ProjectGitTag = Static<typeof ProjectGitTagSchema>;
 
 export const ProjectGitTagsSchema = Type.Array(ProjectGitTagSchema,);
@@ -1129,10 +1361,10 @@ export type ProjectGitTags = Static<typeof ProjectGitTagsSchema>;
  * Paginated commit log. `nextCommit` is the cursor DSS expects back to fetch
  * the following page; entries stay unpinned because commit payloads vary.
  */
-export const ProjectGitLogResultSchema = Type.Object({
-	entries: Type.Array(Type.Unknown(),),
-	nextCommit: Type.Optional(Type.String(),),
-}, { additionalProperties: true, },);
+export const ProjectGitLogResultSchema = Type.Object(
+	{ entries: Type.Array(Type.Unknown(),), nextCommit: Type.Optional(Type.String(),), },
+	{ additionalProperties: true, },
+);
 export type ProjectGitLogResult = Static<typeof ProjectGitLogResultSchema>;
 
 /**
@@ -1140,47 +1372,57 @@ export type ProjectGitLogResult = Static<typeof ProjectGitLogResultSchema>;
  * source; DSS additionally returns extension fields, which are preserved by
  * `additionalProperties: true`.
  */
-export const ProjectGitDiffResultSchema = Type.Object({
-	commitFrom: Type.Optional(Type.Unknown(),),
-	commitTo: Type.Optional(Type.Unknown(),),
-	addedLines: Type.Optional(Type.Number(),),
-	removedLines: Type.Optional(Type.Number(),),
-	changedFiles: Type.Optional(Type.Number(),),
-	entries: Type.Optional(Type.Array(Type.Unknown(),),),
-}, { additionalProperties: true, },);
+export const ProjectGitDiffResultSchema = Type.Object(
+	{
+		commitFrom: Type.Optional(Type.Unknown(),),
+		commitTo: Type.Optional(Type.Unknown(),),
+		addedLines: Type.Optional(Type.Number(),),
+		removedLines: Type.Optional(Type.Number(),),
+		changedFiles: Type.Optional(Type.Number(),),
+		entries: Type.Optional(Type.Array(Type.Unknown(),),),
+	},
+	{ additionalProperties: true, },
+);
 export type ProjectGitDiffResult = Static<typeof ProjectGitDiffResultSchema>;
 
-export const ProjectGitLibrarySchema = Type.Object({
-	repository: Type.Optional(Type.String(),),
-	login: Type.Optional(Type.String(),),
-	pathInGitRepository: Type.Optional(Type.String(),),
-	localTargetPath: Type.Optional(Type.String(),),
-	checkout: Type.Optional(Type.String(),),
-	addToPythonPath: Type.Optional(Type.Boolean(),),
-}, { additionalProperties: true, },);
+export const ProjectGitLibrarySchema = Type.Object(
+	{
+		repository: Type.Optional(Type.String(),),
+		login: Type.Optional(Type.String(),),
+		pathInGitRepository: Type.Optional(Type.String(),),
+		localTargetPath: Type.Optional(Type.String(),),
+		checkout: Type.Optional(Type.String(),),
+		addToPythonPath: Type.Optional(Type.Boolean(),),
+	},
+	{ additionalProperties: true, },
+);
 export type ProjectGitLibrary = Static<typeof ProjectGitLibrarySchema>;
 
 export const ProjectGitLibrariesSchema = Type.Array(ProjectGitLibrarySchema,);
 export type ProjectGitLibraries = Static<typeof ProjectGitLibrariesSchema>;
 
 /** Handle returned by Git operations that run asynchronously as a DSS future. */
-export const ProjectGitFutureResponseSchema = Type.Object({
-	jobId: Type.String(),
-}, { additionalProperties: true, },);
+export const ProjectGitFutureResponseSchema = Type.Object(
+	{ jobId: Type.String(), },
+	{ additionalProperties: true, },
+);
 export type ProjectGitFutureResponse = Static<typeof ProjectGitFutureResponseSchema>;
 
-export const ProjectGitFutureStateSchema = Type.Object({
-	jobId: Type.Optional(Type.String(),),
-	hasResult: Type.Optional(Type.Boolean(),),
-	result: Type.Optional(Type.Unknown(),),
-	alive: Type.Optional(Type.Boolean(),),
-	aborted: Type.Optional(Type.Boolean(),),
-	abortable: Type.Optional(Type.Boolean(),),
-	unknown: Type.Optional(Type.Boolean(),),
-	startTime: Type.Optional(Type.Number(),),
-	runningTime: Type.Optional(Type.Number(),),
-	error: Type.Optional(Type.Unknown(),),
-}, { additionalProperties: true, },);
+export const ProjectGitFutureStateSchema = Type.Object(
+	{
+		jobId: Type.Optional(Type.String(),),
+		hasResult: Type.Optional(Type.Boolean(),),
+		result: Type.Optional(Type.Unknown(),),
+		alive: Type.Optional(Type.Boolean(),),
+		aborted: Type.Optional(Type.Boolean(),),
+		abortable: Type.Optional(Type.Boolean(),),
+		unknown: Type.Optional(Type.Boolean(),),
+		startTime: Type.Optional(Type.Number(),),
+		runningTime: Type.Optional(Type.Number(),),
+		error: Type.Optional(Type.Unknown(),),
+	},
+	{ additionalProperties: true, },
+);
 export type ProjectGitFutureState = Static<typeof ProjectGitFutureStateSchema>;
 
 // ---------------------------------------------------------------------------

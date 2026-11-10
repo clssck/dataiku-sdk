@@ -84,8 +84,8 @@ function firstListField(items: unknown[], fields: readonly string[],): string | 
 /** List connection names visible to this key via the CLI. */
 async function listConnectionNames(ctx: LiveContext,): Promise<string[]> {
 	const names = asArray(await ctx.run<unknown>(["connection", "list",],),)
-		.map((name,) => asString(name,))
-		.filter((name,): name is string => name !== undefined);
+		.map((name,) => asString(name,),)
+		.filter((name,): name is string => name !== undefined,);
 	return names;
 }
 
@@ -296,7 +296,7 @@ async function runImportLifecycle(
 			checked: true,
 			datasetName,
 			existingDatasetsNames: [],
-		}));
+		}),);
 		const executed = asRecord(
 			await ctx.run<unknown>([
 				"connection",
@@ -347,8 +347,8 @@ async function runImportLifecycle(
 				"--max-rows",
 				"2",
 			], { projectKey, },);
-			const id = preview.columns.findIndex(column => column.name === "id");
-			const value = preview.columns.findIndex(column => column.name === "value");
+			const id = preview.columns.findIndex(column => column.name === "id",);
+			const value = preview.columns.findIndex(column => column.name === "value",);
 			if (
 				id < 0 || value < 0 || preview.rowCount !== 1
 				|| preview.rows[0]?.[id] !== "1" || preview.rows[0]?.[value] !== "owned"
@@ -473,10 +473,10 @@ async function resolvePythonCodeEnv(ctx: LiveContext,): Promise<string> {
 	const envs = asArray(
 		await ctx.run<unknown>(["code-env", "list", "--lang", "PYTHON",],),
 	)
-		.map((item,) => asRecord(item,))
-		.filter((item,): item is JsonRecord => item !== undefined)
-		.map((item,) => asString(item["envName"],) ?? asString(item["name"],))
-		.filter((name,): name is string => name !== undefined);
+		.map((item,) => asRecord(item,),)
+		.filter((item,): item is JsonRecord => item !== undefined,)
+		.map((item,) => asString(item["envName"],) ?? asString(item["name"],),)
+		.filter((name,): name is string => name !== undefined,);
 	if (envs.length === 0) {
 		capabilityBlocked(
 			"No PYTHON code environment exists on this instance (code-env list --lang PYTHON returned zero); get/get-definition/logs need an existing env and the infrastructure profile never creates globals.",
@@ -527,11 +527,11 @@ async function exerciseCodeEnvReads(ctx: LiveContext,): Promise<void> {
 
 async function exercisePluginReads(ctx: LiveContext,): Promise<void> {
 	const plugins = asArray(await ctx.run<unknown>(["plugin", "list",],),)
-		.map((item,) => asRecord(item,))
-		.filter((item,): item is JsonRecord => item !== undefined);
+		.map((item,) => asRecord(item,),)
+		.filter((item,): item is JsonRecord => item !== undefined,);
 	const pluginId = plugins
-		.map((item,) => asString(item["pluginId"],) ?? asString(item["id"],))
-		.find((id,): id is string => id !== undefined);
+		.map((item,) => asString(item["pluginId"],) ?? asString(item["id"],),)
+		.find((id,): id is string => id !== undefined,);
 	if (pluginId === undefined) {
 		capabilityBlocked(
 			"No plugin is installed on this instance (plugin list returned zero usable ids); plugin usages needs an existing plugin and the infrastructure profile never installs one.",
@@ -563,14 +563,14 @@ async function discoverLlmCatalog(
 	const llms = asArray(
 		await ctx.run<unknown>(["llm", "list", "--project-key", projectKey,],),
 	)
-		.map((item,) => asRecord(item,))
-		.filter((item,): item is JsonRecord => item !== undefined);
+		.map((item,) => asRecord(item,),)
+		.filter((item,): item is JsonRecord => item !== undefined,);
 	return llms
 		.map((item,) => ({
 			id: asString(item["llmId"],) ?? asString(item["id"],) ?? "",
 			purpose: asString(item["purpose"],) ?? asString(item["type"],),
-		}))
-		.filter((entry,) => entry.id !== "");
+		}),)
+		.filter((entry,) => entry.id !== "",);
 }
 
 async function exerciseLlmCatalog(ctx: LiveContext,): Promise<void> {
@@ -870,7 +870,7 @@ async function exerciseStreamingEndpoints(ctx: LiveContext,): Promise<void> {
 					],),
 				);
 				const names = asArray(schema?.["columns"],).map(column =>
-					asString(asRecord(column,)?.["name"],)
+					asString(asRecord(column,)?.["name"],),
 				);
 				if (JSON.stringify(names,) !== JSON.stringify(["n", "value",],)) {
 					throw new Error(`streaming-endpoint set-schema did not persist: ${JSON.stringify(names,)}.`,);
@@ -888,7 +888,7 @@ async function exerciseStreamingEndpoints(ctx: LiveContext,): Promise<void> {
 			const remaining = asArray(
 				await ctx.run<unknown>(["streaming-endpoint", "list", "--project-key", projectKey,],),
 			);
-			if (remaining.some((item,) => asString(asRecord(item,)?.["id"],) === endpointId)) {
+			if (remaining.some((item,) => asString(asRecord(item,)?.["id"],) === endpointId,)) {
 				throw new Error(`streaming-endpoint delete left ${endpointId} behind.`,);
 			}
 		} finally {
@@ -1062,7 +1062,7 @@ async function runContinuousActivityLifecycle(
 		const listed = asArray(
 			await ctx.run<unknown>(["continuous-activity", "list", "--project-key", projectKey,],),
 		);
-		const exact = listed.find(item => asString(asRecord(item,)?.["recipeId"],) === chain.recipeName);
+		const exact = listed.find(item => asString(asRecord(item,)?.["recipeId"],) === chain.recipeName,);
 		// The throwaway project holds exactly one continuous recipe, so a single
 		// listed activity is provably this recipe's; anything else is ambiguous.
 		const activity = asRecord(exact,) ?? (listed.length === 1 ? asRecord(listed[0],) : undefined);
@@ -1088,8 +1088,8 @@ async function runContinuousActivityLifecycle(
 			);
 		}
 		const inputRefs = asArray(asRecord(asRecord(recipeBody?.["inputs"],)?.["main"],)?.["items"],)
-			.map(item => asString(asRecord(item,)?.["ref"],))
-			.filter((ref,): ref is string => ref !== undefined);
+			.map(item => asString(asRecord(item,)?.["ref"],),)
+			.filter((ref,): ref is string => ref !== undefined,);
 		if (!inputRefs.includes(chain.endpointId,)) {
 			throw new Error(
 				`csync recipe ${chain.recipeName} does not declare the streaming endpoint ${chain.endpointId} as a main input: ${
@@ -1141,7 +1141,7 @@ async function runContinuousActivityLifecycle(
 		const rows = asArray(preview?.["rows"],);
 		if (
 			rows.length === 0
-			|| !OWNED_SSE_VALUES.some(value => JSON.stringify(rows,).includes(`"${value}"`,))
+			|| !OWNED_SSE_VALUES.some(value => JSON.stringify(rows,).includes(`"${value}"`,),)
 		) {
 			throw new Error(
 				`continuous activity ${recipeId} started but the output dataset ${chain.outputName} never showed the owned stream records within the bounded poll (last preview: ${
@@ -1404,8 +1404,8 @@ async function exerciseDirectoryReads(ctx: LiveContext,): Promise<void> {
 		// answers 500 "Root project folder does not have settings" (live-verified),
 		// so settings-get targets a discovered non-root child instead.
 		const childId = asArray(root?.["childrenIds"],)
-			.map((id,) => asString(id,))
-			.find((id,): id is string => id !== undefined);
+			.map((id,) => asString(id,),)
+			.find((id,): id is string => id !== undefined,);
 		if (childId !== undefined) {
 			await ctx.run<unknown>(["project-folder", "settings-get", childId,],);
 		}

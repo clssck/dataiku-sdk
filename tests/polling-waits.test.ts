@@ -576,7 +576,7 @@ describe("post-budget polling", () => {
 
 	it("futures.wait stops at the deadline instead of stalling past it", async () => {
 		const respond = stallAfter(3, STALL_MS, { alive: true, hasResult: false, },);
-		const loopback = await startLoopback((_req, res,) => respond(res,));
+		const loopback = await startLoopback((_req, res,) => respond(res,),);
 		try {
 			const started = Date.now();
 			const result = await new FuturesResource(client(loopback.url,),).wait("f-post", {
@@ -598,7 +598,7 @@ describe("post-budget polling", () => {
 			STALL_MS,
 			{ baseStatus: { state: "RUNNING", }, globalState: {}, },
 		);
-		const loopback = await startLoopback((_req, res,) => respond(res,));
+		const loopback = await startLoopback((_req, res,) => respond(res,),);
 		try {
 			const started = Date.now();
 			const result = await new JobsResource(client(loopback.url,),).wait("j-post", {
@@ -622,7 +622,7 @@ describe("post-budget polling", () => {
 			baseStatus: { def: { id: "j-mid", type: "RECURSIVE_BUILD", }, state: "RUNNING", },
 			globalState: { done: 1, failed: 0, running: 2, total: 5, },
 		},);
-		const loopback = await startLoopback((_req, res,) => respond(res,));
+		const loopback = await startLoopback((_req, res,) => respond(res,),);
 		try {
 			const started = Date.now();
 			const result = await new JobsResource(client(loopback.url,),).wait("j-mid", {
@@ -641,7 +641,7 @@ describe("post-budget polling", () => {
 				progress: { done: 1, failed: 0, running: 2, total: 5, },
 			},);
 			// The wait only stops polling: it never issues an abort.
-			expect(loopback.requests.every((request,) => request.method === "GET"),).toBe(true,);
+			expect(loopback.requests.every((request,) => request.method === "GET",),).toBe(true,);
 		} finally {
 			await loopback.close();
 		}
@@ -649,7 +649,7 @@ describe("post-budget polling", () => {
 
 	it("jobs.wait reports unknown state only when no poll ever succeeded", async () => {
 		const respond = stallAfter(0, STALL_MS, { baseStatus: { state: "RUNNING", }, },);
-		const loopback = await startLoopback((_req, res,) => respond(res,));
+		const loopback = await startLoopback((_req, res,) => respond(res,),);
 		try {
 			const result = await new JobsResource(client(loopback.url,),).wait("j-none", {
 				timeoutMs: BUDGET_MS,
@@ -701,7 +701,7 @@ describe("post-budget polling", () => {
 
 	it("project-git.waitForFuture stops at the deadline instead of stalling past it", async () => {
 		const respond = stallAfter(3, STALL_MS, { alive: true, hasResult: false, },);
-		const loopback = await startLoopback((_req, res,) => respond(res,));
+		const loopback = await startLoopback((_req, res,) => respond(res,),);
 		try {
 			const started = Date.now();
 			await expect(
@@ -734,7 +734,7 @@ describe("wait budgets", () => {
 
 	it("futures.wait returns a schema-valid timeout when the deadline hits mid-request", async () => {
 		const respond = stallAfter(0, STALL_MS, { alive: true, hasResult: false, },);
-		const loopback = await startLoopback((_req, res,) => respond(res,));
+		const loopback = await startLoopback((_req, res,) => respond(res,),);
 		try {
 			const result = await new FuturesResource(strictClient(loopback.url,),).wait("f-none", {
 				timeoutMs: 200,
@@ -755,7 +755,7 @@ describe("wait budgets", () => {
 
 	it("futures.wait keeps the last observed state when the deadline hits mid-request", async () => {
 		const respond = stallAfter(1, STALL_MS, { jobId: "job-7", alive: true, hasResult: false, },);
-		const loopback = await startLoopback((_req, res,) => respond(res,));
+		const loopback = await startLoopback((_req, res,) => respond(res,),);
 		try {
 			const result = await new FuturesResource(strictClient(loopback.url,),).wait("f-last", {
 				timeoutMs: 200,
@@ -777,7 +777,7 @@ describe("wait budgets", () => {
 
 	it("futures.wait accepts a fractional budget", async () => {
 		const respond = stallAfter(1, STALL_MS, { alive: true, hasResult: false, },);
-		const loopback = await startLoopback((_req, res,) => respond(res,));
+		const loopback = await startLoopback((_req, res,) => respond(res,),);
 		try {
 			const result = await new FuturesResource(strictClient(loopback.url,),).wait("f-frac", {
 				timeoutMs: BUDGET_MS,
@@ -794,7 +794,7 @@ describe("wait budgets", () => {
 			baseStatus: { state: "RUNNING", },
 			globalState: {},
 		},);
-		const loopback = await startLoopback((_req, res,) => respond(res,));
+		const loopback = await startLoopback((_req, res,) => respond(res,),);
 		try {
 			const result = await new JobsResource(client(loopback.url,),).wait("j-frac", {
 				timeoutMs: BUDGET_MS,
@@ -879,7 +879,7 @@ describe("wait budgets", () => {
 				pollIntervalMs: 100,
 			},);
 			expect(result,).toMatchObject({ sessionId: "s-frac", timedOut: true, success: false, },);
-			expect(loopback.requests.filter((request,) => request.path === TRAIN),).toHaveLength(1,);
+			expect(loopback.requests.filter((request,) => request.path === TRAIN,),).toHaveLength(1,);
 		} finally {
 			await loopback.close();
 		}
@@ -935,7 +935,7 @@ describe("DataikuClient.get noRetry", () => {
 			const failure = await client(loopback.url,).get("/slow", {
 				timeoutMs: 100,
 				noRetry: true,
-			},).catch((error: unknown,) => error);
+			},).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).retry?.timedOut,).toBe(true,);
 			expect(loopback.requests.length,).toBe(1,);

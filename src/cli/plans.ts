@@ -326,7 +326,7 @@ function pluginFoldersEndpoint(pluginId: string, contentPath: string,): string {
 
 /** Encodes a plugin content path per segment for plan-time endpoints. */
 function encodePluginSegmentsForPlan(contentPath: string,): string {
-	return contentPath.split("/",).map((segment,) => encodeURIComponent(segment,)).join("/",);
+	return contentPath.split("/",).map((segment,) => encodeURIComponent(segment,),).join("/",);
 }
 
 /**
@@ -386,7 +386,7 @@ function requiredPlanCsv(
 	usage: string,
 ): string[] {
 	const raw = requiredPlanFlag(flags, name, usage,);
-	return raw.split(",",).map((entry,) => entry.trim()).filter((entry,) => entry.length > 0);
+	return raw.split(",",).map((entry,) => entry.trim(),).filter((entry,) => entry.length > 0,);
 }
 
 function requiredPlanRepositoryUrl(
@@ -462,7 +462,7 @@ export function commandPlanShape(
 	/** Route and ids of the trained model an `ml-task` (3 ids) or `saved-model` (2 ids) action targets. */
 	const trainedModelEndpoint = () => {
 		requireArgs(args, resource === "ml-task" ? 3 : 2, entry.usage,);
-		const [first, second, third,] = args.map((arg,) => encodeURIComponent(arg,));
+		const [first, second, third,] = args.map((arg,) => encodeURIComponent(arg,),);
 		return resource === "ml-task"
 			? {
 				path: projectEndpoint(`/models/lab/${first}/${second}/models/${third}`,),
@@ -2047,7 +2047,7 @@ export function commandPlanShape(
 				endpoint: projectEndpoint(`/savedmodels/${encodeURIComponent(id,)}/actions/delete-versions`,),
 				identifiers: { savedModelId: id, },
 				payload: {
-					versions: versionsRaw.split(",",).map((v,) => v.trim()).filter((v,) => v.length > 0),
+					versions: versionsRaw.split(",",).map((v,) => v.trim(),).filter((v,) => v.length > 0,),
 					removeIntermediate: parseBooleanOption(
 						flags["remove-intermediate"],
 						"--remove-intermediate",
@@ -3326,7 +3326,7 @@ export function commandPlanShape(
 					typeof parsed !== "object"
 					|| parsed === null
 					|| Array.isArray(parsed,)
-					|| !Object.values(parsed,).every((value,) => typeof value === "boolean")
+					|| !Object.values(parsed,).every((value,) => typeof value === "boolean",)
 				) {
 					throw new UsageError("--scenarios must be a JSON object mapping scenario IDs to true|false.",);
 				}
@@ -4292,7 +4292,9 @@ export function buildMutationPlan(
 	if (!entry.mutatesDss && entry.sideEffect !== "write") {
 		throw new UsageError(`--plan is only supported for mutating commands. Usage: ${meta.usage}`,);
 	}
-	const requiredPositionals = entry.positionalArguments.filter((positional,) => positional.required);
+	const requiredPositionals = entry.positionalArguments.filter((positional,) =>
+		positional.required,
+	);
 	requireArgs(args, requiredPositionals.length, meta.usage,);
 	requireEntryFlags(resource, action, flags, entry,);
 	const projectKey = projectKeyForPlan(entry, flags,);

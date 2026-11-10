@@ -29,7 +29,7 @@ function isCleanupLedgerEntry(value: unknown,): value is CleanupLedgerEntry {
 	if (!candidate.cleanup || typeof candidate.cleanup !== "object") return false;
 	if (candidate.dssUrl !== undefined && typeof candidate.dssUrl !== "string") return false;
 	const cleanup = candidate.cleanup as Record<string, unknown>;
-	return Array.isArray(cleanup.argv,) && cleanup.argv.every((arg,) => typeof arg === "string");
+	return Array.isArray(cleanup.argv,) && cleanup.argv.every((arg,) => typeof arg === "string",);
 }
 
 /**
@@ -221,8 +221,8 @@ export async function readCleanupLedger(filePath: string,): Promise<CleanupLedge
 	const content = await fs.readFile(path.resolve(filePath,), "utf-8",);
 	return content
 		.split(/\r?\n/,)
-		.map((line,) => line.trim())
-		.filter((line,) => line.length > 0)
+		.map((line,) => line.trim(),)
+		.filter((line,) => line.length > 0,)
 		.map((line, index,) => {
 			const parsed: unknown = JSON.parse(line,);
 			if (!isCleanupLedgerEntry(parsed,)) {

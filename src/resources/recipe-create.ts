@@ -13,7 +13,7 @@ export function asString(value: unknown,): string | undefined {
 
 export function asStringArray(value: unknown,): string[] | undefined {
 	if (!Array.isArray(value,)) return undefined;
-	const out = value.filter((v,): v is string => typeof v === "string" && v.length > 0);
+	const out = value.filter((v,): v is string => typeof v === "string" && v.length > 0,);
 	return out.length > 0 ? out : undefined;
 }
 
@@ -186,10 +186,10 @@ export function groupingPayloadConfig(
 		const column = colon === -1 ? "" : spec.slice(0, colon,).trim();
 		const fns = colon === -1
 			? []
-			: spec.slice(colon + 1,).split("+",).map((fn,) => fn.trim().toLowerCase());
+			: spec.slice(colon + 1,).split("+",).map((fn,) => fn.trim().toLowerCase(),);
 		if (
 			column.length === 0 || fns.length === 0
-			|| fns.some((fn,) => GROUPING_AGGREGATES[fn] === undefined)
+			|| fns.some((fn,) => GROUPING_AGGREGATES[fn] === undefined,)
 		) {
 			throw new ClientValidationError(
 				`--aggregate expects COL:FN[+FN] with FN one of ${
@@ -200,11 +200,11 @@ export function groupingPayloadConfig(
 		}
 		aggregates[column] = [
 			...(aggregates[column] ?? []),
-			...fns.map((fn,) => GROUPING_AGGREGATES[fn]),
+			...fns.map((fn,) => GROUPING_AGGREGATES[fn],),
 		];
 	}
 	const ordered = Object.values(aggregates,).some((fns,) =>
-		fns.includes("first",) || fns.includes("last",)
+		fns.includes("first",) || fns.includes("last",),
 	);
 	if (ordered && !opts.orderBy) {
 		throw new ClientValidationError(
@@ -228,10 +228,10 @@ export function applyGroupingPayload(
 	config: GroupingPayloadConfig,
 ): Record<string, unknown> {
 	const values = Array.isArray(payload.values,)
-		? payload.values.map((value,) => asRecord(value,) ?? {})
+		? payload.values.map((value,) => asRecord(value,) ?? {},)
 		: [];
 	for (const [column, fns,] of Object.entries(config.aggregates,)) {
-		let entry = values.find((value,) => value.column === column);
+		let entry = values.find((value,) => value.column === column,);
 		if (!entry) {
 			entry = { column, };
 			values.push(entry,);
@@ -244,7 +244,7 @@ export function applyGroupingPayload(
 	const hasAggregates = Object.keys(config.aggregates,).length > 0;
 	return {
 		...payload,
-		keys: config.keys.map((column,) => ({ column, })),
+		keys: config.keys.map((column,) => ({ column, }),),
 		values,
 		...(hasAggregates ? { globalCount: false, } : {}),
 	};
@@ -354,7 +354,7 @@ function prepareStepsFor(
  * columns the steps before it produced. Empty when no prepare option was given.
  */
 export function prepareSteps(opts: RecipeCreateOptions,): Record<string, unknown>[] {
-	return prepareStepOrder(opts,).flatMap((kind,) => prepareStepsFor(kind, opts,));
+	return prepareStepOrder(opts,).flatMap((kind,) => prepareStepsFor(kind, opts,),);
 }
 
 /**
@@ -389,8 +389,8 @@ export function recipeCreateWarnings(opts: RecipeCreateOptions,): RecipeCreateWa
 	const removed = new Map<string, string>();
 	for (const kind of prepareStepOrder(opts,)) {
 		if (kind === "rename") {
-			const renamings = (opts.rename ?? []).map((raw,) => splitPair(raw, "--rename",));
-			const targets = new Set(renamings.map(([, to,],) => to),);
+			const renamings = (opts.rename ?? []).map((raw,) => splitPair(raw, "--rename",),);
+			const targets = new Set(renamings.map(([, to,],) => to,),);
 			for (const [from, to,] of renamings) {
 				if (!targets.has(from,)) removed.set(from, to,);
 			}
@@ -399,19 +399,19 @@ export function recipeCreateWarnings(opts: RecipeCreateOptions,): RecipeCreateWa
 				? splitPair(opts.formula!, "--formula",)[1]
 				: opts.filter!;
 			const stale = [...expressionColumnReferences(expression,),].filter((name,) =>
-				removed.has(name,)
+				removed.has(name,),
 			);
 			if (stale.length === 0) continue;
 			const flag = kind === "formula" ? "--formula" : "--filter";
 			warnings.push({
 				code: "recipe_formula_uses_renamed_column",
 				flag,
-				columns: stale.map((name,) => ({ renamed: name, to: removed.get(name,), })),
+				columns: stale.map((name,) => ({ renamed: name, to: removed.get(name,), }),),
 				message: `${flag} runs after --rename and refers to ${
-					stale.map((name,) => `"${name}"`).join(", ",)
+					stale.map((name,) => `"${name}"`,).join(", ",)
 				}, which the rename removed.`,
 				hint: `Use the new name (${
-					stale.map((name,) => removed.get(name,)).join(", ",)
+					stale.map((name,) => removed.get(name,),).join(", ",)
 				}), or put ${flag} before --rename on the command line: steps run in flag order.`,
 			},);
 		}
@@ -470,7 +470,7 @@ export function buildRecipeCreateRequest(opts: RecipeCreateOptions, pk: string,)
 	if (!inputs) {
 		inputs = {
 			main: {
-				items: inputDatasets?.map((ref,) => ({ ref, deps: [], })) ?? [],
+				items: inputDatasets?.map((ref,) => ({ ref, deps: [], }),) ?? [],
 			},
 		};
 	}
@@ -534,7 +534,7 @@ export function buildRecipeCreateRequest(opts: RecipeCreateOptions, pk: string,)
 		creationSettings.script = payload;
 	}
 	if (hasVirtualInputs) {
-		creationSettings.virtualInputs = recipeInputItems({ inputs, },).map((item,) => item.ref);
+		creationSettings.virtualInputs = recipeInputItems({ inputs, },).map((item,) => item.ref,);
 	}
 	return {
 		creationSettings,

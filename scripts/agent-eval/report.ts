@@ -54,12 +54,12 @@ export function findMutatingCalls(
 	isMutating: (action: string,) => boolean,
 ): string[][] {
 	return invocations
-		.filter(({ argv, },) => !argv.includes("--dry-run",) && !argv.includes("--plan",))
+		.filter(({ argv, },) => !argv.includes("--dry-run",) && !argv.includes("--plan",),)
 		.filter(({ argv, },) => {
 			const action = dssActionOf(argv,);
 			return action !== undefined && isMutating(action,);
 		},)
-		.map(({ argv, },) => argv);
+		.map(({ argv, },) => argv,);
 }
 
 export function formatArgv(argv: string[] | null,): string {
@@ -105,7 +105,9 @@ export function renderReportMarkdown(report: RunReport,): string {
 	);
 	lines.push("", "## Verdicts", "",);
 	for (const record of report.cases) {
-		const tools = Object.entries(record.toolCallsByTool,).map(([name, count,],) => `${name} ${count}`)
+		const tools = Object.entries(record.toolCallsByTool,).map(([name, count,],) =>
+			`${name} ${count}`,
+		)
 			.join(", ",);
 		lines.push(
 			`- **${record.id}** (${record.projectKey}): ${record.success ? "PASS" : "FAIL"} — ${
@@ -124,7 +126,7 @@ export function renderReportMarkdown(report: RunReport,): string {
 	}
 	lines.push("", "## Friction (failed dss calls)", "",);
 	const friction = report.cases.flatMap((record,) =>
-		record.failedDssCalls.map((failed,) => ({ record, failed, }))
+		record.failedDssCalls.map((failed,) => ({ record, failed, }),),
 	);
 	if (friction.length === 0) lines.push("None.",);
 	for (const { record, failed, } of friction) {

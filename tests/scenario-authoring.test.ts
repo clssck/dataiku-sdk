@@ -127,27 +127,27 @@ describe("temporalTrigger", () => {
 	});
 
 	it("rejects options that do not apply to the frequency", () => {
-		expect(() => temporalTrigger({ frequency: "weekly", },)).toThrow("--days is required",);
-		expect(() => temporalTrigger({ frequency: "weekly", days: ["Funday",], },)).toThrow("Funday",);
-		expect(() => temporalTrigger({ frequency: "daily", days: ["Monday",], },)).toThrow(
+		expect(() => temporalTrigger({ frequency: "weekly", },),).toThrow("--days is required",);
+		expect(() => temporalTrigger({ frequency: "weekly", days: ["Funday",], },),).toThrow("Funday",);
+		expect(() => temporalTrigger({ frequency: "daily", days: ["Monday",], },),).toThrow(
 			"weekly triggers only",
 		);
-		expect(() => temporalTrigger({ frequency: "daily", runOn: "LAST_WEEK", },)).toThrow(
+		expect(() => temporalTrigger({ frequency: "daily", runOn: "LAST_WEEK", },),).toThrow(
 			"monthly triggers only",
 		);
-		expect(() => temporalTrigger({ frequency: "minutely", hour: 3, },)).toThrow(
+		expect(() => temporalTrigger({ frequency: "minutely", hour: 3, },),).toThrow(
 			"does not apply to minutely",
 		);
-		expect(() => temporalTrigger({ frequency: "monthly", runOn: "SOMEDAY", },)).toThrow("SOMEDAY",);
-		expect(() => temporalTrigger({ frequency: "monthly", startDate: "2026-02-01", dayOfMonth: 3, },))
+		expect(() => temporalTrigger({ frequency: "monthly", runOn: "SOMEDAY", },),).toThrow("SOMEDAY",);
+		expect(() => temporalTrigger({ frequency: "monthly", startDate: "2026-02-01", dayOfMonth: 3, },),)
 			.toThrow("mutually exclusive",);
-		expect(() => temporalTrigger({ frequency: "daily", hour: 24, },)).toThrow("--hour",);
-		expect(() => temporalTrigger({ frequency: "daily", minute: 60, },)).toThrow("--minute",);
-		expect(() => temporalTrigger({ frequency: "daily", every: 0, },)).toThrow("--every",);
-		expect(() => temporalTrigger({ frequency: "daily", startDate: "2026-02-30", },)).toThrow(
+		expect(() => temporalTrigger({ frequency: "daily", hour: 24, },),).toThrow("--hour",);
+		expect(() => temporalTrigger({ frequency: "daily", minute: 60, },),).toThrow("--minute",);
+		expect(() => temporalTrigger({ frequency: "daily", every: 0, },),).toThrow("--every",);
+		expect(() => temporalTrigger({ frequency: "daily", startDate: "2026-02-30", },),).toThrow(
 			"not a calendar date",
 		);
-		expect(() => temporalTrigger({ frequency: "daily", startDate: "soon", },)).toThrow(
+		expect(() => temporalTrigger({ frequency: "daily", startDate: "soon", },),).toThrow(
 			"YYYY-MM-DD",
 		);
 	});
@@ -201,10 +201,10 @@ describe("mailReporter", () => {
 
 	it("rejects an unknown phase and empty required text", () => {
 		const base = { channel: "smtp", recipient: "a@x.com", subject: "S", message: "M", };
-		expect(() => mailReporter({ ...base, phase: "MIDDLE", },)).toThrow("START or END",);
-		expect(() => mailReporter({ ...base, recipient: " ", },)).toThrow("--recipient",);
-		expect(() => mailReporter({ ...base, channel: "", },)).toThrow("--channel",);
-		expect(() => mailReporter({ ...base, condition: "", },)).toThrow("--condition",);
+		expect(() => mailReporter({ ...base, phase: "MIDDLE", },),).toThrow("START or END",);
+		expect(() => mailReporter({ ...base, recipient: " ", },),).toThrow("--recipient",);
+		expect(() => mailReporter({ ...base, channel: "", },),).toThrow("--channel",);
+		expect(() => mailReporter({ ...base, condition: "", },),).toThrow("--condition",);
 	});
 });
 
@@ -217,18 +217,18 @@ describe("selectScenarioListIndex", () => {
 	});
 
 	it("refuses missing, out-of-range, unknown, and ambiguous selections", () => {
-		expect(() => selectScenarioListIndex(items, {}, "trigger",)).toThrow("exactly one",);
-		expect(() => selectScenarioListIndex(items, { index: 0, name: "a", }, "trigger",)).toThrow(
+		expect(() => selectScenarioListIndex(items, {}, "trigger",),).toThrow("exactly one",);
+		expect(() => selectScenarioListIndex(items, { index: 0, name: "a", }, "trigger",),).toThrow(
 			"exactly one",
 		);
-		expect(() => selectScenarioListIndex(items, { index: 4, }, "reporter",)).toThrow(
+		expect(() => selectScenarioListIndex(items, { index: 4, }, "reporter",),).toThrow(
 			"outside the 4 reporter(s)",
 		);
-		expect(() => selectScenarioListIndex(items, { index: -1, }, "trigger",)).toThrow("outside",);
-		expect(() => selectScenarioListIndex(items, { name: "zzz", }, "trigger",)).toThrow(
+		expect(() => selectScenarioListIndex(items, { index: -1, }, "trigger",),).toThrow("outside",);
+		expect(() => selectScenarioListIndex(items, { name: "zzz", }, "trigger",),).toThrow(
 			"No trigger is named",
 		);
-		expect(() => selectScenarioListIndex(items, { name: "a", }, "trigger",)).toThrow(
+		expect(() => selectScenarioListIndex(items, { name: "a", }, "trigger",),).toThrow(
 			"indexes 0, 2",
 		);
 	});
@@ -296,7 +296,7 @@ describe("ScenariosResource.runAndWait cancellation", () => {
 				pollCount: 0,
 			},);
 			expect(result.timedOut,).toBeUndefined();
-			expect(requests.map((request,) => request.method),).toEqual(["POST",],);
+			expect(requests.map((request,) => request.method,),).toEqual(["POST",],);
 			expect(requests[0]?.body,).toEqual({ a: 1, },);
 		},);
 	});
@@ -323,7 +323,7 @@ describe("ScenariosResource.runAndWait cancellation", () => {
 				pollCount: 1,
 			},);
 			expect(result.timedOut,).toBeUndefined();
-			expect(requests.map((request,) => `${request.method} ${request.path}`),).toEqual([
+			expect(requests.map((request,) => `${request.method} ${request.path}`,),).toEqual([
 				`POST ${SCENARIO_BASE}/run/`,
 				`GET ${SCENARIO_BASE}/${poll}`,
 				"GET /public/api/projects/P/scenarios/trigger/s1/manual?triggerRunId=t-run",
@@ -446,7 +446,7 @@ describe("run history reads", () => {
 			await client.scenarios.getLastRuns("s1", { limit: 3, onlyFinished: true, },);
 			await client.scenarios.getLastRuns("s1", { limit: 3, onlyFinished: false, },);
 			await client.scenarios.getLastRuns("s1",);
-			expect(requests.map((request,) => request.path),).toEqual([
+			expect(requests.map((request,) => request.path,),).toEqual([
 				`${SCENARIO_BASE}/get-last-runs/?limit=3&onlyFinishedRuns=true`,
 				`${SCENARIO_BASE}/get-last-runs/?limit=3`,
 				`${SCENARIO_BASE}/get-last-runs/`,
@@ -507,7 +507,7 @@ describe("ScenariosResource.getRunReport", () => {
 			expect(
 				await client.scenarios.getRunReport("s1", "r1", { stepId: "step 1", maxBytes: 8, },),
 			).toEqual({ text: '"<testsu', truncated: true, maxBytes: 8, },);
-			expect(requests.map((request,) => request.path),).toEqual([
+			expect(requests.map((request,) => request.path,),).toEqual([
 				`${run}/scenario-run-report`,
 				`${run}/step-run-report?stepId=step%201`,
 			],);
@@ -597,7 +597,7 @@ describe("trigger and reporter list edits", () => {
 				count: 3,
 				item: { name: "six", params: { frequency: "Daily", hour: 6, }, },
 			},);
-			expect(requests.map((request,) => request.method),).toEqual(["GET", "PUT", "GET",],);
+			expect(requests.map((request,) => request.method,),).toEqual(["GET", "PUT", "GET",],);
 			expect(sentList(requests[1], "triggers",),).toEqual([minutely, datasetTrigger, daily,],);
 			expect(sentList(requests[1], "reporters",),).toEqual(base.reporters,);
 			expect(asObject(requests[1]?.body,).params,).toEqual(base.params,);
@@ -648,7 +648,7 @@ describe("trigger and reporter list edits", () => {
 			await expect(client.scenarios.removeItem("trigger", "s1", { index: 5, },),).rejects.toThrow(
 				"outside",
 			);
-			expect(requests.map((request,) => request.method),).toEqual(["GET",],);
+			expect(requests.map((request,) => request.method,),).toEqual(["GET",],);
 		},);
 	});
 
@@ -684,7 +684,7 @@ describe("ScenariosResource.setRunAs", () => {
 				runAsUser: "svc",
 				effectiveRunAs: "svc",
 			},);
-			expect(requests.map((request,) => request.method),).toEqual(["GET", "PUT", "GET",],);
+			expect(requests.map((request,) => request.method,),).toEqual(["GET", "PUT", "GET",],);
 			expect(requests[1]?.body,).toMatchObject({ id: "s1", runAsUser: "svc", },);
 		},);
 	});
@@ -710,7 +710,7 @@ describe("ScenariosResource.setRunAs", () => {
 			[`GET ${SCENARIO}`]: () => ({ id: "s1", }),
 			[`PUT ${SCENARIO}`]: () => ({ msg: "ok", }),
 		}, async (client,) => {
-			const error = await client.scenarios.setRunAs("s1", "secret-login",).catch((e: unknown,) => e);
+			const error = await client.scenarios.setRunAs("s1", "secret-login",).catch((e: unknown,) => e,);
 			expect(error,).toMatchObject({ details: { mismatches: [{ path: "runAsUser", },], }, },);
 			expect(JSON.stringify(error,),).not.toContain("secret-login",);
 			expect(String(error,),).not.toContain("secret-login",);
@@ -726,7 +726,7 @@ describe("FuturesResource.list", () => {
 		}, async (client, requests,) => {
 			await client.futures.list({ scenariosOnly: true, },);
 			await client.futures.list({ allUsers: true, },);
-			expect(requests.map((request,) => request.path),).toEqual([
+			expect(requests.map((request,) => request.path,),).toEqual([
 				"/public/api/futures/?allUsers=false&withScenarios=true&withNotScenarios=false",
 				"/public/api/futures/?allUsers=true&withScenarios=false",
 			],);

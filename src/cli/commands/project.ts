@@ -1,8 +1,8 @@
 import { ClientValidationError, DataikuError, } from "../../errors.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
 import type { FlowRenderFormat, } from "../../utils/flow-analysis.js";
-import { inspectProjectArchive, } from "../../utils/project-archive.js";
 import type { ProjectArchiveInspection, } from "../../utils/project-archive.js";
+import { inspectProjectArchive, } from "../../utils/project-archive.js";
 import { projectIncarnationHash, } from "../../utils/project-incarnation.js";
 import { jsonInput, num, requiredJsonInput, requiredStringFlag, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
@@ -220,7 +220,7 @@ export const projectCommands: Record<string, CommandMeta> = withUsage("project",
 	"test-report": {
 		handler: async (c, _a, f,) => {
 			const requested = f["format"] ?? "junit";
-			const format = (["junit", "html",] as const).find((name,) => name === requested);
+			const format = (["junit", "html",] as const).find((name,) => name === requested,);
 			if (format === undefined) {
 				throw new UsageError("--format must be junit or html.", "invalid_enum",);
 			}

@@ -34,7 +34,7 @@ async function withServer(run: (client: DataikuClient,) => Promise<void>,): Prom
 				return;
 			}
 			res.end('{"jobId":"j1","hasResult":false}',);
-		})()
+		})(),
 	);
 	const listening = Promise.withResolvers<void>();
 	server.listen(0, "127.0.0.1", () => listening.resolve(),);
@@ -51,7 +51,7 @@ async function withServer(run: (client: DataikuClient,) => Promise<void>,): Prom
 		);
 	} finally {
 		const closed = Promise.withResolvers<void>();
-		server.close(() => closed.resolve());
+		server.close(() => closed.resolve(),);
 		await closed.promise;
 	}
 	return seen;

@@ -288,7 +288,7 @@ describe("CodeEnvsResource definition provenance", () => {
 			const client = createClient(url,);
 			const error = await client.codeEnvs.setDefinition("PYTHON", "my_env", DEFINITION, {
 				expectHash: stableHash(DEFINITION,),
-			},).catch((caught: unknown,) => caught);
+			},).catch((caught: unknown,) => caught,);
 			expect(error,).toBeInstanceOf(ClientValidationError,);
 			const validation = error as ClientValidationError;
 			expect(validation.code,).toBe("validation_failed",);

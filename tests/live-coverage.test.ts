@@ -8,13 +8,13 @@ describe("live action coverage", () => {
 		const summary = commandActionSummary();
 		checkLiveCoverageCatalogue(summary,);
 		expect(() =>
-			checkLiveCoverageCatalogue({ ...summary, dataset: [...summary.dataset, "new-action",], },)
+			checkLiveCoverageCatalogue({ ...summary, dataset: [...summary.dataset, "new-action",], },),
 		).toThrow();
 		expect(() =>
 			checkLiveCoverageCatalogue({
 				...summary,
-				dataset: summary.dataset.filter(action => action !== "preview"),
-			},)
+				dataset: summary.dataset.filter(action => action !== "preview",),
+			},),
 		).toThrow();
 	});
 	it("does not count a passing plan or unexecuted claim as live behavior", () => {
@@ -25,11 +25,11 @@ describe("live action coverage", () => {
 			executedActions: [],
 			durationMs: 1,
 		};
-		expect(liveCoverage([plan,], ["core",],).find(row => row.id === "dataset.create")?.status,).toBe(
+		expect(liveCoverage([plan,], ["core",],).find(row => row.id === "dataset.create",)?.status,).toBe(
 			"uncovered",
 		);
 		const behavior: CaseResult = { ...plan, id: "lifecycle", executedActions: ["dataset.create",], };
-		expect(liveCoverage([behavior,], ["core",],).find(row => row.id === "dataset.create")?.status,)
+		expect(liveCoverage([behavior,], ["core",],).find(row => row.id === "dataset.create",)?.status,)
 			.toBe("passed",);
 		const broken: CaseResult = {
 			...behavior,
@@ -38,7 +38,7 @@ describe("live action coverage", () => {
 			error: "Persisted state did not match",
 		};
 		expect(
-			liveCoverage([behavior, broken,], ["core",],).find(row => row.id === "dataset.create")?.status,
+			liveCoverage([behavior, broken,], ["core",],).find(row => row.id === "dataset.create",)?.status,
 		).toBe("failed",);
 	});
 	it("preserves capability blockers and disabled-profile gaps", () => {
@@ -52,9 +52,9 @@ describe("live action coverage", () => {
 			required: false,
 		};
 		expect(
-			liveCoverage([blocked,], ["core", "ml",],).find(row => row.id === "ml-task.train")?.status,
+			liveCoverage([blocked,], ["core", "ml",],).find(row => row.id === "ml-task.train",)?.status,
 		).toBe("blocked",);
-		const unselected = liveCoverage([], ["core",],).find(row => row.id === "ml-task.train")!;
+		const unselected = liveCoverage([], ["core",],).find(row => row.id === "ml-task.train",)!;
 		expect(unselected.status,).toBe("uncovered",);
 		expect(unselected.executed,).toBe(false,);
 	});

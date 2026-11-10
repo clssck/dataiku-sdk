@@ -506,10 +506,10 @@ describe("scenario get-run compact shape", () => {
 				name: "Build report",
 				type: "build_flowitem",
 				outcome: "FAILED",
-				datasets: [{ dataset: "prep", outcome: "SUCCESS", }, {
-					dataset: "report",
-					outcome: "FAILED",
-				},],
+				datasets: [
+					{ dataset: "prep", outcome: "SUCCESS", },
+					{ dataset: "report", outcome: "FAILED", },
+				],
 				jobs: [{ jobId: FAILED_JOB_ID, outcome: "FAILED", message: KEY_ERROR, },],
 			},],
 			failure: { stepId: "build", jobId: FAILED_JOB_ID, dataset: "report", message: KEY_ERROR, },
@@ -662,10 +662,10 @@ const failedScenarioJob = {
 			python_report_NP: {
 				recipeName: "python_report",
 				state: "FAILED",
-				sources: [{ type: "DATASET", id: "TEST.orders_joined", }, {
-					type: "DATASET",
-					id: "OTHER.rates",
-				},],
+				sources: [
+					{ type: "DATASET", id: "TEST.orders_joined", },
+					{ type: "DATASET", id: "OTHER.rates", },
+				],
 			},
 		},
 	},
@@ -797,7 +797,7 @@ describe("CLI scenario run-and-wait failure", () => {
 			},);
 		},);
 		expect(
-			requests.filter((request,) => request.startsWith("GET",) && request.endsWith(`/${RUN_ID}/`,)),
+			requests.filter((request,) => request.startsWith("GET",) && request.endsWith(`/${RUN_ID}/`,),),
 		)
 			.toHaveLength(2,);
 	});
@@ -897,7 +897,7 @@ describe("dry-run change description", () => {
 
 	it("describes a long multi-line string change with a unified diff instead of the values", () => {
 		const lines = Array.from({ length: 40, }, (_, index,) => `line ${index}`,);
-		const edited = lines.map((line, index,) => index === 20 ? "line 20 changed" : line);
+		const edited = lines.map((line, index,) => index === 20 ? "line 20 changed" : line,);
 		const current = lines.join("\n",);
 		const next = edited.join("\n",);
 		const shaped = describeChange(dryRun({ payload: current, }, { payload: next, },),);

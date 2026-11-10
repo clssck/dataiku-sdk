@@ -427,7 +427,7 @@ describe("MacrosResource", () => {
 				timeoutMs: 30.5,
 			},);
 			expect(result,).toMatchObject({ runId: "run-frac", timedOut: true, success: false, },);
-			expect(requests.filter((request,) => request.startsWith("POST",)),).toHaveLength(1,);
+			expect(requests.filter((request,) => request.startsWith("POST",),),).toHaveLength(1,);
 		},);
 	});
 
@@ -603,8 +603,8 @@ describe("macroResultMaxBytes", () => {
 	});
 
 	it("rejects non-positive and non-integer caps", () => {
-		expect(() => macroResultMaxBytes(0,)).toThrow(/maxBytes/,);
-		expect(() => macroResultMaxBytes(-5,)).toThrow(/maxBytes/,);
-		expect(() => macroResultMaxBytes(1.5,)).toThrow(/maxBytes/,);
+		expect(() => macroResultMaxBytes(0,),).toThrow(/maxBytes/,);
+		expect(() => macroResultMaxBytes(-5,),).toThrow(/maxBytes/,);
+		expect(() => macroResultMaxBytes(1.5,),).toThrow(/maxBytes/,);
 	});
 });

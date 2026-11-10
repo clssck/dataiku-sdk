@@ -42,8 +42,8 @@ export function compactProjectMapOutput(result: FlowMapResult,): CompactFlowMapR
 	const map: CompactFlowMap = {
 		...mapRest,
 		nodes: nodes.map(compactNode,),
-		zones: zones.map(({ nodeIds: _nodeIds, ...zone },) => zone),
-		components: components.map(({ nodeIds: _nodeIds, ...component },) => component),
+		zones: zones.map(({ nodeIds: _nodeIds, ...zone },) => zone,),
+		components: components.map(({ nodeIds: _nodeIds, ...component },) => component,),
 	};
 	if (warnings.length > 0) map.warnings = warnings;
 	const { map: _map, truncation, ...resultRest } = result;

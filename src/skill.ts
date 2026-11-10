@@ -37,7 +37,9 @@ function skillDirectory(): URL {
 		if (fs.existsSync(skillUrl,)) return new URL("./", skillUrl,);
 	}
 	throw new ClientValidationError(
-		`Bundled Dataiku skill not found. Checked: ${SKILL_URLS.map((url,) => url.pathname).join(", ",)}`,
+		`Bundled Dataiku skill not found. Checked: ${
+			SKILL_URLS.map((url,) => url.pathname,).join(", ",)
+		}`,
 		"internal_error",
 	);
 }
@@ -189,17 +191,19 @@ function skillFiles(): Map<string, Buffer> {
 		const dir = path.join(root, relativeDir,);
 		for (
 			const entry of fs.readdirSync(dir, { withFileTypes: true, },).sort((a, b,) =>
-				a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+				a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
 			)
 		) {
 			const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
 			if (entry.isDirectory()) visit(relativePath,);
 			else if (entry.isFile()) {
 				files.set(relativePath, fs.readFileSync(path.join(root, relativePath,),),);
-			} else {throw new ClientValidationError(
+			} else {
+				throw new ClientValidationError(
 					`Unsupported bundled skill entry: ${relativePath}`,
 					"internal_error",
-				);}
+				);
+			}
 		}
 	}
 	visit("",);
@@ -234,8 +238,8 @@ function skillInstallPlan(
 				expectedSha256,
 			},);
 		}
-		const entrypoint = files.find((file,) => file.relativePath === def.filename)!;
-		const changed = files.some((file,) => file.changed);
+		const entrypoint = files.find((file,) => file.relativePath === def.filename,)!;
+		const changed = files.some((file,) => file.changed,);
 		results.push({
 			agent: id,
 			path: entrypoint.path,
@@ -281,12 +285,15 @@ export function installSkill(
 	const results = skillInstallPlan(agents, opts, bundle,);
 	for (const result of results) {
 		if (!result.changed) continue;
-		const def = agents.find((agent,) => agent.id === result.agent)!.def;
+		const def = agents.find((agent,) => agent.id === result.agent,)!.def;
 		// Publish referenced files first; never expose a new entrypoint with missing references.
 		for (const file of result.files) {
 			if (file.relativePath !== def.filename) writeSkillFile(file, bundle.get(file.relativePath,)!,);
 		}
-		writeSkillFile(result.files.find((file,) => file.relativePath === def.filename)!, def.content(),);
+		writeSkillFile(
+			result.files.find((file,) => file.relativePath === def.filename,)!,
+			def.content(),
+		);
 	}
 	return results;
 }

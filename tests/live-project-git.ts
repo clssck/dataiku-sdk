@@ -68,7 +68,7 @@ function newestCommitId(log: GitLogResult, what: string,): string {
 function isDirty(status: GitStatus,): boolean {
 	if (status.hasUncommittedChanges === true) return true;
 	return ["added", "changed", "removed", "missing", "conflicting", "untracked", "modified",]
-		.every(key => !Array.isArray(status[key],) || (status[key] as string[]).length === 0) === false;
+		.every(key => !Array.isArray(status[key],) || (status[key] as string[]).length === 0,) === false;
 }
 
 async function readLog(ctx: LiveContext, projectKey: string,): Promise<GitLogResult> {
@@ -283,7 +283,7 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 			], { projectKey: key, },);
 			expect(created.success,).not.toBe(false,);
 			const tagNames = (await ctx.run<GitTag[]>(["project-git", "tags",], { projectKey: key, },))
-				.map(t => t.shortName ?? t.name);
+				.map(t => t.shortName ?? t.name,);
 			expect(tagNames.includes(tag,),).toBe(true,);
 			const deleted = await ctx.run<{ success?: boolean; }>([
 				"project-git",
@@ -292,7 +292,7 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 			], { projectKey: key, },);
 			expect(deleted.success,).not.toBe(false,);
 			const afterDelete = (await ctx.run<GitTag[]>(["project-git", "tags",], { projectKey: key, },))
-				.map(t => t.shortName ?? t.name);
+				.map(t => t.shortName ?? t.name,);
 			expect(afterDelete.includes(tag,),).toBe(false,);
 		},);
 
@@ -319,7 +319,7 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 			const commitB = await commitMarker(ctx, key, `revert_b_i${String(ctx.iteration,)}`,);
 			const log = await readLog(ctx, key,);
 			// An entry strictly older than B anchors revert-to-revision.
-			const older = log.entries.map(commitIdOf,).find(id => typeof id === "string" && id !== commitB);
+			const older = log.entries.map(commitIdOf,).find(id => typeof id === "string" && id !== commitB,);
 			if (!older) {
 				blocked(
 					"Git history has no second commit; cannot exercise revert-to-revision deterministically",
@@ -491,7 +491,7 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 							"project-git",
 							"list-libraries",
 						], { projectKey: key, },);
-						if (libraries.some(library => library.localTargetPath === target)) {
+						if (libraries.some(library => library.localTargetPath === target,)) {
 							await ctx.run(["project-git", "remove-library", target, "--delete-directory",], {
 								projectKey: key,
 							},);

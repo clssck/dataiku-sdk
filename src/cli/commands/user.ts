@@ -175,7 +175,7 @@ export const userCommands: Record<string, CommandMeta> = withUsage("user", {
 				};
 			}
 			if (f["if-exists"] === true) {
-				const current = await readIfExists(() => c.users.get(login,));
+				const current = await readIfExists(() => c.users.get(login,),);
 				if (!current) return skipResult("user", login, "missing",);
 			}
 			return c.users.delete(login,);

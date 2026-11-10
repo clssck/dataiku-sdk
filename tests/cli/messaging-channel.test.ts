@@ -79,7 +79,7 @@ describe("messaging-channel reads", () => {
 				webhookUrl: "[redacted]",
 			},],);
 		},);
-		expect(seen.map((request,) => `${request.method} ${request.path}`),).toEqual([
+		expect(seen.map((request,) => `${request.method} ${request.path}`,),).toEqual([
 			"GET /public/api/messaging-channels/?channelType=smtp&channelFamily=mail",
 			"GET /public/api/messaging-channels/",
 		],);
@@ -98,7 +98,7 @@ describe("messaging-channel reads", () => {
 			noSecretsIn(settingsOut,);
 			const first = JSON.parse(settingsOut,);
 			expect(first.settings.password,).toBe("[redacted]",);
-			expect(first.settings.sessionProperties.map((property: { value: string; },) => property.value),)
+			expect(first.settings.sessionProperties.map((property: { value: string; },) => property.value,),)
 				.toEqual(["[redacted]", "true",],);
 			stored = { ...stored, password: "another-password", };
 			expect(JSON.parse(await settingsGet(url,),).settingsHash,).toBe(first.settingsHash,);
@@ -141,7 +141,7 @@ describe("messaging-channel settings-set", () => {
 				},);
 			},
 		);
-		expect(seen.map((request,) => `${request.method} ${request.path}`),).toEqual([
+		expect(seen.map((request,) => `${request.method} ${request.path}`,),).toEqual([
 			"GET /public/api/messaging-channels/smtp-main/settings",
 			"PUT /public/api/messaging-channels/smtp-main/settings",
 		],);
@@ -173,7 +173,7 @@ describe("messaging-channel settings-set", () => {
 					code: "validation_failed",
 					details: { expectedHash: "0".repeat(64,), actualHash: hash, },
 				},);
-				expect(seen.map((request,) => request.method),).toEqual(["GET",],);
+				expect(seen.map((request,) => request.method,),).toEqual(["GET",],);
 				await dss([
 					"messaging-channel",
 					"settings-set",
@@ -183,7 +183,7 @@ describe("messaging-channel settings-set", () => {
 					"--expect-hash",
 					hash,
 				], { env, },);
-				expect(seen.map((request,) => request.method),).toEqual(["GET", "GET", "PUT",],);
+				expect(seen.map((request,) => request.method,),).toEqual(["GET", "GET", "PUT",],);
 			},
 		);
 	});
@@ -238,7 +238,7 @@ describe("messaging-channel settings-set", () => {
 				},);
 			},
 		);
-		expect(seen.map((request,) => request.method),).toEqual(["GET", "GET",],);
+		expect(seen.map((request,) => request.method,),).toEqual(["GET", "GET",],);
 	});
 
 	it("plans offline without contacting DSS or printing credentials", async () => {
@@ -310,7 +310,7 @@ describe("messaging-channel create, permissions-set, delete", () => {
 				expect(JSON.parse(out.stdout,),).toMatchObject({ id: "ops-shell", type: "shell", },);
 			},
 		);
-		expect(seen.map((request,) => `${request.method} ${request.path}`),).toEqual([
+		expect(seen.map((request,) => `${request.method} ${request.path}`,),).toEqual([
 			"POST /public/api/messaging-channels/",
 		],);
 		expect(JSON.parse(seen[0].body,),).toEqual({
@@ -432,7 +432,7 @@ describe("messaging-channel create, permissions-set, delete", () => {
 				"--data",
 				JSON.stringify(permissions,),
 			], { env, },);
-			expect(seen.map((request,) => `${request.method} ${request.path}`),).toEqual([
+			expect(seen.map((request,) => `${request.method} ${request.path}`,),).toEqual([
 				"PUT /public/api/messaging-channels/smtp-main/permissions",
 			],);
 			expect(JSON.parse(seen[0].body,),).toEqual(permissions,);
@@ -467,7 +467,7 @@ describe("messaging-channel create, permissions-set, delete", () => {
 					(await dss(["messaging-channel", "delete", "ops-shell", "--if-exists",], { env, },)).stdout,
 				);
 				expect(skipped,).toMatchObject({ skipped: "ops-shell", reason: "missing", },);
-				expect(seen.map((request,) => request.method),).toEqual(["GET",],);
+				expect(seen.map((request,) => request.method,),).toEqual(["GET",],);
 				exists = true;
 				seen.length = 0;
 				const preview = JSON.parse(
@@ -478,13 +478,13 @@ describe("messaging-channel create, permissions-set, delete", () => {
 					method: "DELETE",
 					endpoint: "/public/api/messaging-channels/ops-shell",
 				},);
-				expect(seen.map((request,) => request.method),).toEqual(["GET",],);
+				expect(seen.map((request,) => request.method,),).toEqual(["GET",],);
 				seen.length = 0;
 				const deleted = JSON.parse(
 					(await dss(["messaging-channel", "delete", "ops-shell",], { env, },)).stdout,
 				);
 				expect(deleted,).toEqual({ deleted: "ops-shell", resource: "messaging-channel", },);
-				expect(seen.map((request,) => `${request.method} ${request.path}`),).toEqual([
+				expect(seen.map((request,) => `${request.method} ${request.path}`,),).toEqual([
 					"DELETE /public/api/messaging-channels/ops-shell",
 				],);
 			},
@@ -564,7 +564,7 @@ describe("messaging-channel send", () => {
 					},);
 				},
 			);
-			expect(seen.map((request,) => `${request.method} ${request.path}`),).toEqual([
+			expect(seen.map((request,) => `${request.method} ${request.path}`,),).toEqual([
 				"POST /public/api/messaging-channels/smtp-main/actions/send?projectKey=TEST&sendAsSingleMessage=true",
 			],);
 			expect(contentType,).toStartWith("multipart/form-data; boundary=",);
@@ -738,7 +738,7 @@ describe("messaging-channel --stdin under --dry-run", () => {
 				expect(JSON.parse(piped.stdout,),).toEqual(JSON.parse(inline.stdout,),);
 				expect(JSON.parse(piped.stdout,),).toMatchObject({ plannedAndDryRun: true, },);
 			},);
-			expect(seen.filter((request,) => request.method !== "GET"),).toEqual([],);
+			expect(seen.filter((request,) => request.method !== "GET",),).toEqual([],);
 		});
 	}
 });

@@ -35,7 +35,7 @@ import {
 } from "./version.js";
 
 export function splitPackageSpec(raw: string,): string[] {
-	return raw.split(/\r?\n/,).map((line,) => line.trim()).filter((line,) => line.length > 0);
+	return raw.split(/\r?\n/,).map((line,) => line.trim(),).filter((line,) => line.length > 0,);
 }
 
 export const AUTH_ACTIONS: Record<string, {
@@ -357,7 +357,7 @@ const AUTHENTICATED_AGENT_FLAGS = [
 	"ca-cert",
 ];
 const GLOBAL_FLAG_NAMES: Record<string, true> = Object.fromEntries(
-	[...GLOBAL_AGENT_FLAGS, ...AUTHENTICATED_AGENT_FLAGS,].map((flag,) => [flag, true,]),
+	[...GLOBAL_AGENT_FLAGS, ...AUTHENTICATED_AGENT_FLAGS,].map((flag,) => [flag, true,],),
 );
 export const COMMANDS_USAGE = commandUsage("commands", "run",);
 const COMMANDS_DESCRIPTION =
@@ -658,13 +658,13 @@ function booleanFlagPattern(names: string[],): string {
 
 function shortFlagsFor(names: string[],): string[] {
 	return Object.entries(SHORT_FLAGS,)
-		.filter(([, canonical,],) => names.includes(canonical,))
-		.map(([short,],) => short);
+		.filter(([, canonical,],) => names.includes(canonical,),)
+		.map(([short,],) => short,);
 }
 
 function shortFlagPattern(flags: CommandFlagMetadata[],): string | undefined {
 	const shortChars = shortFlagsFor(
-		flags.filter((flag,) => flag.kind === "boolean").map((flag,) => flag.name),
+		flags.filter((flag,) => flag.kind === "boolean",).map((flag,) => flag.name,),
 	);
 	return shortChars.length > 0 ? `^-(${shortChars.join("|",)})$` : undefined;
 }
@@ -709,11 +709,11 @@ function argvJsonSchema(
 		aliases[flag.name] = flag.aliases ?? [];
 	}
 	const booleanNames = flags.flatMap((flag,) =>
-		flag.kind === "boolean" ? [flag.name, ...(flag.aliases ?? []),] : []
+		flag.kind === "boolean" ? [flag.name, ...(flag.aliases ?? []),] : [],
 	);
-	const valueFlags = flags.filter((flag,) => flag.kind === "value");
+	const valueFlags = flags.filter((flag,) => flag.kind === "value",);
 	const requiredPositionals = commandSyntax(resource, action,).positionalArguments
-		.filter((positional,) => positional.required).map((positional,) => positional.name);
+		.filter((positional,) => positional.required,).map((positional,) => positional.name,);
 	const itemSchemas: Record<string, unknown>[] = [
 		{ not: { pattern: "^-", }, },
 		{ const: "-", },
@@ -727,7 +727,7 @@ function argvJsonSchema(
 	if (shortPattern) itemSchemas.push({ pattern: shortPattern, },);
 	const contains = (names: string[],): Record<string, unknown> => {
 		const requiredValuePatterns = flags
-			.filter((flag,) => flag.kind === "value" && names.includes(flag.name,))
+			.filter((flag,) => flag.kind === "value" && names.includes(flag.name,),)
 			.map(flagValueTokenPattern,);
 		const pattern = requiredValuePatterns.length > 0
 			? requiredValuePatterns.join("|",)
@@ -735,11 +735,11 @@ function argvJsonSchema(
 		return { contains: { pattern, }, minContains: 1, };
 	};
 	const constraints: Record<string, unknown>[] = requiredFlags.map((name,) =>
-		contains([name, ...(aliases[name] ?? []),],)
+		contains([name, ...(aliases[name] ?? []),],),
 	);
 	for (const choice of requiredOneOf) {
 		const alternativeSchema = (alternative: string[],): Record<string, unknown> => {
-			const required = alternative.map((name,) => contains([name, ...(aliases[name] ?? []),],));
+			const required = alternative.map((name,) => contains([name, ...(aliases[name] ?? []),],),);
 			return required.length === 1 ? required[0] : { allOf: required, };
 		};
 		constraints.push({ anyOf: choice.oneOf.map(alternativeSchema,), },);
@@ -753,12 +753,12 @@ function argvJsonSchema(
 			argv: {
 				type: "array",
 				prefixItems: [
-					...prefix.map((token,) => ({ const: token, })),
+					...prefix.map((token,) => ({ const: token, }),),
 					...requiredPositionals.map((name,) => ({
 						type: "string",
 						title: name.replace(/\.\.\.$/, "",),
 						not: { pattern: "^-", },
-					})),
+					}),),
 				],
 				items: { type: "string", anyOf: itemSchemas, },
 				minItems: prefix.length + requiredPositionals.length,
@@ -1359,10 +1359,10 @@ export function buildRegistryEntry(
 	const requiredOneOf = meta.requiredOneOf
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.requiredOneOf
 		?? derivedRequired.requiredOneOf;
-	const oneOfFlags = new Set(requiredOneOf.flatMap((choice,) => choice.oneOf.flat()),);
+	const oneOfFlags = new Set(requiredOneOf.flatMap((choice,) => choice.oneOf.flat(),),);
 	const optionalFlags = meta.optionalFlags
 		?? EXPLICIT_REGISTRY_OVERRIDES[registryKey(resource, action,)]?.optionalFlags
-		?? flags.filter((flag,) => !requiredFlags.includes(flag,) && !oneOfFlags.has(flag,));
+		?? flags.filter((flag,) => !requiredFlags.includes(flag,) && !oneOfFlags.has(flag,),);
 	const valueHints = syntax.valueHints;
 	const inputContract = syntax.inputContract;
 	const cleanupHint = inferCleanupHint(resource, action,);
@@ -1403,15 +1403,15 @@ export function buildRegistryEntry(
 	// (`commands.globalFlags`); entries keep the flags their usage names. The
 	// argv schema still accepts both.
 	const implicitGlobalFlags = new Set(
-		flags.filter((name,) => GLOBAL_FLAG_NAMES[name] === true && !usageFlags.includes(name,)),
+		flags.filter((name,) => GLOBAL_FLAG_NAMES[name] === true && !usageFlags.includes(name,),),
 	);
-	const commandFlagMetadata = flagMetadata.filter((flag,) => !implicitGlobalFlags.has(flag.name,));
+	const commandFlagMetadata = flagMetadata.filter((flag,) => !implicitGlobalFlags.has(flag.name,),);
 	const inputGroups = requiredInputGroups(resource, action,);
 	const outputShape = inferOutputShape(resource, action,);
 	const producesLocalFile = syntax.producesLocalFile;
 	const uniqueRequiredFlags = uniqueStrings(requiredFlags,);
 	const uniqueOptionalFlags = uniqueStrings(optionalFlags,).filter((flag,) =>
-		!implicitGlobalFlags.has(flag,)
+		!implicitGlobalFlags.has(flag,),
 	);
 	const unsafe = unsafeOutputs(resource, action, producesLocalFile,);
 	let schemas: CommandAgentSchemas | undefined;
@@ -1663,8 +1663,8 @@ export interface CommandSearchMatch {
  */
 export function searchCommands(query: string,): CommandSearchMatch[] {
 	const words = [...new Set(query.toLowerCase().split(/[^a-z0-9]+/,),),]
-		.filter((word,) => word.length >= 3 && SEARCH_STOPWORDS[word] !== true)
-		.map((word,) => word.length > 4 && word.endsWith("s",) ? word.slice(0, -1,) : word);
+		.filter((word,) => word.length >= 3 && SEARCH_STOPWORDS[word] !== true,)
+		.map((word,) => word.length > 4 && word.endsWith("s",) ? word.slice(0, -1,) : word,);
 	if (words.length === 0) return [];
 	const scored: Array<CommandSearchMatch & { matched: number; inId: number; }> = [];
 	for (const [resource, actions,] of Object.entries(commandDefinitions(),)) {
@@ -1673,17 +1673,17 @@ export function searchCommands(query: string,): CommandSearchMatch[] {
 			const usage = meta.usage ?? commandUsage(resource, action,);
 			const description = meta.description ?? "";
 			const text = `${id} ${usage} ${description}`.toLowerCase();
-			const matched = words.filter((word,) => text.includes(word,));
+			const matched = words.filter((word,) => text.includes(word,),);
 			if (matched.length === 0) continue;
-			const inId = matched.filter((word,) => id.includes(word,)).length;
+			const inId = matched.filter((word,) => id.includes(word,),).length;
 			scored.push({ id, usage, description, matched: matched.length, inId, },);
 		}
 	}
-	const best = Math.max(0, ...scored.map((match,) => match.matched),);
+	const best = Math.max(0, ...scored.map((match,) => match.matched,),);
 	return scored
-		.filter((match,) => best < words.length || match.matched === words.length)
-		.sort((a, b,) => b.matched - a.matched || b.inId - a.inId || a.id.localeCompare(b.id,))
-		.map(({ id, usage, description, },) => ({ id, usage, description, }));
+		.filter((match,) => best < words.length || match.matched === words.length,)
+		.sort((a, b,) => b.matched - a.matched || b.inId - a.inId || a.id.localeCompare(b.id,),)
+		.map(({ id, usage, description, },) => ({ id, usage, description, }),);
 }
 
 function commandFlagJsonSchema(): Record<string, unknown> {

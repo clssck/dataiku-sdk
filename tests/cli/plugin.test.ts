@@ -65,13 +65,16 @@ function recordingClient(
 	results: Record<string, unknown> = {},
 ): { client: DataikuClient; calls: RecordedCall[]; } {
 	const calls: RecordedCall[] = [];
-	const plugins = new Proxy({}, {
-		get: (_target, method: string,) => async (...args: unknown[]): Promise<unknown> => {
-			calls.push({ method, args, },);
-			if (method in results && results[method] instanceof Error) throw results[method];
-			return Promise.resolve(method in results ? results[method] : {},);
+	const plugins = new Proxy(
+		{},
+		{
+			get: (_target, method: string,) => async (...args: unknown[]): Promise<unknown> => {
+				calls.push({ method, args, },);
+				if (method in results && results[method] instanceof Error) throw results[method];
+				return Promise.resolve(method in results ? results[method] : {},);
+			},
 		},
-	},);
+	);
 	return {
 		client: { plugins, } as unknown as DataikuClient,
 		calls,
@@ -111,7 +114,7 @@ describe("plugin path and id validation", () => {
 			"a/\u0001b",
 		];
 		for (const badPath of badPaths) {
-			expect(() => validatePluginPath(badPath,)).toThrow(ClientValidationError,);
+			expect(() => validatePluginPath(badPath,),).toThrow(ClientValidationError,);
 		}
 		expect(validatePluginPath("/python/lib.py",),).toBe("python/lib.py",);
 		expect(encodePluginPath("python/my lib/x.py",),).toBe("python/my%20lib/x.py",);
@@ -119,14 +122,14 @@ describe("plugin path and id validation", () => {
 
 	it("rejects plugin ids that could escape the route segment", () => {
 		for (const badId of ["", "a/b", "a b", "%2e%2e", "a:b",]) {
-			expect(() => validatePluginId(badId,)).toThrow(ClientValidationError,);
+			expect(() => validatePluginId(badId,),).toThrow(ClientValidationError,);
 		}
 		expect(validatePluginId("my-plugin.v2",),).toBe("my-plugin.v2",);
 	});
 
 	it("rejects rename targets with separators or traversal", () => {
 		for (const badName of ["sub/new.py", "..", ".", "x.", " x",]) {
-			expect(() => validatePluginName(badName,)).toThrow(ClientValidationError,);
+			expect(() => validatePluginName(badName,),).toThrow(ClientValidationError,);
 		}
 		expect(validatePluginName("new.py",),).toBe("new.py",);
 	});
@@ -134,7 +137,7 @@ describe("plugin path and id validation", () => {
 	it("accepts only the documented creation modes", () => {
 		expect(validatePluginDestinationPath("/",),).toBe("/",);
 		expect(validatePluginDestinationPath("python/mylib",),).toBe("/python/mylib",);
-		expect(() => validatePluginDestinationPath("../escape",)).toThrow(ClientValidationError,);
+		expect(() => validatePluginDestinationPath("../escape",),).toThrow(ClientValidationError,);
 	});
 });
 
@@ -146,7 +149,7 @@ describe("plugin git url validation", () => {
 		expect(
 			() => validatedPluginGitUrl("http://token@host/repo",),
 		).toThrow(/must not embed credentials/,);
-		expect(() => validatedPluginGitUrl("",)).toThrow(/is required/,);
+		expect(() => validatedPluginGitUrl("",),).toThrow(/is required/,);
 	});
 
 	it("allows SSH and scp-style remotes", () => {
@@ -484,11 +487,11 @@ describe("plugin settings-set and create-dev: --plan matches --dry-run", () => {
 	});
 
 	it("rejects invalid settings input the same way for plan and apply", async () => {
-		expect(() => planOf("settings-set", ["p",], { content: "[1]", },)).toThrow(
+		expect(() => planOf("settings-set", ["p",], { content: "[1]", },),).toThrow(
 			"Plugin settings must be a JSON object.",
 		);
-		expect(() => planOf("settings-set", ["p",], { content: "{", },)).toThrow("Invalid JSON",);
-		expect(() => planOf("settings-set", ["p",], { file: "/nonexistent/settings.json", },)).toThrow(
+		expect(() => planOf("settings-set", ["p",], { content: "{", },),).toThrow("Invalid JSON",);
+		expect(() => planOf("settings-set", ["p",], { file: "/nonexistent/settings.json", },),).toThrow(
 			"Could not read --file",
 		);
 		const { client, calls, } = recordingClient();
@@ -514,7 +517,7 @@ describe("plugin settings-set and create-dev: --plan matches --dry-run", () => {
 			gitSubpath: "sub",
 		},);
 		expect(plan.payload,).toEqual(dryRun.payload,);
-		expect(() => planOf("create-dev", ["p",], { "creation-mode": "GIT_CLONE", },)).toThrow(
+		expect(() => planOf("create-dev", ["p",], { "creation-mode": "GIT_CLONE", },),).toThrow(
 			"--repository URL is required",
 		);
 	});

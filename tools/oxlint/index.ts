@@ -75,7 +75,9 @@ const widenThenAssert = defineRule({
 			const value = unwrap(node.expression,);
 			if (value.type !== "Identifier" || broadType(node.typeAnnotation,)) return;
 			const variable = binding(context, value,);
-			if (!variable || variable.references.some(reference => reference.isWrite() && !reference.init)) {
+			if (
+				!variable || variable.references.some(reference => reference.isWrite() && !reference.init,)
+			) {
 				return;
 			}
 			const declaration = variable.defs[0]?.node;
@@ -87,10 +89,11 @@ const widenThenAssert = defineRule({
 			const original = unwrap(declaration.init,);
 			let known = original.type === "Literal";
 			if (original.type === "Identifier") {
-				known = binding(context, original,)?.defs.some(definition =>
-					definition.name.typeAnnotation !== undefined && definition.name.typeAnnotation !== null
-					&& !broadType(definition.name.typeAnnotation.typeAnnotation,)
-				) ?? false;
+				known =
+					binding(context, original,)?.defs.some(definition =>
+						definition.name.typeAnnotation !== undefined && definition.name.typeAnnotation !== null
+						&& !broadType(definition.name.typeAnnotation.typeAnnotation,),
+					) ?? false;
 			} else if (original.type === "TSAsExpression" || original.type === "TSTypeAssertion") {
 				known = !broadType(original.typeAnnotation,);
 			}
@@ -225,7 +228,7 @@ const rawJsonParseInResources = defineRule({
 				const guarded = ancestors.some((ancestor, index,) =>
 					Reflect.get(ancestor, "type",) === "TryStatement"
 					&& Boolean(Reflect.get(ancestor, "handler",),)
-					&& Reflect.get(ancestor, "block",) === ancestors[index + 1]
+					&& Reflect.get(ancestor, "block",) === ancestors[index + 1],
 				);
 				if (!guarded) {
 					context.report({
@@ -295,7 +298,7 @@ const directProcessEnv = defineRule({
 	meta: { type: "problem", schema: [], },
 	create(context,) {
 		const path = sourcePath(context,);
-		if (!path.includes("/src/",) || ENV_OWNERS.some((owner,) => path.endsWith(owner,))) return {};
+		if (!path.includes("/src/",) || ENV_OWNERS.some((owner,) => path.endsWith(owner,),)) return {};
 		return {
 			MemberExpression(node,) {
 				if (
@@ -518,7 +521,7 @@ const implicitStdin = defineRule({
 					|| (parent.type === "Property" && parent.key === node && !parent.computed && !parent.shorthand)
 				) return;
 				if (guardedByStdinTest(context, node,)) return;
-				if (requirements.some((entry,) => entry.start < node.start && isWithin(node, entry.scope,))) {
+				if (requirements.some((entry,) => entry.start < node.start && isWithin(node, entry.scope,),)) {
 					return;
 				}
 				context.report({
@@ -557,8 +560,8 @@ function hasModeOption(node: ESTree.CallExpression,): boolean {
 			property.type === "Property" && !property.computed
 			&& (property.key.type === "Identifier"
 				? property.key.name === "mode"
-				: property.key.type === "Literal" && property.key.value === "mode")
-		)
+				: property.key.type === "Literal" && property.key.value === "mode"),
+		),
 	);
 }
 

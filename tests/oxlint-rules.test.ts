@@ -44,7 +44,7 @@ async function lintWith(
 		expect(exit,).toBe(1,);
 		const report = JSON.parse(stdout,) as { diagnostics: { filename: string; severity: string; }[]; };
 		for (const diagnostic of report.diagnostics) expect(diagnostic.severity,).toBe("error",);
-		return report.diagnostics.map(diagnostic => basename(diagnostic.filename,)).sort();
+		return report.diagnostics.map(diagnostic => basename(diagnostic.filename,),).sort();
 	} finally {
 		await rm(directory, { recursive: true, force: true, },);
 	}
@@ -250,18 +250,22 @@ it("routes network access through DataikuClient using the repository's restricte
 		overrides: { files: string[]; rules?: Record<string, unknown>; }[];
 	};
 	const overrides = config.overrides.filter((override,) =>
-		override.rules?.["no-restricted-globals"] !== undefined
+		override.rules?.["no-restricted-globals"] !== undefined,
 	);
 	expect(overrides.length,).toBe(2,);
 	expect(
-		await lintWith({}, {
-			"src/direct": "export const r = fetch('http://example.test');",
-			"src/xhr": "export const r = new XMLHttpRequest();",
-			"src/socket": "export const r = new WebSocket('ws://example.test');",
-			"src/client": "export const r = fetch('http://example.test');",
-			"src/member": "export const r = (c: { fetch(): void; }) => c.fetch();",
-			"src/shadow": "export function f(fetch: () => void) { fetch(); }",
-			"tests/outside": "export const r = fetch('http://example.test');",
-		}, overrides,),
+		await lintWith(
+			{},
+			{
+				"src/direct": "export const r = fetch('http://example.test');",
+				"src/xhr": "export const r = new XMLHttpRequest();",
+				"src/socket": "export const r = new WebSocket('ws://example.test');",
+				"src/client": "export const r = fetch('http://example.test');",
+				"src/member": "export const r = (c: { fetch(): void; }) => c.fetch();",
+				"src/shadow": "export function f(fetch: () => void) { fetch(); }",
+				"tests/outside": "export const r = fetch('http://example.test');",
+			},
+			overrides,
+		),
 	).toEqual(["direct.ts", "socket.ts", "xhr.ts",],);
 });

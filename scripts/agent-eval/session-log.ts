@@ -136,9 +136,9 @@ export function parseSessionLog(jsonl: string,): SessionMetrics {
 				: undefined;
 			if (!call || call.invocations.length === 0) continue;
 			const text = content
-				.map((part,) => asRecord(part,))
-				.filter((block,) => block?.["type"] === "text" && typeof block["text"] === "string")
-				.map((block,) => String(block?.["text"],))
+				.map((part,) => asRecord(part,),)
+				.filter((block,) => block?.["type"] === "text" && typeof block["text"] === "string",)
+				.map((block,) => String(block?.["text"],),)
 				.join("\n",);
 			metrics.dssOutputChars += text.length;
 			const errors = extractDssErrors(text,);
@@ -152,8 +152,10 @@ export function parseSessionLog(jsonl: string,): SessionMetrics {
 					const mentioned = call.invocations.filter((argv,) =>
 						argv.some((word,) =>
 							!word.startsWith("-",)
-							&& word.split(/[,.\s]+/,).some((token,) => token.length > 3 && error.error.includes(token,))
-						)
+							&& word.split(/[,.\s]+/,).some((token,) =>
+								token.length > 3 && error.error.includes(token,),
+							),
+						),
 					);
 					if (mentioned.length === 1) failed.argv = mentioned[0] ?? null;
 					else failed.candidates = call.invocations;
@@ -375,7 +377,7 @@ export function extractCodeDssInvocations(
 		DSS_LIST_LITERAL.lastIndex = 0;
 	}
 	const inHelperBody = (offset: number,) =>
-		helperBodies.some(([start, end,],) => offset >= start && offset < end);
+		helperBodies.some(([start, end,],) => offset >= start && offset < end,);
 
 	const found: Array<{ offset: number; argv: string[]; }> = [];
 	for (const match of code.matchAll(DSS_LIST_LITERAL,)) {
@@ -393,7 +395,7 @@ export function extractCodeDssInvocations(
 				continue;
 			}
 			const items = splitArguments(code, match.index + match[0].length, ")",)
-				.filter((item,) => !/^[A-Za-z_]\w*\s*=(?!=)/.test(item,));
+				.filter((item,) => !/^[A-Za-z_]\w*\s*=(?!=)/.test(item,),);
 			if (items.length > 0) found.push({ offset: match.index, argv: items.map(renderArgument,), },);
 		}
 	}
@@ -405,7 +407,7 @@ export function extractCodeDssInvocations(
 			}
 		}
 	}
-	return found.sort((left, right,) => left.offset - right.offset).map((entry,) => entry.argv);
+	return found.sort((left, right,) => left.offset - right.offset,).map((entry,) => entry.argv,);
 }
 
 /** End offset of an indented block (Python `def`) or brace block (JS `function`). */

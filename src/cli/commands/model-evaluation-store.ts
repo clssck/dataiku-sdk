@@ -74,7 +74,7 @@ export const modelEvaluationStoreCommands: Record<string, CommandMeta> = withUsa
 				);
 				const projectKey = f["project-key"] as string | undefined;
 				if (executionMode(f,).dryRun || f["if-exists"] === true) {
-					const current = await readIfExists(() => c.modelEvaluationStores.get(a[0], projectKey,));
+					const current = await readIfExists(() => c.modelEvaluationStores.get(a[0], projectKey,),);
 					if (!current) return skipResult("model-evaluation-store", a[0], "missing",);
 					if (executionMode(f,).dryRun) {
 						return {

@@ -34,8 +34,8 @@ describe("validateStreamColumns", () => {
 
 	it("detects both missing and unexpected simultaneously", () => {
 		const warnings = validateStreamColumns(["id", "extra", "other",], expected,);
-		const missing = warnings.filter((w,) => w.includes("Missing",));
-		const unexpected = warnings.filter((w,) => w.includes("Unexpected",));
+		const missing = warnings.filter((w,) => w.includes("Missing",),);
+		const unexpected = warnings.filter((w,) => w.includes("Unexpected",),);
 		expect(missing,).toHaveLength(2,); // name, amount
 		expect(unexpected,).toHaveLength(2,); // extra, other
 	});

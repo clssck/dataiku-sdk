@@ -162,12 +162,12 @@ describe("CLI user/group/connection actions", () => {
 	});
 
 	it("rejects plans without required JSON input", () => {
-		expect(() => plan("user", "create", [], {},)).toThrow();
-		expect(() => plan("group", "create", [], {},)).toThrow();
-		expect(() => plan("connection", "create", [], {},)).toThrow();
-		expect(() => plan("connection", "prepare-import", [], {},)).toThrow();
-		expect(() => plan("connection", "execute-import", [], {},)).toThrow();
-		expect(() => plan("user", "resync-multi", [], {},)).toThrow();
+		expect(() => plan("user", "create", [], {},),).toThrow();
+		expect(() => plan("group", "create", [], {},),).toThrow();
+		expect(() => plan("connection", "create", [], {},),).toThrow();
+		expect(() => plan("connection", "prepare-import", [], {},),).toThrow();
+		expect(() => plan("connection", "execute-import", [], {},),).toThrow();
+		expect(() => plan("user", "resync-multi", [], {},),).toThrow();
 	});
 
 	it("dry-runs mutators with zero HTTP and redacted payloads", async () => {
@@ -177,7 +177,7 @@ describe("CLI user/group/connection actions", () => {
 			res.statusCode = 500;
 			res.end("dry-run must not hit the server",);
 		},);
-		await new Promise<void>((resolve,) => server.listen(0, "127.0.0.1", () => resolve(),));
+		await new Promise<void>((resolve,) => server.listen(0, "127.0.0.1", () => resolve(),),);
 		const { port, } = server.address() as AddressInfo;
 		const c = new DataikuClient({
 			url: `http://127.0.0.1:${String(port,)}`,
@@ -248,7 +248,7 @@ describe("CLI user/group/connection actions", () => {
 
 			expect(requests,).toEqual([],);
 		} finally {
-			await new Promise<void>((resolve,) => server.close(() => resolve()));
+			await new Promise<void>((resolve,) => server.close(() => resolve(),),);
 		}
 	});
 
@@ -295,7 +295,7 @@ describe("CLI user/group/connection actions", () => {
 			res.statusCode = 403;
 			res.end(JSON.stringify({ message: "Action forbidden, you are not admin", },),);
 		},);
-		await new Promise<void>((resolve,) => server.listen(0, "127.0.0.1", () => resolve(),));
+		await new Promise<void>((resolve,) => server.listen(0, "127.0.0.1", () => resolve(),),);
 		const { port, } = server.address() as AddressInfo;
 		const c = new DataikuClient({ url: `http://127.0.0.1:${String(port,)}`, apiKey: "k", },);
 		try {
@@ -318,7 +318,7 @@ describe("CLI user/group/connection actions", () => {
 				"GET /public/api/admin/connections/s3%20main",
 			],);
 		} finally {
-			await new Promise<void>((resolve,) => server.close(() => resolve()));
+			await new Promise<void>((resolve,) => server.close(() => resolve(),),);
 		}
 	});
 

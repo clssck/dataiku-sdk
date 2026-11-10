@@ -154,7 +154,7 @@ async function snapshotAppType(
 ): Promise<string | null> {
 	const declared = snapshot["projectAppType"];
 	if (typeof declared === "string") return declared;
-	const details = await readIfExists(() => client.projects.get(projectKey,));
+	const details = await readIfExists(() => client.projects.get(projectKey,),);
 	const value = (details as Record<string, unknown> | undefined)?.["projectAppType"];
 	return typeof value === "string" ? value : null;
 }
@@ -206,8 +206,8 @@ export async function verifyAppInstance(
 	const templateVersion = rawVersion(templateManifest,);
 	const expectedVersion = expectVersion ?? templateVersion;
 	const instances = await client.applications.listInstances(appId,);
-	const registered = instances.some((instance,) => instance.projectKey === projectKey);
-	const raw = await readAppProject(() => client.applications.getInstanceManifest(projectKey,));
+	const registered = instances.some((instance,) => instance.projectKey === projectKey,);
+	const raw = await readAppProject(() => client.applications.getInstanceManifest(projectKey,),);
 	const snapshot = isPlainRecord(raw,) ? raw : undefined;
 	const projectAppType = snapshot ? await snapshotAppType(client, snapshot, projectKey,) : null;
 	const instanceVersion = rawVersion(snapshot,);
@@ -255,7 +255,7 @@ export async function verifyAppInstance(
 			}
 			: null,
 		checks,
-		valid: checks.every((entry,) => entry.status === "ok"),
+		valid: checks.every((entry,) => entry.status === "ok",),
 	};
 }
 
@@ -362,7 +362,7 @@ export async function requireAbsentProjectTarget(
 		);
 	}
 	try {
-		const existing = await readIfExists(() => client.projects.get(targetProjectKey,));
+		const existing = await readIfExists(() => client.projects.get(targetProjectKey,),);
 		if (existing === undefined) return;
 	} catch (error) {
 		// Only a DSS refusal masks the target; an intermediary's 403 page says
@@ -392,7 +392,7 @@ export async function requireAbsentProjectTarget(
 		if (visibleAppInstanceKeys === undefined) {
 			try {
 				visibleAppInstanceKeys = (await client.applications.listInstances(context.appId,))
-					.map((instance,) => instance.projectKey);
+					.map((instance,) => instance.projectKey,);
 			} catch (appInstancesError) {
 				if (
 					!(appInstancesError instanceof DataikuError) || appInstancesError.status !== 403
@@ -472,7 +472,7 @@ async function preflightSuccessor(
 		);
 	}
 	const instances = await client.applications.listInstances(appId,);
-	if (!instances.some((instance,) => instance.projectKey === from)) {
+	if (!instances.some((instance,) => instance.projectKey === from,)) {
 		throw new UsageError(
 			`Project ${from} is not registered as an instance of app ${appId}.`,
 			"validation_failed",
@@ -480,11 +480,11 @@ async function preflightSuccessor(
 			{
 				appId,
 				sourceProjectKey: from,
-				registeredInstances: instances.map((instance,) => instance.projectKey ?? null),
+				registeredInstances: instances.map((instance,) => instance.projectKey ?? null,),
 			},
 		);
 	}
-	const source = await readAppProject(() => client.applications.getManifestVersion(from,));
+	const source = await readAppProject(() => client.applications.getManifestVersion(from,),);
 	if (!source) {
 		throw new UsageError(
 			`Project ${from} could not be read as an app project.`,
@@ -510,7 +510,7 @@ async function preflightSuccessor(
 		// caller never named.
 		await requireAbsentProjectTarget(client, to, "--to", {
 			appId,
-			visibleAppInstanceKeys: instances.map((instance,) => instance.projectKey),
+			visibleAppInstanceKeys: instances.map((instance,) => instance.projectKey,),
 		},);
 	}
 	const templateManifest = await client.applications.getAppManifest(appId,);

@@ -156,7 +156,7 @@ export class DataQualityResource extends BaseResource {
 		projectKey?: string,
 	): Promise<DataQualityRule> {
 		const rules = await this.listRules(datasetName, projectKey,);
-		const rule = rules.find((candidate,) => candidate.id === ruleId);
+		const rule = rules.find((candidate,) => candidate.id === ruleId,);
 		if (!rule) {
 			throw new DataikuError(
 				404,

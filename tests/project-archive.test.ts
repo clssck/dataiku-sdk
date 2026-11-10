@@ -190,7 +190,7 @@ async function writeZip(members: TestMember[], name = "project.zip",): Promise<s
 }
 
 function issueCodes(report: Awaited<ReturnType<typeof inspectProjectArchive>>,): string[] {
-	return report.issues.map((issue,) => issue.code);
+	return report.issues.map((issue,) => issue.code,);
 }
 
 // ---------------------------------------------------------------------------
@@ -228,7 +228,7 @@ describe("inspectProjectArchive", () => {
 
 		expect(report.valid,).toBe(false,);
 		expect(issueCodes(report,),).toContain("member_crc_mismatch",);
-		const crcIssue = report.issues.find((issue,) => issue.code === "member_crc_mismatch");
+		const crcIssue = report.issues.find((issue,) => issue.code === "member_crc_mismatch",);
 		expect(crcIssue?.member,).toBe("project_config/datasets/ds_one.json",);
 		expect(crcIssue?.message,).toContain("CRC-32",);
 		await expect(assertImportableProjectArchive(filePath,),).rejects.toThrow(
@@ -264,7 +264,7 @@ describe("inspectProjectArchive", () => {
 
 		expect(report.valid,).toBe(false,);
 		expect(report.memberCount,).toBe(3,);
-		const dupIssue = report.issues.find((issue,) => issue.code === "duplicate_member_name");
+		const dupIssue = report.issues.find((issue,) => issue.code === "duplicate_member_name",);
 		expect(dupIssue?.member,).toBe("project_config/datasets/dup.json",);
 		expect(dupIssue?.message,).toContain("2 times",);
 	});
@@ -281,8 +281,8 @@ describe("inspectProjectArchive", () => {
 
 		expect(report.valid,).toBe(false,);
 		const paths = report.issues
-			.filter((issue,) => issue.code === "unsafe_member_path")
-			.map((issue,) => issue.member);
+			.filter((issue,) => issue.code === "unsafe_member_path",)
+			.map((issue,) => issue.member,);
 		expect(paths,).toEqual([
 			"../escape.txt",
 			"/abs/escape.txt",
@@ -499,8 +499,8 @@ describe("inspectProjectArchive", () => {
 
 		expect(report.valid,).toBe(false,);
 		const orphans = report.issues
-			.filter((issue,) => issue.code === "orphan_member")
-			.map((issue,) => issue.member);
+			.filter((issue,) => issue.code === "orphan_member",)
+			.map((issue,) => issue.member,);
 		expect(orphans,).toEqual([
 			"any_datasets_data/ghost",
 			"project_config/recipes/orphaned.shaker",
@@ -544,7 +544,7 @@ describe("inspectProjectArchive", () => {
 		const report = await inspectProjectArchive(filePath,);
 
 		expect(report.valid,).toBe(true,);
-		const residueIssues = report.issues.filter((issue,) => issue.code === "identity_residue");
+		const residueIssues = report.issues.filter((issue,) => issue.code === "identity_residue",);
 		expect(residueIssues,).toHaveLength(1,);
 		expect(residueIssues[0].member,).toBe("project_config/datasets/contacted.json",);
 		const serialized = JSON.stringify(report.issues,);
@@ -614,7 +614,7 @@ describe("inspectProjectArchive", () => {
 				rule: finding.rule,
 				keyPath: finding.keyPath,
 				field: finding.field,
-			}));
+			}),);
 			expect(inventory,).toEqual([
 				{
 					member: "project_config/apikeys.json",
@@ -647,14 +647,14 @@ describe("inspectProjectArchive", () => {
 					field: "apiKey",
 				},
 			],);
-			const warnings = report.issues.filter((issue,) => issue.code === "credential_structure");
-			expect(warnings.map((issue,) => issue.member),).toEqual([
+			const warnings = report.issues.filter((issue,) => issue.code === "credential_structure",);
+			expect(warnings.map((issue,) => issue.member,),).toEqual([
 				"project_config/apikeys.json",
 				"project_config/extra/vars-list.json",
 				"project_config/variables.json",
 				"project_config/web_apps/app1.json",
 			],);
-			expect(warnings.every((issue,) => issue.severity === "warning"),).toBe(true,);
+			expect(warnings.every((issue,) => issue.severity === "warning",),).toBe(true,);
 			const serialized = JSON.stringify(report,);
 			for (const secret of SECRETS) expect(serialized,).not.toContain(secret,);
 		});
@@ -722,8 +722,8 @@ describe("inspectProjectArchive", () => {
 			const report = await inspectProjectArchive(filePath,);
 
 			expect(report.valid,).toBe(true,);
-			const skipped = report.issues.filter((issue,) => issue.code === "residue_scan_skipped");
-			expect(skipped.map((issue,) => issue.member),).toEqual(["project_config/variables.json",],);
+			const skipped = report.issues.filter((issue,) => issue.code === "residue_scan_skipped",);
+			expect(skipped.map((issue,) => issue.member,),).toEqual(["project_config/variables.json",],);
 			expect(skipped[0].severity,).toBe("warning",);
 			expect(JSON.stringify(report,),).not.toContain("oversized-secret-7",);
 		});
@@ -770,7 +770,7 @@ describe("inspectProjectArchive", () => {
 
 		expect(first.issues,).toEqual(second.issues,);
 		expect(first.issues,).toHaveLength(3,);
-		expect(first.issues.map((issue,) => issue.code),).toEqual([
+		expect(first.issues.map((issue,) => issue.code,),).toEqual([
 			"duplicate_member_name",
 			"member_crc_mismatch",
 			"unsafe_member_path",

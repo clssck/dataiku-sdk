@@ -70,14 +70,14 @@ function deployerId(value: unknown, basicInfo: string,): string | undefined {
 
 /** True when a deployer list contains the id (nested under `*BasicInfo.id` or flat). */
 function listHas(list: unknown, basicInfo: string, id: string,): boolean {
-	return asArray(list,).some(item => deployerId(item, basicInfo,) === id);
+	return asArray(list,).some(item => deployerId(item, basicInfo,) === id,);
 }
 
 /** Ids of the `packages[]` entries of a published service/project light status. */
 function packageIds(status: unknown,): string[] {
 	return asArray(asRecord(status,)?.["packages"],)
-		.map(item => asString(asRecord(item,)?.["id"],))
-		.filter((id,): id is string => id !== undefined);
+		.map(item => asString(asRecord(item,)?.["id"],),)
+		.filter((id,): id is string => id !== undefined,);
 }
 
 /** A create is only real when the ledger holds a bound, identity-matched entry. */
@@ -94,7 +94,7 @@ function aggregate(errors: unknown[],): never {
 	if (errors.length === 1) throw errors[0];
 	throw new AggregateError(
 		errors,
-		errors.map(e => e instanceof Error ? e.message : String(e,)).join("; ",),
+		errors.map(e => e instanceof Error ? e.message : String(e,),).join("; ",),
 	);
 }
 
@@ -181,7 +181,7 @@ async function withOwnedProject<T,>(
  */
 async function apiDeployerStage(ctx: LiveContext,): Promise<string> {
 	const stages = await ctx.run<unknown>(["api-deployer", "list-stages",],);
-	const stage = asArray(stages,).map(item => asString(asRecord(item,)?.["id"],)).find(Boolean,);
+	const stage = asArray(stages,).map(item => asString(asRecord(item,)?.["id"],),).find(Boolean,);
 	if (!stage) {
 		throw new LiveCapabilityError(
 			"api-deployer list-stages returned no stage id; infra creation requires a configured stage.",

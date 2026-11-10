@@ -316,8 +316,8 @@ export function normalizeFlowGraph(
 			name: node.name,
 			subtype: node.subtype,
 			connection: node.connection,
-		}))
-		.sort((a, b,) => a.id.localeCompare(b.id,));
+		}),)
+		.sort((a, b,) => a.id.localeCompare(b.id,),);
 
 	const edges = [...edgeMap.values(),].sort((a, b,) => {
 		const byFrom = a.from.localeCompare(b.from,);
@@ -339,17 +339,17 @@ export function normalizeFlowGraph(
 	}
 
 	const roots = nodes
-		.filter((node,) => (inDegree.get(node.id,) ?? 0) === 0)
-		.map((node,) => node.id)
-		.sort((a, b,) => a.localeCompare(b,));
+		.filter((node,) => (inDegree.get(node.id,) ?? 0) === 0,)
+		.map((node,) => node.id,)
+		.sort((a, b,) => a.localeCompare(b,),);
 
 	const leaves = nodes
-		.filter((node,) => (outDegree.get(node.id,) ?? 0) === 0)
-		.map((node,) => node.id)
-		.sort((a, b,) => a.localeCompare(b,));
+		.filter((node,) => (outDegree.get(node.id,) ?? 0) === 0,)
+		.map((node,) => node.id,)
+		.sort((a, b,) => a.localeCompare(b,),);
 
-	const datasetsCount = nodes.filter((node,) => node.kind === "dataset").length;
-	const recipesCount = nodes.filter((node,) => node.kind === "recipe").length;
+	const datasetsCount = nodes.filter((node,) => node.kind === "dataset",).length;
+	const recipesCount = nodes.filter((node,) => node.kind === "recipe",).length;
 
 	return {
 		projectKey,

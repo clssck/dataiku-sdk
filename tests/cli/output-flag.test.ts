@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync, } from "node:fs";
 import { join, } from "node:path";
-import { cliEnv, dss, dssFailure, rmSync, sendJson, tmpdir, withCliServer, } from "./_harness.js";
 import type { IncomingMessage, ServerResponse, } from "./_harness.js";
+import { cliEnv, dss, dssFailure, rmSync, sendJson, tmpdir, withCliServer, } from "./_harness.js";
 
 const COLUMN_COUNT = 120;
 const columns = Array.from({ length: COLUMN_COUNT, }, (_, index,) => ({
@@ -70,7 +70,7 @@ function parseWritten(stdout: string,): WrittenResult {
 }
 
 function lineLengths(text: string,): number[] {
-	return text.split("\n",).map((line,) => Buffer.byteLength(line,));
+	return text.split("\n",).map((line,) => Buffer.byteLength(line,),);
 }
 
 let dir: string;

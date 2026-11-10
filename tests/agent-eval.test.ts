@@ -44,7 +44,7 @@ describe("parseSessionLog", () => {
 	});
 
 	it("extracts dss invocations from bash commands and eval code", () => {
-		expect(metrics.dssInvocations.map(({ tool, argv, },) => [tool, argv.join(" ",),]),).toEqual([
+		expect(metrics.dssInvocations.map(({ tool, argv, },) => [tool, argv.join(" ",),],),).toEqual([
 			["bash", "commands run --fields scenario.get.usage,flow.map.usage",],
 			["bash", "scenario get nightly --project-key P1",],
 			["eval", "recipe list --project-key P1",],
@@ -57,7 +57,7 @@ describe("parseSessionLog", () => {
 	});
 
 	it("attributes failed dss calls to the invocation that failed and counts usage errors", () => {
-		expect(metrics.failedDssCalls.map(({ code, exitCode, argv, },) => ({ code, exitCode, argv, })),)
+		expect(metrics.failedDssCalls.map(({ code, exitCode, argv, },) => ({ code, exitCode, argv, }),),)
 			.toEqual([
 				{
 					code: "usage_error",
@@ -149,12 +149,10 @@ describe("extractCodeDssInvocations", () => {
 	it("reads subprocess list literals and Bun shell templates", () => {
 		const code =
 			'subprocess.run(["dss", "dataset", "list", *P])\nawait $`dss recipe list --project-key X`';
-		expect(extractCodeDssInvocations(code,),).toEqual([["dataset", "list", "*P",], [
-			"recipe",
-			"list",
-			"--project-key",
-			"X",
-		],],);
+		expect(extractCodeDssInvocations(code,),).toEqual([
+			["dataset", "list", "*P",],
+			["recipe", "list", "--project-key", "X",],
+		],);
 	});
 });
 
@@ -191,7 +189,7 @@ describe("mutating calls", () => {
 			["recipe", "set-payload", "r", "--plan",],
 			["recipe", "list",],
 			["{resource}", "{action}",],
-		].map((argv,) => ({ tool: "bash", toolCallId: "t", argv, }));
+		].map((argv,) => ({ tool: "bash", toolCallId: "t", argv, }),);
 		expect(findMutatingCalls(invocations, mutating,),).toEqual([["scenario", "run", "nightly",],],);
 	});
 
@@ -204,9 +202,9 @@ describe("mutating calls", () => {
 
 describe("agent-eval CLI", () => {
 	it("defines the three required cases with unique ids", () => {
-		const ids = EVAL_CASES.map((evalCase,) => evalCase.id);
+		const ids = EVAL_CASES.map((evalCase,) => evalCase.id,);
 		expect(ids,).toEqual(["scenario-fix", "data-question", "build-flow",],);
-		expect(EVAL_CASES.find((evalCase,) => evalCase.id === "data-question")?.readOnly,).toBe(true,);
+		expect(EVAL_CASES.find((evalCase,) => evalCase.id === "data-question",)?.readOnly,).toBe(true,);
 	});
 
 	it("parses flags in both spellings", () => {
@@ -231,10 +229,10 @@ describe("agent-eval CLI", () => {
 	});
 
 	it("rejects unknown flags, unknown cases and bad durations", () => {
-		expect(() => parseAgentEvalArgs(["--bogus",],)).toThrow(AgentEvalUsageError,);
-		expect(() => parseAgentEvalArgs(["--case", "nope",],)).toThrow(/Unknown case: nope/,);
-		expect(() => parseAgentEvalArgs(["--max-time", "soon",],)).toThrow(AgentEvalUsageError,);
-		expect(() => parseAgentEvalArgs(["--model",],)).toThrow(/needs a value/,);
+		expect(() => parseAgentEvalArgs(["--bogus",],),).toThrow(AgentEvalUsageError,);
+		expect(() => parseAgentEvalArgs(["--case", "nope",],),).toThrow(/Unknown case: nope/,);
+		expect(() => parseAgentEvalArgs(["--max-time", "soon",],),).toThrow(AgentEvalUsageError,);
+		expect(() => parseAgentEvalArgs(["--model",],),).toThrow(/needs a value/,);
 	});
 
 	it("converts durations", () => {
@@ -264,7 +262,7 @@ describe("renderReportMarkdown", () => {
 				toolCalls: metrics.toolCalls,
 				toolCallsByTool: metrics.toolCallsByTool,
 				dssInvocationCount: metrics.dssInvocations.length,
-				dssInvocations: metrics.dssInvocations.map(({ argv, },) => argv.join(" ",)),
+				dssInvocations: metrics.dssInvocations.map(({ argv, },) => argv.join(" ",),),
 				failedDssCalls: metrics.failedDssCalls,
 				usageErrors: metrics.usageErrors,
 				mutatingCalls: [],

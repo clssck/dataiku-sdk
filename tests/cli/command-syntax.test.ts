@@ -33,7 +33,7 @@ function malformed(nodes: SyntaxNode[], path: string,): string[] {
 		if (node.sep !== undefined && node.sep !== " | ") {
 			return [`${at}: separator must be "|" or " | "`,];
 		}
-		return alternatives.flatMap((alternative, alt,) => malformed(alternative, `${at}.${alt}`,));
+		return alternatives.flatMap((alternative, alt,) => malformed(alternative, `${at}.${alt}`,),);
 	},);
 }
 
@@ -41,7 +41,7 @@ describe("src/cli/command-syntax.json", () => {
 	it("defines exactly the registered commands, each as a well-formed dss usage line", () => {
 		const registry = buildCommandRegistry();
 		const registered = Object.entries(registry,).flatMap(([resource, actions,],) =>
-			Object.keys(actions,).map((action,) => `${resource}.${action}`)
+			Object.keys(actions,).map((action,) => `${resource}.${action}`,),
 		);
 		expect(commandSyntaxKeys().sort(),).toEqual(registered.sort(),);
 		const problems = registered.flatMap((key,) => {
@@ -64,9 +64,13 @@ describe("syntax derivation", () => {
 		{ arg: "name", },
 		{ flag: "type", value: "TYPE", },
 		{
-			oneOf: [[{ flag: "data", value: "JSON", },], [{ flag: "data-file", value: "PATH", },], [{
-				flag: "stdin",
-			},],],
+			oneOf: [
+				[{ flag: "data", value: "JSON", },],
+				[{ flag: "data-file", value: "PATH", },],
+				[{
+					flag: "stdin",
+				},],
+			],
 		},
 		{ optional: [[{ flag: "connection", value: "CONN", },],], },
 		{ optional: [[{ flag: "render", values: ["ascii", "mermaid",], },],], },

@@ -27,7 +27,7 @@ function nonEmptyString(value: unknown,): string | undefined {
 
 /** Drop `undefined` members so absent optional fields are omitted, never null. */
 function defined(fields: Item,): Item {
-	return Object.fromEntries(Object.entries(fields,).filter(([, value,],) => value !== undefined),);
+	return Object.fromEntries(Object.entries(fields,).filter(([, value,],) => value !== undefined,),);
 }
 
 /** `{ type, message }` of a DSS error object (`error`, `firstFailure`); undefined when empty. */
@@ -48,7 +48,7 @@ function errorSummary(value: unknown,): Item | undefined {
 function outputTarget(output: Item,): { id: unknown; projectKey: unknown; } {
 	const targetKey = Object.keys(output,).find((key,) =>
 		/^target[A-Z]/.test(key,) && !key.endsWith("ProjectKey",) && key !== "targetPartition"
-		&& typeof output[key] === "string"
+		&& typeof output[key] === "string",
 	);
 	return {
 		id: targetKey === undefined ? output["id"] : output[targetKey],
@@ -101,7 +101,7 @@ function shapeJobGet(result: unknown,): unknown {
 		startTime: base["jobStartTime"],
 		endTime: base["jobEndTime"],
 		outputs: Array.isArray(def["outputs"],)
-			? def["outputs"].map((output,) => shapeJobOutput(output, def["projectKey"],))
+			? def["outputs"].map((output,) => shapeJobOutput(output, def["projectKey"],),)
 			: undefined,
 		progress: result["globalState"],
 		error: errorSummary(result["error"],),
@@ -152,7 +152,7 @@ function shapeDatasetInfo(result: unknown,): unknown {
 		partitioned: result["partitioned"],
 		schema: Array.isArray(columns,) ? columns.map(shapeColumn,) : undefined,
 		recipes: Array.isArray(result["recipes"],)
-			? result["recipes"].map((recipe,) => record(recipe,)["name"])
+			? result["recipes"].map((recipe,) => record(recipe,)["name"],)
 			: undefined,
 		buildable: result["buildable"],
 		upstreamBuildable: result["upstreamBuildable"],
@@ -177,7 +177,7 @@ function pruneEmpty(value: unknown,): unknown {
 	if (Array.isArray(value,)) {
 		if (value.length === 0) return undefined;
 		return value.map((item,) =>
-			pruneEmpty(item,) ?? (typeof item === "string" ? "" : Array.isArray(item,) ? [] : {})
+			pruneEmpty(item,) ?? (typeof item === "string" ? "" : Array.isArray(item,) ? [] : {}),
 		);
 	}
 	if (isRecord(value,)) {
@@ -192,7 +192,7 @@ function pruneEmpty(value: unknown,): unknown {
 }
 
 function withoutKeys(source: Item, keys: readonly string[],): Item {
-	return Object.fromEntries(Object.entries(source,).filter(([key,],) => !keys.includes(key,)),);
+	return Object.fromEntries(Object.entries(source,).filter(([key,],) => !keys.includes(key,),),);
 }
 
 /** `dataset get`: the settings object minus metadata and empty/default noise. */
@@ -244,7 +244,7 @@ function thrownMessage(value: unknown,): string | undefined {
 function reportItems(stepRun: Item, type: string,): Item[] {
 	const items = stepRun["additionalReportItems"];
 	return Array.isArray(items,)
-		? items.filter((item,): item is Item => isRecord(item,) && item["type"] === type)
+		? items.filter((item,): item is Item => isRecord(item,) && item["type"] === type,)
 		: [];
 }
 
@@ -274,7 +274,7 @@ function shapeScenarioStep(stepRun: unknown, runProjectKey: unknown,): Item {
 			jobId: item["jobId"],
 			outcome: item["outcome"],
 			message: thrownMessage(item["thrown"],),
-		},)
+		},),
 	);
 	return defined({
 		id: step["id"],
@@ -294,10 +294,10 @@ function shapeScenarioStep(stepRun: unknown, runProjectKey: unknown,): Item {
 function firstScenarioFailure(steps: Item[], runThrown: unknown,): Item | undefined {
 	for (const step of steps) {
 		const jobs = (step["jobs"] as Item[] | undefined) ?? [];
-		const job = jobs.find((entry,) => isFailedOutcome(entry["outcome"],));
+		const job = jobs.find((entry,) => isFailedOutcome(entry["outcome"],),);
 		if (!isFailedOutcome(step["outcome"],) && !job) continue;
 		const datasets = (step["datasets"] as Item[] | undefined) ?? [];
-		const dataset = datasets.find((entry,) => isFailedOutcome(entry["outcome"],));
+		const dataset = datasets.find((entry,) => isFailedOutcome(entry["outcome"],),);
 		return defined({
 			stepId: step["id"],
 			jobId: job?.["jobId"],
@@ -338,7 +338,7 @@ function failureNextSteps(
 	const inspect = activity
 		? [
 			["dss", "recipe", "cat", activity.recipe, ...pk,],
-			...activity.inputs.slice(0, 3,).map((input,) => ["dss", "dataset", "schema", input, ...pk,]),
+			...activity.inputs.slice(0, 3,).map((input,) => ["dss", "dataset", "schema", input, ...pk,],),
 		]
 		: [];
 	if (typeof failure["jobId"] === "string") {
@@ -394,10 +394,10 @@ export function scenarioRunDiagnosis(
 	const result = record(run["result"],);
 	const { scenarioId, projectKey, } = runScenarioIdentity(run,);
 	const steps = Array.isArray(fields["stepRuns"],)
-		? fields["stepRuns"].map((stepRun,) => shapeScenarioStep(stepRun, projectKey,))
+		? fields["stepRuns"].map((stepRun,) => shapeScenarioStep(stepRun, projectKey,),)
 		: [];
 	const failed = isFailedOutcome(result["outcome"],)
-		|| steps.some((step,) => isFailedOutcome(step["outcome"],));
+		|| steps.some((step,) => isFailedOutcome(step["outcome"],),);
 	const failure = failed ? firstScenarioFailure(steps, result["thrown"],) : undefined;
 	if (!failure) return {};
 	if (!activity) {
@@ -435,7 +435,7 @@ function shapeScenarioGetRun(result: unknown,): unknown {
 	const start = typeof run["start"] === "number" ? run["start"] : undefined;
 	const end = typeof run["end"] === "number" ? run["end"] : undefined;
 	const steps = Array.isArray(result["stepRuns"],)
-		? result["stepRuns"].map((stepRun,) => shapeScenarioStep(stepRun, projectKey,))
+		? result["stepRuns"].map((stepRun,) => shapeScenarioStep(stepRun, projectKey,),)
 		: [];
 	const { failure, next, } = scenarioRunDiagnosis(result,);
 	return defined({

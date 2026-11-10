@@ -27,7 +27,7 @@ describe("reserveCleanupLedgerDssUrl", () => {
 					() => reserveCleanupLedgerDssUrl(ledger, "https://dss.example.test/",),
 				),
 			);
-			expect(results.filter((result,) => result.status === "rejected"),).toEqual([],);
+			expect(results.filter((result,) => result.status === "rejected",),).toEqual([],);
 			expect(readFileSync(`${ledger}.dss-url`, "utf-8",).trim(),).toBe("https://dss.example.test",);
 			// Only the ledger binding remains: no temporary publication file.
 			expect(readdirSync(dir,),).toEqual(["cleanup.jsonl.dss-url",],);
@@ -53,11 +53,11 @@ describe("reserveCleanupLedgerDssUrl", () => {
 
 	it("lets exactly one of several concurrent different servers bind the ledger", async () => {
 		const { ledger, } = tempLedger();
-		const hosts = ["a", "b", "c", "d", "e", "f",].map((name,) => `https://${name}.example.test`);
+		const hosts = ["a", "b", "c", "d", "e", "f",].map((name,) => `https://${name}.example.test`,);
 		const results = await Promise.allSettled(
-			hosts.map((host,) => reserveCleanupLedgerDssUrl(ledger, host,)),
+			hosts.map((host,) => reserveCleanupLedgerDssUrl(ledger, host,),),
 		);
-		expect(results.filter((result,) => result.status === "fulfilled"),).toHaveLength(1,);
+		expect(results.filter((result,) => result.status === "fulfilled",),).toHaveLength(1,);
 		const bound = readFileSync(`${ledger}.dss-url`, "utf-8",).trim();
 		expect(hosts,).toContain(bound,);
 	});

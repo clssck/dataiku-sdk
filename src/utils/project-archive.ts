@@ -531,8 +531,8 @@ function keyTokens(key: string,): string[] {
 		.replace(/([a-z0-9])([A-Z])/g, "$1 $2",)
 		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2",)
 		.split(/[^A-Za-z0-9]+/,)
-		.filter((token,) => token.length > 0)
-		.map((token,) => token.toLowerCase());
+		.filter((token,) => token.length > 0,)
+		.map((token,) => token.toLowerCase(),);
 }
 
 function isCredentialName(key: string,): boolean {
@@ -613,7 +613,7 @@ function collectCredentialFindings(
 		}
 		if (Array.isArray(node,)) {
 			node.forEach((item, index,) =>
-				visit(item, `${path}[${index}]`, inCredential, field, depth + 1,)
+				visit(item, `${path}[${index}]`, inCredential, field, depth + 1,),
 			);
 			return;
 		}
@@ -664,7 +664,7 @@ function sortCredentialFindings(findings: ProjectArchiveCredentialFinding[],): v
 	findings.sort((a, b,) =>
 		a.member.localeCompare(b.member,)
 		|| (a.keyPath ?? "").localeCompare(b.keyPath ?? "",)
-		|| a.rule.localeCompare(b.rule,)
+		|| a.rule.localeCompare(b.rule,),
 	);
 }
 
@@ -1097,7 +1097,7 @@ export async function inspectProjectArchive(
 			sizeBytes,
 			memberCount: records.length,
 			sourceProjectKey,
-			valid: !issues.some((issue,) => issue.severity === "error"),
+			valid: !issues.some((issue,) => issue.severity === "error",),
 			issues,
 			credentialFindings,
 		};
@@ -1123,7 +1123,7 @@ export async function assertImportableProjectArchive(
 	overrides: Partial<ProjectArchiveInspectionLimits> = {},
 ): Promise<ProjectArchiveInspection> {
 	const inspection = await inspectProjectArchive(filePath, overrides,);
-	const errorCount = inspection.issues.filter((issue,) => issue.severity === "error").length;
+	const errorCount = inspection.issues.filter((issue,) => issue.severity === "error",).length;
 	if (errorCount > 0) {
 		throw new ClientValidationError(
 			`project archive is not importable: ${errorCount} validation error(s) found`,

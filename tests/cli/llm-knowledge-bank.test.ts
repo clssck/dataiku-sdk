@@ -91,14 +91,10 @@ describe("LLM and knowledge-bank CLI commands", () => {
 			res.end(`unexpected ${req.method ?? ""} ${req.url ?? ""}`,);
 		}, async (url,) => {
 			for (
-				const argv of [["llm", "list", "--plan",], [
-					"knowledge-bank",
-					"search",
-					"my-kb",
-					"--plan",
-					"--data",
-					'{"query":"q"}',
-				],]
+				const argv of [
+					["llm", "list", "--plan",],
+					["knowledge-bank", "search", "my-kb", "--plan", "--data", '{"query":"q"}',],
+				]
 			) {
 				const failure = await dssFailure(argv, { env: cliEnv(url,), },);
 				expect(failure.code,).toBe(1,);

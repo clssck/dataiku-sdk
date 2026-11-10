@@ -80,15 +80,15 @@ const enabled = process.env.RUN_DATAIKU_LIVE === "1" && Boolean(process.env.DATA
 			await ctx.save();
 			for (const selected of selection) {
 				if (
-					!manifest.cases.some(c => matchesLiveCase(c.id, selected,))
+					!manifest.cases.some(c => matchesLiveCase(c.id, selected,),)
 				) throw new Error(`No live case matched ${selected}`,);
 			}
 			const failures = manifest.cases.filter(c =>
-				c.status === "failed" || c.required !== false && c.status !== "passed"
+				c.status === "failed" || c.required !== false && c.status !== "passed",
 			);
 			if (failures.length) {
 				throw new Error(
-					`Live cases did not pass: ${failures.map(c => `${c.id} (${c.status})`).join(", ",)}`,
+					`Live cases did not pass: ${failures.map(c => `${c.id} (${c.status})`,).join(", ",)}`,
 				);
 			}
 		} finally {

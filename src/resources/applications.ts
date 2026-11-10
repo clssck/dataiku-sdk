@@ -749,15 +749,15 @@ export class ApplicationsResource extends BaseResource {
 		const scenarioIds = new Set<string>();
 		const folderIds = new Set<string>();
 		const variableNames = new Set<string>();
-		if (references.some((r,) => r.kind === "scenario")) {
+		if (references.some((r,) => r.kind === "scenario",)) {
 			const scenarios = await this.client.scenarios.list(pk,);
 			for (const scenario of scenarios) scenarioIds.add(scenario.id,);
 		}
-		if (references.some((r,) => r.kind === "folder")) {
+		if (references.some((r,) => r.kind === "folder",)) {
 			const folders = await this.client.folders.list(pk,);
 			for (const folder of folders) folderIds.add(folder.id,);
 		}
-		if (references.some((r,) => r.kind === "variable")) {
+		if (references.some((r,) => r.kind === "variable",)) {
 			const variables = await this.client.variables.get(pk,);
 			for (const name of Object.keys({ ...variables.standard, ...variables.local, },)) {
 				variableNames.add(name,);
@@ -795,9 +795,9 @@ export class ApplicationsResource extends BaseResource {
 		};
 		references.sort((a, b,) => (
 			a.kind === b.kind ? compareStrings(a.path, b.path,) : kindOrder[a.kind] - kindOrder[b.kind]
-		));
-		const errors = [...rootIssues, ...referenceIssues.map((e,) => e.issue),].sort((a, b,) =>
-			compareStrings(a.path, b.path,) || compareStrings(a.code, b.code,)
+		),);
+		const errors = [...rootIssues, ...referenceIssues.map((e,) => e.issue,),].sort((a, b,) =>
+			compareStrings(a.path, b.path,) || compareStrings(a.code, b.code,),
 		);
 
 		const checks: AppManifestCheck[] = [];
@@ -807,11 +807,11 @@ export class ApplicationsResource extends BaseResource {
 			}
 		} else {
 			for (const kind of Object.keys(APP_MANIFEST_REFERENCE_KEYS,) as AppManifestReferenceKind[]) {
-				const kindReferences = references.filter((r,) => r.kind === kind);
-				const malformed = referenceIssues.filter((e,) =>
-					e.kind === kind && e.issue.code === "INVALID_REFERENCE_VALUE"
-				).length;
-				const missing = kindReferences.filter((r,) => !r.exists).length;
+				const kindReferences = references.filter((r,) => r.kind === kind,);
+				const malformed =
+					referenceIssues.filter((e,) => e.kind === kind && e.issue.code === "INVALID_REFERENCE_VALUE",)
+						.length;
+				const missing = kindReferences.filter((r,) => !r.exists,).length;
 				checks.push({
 					kind,
 					status: kindReferences.length === 0 && malformed === 0

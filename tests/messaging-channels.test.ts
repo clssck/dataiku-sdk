@@ -51,7 +51,7 @@ describe("MessagingChannelsResource", () => {
 			async (channels, seen,) => {
 				await expect(channels.list(),).resolves.toEqual([{ id: "a", },],);
 				await channels.list({ channelType: "aws-ses-mail", channelFamily: "mail", },);
-				expect(seen.map((entry,) => `${entry.method} ${entry.path}`),).toEqual([
+				expect(seen.map((entry,) => `${entry.method} ${entry.path}`,),).toEqual([
 					"GET /public/api/messaging-channels/",
 					"GET /public/api/messaging-channels/?channelType=aws-ses-mail&channelFamily=mail",
 				],);
@@ -69,10 +69,10 @@ describe("MessagingChannelsResource", () => {
 				await channels.get("my/channel",);
 				await channels.getSettings("my/channel",);
 				await channels.saveSettings("my/channel", { sender: "a@example.com", },);
-				await channels.getPermissions("my/channel",).catch(() => undefined);
+				await channels.getPermissions("my/channel",).catch(() => undefined,);
 				await channels.setPermissions("my/channel", [{ group: "g", canUse: true, },],);
 				await channels.delete("my/channel",);
-				expect(seen.map((entry,) => `${entry.method} ${entry.path}`),).toEqual([
+				expect(seen.map((entry,) => `${entry.method} ${entry.path}`,),).toEqual([
 					"GET /public/api/messaging-channels/my%2Fchannel",
 					"GET /public/api/messaging-channels/my%2Fchannel/settings",
 					"PUT /public/api/messaging-channels/my%2Fchannel/settings",
@@ -95,7 +95,7 @@ describe("MessagingChannelsResource", () => {
 				configuration: { host: "h", },
 				permissions: [{ user: "u", canUse: true, },],
 			},);
-			expect(seen.map((entry,) => JSON.parse(entry.body,)),).toEqual([
+			expect(seen.map((entry,) => JSON.parse(entry.body,),),).toEqual([
 				{ id: "", type: "shell", configuration: {}, permissions: null, },
 				{
 					id: "mail",
@@ -174,9 +174,11 @@ describe("MessagingChannelsResource", () => {
 	it("fails before sending when an attachment cannot be read", async () => {
 		await withChannels(() => undefined, async (channels, seen,) => {
 			await expect(
-				channels.send("c", { to: ["a@example.com",], subject: "s", body: "b", }, {
-					attachments: [{ path: "/nonexistent/file.bin", },],
-				},),
+				channels.send(
+					"c",
+					{ to: ["a@example.com",], subject: "s", body: "b", },
+					{ attachments: [{ path: "/nonexistent/file.bin", },], },
+				),
 			).rejects.toBeInstanceOf(ClientValidationError,);
 			expect(seen,).toEqual([],);
 		},);

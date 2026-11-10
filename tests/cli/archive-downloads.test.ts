@@ -81,7 +81,7 @@ describe("CLI archive downloads", () => {
 				expect(readFileSync(output, "utf-8",),).toBe("onetwothree",);
 				const missingOutput = join(root, "new.zip",);
 				const failedNew = await dssFailure(
-					argv.map((arg, index,) => index === 4 ? missingOutput : arg),
+					argv.map((arg, index,) => index === 4 ? missingOutput : arg,),
 					{ env: cliEnv(url,), },
 				);
 				expect(failedNew.code,).toBe(3,);

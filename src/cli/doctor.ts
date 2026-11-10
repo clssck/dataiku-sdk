@@ -176,7 +176,7 @@ function doctorIdentityFromAuthInfo(raw: unknown,): DoctorIdentity | undefined {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw,)) return undefined;
 	const record = raw as Record<string, unknown>;
 	const groups = Array.isArray(record["groups"],)
-		? (record["groups"] as unknown[]).filter((g,): g is string => typeof g === "string")
+		? (record["groups"] as unknown[]).filter((g,): g is string => typeof g === "string",)
 		: undefined;
 	const authSource = typeof record["authSource"] === "string" ? record["authSource"] : undefined;
 	const authIdentifier = typeof record["authIdentifier"] === "string"
@@ -249,7 +249,7 @@ export function missingProjectPermission(): {
 
 export function recordsFromUnknownArray(items: unknown[],): Array<Record<string, unknown>> {
 	return items.filter((item,) =>
-		item !== null && typeof item === "object" && !Array.isArray(item,)
+		item !== null && typeof item === "object" && !Array.isArray(item,),
 	) as Array<
 		Record<string, unknown>
 	>;
@@ -312,7 +312,7 @@ export function fixtureAllowTypes(flags: Record<string, string | boolean>,): str
 export function isAllowedFixtureType(type: string | undefined, allowTypes: string[],): boolean {
 	if (!type) return false;
 	const normalized = type.trim().toLowerCase();
-	return allowTypes.some((allowed,) => allowed.trim().toLowerCase() === normalized);
+	return allowTypes.some((allowed,) => allowed.trim().toLowerCase() === normalized,);
 }
 
 export function fixtureReject(record: Record<string, unknown>, reason: string,): FixtureReject {
@@ -409,10 +409,10 @@ export async function doctorCapabilities(
 		() => Promise<{ status: PermissionStatus; details?: Record<string, unknown>; }>
 	> = {
 		canListProjects: () =>
-			probeDoctorPermission(async () => accessibleProjects ?? await client.projects.list()),
+			probeDoctorPermission(async () => accessibleProjects ?? await client.projects.list(),),
 		canReadProject: () =>
 			probeProjectKey
-				? probeDoctorPermission(() => client.projects.get(probeProjectKey,))
+				? probeDoctorPermission(() => client.projects.get(probeProjectKey,),)
 				: Promise.resolve(missingProjectPermission(),),
 		canMutateProject: () =>
 			probeProjectKey
@@ -624,7 +624,7 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 	}
 
 	const result: DoctorResult = {
-		ok: checks.every((check,) => check.ok),
+		ok: checks.every((check,) => check.ok,),
 		checks,
 		context,
 		...(identity ? { identity, } : {}),

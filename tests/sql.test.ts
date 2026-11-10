@@ -250,7 +250,7 @@ describe("SqlResource", () => {
 			const failure = await sql.query({
 				query: "SELECT 1",
 				datasetFullName: "PROJECT.dataset_orders",
-			},).catch((error: unknown,) => error);
+			},).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(ClientValidationError,);
 			expect(failure,).toMatchObject({
 				code: "validation_failed",
@@ -275,7 +275,7 @@ describe("SqlResource", () => {
 			const failure = await sql.query({
 				query: "SELECT 1",
 				datasetFullName: "PROJECT.dataset_orders",
-			},).catch((error: unknown,) => error);
+			},).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect(failure,).toMatchObject({
 				status: 404,
@@ -300,7 +300,7 @@ describe("SqlResource", () => {
 			const failure = await sql.query({
 				query: "SELECT 1",
 				datasetFullName: "PROJECT.dataset_orders",
-			},).catch((error: unknown,) => error);
+			},).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect(failure,).toMatchObject({
 				status: 403,
@@ -316,7 +316,7 @@ describe("SqlResource", () => {
 			res.statusMessage = "Bad Request";
 			res.end("Some other DSS validation failure",);
 		}, async (sql,) => {
-			const failure = await sql.query({ query: "SELECT 1", },).catch((error: unknown,) => error);
+			const failure = await sql.query({ query: "SELECT 1", },).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect(failure,).toMatchObject({ category: "validation", },);
 			expect(failure,).toHaveProperty(
@@ -414,7 +414,7 @@ describe("SqlResource bounded bodies", () => {
 			res.setHeader("content-type", "application/json",);
 			res.end(oversized,);
 		}, async (sql,) => {
-			const failure = await sql.streamResults("q-big",).catch((error: unknown,) => error);
+			const failure = await sql.streamResults("q-big",).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).status,).toBe(0,);
 			expect((failure as Error).message,).toContain("exceeded the 512-byte response limit",);
@@ -426,7 +426,7 @@ describe("SqlResource bounded bodies", () => {
 			expect(req.url,).toBe("/public/api/sql/queries/q-fin/finish-streaming",);
 			res.end(`status ${"x".repeat(2_000,)}`,);
 		}, async (sql,) => {
-			const failure = await sql.finishStreaming("q-fin",).catch((error: unknown,) => error);
+			const failure = await sql.finishStreaming("q-fin",).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as Error).message,).toContain("exceeded the 512-byte response limit",);
 		},);
@@ -436,7 +436,7 @@ describe("SqlResource bounded bodies", () => {
 		await withSqlDataikuServer((_req, res,) => {
 			res.end("<html>login</html>",);
 		}, async (sql,) => {
-			const failure = await sql.streamResults("q-html",).catch((error: unknown,) => error);
+			const failure = await sql.streamResults("q-html",).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).category,).toBe("unexpected_response",);
 		},);
@@ -446,7 +446,7 @@ describe("SqlResource bounded bodies", () => {
 		await withSqlDataikuServer((_req, res,) => {
 			res.end("syntax error",);
 		}, async (sql,) => {
-			const failure = await sql.finishStreaming("q-bad",).catch((error: unknown,) => error);
+			const failure = await sql.finishStreaming("q-bad",).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).category,).toBe("validation",);
 			expect((failure as DataikuError).status,).toBe(200,);

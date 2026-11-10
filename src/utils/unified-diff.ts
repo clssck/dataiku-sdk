@@ -14,8 +14,8 @@ function editScript(before: string[], after: string[],): DiffOp[] {
 	const m = after.length;
 	if (n * m > LCS_WORK_LIMIT) {
 		return [
-			...before.map((line,) => ({ type: "delete" as const, line, })),
-			...after.map((line,) => ({ type: "insert" as const, line, })),
+			...before.map((line,) => ({ type: "delete" as const, line, }),),
+			...after.map((line,) => ({ type: "insert" as const, line, }),),
 		];
 	}
 	const width = m + 1;
@@ -182,15 +182,15 @@ export function formatUnifiedDiff(
 		suffix++;
 	}
 	const ops: DiffOp[] = [
-		...before.slice(0, prefix,).map((line,) => ({ type: "equal" as const, line, })),
+		...before.slice(0, prefix,).map((line,) => ({ type: "equal" as const, line, }),),
 		...editScript(
 			before.slice(prefix, before.length - suffix,),
 			after.slice(prefix, after.length - suffix,),
 		),
-		...before.slice(before.length - suffix,).map((line,) => ({ type: "equal" as const, line, })),
+		...before.slice(before.length - suffix,).map((line,) => ({ type: "equal" as const, line, }),),
 	];
-	const added = ops.filter((op,) => op.type === "insert").length;
-	const removed = ops.filter((op,) => op.type === "delete").length;
+	const added = ops.filter((op,) => op.type === "insert",).length;
+	const removed = ops.filter((op,) => op.type === "delete",).length;
 
 	const hunks = buildHunks(ops,);
 	const header = `--- a/${path}\n+++ b/${path}\n`;

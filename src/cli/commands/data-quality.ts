@@ -13,9 +13,9 @@ import { requireArgs, UsageError, } from "../usage.js";
  */
 function resultReportsOk(result: { outcome?: string; status?: string; },): boolean {
 	const verdicts = [result.outcome, result.status,]
-		.filter((value,): value is string => typeof value === "string" && value.trim().length > 0)
-		.map((value,) => value.trim().toUpperCase());
-	return verdicts.length > 0 && verdicts.every((value,) => value === "OK");
+		.filter((value,): value is string => typeof value === "string" && value.trim().length > 0,)
+		.map((value,) => value.trim().toUpperCase(),);
+	return verdicts.length > 0 && verdicts.every((value,) => value === "OK",);
 }
 
 export const dataQualityCommands: Record<string, CommandMeta> = withUsage("data-quality", {
@@ -92,7 +92,7 @@ export const dataQualityCommands: Record<string, CommandMeta> = withUsage("data-
 			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const existing = identity
 					? (await c.dataQuality.listRules(a[0], pk,)).find((rule,) =>
-						rule.id === identity || rule.displayName === identity
+						rule.id === identity || rule.displayName === identity,
 					)
 					: undefined;
 				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
@@ -167,7 +167,7 @@ export const dataQualityCommands: Record<string, CommandMeta> = withUsage("data-
 			requireArgs(a, 2, commandUsage("data-quality", "delete-rule",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.dataQuality.getRule(a[0], a[1], pk,));
+				const current = await readIfExists(() => c.dataQuality.getRule(a[0], a[1], pk,),);
 				if (!current) return skipResult("data-quality", a[1], "missing", { dataset: a[0], },);
 				if (executionMode(f,).dryRun) {
 					return {
@@ -216,15 +216,15 @@ export const dataQualityCommands: Record<string, CommandMeta> = withUsage("data-
 			const pk = f["project-key"] as string | undefined;
 			const results = await c.dataQuality.lastResults(a[0], { ruleId, projectKey: pk, },);
 			const selected = results.filter((result,) =>
-				ruleId === undefined || result.id === ruleId || result.ruleId === ruleId
+				ruleId === undefined || result.id === ruleId || result.ruleId === ruleId,
 			);
 			const failed = selected
-				.filter((result,) => !resultReportsOk(result,))
+				.filter((result,) => !resultReportsOk(result,),)
 				.map((result,) => ({
 					ruleId: result.id ?? result.ruleId ?? result.name ?? null,
 					outcome: result.outcome ?? null,
 					status: result.status ?? null,
-				}));
+				}),);
 			return {
 				satisfied: selected.length > 0 && failed.length === 0,
 				dataset: a[0],

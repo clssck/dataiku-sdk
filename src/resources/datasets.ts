@@ -419,7 +419,7 @@ function flushTsvStream(state: TsvStreamState, onRow: (row: string[],) => void,)
 }
 
 function rowToCsv(row: string[], spreadsheetSafe: boolean,): string {
-	return row.map((field,) => csvEscape(field, spreadsheetSafe,)).join(",",);
+	return row.map((field,) => csvEscape(field, spreadsheetSafe,),).join(",",);
 }
 
 function isBlankRow(row: string[],): boolean {
@@ -436,7 +436,7 @@ export function validateStreamColumns(
 ): string[] {
 	const warnings: string[] = [];
 	const headerSet = new Set(headerRow,);
-	const expectedSet = new Set(expectedColumns.map((c,) => c.name),);
+	const expectedSet = new Set(expectedColumns.map((c,) => c.name,),);
 
 	for (const col of expectedColumns) {
 		if (!headerSet.has(col.name,)) {
@@ -782,8 +782,8 @@ function describeSqlDetectionFailure(raw: unknown,): string {
 		}
 	}
 	const failedChecks = Object.entries(raw,)
-		.filter(([key, value,],) => key.endsWith("OK",) && value === false)
-		.map(([key,],) => key);
+		.filter(([key, value,],) => key.endsWith("OK",) && value === false,)
+		.map(([key,],) => key,);
 	return failedChecks.length > 0
 		? `DSS detected no columns (failed checks: ${failedChecks.join(", ",)}).`
 		: "DSS detected no columns.";
@@ -930,7 +930,7 @@ export class DatasetsResource extends BaseResource {
 				isRecord(column,) && typeof column["name"] === "string"
 					&& typeof column["type"] === "string"
 					? [{ name: column["name"], type: column["type"], },]
-					: []
+					: [],
 			);
 			if (!isRecord(newSchema,) || columns.length === 0) {
 				return { detected: false, columns: [], error: describeSqlDetectionFailure(raw,), };
@@ -1065,7 +1065,7 @@ export class DatasetsResource extends BaseResource {
 		);
 		if (!truncated) await this.verifyStreamComplete(datasetName, opts?.projectKey, readSessionId,);
 		return {
-			columns: columns.map((name,) => ({ name, })),
+			columns: columns.map((name,) => ({ name, }),),
 			rows,
 			rowCount: rows.length,
 			truncated,
@@ -1407,10 +1407,10 @@ export class DatasetsResource extends BaseResource {
 					uploadConnection = [
 						...new Set(
 							existing
-								.filter((dataset,) => dataset.managed === true)
-								.map((dataset,) => dataset.params?.connection)
+								.filter((dataset,) => dataset.managed === true,)
+								.map((dataset,) => dataset.params?.connection,)
 								.filter((connection,): connection is string =>
-									typeof connection === "string" && connection.length > 0
+									typeof connection === "string" && connection.length > 0,
 								),
 						),
 					].sort()[0];
@@ -1560,7 +1560,7 @@ export class DatasetsResource extends BaseResource {
 		}
 
 		const existing = (await this.listUploadedFiles(datasetName, projectKey,))
-			.filter((file,) => file.filename === fileName);
+			.filter((file,) => file.filename === fileName,);
 		if (existing.length !== 0) {
 			throw new ClientValidationError(
 				`Uploaded file ${fileName} already exists in dataset ${datasetName}.`,
@@ -1575,7 +1575,7 @@ export class DatasetsResource extends BaseResource {
 		await this.client.upload(endpoint, localPath, fileName,);
 
 		const afterMatches = (await this.listUploadedFiles(datasetName, projectKey,))
-			.filter((file,) => file.filename === fileName);
+			.filter((file,) => file.filename === fileName,);
 		const after = afterMatches[0];
 		if (
 			afterMatches.length !== 1

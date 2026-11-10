@@ -63,7 +63,7 @@ it("cancels the response body when the output cannot be opened", async () => {
 		await writeFile(join(dir, "blocker",), "x",);
 		const error = await writeResponseToFile(join(dir, "blocker", "result",), response,).catch((
 			caught: unknown,
-		) => caught);
+		) => caught,);
 		expect<unknown>(["ENOTDIR", "EEXIST",],).toContain((error as NodeJS.ErrnoException).code,);
 		expect(cancelled,).toBe(true,);
 		expect(await readdir(dir,),).toEqual(["blocker",],);

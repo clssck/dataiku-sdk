@@ -461,14 +461,14 @@ function jsonValueEqual(left: unknown, right: unknown,): boolean {
 	if (Object.is(left, right,)) return true;
 	if (Array.isArray(left,) || Array.isArray(right,)) {
 		if (!Array.isArray(left,) || !Array.isArray(right,) || left.length !== right.length) return false;
-		return left.every((value, index,) => jsonValueEqual(value, right[index],));
+		return left.every((value, index,) => jsonValueEqual(value, right[index],),);
 	}
 	if (!isRecord(left,) || !isRecord(right,)) return false;
 	const leftKeys = Object.keys(left,);
 	const rightKeys = Object.keys(right,);
 	if (leftKeys.length !== rightKeys.length) return false;
 	return leftKeys.every((key,) =>
-		Object.hasOwn(right, key,) && jsonValueEqual(left[key], right[key],)
+		Object.hasOwn(right, key,) && jsonValueEqual(left[key], right[key],),
 	);
 }
 
@@ -478,11 +478,11 @@ function jsonValueContains(actual: unknown, expected: unknown,): boolean {
 		if (!Array.isArray(actual,) || !Array.isArray(expected,) || actual.length !== expected.length) {
 			return false;
 		}
-		return expected.every((value, index,) => jsonValueContains(actual[index], value,));
+		return expected.every((value, index,) => jsonValueContains(actual[index], value,),);
 	}
 	if (!isRecord(actual,) || !isRecord(expected,)) return false;
 	return Object.entries(expected,).every(([key, value,],) =>
-		Object.hasOwn(actual, key,) && jsonValueContains(actual[key], value,)
+		Object.hasOwn(actual, key,) && jsonValueContains(actual[key], value,),
 	);
 }
 
@@ -603,7 +603,7 @@ function scenarioUpdateVerificationError(
 	mismatches: ScenarioFieldMismatch[],
 	normalization: ScenarioUpdateNormalization[],
 ): DataikuError {
-	const mismatchPaths = mismatches.map((mismatch,) => mismatch.path).join(", ",);
+	const mismatchPaths = mismatches.map((mismatch,) => mismatch.path,).join(", ",);
 	const body = {
 		message: `Scenario update did not persist requested fields after refetch: ${mismatchPaths}`,
 		mismatches,
@@ -617,7 +617,7 @@ function scenarioUpdateVerificationError(
 		mismatches: mismatches.map((mismatch,) => ({
 			path: mismatch.path,
 			differingPaths: differingLeafPaths(mismatch.expected, mismatch.actual, mismatch.path,),
-		})),
+		}),),
 		canonicalEditableFields: SCENARIO_CANONICAL_EDITABLE_FIELDS,
 	};
 	return error;
@@ -628,13 +628,13 @@ function differingLeafPaths(expected: unknown, actual: unknown, path: string,): 
 	if (Array.isArray(expected,)) {
 		if (!Array.isArray(actual,)) return [path,];
 		return expected.flatMap((item, index,) =>
-			differingLeafPaths(item, actual[index], `${path}.${index}`,)
+			differingLeafPaths(item, actual[index], `${path}.${index}`,),
 		);
 	}
 	if (isRecord(expected,)) {
 		if (!isRecord(actual,)) return [path,];
 		return Object.entries(expected,).flatMap(([key, value,],) =>
-			differingLeafPaths(value, actual[key], `${path}.${key}`,)
+			differingLeafPaths(value, actual[key], `${path}.${key}`,),
 		);
 	}
 	return jsonValueEqual(expected, actual,) ? [] : [path,];
@@ -1225,7 +1225,7 @@ export class ScenariosResource extends BaseResource {
 			current,
 			{
 				[SCENARIO_LIST_FIELDS[kind]]: items.flatMap((existing, position,) =>
-					position === index ? [] : [withoutServerStamp(existing,),]
+					position === index ? [] : [withoutServerStamp(existing,),],
 				),
 			},
 			opts?.projectKey,

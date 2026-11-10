@@ -27,7 +27,7 @@ const rows = Object.values(matrix.sections,).flat();
 
 it("keeps the coverage matrix counts, CLI actions, and SDK methods real", () => {
 	expect(rows.length,).toBe(matrix.meta.officialEndpointRows,);
-	expect(rows.filter((row,) => row.status === "implemented").length,).toBe(
+	expect(rows.filter((row,) => row.status === "implemented",).length,).toBe(
 		matrix.meta.implementedOfficialRows,
 	);
 	expect(rows.length - matrix.meta.implementedOfficialRows,).toBe(
@@ -35,14 +35,14 @@ it("keeps the coverage matrix counts, CLI actions, and SDK methods real", () => 
 	);
 
 	const registry = buildCommandRegistry();
-	const unknownCli = rows.flatMap((row,) => row.cli).filter((command,) => {
+	const unknownCli = rows.flatMap((row,) => row.cli,).filter((command,) => {
 		const [, resource, action,] = command.split(" ",);
 		return !resource || !action || registry[resource]?.[action] === undefined;
 	},);
 	expect([...new Set(unknownCli,),],).toEqual([],);
 
 	const exported = sdk as unknown as Record<string, { prototype?: Record<string, unknown>; }>;
-	const unknownSdk = rows.flatMap((row,) => row.sdk).filter((method,) => {
+	const unknownSdk = rows.flatMap((row,) => row.sdk,).filter((method,) => {
 		const [className, name,] = method.split(".",);
 		return typeof exported[className]?.prototype?.[name] !== "function";
 	},);
@@ -54,7 +54,7 @@ it("keeps the coverage matrix counts, CLI actions, and SDK methods real", () => 
 
 	// The catalogue totals both files quote are the registry's, not a dated snapshot.
 	const { metaCommands, } = matrix.meta.cliApiResourceSubset;
-	expect(metaCommands.filter((name,) => registry[name] === undefined),).toEqual([],);
+	expect(metaCommands.filter((name,) => registry[name] === undefined,),).toEqual([],);
 	const counted = { cliResources: 0, cliActions: 0, api: { resources: 0, actions: 0, }, };
 	for (const [name, actions,] of Object.entries(registry,)) {
 		const actionCount = Object.keys(actions,).length;

@@ -40,7 +40,7 @@ export function dssTask(raw: unknown, operation: string,): DssTask {
 }
 
 function sleep(ms: number,): Promise<void> {
-	return new Promise((resolve,) => setTimeout(resolve, ms,));
+	return new Promise((resolve,) => setTimeout(resolve, ms,),);
 }
 
 function isFinished(state: FutureState,): boolean {

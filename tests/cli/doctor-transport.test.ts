@@ -43,7 +43,7 @@ async function withSandbox(
 }
 
 function warnings(stderr: string,): CliWarning[] {
-	return stderr.split("\n",).filter((line,) => line.trim() !== "").flatMap((line,) => {
+	return stderr.split("\n",).filter((line,) => line.trim() !== "",).flatMap((line,) => {
 		const event = JSON.parse(line,) as { type?: string; warnings?: CliWarning[]; };
 		return event.type === "warning" ? event.warnings ?? [] : [];
 	},);
@@ -80,8 +80,8 @@ describe("transport warnings", () => {
 				dir,
 				env,
 			);
-			expect(emitted.filter((w,) => w.code === "insecure_transport").length,).toBe(1,);
-			const warning = emitted.find((w,) => w.code === "insecure_transport")!;
+			expect(emitted.filter((w,) => w.code === "insecure_transport",).length,).toBe(1,);
+			const warning = emitted.find((w,) => w.code === "insecure_transport",)!;
 			expect(warning,).toEqual({
 				code: "insecure_transport",
 				host: "example.invalid:9",
@@ -107,7 +107,7 @@ describe("transport warnings", () => {
 				dir,
 				env,
 			);
-			expect(emitted.map((w,) => w.code),).toContain("insecure_transport",);
+			expect(emitted.map((w,) => w.code,),).toContain("insecure_transport",);
 			expect(failure.stderr,).not.toContain("alice",);
 			expect(failure.stderr,).not.toContain("hunter2",);
 		},);
@@ -126,7 +126,7 @@ describe("transport warnings", () => {
 			},);
 			for (const url of ["http://localhost:9", "http://[::1]:9", "http://127.9.9.9:9",]) {
 				const { warnings: emitted, } = await failingList(url, dir, env,);
-				expect(emitted.map((w,) => w.code),).not.toContain("insecure_transport",);
+				expect(emitted.map((w,) => w.code,),).not.toContain("insecure_transport",);
 			}
 		},);
 	});
@@ -147,13 +147,13 @@ describe("transport warnings", () => {
 				{},
 				["--insecure",],
 			);
-			const warning = emitted.find((w,) => w.code === "tls_verification_disabled");
+			const warning = emitted.find((w,) => w.code === "tls_verification_disabled",);
 			expect(warning,).toEqual({
 				code: "tls_verification_disabled",
 				source: "flag",
 				hint: "Server identity is not checked; unset it or use --ca-cert.",
 			},);
-			expect(emitted.filter((w,) => w.code === "tls_verification_disabled").length,).toBe(1,);
+			expect(emitted.filter((w,) => w.code === "tls_verification_disabled",).length,).toBe(1,);
 			expect(failure.stderr,).not.toContain(API_KEY,);
 		},);
 	});
@@ -163,7 +163,7 @@ describe("transport warnings", () => {
 			const { warnings: emitted, } = await failingList("https://example.invalid", dir, env, {
 				NODE_TLS_REJECT_UNAUTHORIZED: "0",
 			},);
-			expect(emitted.find((w,) => w.code === "tls_verification_disabled"),).toEqual({
+			expect(emitted.find((w,) => w.code === "tls_verification_disabled",),).toEqual({
 				code: "tls_verification_disabled",
 				source: "NODE_TLS_REJECT_UNAUTHORIZED",
 				hint: "Server identity is not checked; unset it or use --ca-cert.",
@@ -192,7 +192,7 @@ describe("transport warnings", () => {
 				cwd: dir,
 				env: env({ DATAIKU_API_KEY: undefined, },),
 			},);
-			expect(warnings(failure.stderr,).find((w,) => w.code === "tls_verification_disabled"),)
+			expect(warnings(failure.stderr,).find((w,) => w.code === "tls_verification_disabled",),)
 				.toEqual({
 					code: "tls_verification_disabled",
 					source: "saved",
@@ -204,7 +204,7 @@ describe("transport warnings", () => {
 	it("does not warn about verification when it is left on", async () => {
 		await withSandbox(async (dir, env,) => {
 			const { warnings: emitted, } = await failingList("https://example.invalid", dir, env,);
-			expect(emitted.map((w,) => w.code),).not.toContain("tls_verification_disabled",);
+			expect(emitted.map((w,) => w.code,),).not.toContain("tls_verification_disabled",);
 		},);
 	});
 });
@@ -222,7 +222,7 @@ describe("doctor transport context", () => {
 				const report = JSON.parse(stdout,) as DoctorReport;
 				expect(report.ok,).toBe(true,);
 				expect(report.context.tlsVerify,).toBe("none",);
-				expect(report.checks.map((c,) => c.name),).not.toContain("transport_security",);
+				expect(report.checks.map((c,) => c.name,),).not.toContain("transport_security",);
 				expect(warnings(stderr,),).toEqual([],);
 			},);
 		},);
@@ -244,9 +244,9 @@ describe("doctor transport context", () => {
 					const report = JSON.parse(stdout,) as DoctorReport;
 					expect(report.ok,).toBe(true,);
 					expect(report.context.tlsVerify,).toBe("none",);
-					const check = report.checks.find((c,) => c.name === "transport_security");
+					const check = report.checks.find((c,) => c.name === "transport_security",);
 					expect(check,).toMatchObject({ ok: true, details: { scheme: "http", cleartext: true, }, },);
-					expect(warnings(stderr,).map((w,) => w.code),).toEqual(["insecure_transport",],);
+					expect(warnings(stderr,).map((w,) => w.code,),).toEqual(["insecure_transport",],);
 				},);
 			},);
 		},
@@ -283,7 +283,7 @@ describe("doctor error text", () => {
 				expect(failure.code,).toBe(2,);
 				const report = JSON.parse(failure.stdout,) as DoctorReport;
 				expect(report.ok,).toBe(false,);
-				const connectivity = report.checks.find((c,) => c.name === "connectivity");
+				const connectivity = report.checks.find((c,) => c.name === "connectivity",);
 				expect(String(connectivity?.details?.message,),).toContain("proxy debug",);
 				expect(failure.stdout,).not.toContain(API_KEY,);
 				expect(failure.stderr,).not.toContain(API_KEY,);

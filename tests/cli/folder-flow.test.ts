@@ -567,7 +567,7 @@ describe("CLI flow zone commands", () => {
 				color: "#2ab1ac",
 				items: [],
 			},],);
-			expect(result.moved.map((move,) => move.zoneId),).toEqual(["zone-raw", "zone-prepared",],);
+			expect(result.moved.map((move,) => move.zoneId,),).toEqual(["zone-raw", "zone-prepared",],);
 			expect(result.pruned,).toEqual([{
 				zoneId: "default",
 				fromZoneId: "zone-raw",
@@ -648,7 +648,7 @@ describe("CLI flow zone commands", () => {
 			expect(failure.stdout,).toContain("DATASET:missing_orders",);
 		},);
 
-		expect(requests.every((request,) => request.startsWith("GET ",)),).toBe(true,);
+		expect(requests.every((request,) => request.startsWith("GET ",),),).toBe(true,);
 	});
 
 	it("flow-zone create rejects invalid colors before calling DSS", async () => {

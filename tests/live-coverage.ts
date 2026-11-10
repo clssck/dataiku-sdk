@@ -983,16 +983,16 @@ export function checkLiveCoverageCatalogue(
 ): void {
 	const actual = new Set(
 		Object.entries(summary,).flatMap(([resource, actions,],) =>
-			actions.map(action => `${resource}.${action}`)
+			actions.map(action => `${resource}.${action}`,),
 		),
 	);
 	const classified = new Set(
 		Object.entries(LIVE_COVERAGE_CATALOGUE,).flatMap(([resource, entry,],) =>
-			entry.actions.map(action => `${resource}.${action}`)
+			entry.actions.map(action => `${resource}.${action}`,),
 		),
 	);
-	const added = [...actual,].filter(id => !classified.has(id,));
-	const removed = [...classified,].filter(id => !actual.has(id,));
+	const added = [...actual,].filter(id => !classified.has(id,),);
+	const removed = [...classified,].filter(id => !actual.has(id,),);
 	if (added.length || removed.length) {
 		throw new Error(
 			`Live coverage catalogue drift: unclassified=${added.sort().join(",",)}; obsolete=${
@@ -1006,14 +1006,14 @@ export function liveCoverage(cases: CaseResult[], enabledProfiles: string[],): C
 	for (const [resource, entry,] of Object.entries(LIVE_COVERAGE_CATALOGUE,)) {
 		for (const action of entry.actions) {
 			const id = `${resource}.${action}`;
-			const relevant = cases.filter(item => item.actions.includes(id,));
-			const executed = relevant.some(item => item.executedActions.includes(id,));
-			const failed = relevant.find(item => item.status === "failed");
+			const relevant = cases.filter(item => item.actions.includes(id,),);
+			const executed = relevant.some(item => item.executedActions.includes(id,),);
+			const failed = relevant.find(item => item.status === "failed",);
 			const passing = relevant.find(item =>
-				item.status === "passed" && item.executedActions.includes(id,)
+				item.status === "passed" && item.executedActions.includes(id,),
 			);
 			const limited = relevant.find(item =>
-				item.status === "blocked" || item.status === "unsupported"
+				item.status === "blocked" || item.status === "unsupported",
 			);
 			const status = failed ? "failed" : passing ? "passed" : limited ? limited.status : "uncovered";
 			const reason = failed?.error
@@ -1029,10 +1029,10 @@ export function liveCoverage(cases: CaseResult[], enabledProfiles: string[],): C
 				profile: entry.profile,
 				status,
 				reason,
-				caseIds: relevant.map(item => item.id),
+				caseIds: relevant.map(item => item.id,),
 				executed,
 			},);
 		}
 	}
-	return rows.sort((a, b,) => a.id.localeCompare(b.id,));
+	return rows.sort((a, b,) => a.id.localeCompare(b.id,),);
 }

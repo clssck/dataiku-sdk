@@ -60,7 +60,7 @@ export function findWikiAttachment(
 	data: WikiArticleData,
 	smartId: string,
 ): WikiArticleAttachment | undefined {
-	return wikiAttachments(data,).find((attachment,) => attachment.smartId === smartId);
+	return wikiAttachments(data,).find((attachment,) => attachment.smartId === smartId,);
 }
 
 /** Coded not_found error for a smart id that is not attached to the article. */
@@ -69,7 +69,7 @@ export function wikiAttachmentNotFound(
 	smartId: string,
 ): ClientValidationError {
 	const available = wikiAttachments(data,).flatMap((attachment,) =>
-		attachment.smartId === undefined ? [] : [attachment.smartId,]
+		attachment.smartId === undefined ? [] : [attachment.smartId,],
 	);
 	return new ClientValidationError(
 		`Attachment ${smartId} not found on wiki article ${data.article.id}.`,
@@ -221,12 +221,14 @@ export class WikiResource extends BaseResource {
 			file.fileName,
 		);
 		const after = await this.get(articleId, pk,);
-		const knownIds = new Set(wikiAttachments(before,).map((attachment,) => attachment.smartId),);
-		let created = wikiAttachments(after,).filter((attachment,) => !knownIds.has(attachment.smartId,));
+		const knownIds = new Set(wikiAttachments(before,).map((attachment,) => attachment.smartId,),);
+		let created = wikiAttachments(after,).filter((attachment,) =>
+			!knownIds.has(attachment.smartId,),
+		);
 		if (created.length > 1) {
 			created = created.filter((attachment,) =>
 				attachment.details?.["objectDisplayName"] === file.fileName
-				&& attachment.details?.["size"] === file.bytes
+				&& attachment.details?.["size"] === file.bytes,
 			);
 		}
 		const attachment = created[0];
@@ -264,7 +266,7 @@ export class WikiResource extends BaseResource {
 		const detached = findWikiAttachment(current, smartId,);
 		if (detached === undefined) throw wikiAttachmentNotFound(current, smartId,);
 		const remaining = wikiAttachments(current,).filter((attachment,) =>
-			attachment.smartId !== smartId
+			attachment.smartId !== smartId,
 		);
 		const raw = await this.client.put(
 			`/public/api/projects/${encodeURIComponent(pk,)}/wiki/${

@@ -84,11 +84,11 @@ function settingsOutputSchema(
 ): Record<string, unknown> {
 	const properties = Object.fromEntries(
 		Object.entries(schema["properties"] as Record<string, unknown>,).filter(([key,],) =>
-			!droppedKeys.includes(key,)
+			!droppedKeys.includes(key,),
 		),
 	);
 	const required = (schema["required"] as string[] | undefined ?? []).filter((key,) =>
-		!droppedKeys.includes(key,)
+		!droppedKeys.includes(key,),
 	);
 	return {
 		...schema,

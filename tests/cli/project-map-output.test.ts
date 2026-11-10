@@ -35,14 +35,14 @@ describe("compactProjectMapOutput", () => {
 	it("drops derivable duplicates while keeping membership recoverable from node ids", () => {
 		const full = sdkResult(false,);
 		const compact = compactProjectMapOutput(full,);
-		const byId = new Map(compact.map.nodes.map((node,) => [node.id, node,]),);
+		const byId = new Map(compact.map.nodes.map((node,) => [node.id, node,],),);
 
 		expect("name" in byId.get("raw",)!,).toBe(false,);
 		expect(byId.get("prepare",)?.name,).toBe("Prepare raw",);
-		expect(compact.map.nodes.some((node,) => "zoneName" in node),).toBe(false,);
+		expect(compact.map.nodes.some((node,) => "zoneName" in node,),).toBe(false,);
 		expect(byId.get("raw",)?.zoneId,).toBe("raw-zone",);
 
-		expect(compact.map.zones.map((zone,) => zone.name).sort(),).toEqual(["Default", "Raw",],);
+		expect(compact.map.zones.map((zone,) => zone.name,).sort(),).toEqual(["Default", "Raw",],);
 		for (const zone of compact.map.zones) expect("nodeIds" in zone,).toBe(false,);
 		for (const component of compact.map.components) expect("nodeIds" in component,).toBe(false,);
 		expect(compact.map.components[0]?.rootIds,).toEqual(["raw",],);
@@ -51,10 +51,10 @@ describe("compactProjectMapOutput", () => {
 		// Membership stays derivable.
 		const zoneMembers = full.map.zones.map((zone,) => [
 			zone.id,
-			compact.map.nodes.filter((node,) => node.zoneId === zone.id).map((node,) => node.id).sort(),
-		]);
+			compact.map.nodes.filter((node,) => node.zoneId === zone.id,).map((node,) => node.id,).sort(),
+		],);
 		for (const [zoneId, members,] of zoneMembers) {
-			expect(members,).toEqual(full.map.zones.find((zone,) => zone.id === zoneId)!.nodeIds,);
+			expect(members,).toEqual(full.map.zones.find((zone,) => zone.id === zoneId,)!.nodeIds,);
 		}
 	});
 

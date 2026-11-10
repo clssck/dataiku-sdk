@@ -765,13 +765,13 @@ describe("CLI command surface", () => {
 				).toBe(true,);
 				for (const flag of meta?.requiredFlags ?? []) {
 					expect(
-						meta?.flags.some((registered,) => registered.name === flag),
+						meta?.flags.some((registered,) => registered.name === flag,),
 						`${resource} ${action} required flag ${flag} registered`,
 					).toBe(true,);
 				}
 				for (const flag of meta?.optionalFlags ?? []) {
 					expect(
-						meta?.flags.some((registered,) => registered.name === flag),
+						meta?.flags.some((registered,) => registered.name === flag,),
 						`${resource} ${action} optional flag ${flag} registered`,
 					).toBe(true,);
 				}
@@ -782,7 +782,7 @@ describe("CLI command surface", () => {
 					).toBeGreaterThan(1,);
 					for (const alternative of choice.oneOf.flat()) {
 						expect(
-							meta?.flags.some((registered,) => registered.name === alternative),
+							meta?.flags.some((registered,) => registered.name === alternative,),
 							`${resource} ${action} oneOf flag ${alternative} registered`,
 						).toBe(true,);
 						expect(
@@ -864,19 +864,19 @@ describe("CLI command surface", () => {
 		expect(registry.app["delete-instance"].exitCodes.longRunningFailure,).toBe(4,);
 		expect(registry.app["delete-instance"].idempotency,).toBe("convergent",);
 		expect(
-			registry.app["delete-instance"].flags.some((flag,) => flag.name === "if-exists"),
+			registry.app["delete-instance"].flags.some((flag,) => flag.name === "if-exists",),
 			"delete-instance must converge without an --if-exists flag",
 		).toBe(false,);
 		expect(registry.batch.run.async,).toBe("none",);
 		expect(registry.batch.run.exitCodes,).toMatchObject({ longRunningFailure: 4, },);
 		expect(registry.app["create-successor-instance"].sideEffect,).toBe("write",);
-		expect(registry.app["create-successor-instance"].flags.some((flag,) => flag.name === "wait"),)
+		expect(registry.app["create-successor-instance"].flags.some((flag,) => flag.name === "wait",),)
 			.toBe(
 				false,
 			);
 		expect(
 			registry.app["create-successor-instance"].flags.some((flag,) =>
-				flag.name === "copy-permissions"
+				flag.name === "copy-permissions",
 			),
 		).toBe(true,);
 		expect(registry.app["successor-preflight"].sideEffect,).toBe("read",);
@@ -906,7 +906,7 @@ describe("CLI command surface", () => {
 			]
 		) {
 			expect(
-				registry.app["successor-preflight"].flags.some((flag,) => flag.name === mutationFlag),
+				registry.app["successor-preflight"].flags.some((flag,) => flag.name === mutationFlag,),
 				`successor-preflight must not expose the mutation flag --${mutationFlag}`,
 			).toBe(false,);
 		}
@@ -1064,17 +1064,17 @@ describe("CLI command surface", () => {
 		},],);
 		expect(registry.recipe.clone.requiredOneOf,).toEqual([{ oneOf: [["name",], ["to",],], },],);
 		expect(registry.dataset.create.requiredOneOf,).toBeUndefined();
-		expect(registry.recipe.create.flags.find((flag,) => flag.name === "output")?.valueType,).toBe(
+		expect(registry.recipe.create.flags.find((flag,) => flag.name === "output",)?.valueType,).toBe(
 			"DS",
 		);
-		expect(registry.sql.query.flags.find((flag,) => flag.name === "output")?.valueType,).toBe(
+		expect(registry.sql.query.flags.find((flag,) => flag.name === "output",)?.valueType,).toBe(
 			"PATH",
 		);
-		expect(registry.sql.query.flags.find((flag,) => flag.name === "connection")?.valueType,).toBe(
+		expect(registry.sql.query.flags.find((flag,) => flag.name === "connection",)?.valueType,).toBe(
 			"CONN",
 		);
 		expect(
-			registry["code-env"]["set-jupyter"].flags.find((flag,) => flag.name === "active"),
+			registry["code-env"]["set-jupyter"].flags.find((flag,) => flag.name === "active",),
 		).toEqual({ name: "active", kind: "value", valueType: "enum", enumValues: ["true", "false",], },);
 		expect(registry.dataset["refresh-schema"].idempotency,).toBe("convergent",);
 		expect(registry.notebook["clear-jupyter-outputs"].idempotency,).toBe("convergent",);
@@ -1095,7 +1095,7 @@ describe("CLI command surface", () => {
 		}
 		for (const flagName of ["prediction-type", "backend-type", "guess-policy",]) {
 			expect(
-				registry["ml-task"].create.flags.find((flag,) => flag.name === flagName)?.enumValues,
+				registry["ml-task"].create.flags.find((flag,) => flag.name === flagName,)?.enumValues,
 				`ml-task create --${flagName} enum lock`,
 			).toBeUndefined();
 		}
@@ -1106,7 +1106,7 @@ describe("CLI command surface", () => {
 
 		for (const [resource, actions,] of Object.entries(registry,)) {
 			for (const [action, meta,] of Object.entries(actions,)) {
-				const flagNames = meta.flags.map((flag,) => flag.name);
+				const flagNames = meta.flags.map((flag,) => flag.name,);
 				expect(flagNames, `${resource} ${action} flags`,).not.toContain("help",);
 				expect(flagNames, `${resource} ${action} flags`,).not.toContain("report-json",);
 				expect(flagNames, `${resource} ${action} flags`,).not.toContain("json",);
@@ -1129,7 +1129,7 @@ describe("CLI command surface", () => {
 		],);
 		for (const [resource, actions,] of Object.entries(registry,)) {
 			for (const [action, meta,] of Object.entries(actions,)) {
-				const advertised = new Set(meta.flags.map((flag,) => flag.name),);
+				const advertised = new Set(meta.flags.map((flag,) => flag.name,),);
 				for (const match of meta.usage.matchAll(/--([a-z0-9-]+)/g,)) {
 					const flag = match[1];
 					if (aliasFlags.has(flag,)) continue;
@@ -1175,7 +1175,7 @@ describe("CLI command surface", () => {
 	});
 
 	it("refuses to classify an action whose name is neither a known read nor a known mutation", () => {
-		expect(() => inferSideEffect("widget", "frobnicate",)).toThrow("widget.frobnicate",);
+		expect(() => inferSideEffect("widget", "frobnicate",),).toThrow("widget.frobnicate",);
 		expect(inferSideEffect("widget", "frobnicate-set",),).toBe("write",);
 		expect(inferSideEffect("widget", "get-frobnication",),).toBe("read",);
 		expect(inferSideEffect("widget", "delete",),).toBe("write",);

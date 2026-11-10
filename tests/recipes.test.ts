@@ -282,7 +282,7 @@ describe("RecipesResource", () => {
 				),
 			},);
 			const underRecipe = await client.recipes.update("env-recipe", { recipe: { envSelection, }, },)
-				.catch((error: unknown,) => error);
+				.catch((error: unknown,) => error,);
 			expect(underRecipe,).toMatchObject({
 				code: "validation_failed",
 				message: expect.stringContaining("recipe.envSelection",),
@@ -806,7 +806,11 @@ describe("RecipesResource", () => {
 				if (req.method === "GET" && url.pathname === datasetsPath) {
 					sendJson(
 						res,
-						state.existing.map((name,) => ({ name, managed: true, params: { connection: "s3_conn", }, })),
+						state.existing.map((name,) => ({
+							name,
+							managed: true,
+							params: { connection: "s3_conn", },
+						}),),
 					);
 					return;
 				}
@@ -846,7 +850,9 @@ describe("RecipesResource", () => {
 			};
 			let caught: unknown;
 			await withRecipeServer(rollbackHandler(state,), async (url,) => {
-				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) =>
+					error,
+				);
 			},);
 
 			expect(caught,).toBeInstanceOf(DataikuError,);
@@ -854,7 +860,7 @@ describe("RecipesResource", () => {
 			expect(error.status,).toBe(500,);
 			expect(error.message,).toContain("Recipe exploded",);
 			expect(state.requests,).toContain("DELETE /public/api/projects/TEST/datasets/output_ds",);
-			expect(state.requests.filter((r,) => r.startsWith("DELETE",)).length,).toBe(1,);
+			expect(state.requests.filter((r,) => r.startsWith("DELETE",),).length,).toBe(1,);
 			expect(error.details?.["createdDatasetsDeleted"],).toEqual(["output_ds",],);
 			expect(error.details?.["createdDatasetsNotDeleted"],).toEqual([],);
 		});
@@ -867,12 +873,14 @@ describe("RecipesResource", () => {
 			};
 			let caught: unknown;
 			await withRecipeServer(rollbackHandler(state,), async (url,) => {
-				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) =>
+					error,
+				);
 			},);
 
 			expect(caught,).toBeInstanceOf(DataikuError,);
 			expect(
-				state.requests.filter((r,) => r === "DELETE /public/api/projects/TEST/datasets/output_ds")
+				state.requests.filter((r,) => r === "DELETE /public/api/projects/TEST/datasets/output_ds",)
 					.length,
 			)
 				.toBe(1,);
@@ -888,7 +896,9 @@ describe("RecipesResource", () => {
 			};
 			let caught: unknown;
 			await withRecipeServer(rollbackHandler(state,), async (url,) => {
-				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) =>
+					error,
+				);
 			},);
 
 			const error = caught as DataikuError;
@@ -897,7 +907,7 @@ describe("RecipesResource", () => {
 			const notDeleted = error.details?.["createdDatasetsNotDeleted"] as Array<
 				{ name: string; error: string; }
 			>;
-			expect(notDeleted.map((entry,) => entry.name),).toEqual(["output_ds",],);
+			expect(notDeleted.map((entry,) => entry.name,),).toEqual(["output_ds",],);
 			expect(notDeleted[0]?.error,).toContain("delete forbidden",);
 		});
 
@@ -909,11 +919,13 @@ describe("RecipesResource", () => {
 			};
 			let caught: unknown;
 			await withRecipeServer(rollbackHandler(state,), async (url,) => {
-				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) =>
+					error,
+				);
 			},);
 
 			expect(caught,).toBeInstanceOf(DataikuError,);
-			expect(state.requests.some((r,) => r.startsWith("DELETE",)),).toBe(false,);
+			expect(state.requests.some((r,) => r.startsWith("DELETE",),),).toBe(false,);
 			expect((caught as DataikuError).details,).toBeUndefined();
 		});
 
@@ -926,11 +938,13 @@ describe("RecipesResource", () => {
 			};
 			let caught: unknown;
 			await withRecipeServer(rollbackHandler(state,), async (url,) => {
-				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) =>
+					error,
+				);
 			},);
 
 			if (!(caught instanceof DataikuError)) throw caught;
-			expect(state.requests.some((r,) => r.startsWith("DELETE",)),).toBe(false,);
+			expect(state.requests.some((r,) => r.startsWith("DELETE",),),).toBe(false,);
 			expect(caught.details?.["createdDatasetsDeleted"],).toEqual([],);
 			expect(caught.details?.["createdDatasetsKept"],).toEqual([
 				{ name: "output_ds", reason: "written by recipe python_renamed", },
@@ -946,12 +960,14 @@ describe("RecipesResource", () => {
 			};
 			let caught: unknown;
 			await withRecipeServer(rollbackHandler(state,), async (url,) => {
-				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) => error);
+				caught = await createClient(url,).recipes.create(createOpts,).catch((error: unknown,) =>
+					error,
+				);
 			},);
 
 			if (!(caught instanceof DataikuError)) throw caught;
 			expect(caught.status,).toBe(500,);
-			expect(state.requests.some((r,) => r.startsWith("DELETE",)),).toBe(false,);
+			expect(state.requests.some((r,) => r.startsWith("DELETE",),),).toBe(false,);
 			const kept = caught.details?.["createdDatasetsKept"];
 			expect(Array.isArray(kept,) && kept.length === 1 && kept[0].name === "output_ds",).toBe(true,);
 			expect(JSON.stringify(kept,),).toContain("graph forbidden",);
@@ -1598,7 +1614,7 @@ describe("RecipesResource", () => {
 		expect(requests,).toContain("GET /public/api/projects/TEST/managedfolders/",);
 		const jobRequests = requests.filter((request,) =>
 			request.startsWith("POST /public/api/projects/TEST/jobs/",)
-			|| request.startsWith("GET /public/api/projects/TEST/jobs/job-folder",)
+			|| request.startsWith("GET /public/api/projects/TEST/jobs/job-folder",),
 		);
 		expect(jobRequests,).toEqual([
 			"POST /public/api/projects/TEST/jobs/",
@@ -1697,7 +1713,7 @@ describe("RecipesResource", () => {
 			type: "NON_RECURSIVE_FORCED_BUILD",
 		},);
 		expect(
-			requests.filter((request,) => request.startsWith("POST /public/api/projects/TEST/jobs/",)),
+			requests.filter((request,) => request.startsWith("POST /public/api/projects/TEST/jobs/",),),
 		)
 			.toEqual(["POST /public/api/projects/TEST/jobs/",],);
 		expect(requests,).toContain("GET /public/api/projects/TEST/jobs/job-summary/log/",);
@@ -2004,7 +2020,7 @@ function stepTypes(stepOrder: string[],): unknown[] {
 		formula: "c=a + 1",
 		dropColumns: ["d",],
 		stepOrder,
-	},).map((step,) => step.type);
+	},).map((step,) => step.type,);
 }
 
 function warnings(opts: Record<string, unknown>,) {
@@ -2041,10 +2057,10 @@ describe("recipe create payload builders", () => {
 	});
 
 	it("rejects unknown aggregates and first/last without an ordering column", () => {
-		expect(() => groupingPayloadConfig({ type: "grouping", aggregate: ["amount:mean",], },)).toThrow(
+		expect(() => groupingPayloadConfig({ type: "grouping", aggregate: ["amount:mean",], },),).toThrow(
 			"--aggregate",
 		);
-		expect(() => groupingPayloadConfig({ type: "grouping", aggregate: ["name:last",], },)).toThrow(
+		expect(() => groupingPayloadConfig({ type: "grouping", aggregate: ["name:last",], },),).toThrow(
 			"--order-by",
 		);
 	});
@@ -2059,7 +2075,7 @@ describe("recipe create payload builders", () => {
 			fillEmpty: ["amount=0",],
 			dropColumns: ["day",],
 		},);
-		expect(steps.map((step,) => [step.type, step.params,]),).toEqual([
+		expect(steps.map((step,) => [step.type, step.params,],),).toEqual([
 			["ColumnRenamer", { renamings: [{ from: "name", to: "label", },], },],
 			["FillEmptyWithValue", { appliesTo: "SINGLE_COLUMN", columns: ["amount",], value: "0", },],
 			["CreateColumnWithGREL", { column: "double", expression: "amount * 2", },],
@@ -2074,12 +2090,12 @@ describe("recipe create payload builders", () => {
 			"shaker",
 		);
 		expect(() =>
-			buildRecipeCreateRequest({ type: "sync", outputDataset: "out", groupBy: ["a",], }, "P",)
+			buildRecipeCreateRequest({ type: "sync", outputDataset: "out", groupBy: ["a",], }, "P",),
 		).toThrow(
 			"--type grouping",
 		);
 		expect(() =>
-			buildRecipeCreateRequest({ type: "grouping", outputDataset: "out", rename: ["a=b",], }, "P",)
+			buildRecipeCreateRequest({ type: "grouping", outputDataset: "out", rename: ["a=b",], }, "P",),
 		)
 			.toThrow("--type prepare",);
 	});
@@ -2095,7 +2111,7 @@ describe("recipe create payload builders", () => {
 			"ColumnRenamer",
 			"CreateColumnWithGREL",
 		],);
-		expect(() => stepTypes(["bogus",],)).toThrow("stepOrder",);
+		expect(() => stepTypes(["bogus",],),).toThrow("stepOrder",);
 	});
 
 	it("warns when a formula or filter running after a rename still names a renamed-away column", () => {

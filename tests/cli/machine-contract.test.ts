@@ -338,7 +338,7 @@ describe("machine contract: project-git classification", () => {
 		for (const action of DESTRUCTIVE) {
 			expect(git?.[action]?.destructive, `${action} destructive`,).toBe("destructive",);
 		}
-		for (const action of MUTATIONS.filter((item,) => !DESTRUCTIVE.includes(item,))) {
+		for (const action of MUTATIONS.filter((item,) => !DESTRUCTIVE.includes(item,),)) {
 			expect(git?.[action]?.destructive, `${action} destructive`,).toBe("reversible",);
 		}
 	});
@@ -348,7 +348,7 @@ describe("machine contract: project-git classification", () => {
 			expect(git?.[action]?.async, `${action} async`,).toBe("future",);
 			expect(git?.[action]?.exitCodes?.longRunningFailure, `${action} exit`,).toBe(4,);
 		}
-		for (const action of MUTATIONS.filter((item,) => !FUTURES.includes(item,))) {
+		for (const action of MUTATIONS.filter((item,) => !FUTURES.includes(item,),)) {
 			expect(git?.[action]?.async, `${action} async`,).toBe("none",);
 		}
 	});
@@ -408,7 +408,7 @@ describe("machine contract: dataset upload-file classification", () => {
 		expect(upload?.destructive,).toBe("destructive",);
 		expect(upload?.cleanupCommand,).toBeUndefined();
 		expect(upload?.cleanupHint,).toBeUndefined();
-		expect(upload?.flags.some((flag,) => flag.name === "record-cleanup"),).toBe(false,);
+		expect(upload?.flags.some((flag,) => flag.name === "record-cleanup",),).toBe(false,);
 	});
 
 	it("keeps other upload and write actions reversible", () => {
@@ -417,7 +417,7 @@ describe("machine contract: dataset upload-file classification", () => {
 		expect(registry.folder?.upload?.sideEffect,).toBe("write",);
 		expect(registry.folder?.upload?.destructive,).toBe("reversible",);
 		expect(
-			registry.folder?.upload?.flags.some((flag,) => flag.name === "record-cleanup"),
+			registry.folder?.upload?.flags.some((flag,) => flag.name === "record-cleanup",),
 		).toBe(true,);
 	});
 });

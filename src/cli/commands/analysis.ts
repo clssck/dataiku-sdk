@@ -51,7 +51,7 @@ export const analysisCommands: Record<string, CommandMeta> = withUsage("analysis
 			);
 			const projectKey = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.analyses.get(a[0], projectKey,));
+				const current = await readIfExists(() => c.analyses.get(a[0], projectKey,),);
 				if (!current) return skipResult("analysis", a[0], "missing",);
 				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "analysis", id: a[0], current, };

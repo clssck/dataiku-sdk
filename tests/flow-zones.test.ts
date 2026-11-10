@@ -190,7 +190,7 @@ describe("FlowZonesResource", () => {
 		}, async (client,) => {
 			const error = await client.flowZones.recreate("zone-1", { position: { x: 1, y: 2, }, },).catch((
 				caught: unknown,
-			) => caught);
+			) => caught,);
 			if (!(error instanceof ClientValidationError)) throw error;
 			expect(error.code,).toBe("ambiguous_outcome",);
 			expect(error.details,).toEqual({

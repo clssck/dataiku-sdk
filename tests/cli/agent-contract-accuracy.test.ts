@@ -23,7 +23,7 @@ describe("agent contract accuracy", () => {
 	it("extracts enum alternatives including uppercase forms into flag metadata", () => {
 		const registry = buildCommandRegistry();
 		const flagByName = (resource: string, action: string, name: string,) =>
-			registry[resource]?.[action]?.flags.find((flag,) => flag.name === name);
+			registry[resource]?.[action]?.flags.find((flag,) => flag.name === name,);
 
 		expect(flagByName("recipe", "create", "fuzzy-distance",)?.enumValues,).toEqual([
 			"DAMERAU_LEVENSHTEIN",
@@ -65,7 +65,7 @@ describe("agent contract accuracy", () => {
 			expect(entry?.destructive,).toBe("none",);
 			expect(entry?.producesLocalFile,).toBe(true,);
 			expect(entry?.idempotency,).toBe("safe",);
-			expect(entry?.flags.some((flag,) => flag.name === "plan"),).toBe(false,);
+			expect(entry?.flags.some((flag,) => flag.name === "plan",),).toBe(false,);
 			expect(entry?.optionalFlags,).not.toContain("plan",);
 			expect(entry?.requiredFlags,).toContain("output",);
 		}
@@ -152,7 +152,7 @@ describe("agent contract accuracy", () => {
 
 		for (const actions of Object.values(registry,)) {
 			for (const entry of Object.values(actions,)) {
-				for (const flag of entry.flags.filter((candidate,) => candidate.kind === "value")) {
+				for (const flag of entry.flags.filter((candidate,) => candidate.kind === "value",)) {
 					expect(flag.valueType, `${entry.resource}.${entry.action} --${flag.name}`,).toEqual(
 						expect.any(String,),
 					);
@@ -208,7 +208,7 @@ describe("agent contract accuracy", () => {
 		const failure = await dssFailure(["dataset", "get",],);
 		const report = JSON.parse(failure.stdout,) as Record<string, unknown>;
 		for (const field of required) expect(report,).toHaveProperty(field,);
-		expect(Object.keys(report,).filter((key,) => !(key in properties)),).toEqual([],);
+		expect(Object.keys(report,).filter((key,) => !(key in properties),),).toEqual([],);
 		// The usage line appears once, in the message only.
 		expect(String(report.error,).split("Usage:",).length - 1,).toBe(1,);
 		expect(report.hint,).toBeUndefined();
@@ -379,7 +379,7 @@ describe("agent contract accuracy", () => {
 		for (const [resource, actions,] of Object.entries(summary,)) {
 			expect(Array.isArray(actions,), `${resource} must map to an action list`,).toBe(true,);
 			expect(actions.length, `${resource} must expose at least one action`,).toBeGreaterThan(0,);
-			expect(actions.every((action,) => typeof action === "string"),).toBe(true,);
+			expect(actions.every((action,) => typeof action === "string",),).toBe(true,);
 		}
 		// The heavy per-action metadata must never travel over the default path.
 		expect(stdout,).not.toContain('"usage"',);
@@ -434,7 +434,7 @@ describe("agent contract accuracy", () => {
 		expect(stderr,).toBe("",);
 		const matches = JSON.parse(stdout,) as Array<{ id: string; usage: string; }>;
 		// Only actions matching every word are returned when any exist.
-		expect(matches.map((match,) => match.id),).toEqual([
+		expect(matches.map((match,) => match.id,),).toEqual([
 			"flow.propagate-schema",
 			"recipe.update-schema",
 		],);
@@ -697,9 +697,9 @@ describe("agent contract accuracy", () => {
 		expect(successor?.cleanupHint ?? "",).toContain("--apply",);
 		expect(successor?.cleanupHint ?? "",).not.toContain("dss app delete-instance",);
 		expect(successor?.exitCodes,).toHaveProperty("longRunningFailure", 4,);
-		expect(successor?.flags.some((flag,) => flag.name === "wait"),).toBe(false,);
+		expect(successor?.flags.some((flag,) => flag.name === "wait",),).toBe(false,);
 		expect(
-			successor?.flags.some((flag,) => flag.name === "copy-permissions" && flag.kind === "boolean"),
+			successor?.flags.some((flag,) => flag.name === "copy-permissions" && flag.kind === "boolean",),
 		).toBe(true,);
 		expect(registry.app?.["manifest-version"]?.sideEffect,).toBe("read",);
 		expect(registry.app?.["verify-instance"]?.sideEffect,).toBe("read",);
@@ -928,7 +928,7 @@ describe("agent contract accuracy", () => {
 		const previousAmbient = process.env.DATAIKU_PROJECT_KEY;
 		process.env.DATAIKU_PROJECT_KEY = "AMBIENTKEY";
 		try {
-			expect(() => buildMutationPlan("app", "delete-instance", meta, [], {},)).toThrow(
+			expect(() => buildMutationPlan("app", "delete-instance", meta, [], {},),).toThrow(
 				"--project-key is required",
 			);
 		} finally {
@@ -943,7 +943,7 @@ describe("agent contract accuracy", () => {
 		expect(registry.batch?.run?.exitCodes,).toMatchObject({ longRunningFailure: 4, },);
 		expect(registry.app?.["delete-instance"]?.idempotency,).toBe("convergent",);
 		expect(
-			registry.app?.["delete-instance"]?.flags.some((flag,) => flag.name === "if-exists"),
+			registry.app?.["delete-instance"]?.flags.some((flag,) => flag.name === "if-exists",),
 		).toBe(false,);
 		expect(registry.app?.["delete-instance"]?.optionalFlags,).toContain("unconfirmed-creation",);
 		expect(registry.app?.["delete-instance"]?.requiredFlags,).not.toContain("unconfirmed-creation",);
@@ -1098,7 +1098,7 @@ describe("agent contract accuracy: coding plans", () => {
 					"../escape.py",
 				],
 				{ "project-key": "TEST", },
-			)
+			),
 		).toThrow();
 
 		const expectSha256 = "a".repeat(64,);

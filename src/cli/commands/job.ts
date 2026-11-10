@@ -149,7 +149,7 @@ function aggregateJobWaitResults<
 	until: string;
 } {
 	if (jobs.length === 1) return jobs[0];
-	const failed = jobs.find((job,) => !job.success);
+	const failed = jobs.find((job,) => !job.success,);
 	return {
 		elapsedMs: jobs.reduce((maximum, job,) => Math.max(maximum, job.elapsedMs,), 0,),
 		jobs,
@@ -237,8 +237,8 @@ function jobWarningSummary(
 	const counts = { dss: [] as number[], activity: [] as number[], };
 	collectWarningCounts(details, false, counts,);
 	const warningLines = log
-		? log.split(/\r?\n/,).map((line,) => line.trim()).filter((line,) =>
-			/\bwarn(?:ing)?\b/i.test(line,)
+		? log.split(/\r?\n/,).map((line,) => line.trim(),).filter((line,) =>
+			/\bwarn(?:ing)?\b/i.test(line,),
 		)
 		: [];
 	return {
@@ -303,7 +303,7 @@ async function jobInspectionSummary(
 			.parseJobLogProgress(log, durationMs,)
 		: undefined;
 	const logLines = log
-		? log.split(/\r?\n/,).map((line,) => line.trim()).filter((line,) => line.length > 0)
+		? log.split(/\r?\n/,).map((line,) => line.trim(),).filter((line,) => line.length > 0,)
 		: [];
 	const maxSummaryLines = Math.max(1, maxLogLinesFromFlags(flags,) ?? 20,);
 	const outputs = nestedValue(details, ["baseStatus", "def", "outputs",],)
@@ -554,7 +554,7 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			};
 			const jobs = await Promise.all(
 				a.map(async (jobId,) =>
-					withWaitResume(await c.jobs.wait(jobId, options,), options.projectKey,)
+					withWaitResume(await c.jobs.wait(jobId, options,), options.projectKey,),
 				),
 			);
 			return aggregateJobWaitResults(jobs, String(f["until"] ?? "all-done",),);
@@ -577,7 +577,7 @@ export const jobCommands: Record<string, CommandMeta> = withUsage("job", {
 			};
 			const jobs = await Promise.all(
 				a.map(async (jobId,) =>
-					withWaitResume(await c.jobs.wait(jobId, options,), options.projectKey,)
+					withWaitResume(await c.jobs.wait(jobId, options,), options.projectKey,),
 				),
 			);
 			return aggregateJobWaitResults(jobs, String(f["until"] ?? "all-done",),);

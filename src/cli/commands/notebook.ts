@@ -31,7 +31,7 @@ export const notebookCommands: Record<string, CommandMeta> = withUsage("notebook
 			requireArgs(a, 1, commandUsage("notebook", "delete-jupyter",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.notebooks.getJupyter(a[0], pk,));
+				const current = await readIfExists(() => c.notebooks.getJupyter(a[0], pk,),);
 				if (!current) return skipResult("jupyter-notebook", a[0], "missing",);
 				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "jupyter-notebook", name: a[0], current, };
@@ -118,7 +118,7 @@ export const notebookCommands: Record<string, CommandMeta> = withUsage("notebook
 			requireArgs(a, 2, commandUsage("notebook", "unload-jupyter",),);
 			if (executionMode(f,).dryRun) {
 				const sessions = await c.notebooks.listJupyterSessions(a[0], pk,);
-				const current = sessions.find((session,) => session.sessionId === a[1]);
+				const current = sessions.find((session,) => session.sessionId === a[1],);
 				return {
 					dryRun: true,
 					action: "unload-jupyter",
@@ -162,7 +162,7 @@ export const notebookCommands: Record<string, CommandMeta> = withUsage("notebook
 			requireArgs(a, 1, commandUsage("notebook", "delete-sql",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.notebooks.getSql(a[0], pk,));
+				const current = await readIfExists(() => c.notebooks.getSql(a[0], pk,),);
 				if (!current) return skipResult("sql-notebook", a[0], "missing",);
 				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "sql-notebook", id: a[0], current, };
@@ -197,7 +197,7 @@ export const notebookCommands: Record<string, CommandMeta> = withUsage("notebook
 			}
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
-				const current = await readIfExists(() => c.notebooks.getJupyter(a[0], pk,));
+				const current = await readIfExists(() => c.notebooks.getJupyter(a[0], pk,),);
 				return {
 					dryRun: true,
 					action: "save-jupyter",
@@ -235,7 +235,7 @@ export const notebookCommands: Record<string, CommandMeta> = withUsage("notebook
 			}
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
-				const current = await readIfExists(() => c.notebooks.getSql(a[0], pk,));
+				const current = await readIfExists(() => c.notebooks.getSql(a[0], pk,),);
 				return {
 					dryRun: true,
 					action: "save-sql",

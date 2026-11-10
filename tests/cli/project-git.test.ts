@@ -58,12 +58,15 @@ function recordingClient(
 	results: Record<string, unknown> = {},
 ): { client: DataikuClient; calls: RecordedCall[]; } {
 	const calls: RecordedCall[] = [];
-	const projectGit = new Proxy({}, {
-		get: (_target, method: string,) => (...args: unknown[]): Promise<unknown> => {
-			calls.push({ method, args, },);
-			return Promise.resolve(method in results ? results[method] : {},);
+	const projectGit = new Proxy(
+		{},
+		{
+			get: (_target, method: string,) => (...args: unknown[]): Promise<unknown> => {
+				calls.push({ method, args, },);
+				return Promise.resolve(method in results ? results[method] : {},);
+			},
 		},
-	},);
+	);
 	const client = { projectGit, } as DataikuClient;
 	return { client, calls, };
 }
@@ -88,7 +91,7 @@ describe("project-git CLI registration", () => {
 	it("exposes no flag that would carry a password on the command line", () => {
 		expect(KNOWN_LONG_FLAGS.has("password-env",),).toBe(true,);
 		expect(KNOWN_LONG_FLAGS.has("password",),).toBe(false,);
-		const usages = Object.values(projectGitCommands,).map((meta,) => meta.usage).join("\n",);
+		const usages = Object.values(projectGitCommands,).map((meta,) => meta.usage,).join("\n",);
 		expect(usages,).not.toContain("--password ",);
 	});
 });
@@ -99,7 +102,7 @@ describe("project-git argument validation", () => {
 			if (action.startsWith("future-",)) continue;
 			const { client, calls, } = recordingClient();
 			const positionals = [...meta.usage.matchAll(/<[^>]+>/g,),]
-				.map((_match, index,) => `positional-${String(index,)}`);
+				.map((_match, index,) => `positional-${String(index,)}`,);
 			await expect(
 				run(action, client, positionals,),
 			).rejects.toThrow("--project-key is required",);
@@ -112,7 +115,7 @@ describe("project-git argument validation", () => {
 		await run("future-status", client, ["JOB1",],);
 		await run("future-wait", client, ["JOB1",],);
 		await run("future-abort", client, ["JOB1",],);
-		expect(calls.map((call,) => call.method),).toEqual([
+		expect(calls.map((call,) => call.method,),).toEqual([
 			"getFutureState",
 			"waitForFuture",
 			"abortFuture",

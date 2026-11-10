@@ -1,5 +1,6 @@
 import { describe, expect, it, } from "bun:test";
 import { projectIncarnationHash, } from "../../src/utils/project-incarnation.js";
+import type { IncomingMessage, ServerResponse, } from "./_harness.js";
 import {
 	cliEnv,
 	dss,
@@ -14,7 +15,6 @@ import {
 	tmpdir,
 	withCliServer,
 } from "./_harness.js";
-import type { IncomingMessage, ServerResponse, } from "./_harness.js";
 
 const TEMPLATE_MANIFEST = {
 	projectKey: "MYAPP_TEMPLATE",
@@ -350,7 +350,7 @@ describe("app verify-instance API readiness", () => {
 			expect(result.published,).toBeUndefined();
 			expect(
 				(result.checks as Array<{ check: string; status: string; }>).map((entry,) =>
-					`${entry.check}:${entry.status}`
+					`${entry.check}:${entry.status}`,
 				),
 			).toEqual([
 				"project-type:ok",
@@ -416,7 +416,7 @@ describe("app verify-instance API readiness", () => {
 			expect(report.code,).toBe("validation_failed",);
 			expect(report.details.result.expectedVersionSource,).toBe("expect-version",);
 			const versionCheck = report.details.result.checks.find((entry,) =>
-				entry.check === "manifest-version"
+				entry.check === "manifest-version",
 			);
 			expect(versionCheck,).toMatchObject({ status: "failed", expected: "3.0.0", actual: "2.0.0", },);
 			expect(failure.stdout,).not.toContain("apiReady",);
@@ -458,7 +458,7 @@ describe("app verify-instance API readiness", () => {
 				details: { result: { checks: Array<{ check: string; status: string; expected: unknown; }>; }; };
 			};
 			const versionCheck = report.details.result.checks.find((entry,) =>
-				entry.check === "manifest-version"
+				entry.check === "manifest-version",
 			);
 			expect(versionCheck,).toMatchObject({ status: "failed", expected: null, },);
 		},);
@@ -615,7 +615,7 @@ describe("app verify-instance API readiness", () => {
 				expect(report.code,).toBe("validation_failed",);
 				expect(report.details.result.valid,).toBe(false,);
 				expect(
-					report.details.result.checks.find((entry,) => entry.check === scenario.check),
+					report.details.result.checks.find((entry,) => entry.check === scenario.check,),
 				).toMatchObject({
 					status: "failed",
 					expected: scenario.expected,
@@ -686,7 +686,7 @@ describe("app verify-instance API readiness", () => {
 				},),
 			);
 			expect(
-				result.checks.find((entry,) => entry.check === "manifest-references"),
+				result.checks.find((entry,) => entry.check === "manifest-references",),
 			).toMatchObject({ status: "failed", actual: false, },);
 		},);
 	});
@@ -742,7 +742,7 @@ describe("app verify-instance API readiness", () => {
 			},);
 			expect(
 				result.checks.filter((entry,) =>
-					entry.check === "project-type" || entry.check === "manifest-references"
+					entry.check === "project-type" || entry.check === "manifest-references",
 				),
 			).toEqual([
 				expect.objectContaining({ check: "project-type", status: "failed", actual: null, },),
@@ -804,7 +804,7 @@ describe("app verify-instance API readiness", () => {
 			expect(report.details.result.templateVersion,).toBeNull();
 			expect(report.details.result.expectedVersion,).toBe("2.0.0",);
 			const versionCheck = report.details.result.checks.find((entry,) =>
-				entry.check === "manifest-version"
+				entry.check === "manifest-version",
 			);
 			expect(versionCheck,).toMatchObject({
 				status: "failed",
@@ -1319,7 +1319,7 @@ describe("app create-successor-instance", () => {
 			// The only project read is the predecessor manifest: no target
 			// probe, no conditional project listing.
 			expect(
-				seen.filter((entry,) => entry.startsWith("GET /public/api/projects/",)),
+				seen.filter((entry,) => entry.startsWith("GET /public/api/projects/",),),
 			).toEqual(["GET /public/api/projects/OLD_INSTANCE/app-manifest",],);
 
 			// The predecessor ACL snapshot still runs in generated mode: the
@@ -1348,7 +1348,7 @@ describe("app create-successor-instance", () => {
 			expect(nextWithAcl.createSuccessor,).not.toContain("--to",);
 			expect(
 				seen.slice(readsBeforeCopyWithAcl,)
-					.filter((entry,) => entry.startsWith("GET /public/api/projects/",)),
+					.filter((entry,) => entry.startsWith("GET /public/api/projects/",),),
 			).toEqual([
 				"GET /public/api/projects/OLD_INSTANCE/app-manifest",
 				"GET /public/api/projects/OLD_INSTANCE/permissions",
@@ -2506,12 +2506,12 @@ describe("app create-successor-instance", () => {
 					// Verification, the permission copy and the cleanup ledger all
 					// keep the requested key; DSS's stray keys never see a request.
 					expect(
-						seen.some((path,) => path.includes("SOMEONE_ELSE",) || path.includes("MYAPP_TEMPLATE",)),
+						seen.some((path,) => path.includes("SOMEONE_ELSE",) || path.includes("MYAPP_TEMPLATE",),),
 					).toBe(false,);
 					expect(
-						seen.filter((path,) => path === "/public/api/projects/NEW_INSTANCE/app-manifest").length,
+						seen.filter((path,) => path === "/public/api/projects/NEW_INSTANCE/app-manifest",).length,
 					).toBe(0,);
-					expect(seen.filter((path,) => path.endsWith("/permissions",)).length,).toBe(0,);
+					expect(seen.filter((path,) => path.endsWith("/permissions",),).length,).toBe(0,);
 				},
 			);
 			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as Record<string, unknown>;
@@ -4104,7 +4104,7 @@ describe("app create-successor-instance", () => {
 				{ method: string; endpoint: string; when: string; }
 			>;
 			expect(
-				preflightRequests.map((entry,) => `${entry.method} ${entry.endpoint} ${entry.when}`),
+				preflightRequests.map((entry,) => `${entry.method} ${entry.endpoint} ${entry.when}`,),
 			).toEqual([
 				"GET /public/api/apps/MYAPP/instances/ before-create",
 				"GET /public/api/projects/OLD_INSTANCE/app-manifest before-create",

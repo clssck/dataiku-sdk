@@ -301,7 +301,7 @@ describe("WebappsResource", () => {
 			method: "PUT",
 			path: "/public/api/projects/TEST/webapps/webapp-1/backend/actions/restart",
 		},);
-		expect(requests.slice(1,).every((request,) => request.method === "GET"),).toBe(true,);
+		expect(requests.slice(1,).every((request,) => request.method === "GET",),).toBe(true,);
 		expect(polls,).toBeGreaterThanOrEqual(2,);
 	});
 

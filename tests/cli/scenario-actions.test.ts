@@ -45,7 +45,7 @@ async function withScenarioCli(
 }
 
 function requestLines(sent: Sent[],): string[] {
-	return sent.map((request,) => `${request.method} ${request.path}`);
+	return sent.map((request,) => `${request.method} ${request.path}`,);
 }
 
 /** A scenario that keeps what was PUT, like DSS (without the id/stamp assignment it adds to new elements). */
@@ -370,7 +370,7 @@ describe("scenario create --data", () => {
 				scenarioId: "nightly",
 				data: { markedAsTest: true, },
 			},);
-			expect(sent.filter((request,) => request.method === "POST"),).toEqual([],);
+			expect(sent.filter((request,) => request.method === "POST",),).toEqual([],);
 			await dss(argv, { env, },);
 			expect(sent.at(-1,),).toMatchObject({
 				method: "POST",
@@ -443,9 +443,9 @@ describe("scenario trigger-add / trigger-list / trigger-remove", () => {
 				count: 3,
 				trigger: { type: "dataset_modified", },
 			},);
-			expect(sent.map((request,) => request.method),).toEqual(["GET",],);
+			expect(sent.map((request,) => request.method,),).toEqual(["GET",],);
 			await dss(["scenario", "trigger-add", "s1", "--data", data,], { env, },);
-			expect(sent.filter((request,) => request.method === "PUT"),).toHaveLength(1,);
+			expect(sent.filter((request,) => request.method === "PUT",),).toHaveLength(1,);
 		},);
 	});
 
@@ -464,7 +464,7 @@ describe("scenario trigger-add / trigger-list / trigger-remove", () => {
 				{ env, },
 			);
 			expect(hour.code,).toBe(1,);
-			expect(sent.filter((request,) => request.method === "PUT"),).toEqual([],);
+			expect(sent.filter((request,) => request.method === "PUT",),).toEqual([],);
 		},);
 	});
 
@@ -482,10 +482,10 @@ describe("scenario trigger-add / trigger-list / trigger-remove", () => {
 				(await dss(["scenario", "trigger-remove", "s1", "--name", "nightly",], { env, },)).stdout,
 			);
 			expect(byName,).toMatchObject({ removed: "trigger", index: 0, count: 1, },);
-			const afterName = sent.findLast((request,) => request.method === "PUT");
+			const afterName = sent.findLast((request,) => request.method === "PUT",);
 			expect(afterName?.body,).toMatchObject({ triggers: [TRIGGER_B,], },);
 			await dss(["scenario", "trigger-remove", "s1", "--index", "0",], { env, },);
-			const afterIndex = sent.findLast((request,) => request.method === "PUT");
+			const afterIndex = sent.findLast((request,) => request.method === "PUT",);
 			expect(afterIndex?.body,).toMatchObject({ triggers: [], },);
 		},);
 	});
@@ -512,7 +512,7 @@ describe("scenario trigger-add / trigger-list / trigger-remove", () => {
 				{ env, },
 			);
 			expect(outside.code,).toBe(1,);
-			expect(sent.filter((request,) => request.method === "PUT"),).toEqual([],);
+			expect(sent.filter((request,) => request.method === "PUT",),).toEqual([],);
 		},);
 	});
 
@@ -599,8 +599,8 @@ describe("scenario reporter-add / reporter-list / reporter-remove", () => {
 				},
 				next: [["dss", "scenario", "reporter-list", "s1",],],
 			},);
-			expect(sent.filter((request,) => request.method === "PUT"),).toHaveLength(1,);
-			const put = sent.find((request,) => request.method === "PUT");
+			expect(sent.filter((request,) => request.method === "PUT",),).toHaveLength(1,);
+			const put = sent.find((request,) => request.method === "PUT",);
 			expect(put?.body,).toMatchObject({
 				triggers: [TRIGGER_A,],
 				reporters: [MAIL_REPORTER, SLACK_REPORTER, { phase: "END", },],
@@ -632,7 +632,7 @@ describe("scenario reporter-add / reporter-list / reporter-remove", () => {
 					hint: expect.any(String,),
 				},],
 			},);
-			expect(sent.filter((request,) => request.method === "PUT"),).toHaveLength(1,);
+			expect(sent.filter((request,) => request.method === "PUT",),).toHaveLength(1,);
 		},);
 	});
 
@@ -646,7 +646,7 @@ describe("scenario reporter-add / reporter-list / reporter-remove", () => {
 			const added = await dss(["scenario", "reporter-add", "s1", "--data", raw,], { env, },);
 			expect(added.stdout,).not.toContain("SECRET-WEBHOOK-TOKEN",);
 			expect(added.stderr,).not.toContain("SECRET-WEBHOOK-TOKEN",);
-			expect(JSON.stringify(sent.find((request,) => request.method === "PUT")?.body,),).toContain(
+			expect(JSON.stringify(sent.find((request,) => request.method === "PUT",)?.body,),).toContain(
 				"SECRET-WEBHOOK-TOKEN",
 			);
 			const preview = await dss(
@@ -683,7 +683,7 @@ describe("scenario reporter-add / reporter-list / reporter-remove", () => {
 			const out = await dss(["scenario", "reporter-remove", "s1", "--name", "slack",], { env, },);
 			expect(JSON.parse(out.stdout,),).toMatchObject({ removed: "reporter", index: 1, count: 1, },);
 			expect(out.stdout,).not.toContain("SECRET-WEBHOOK-TOKEN",);
-			expect(sent.find((request,) => request.method === "PUT")?.body,).toMatchObject({
+			expect(sent.find((request,) => request.method === "PUT",)?.body,).toMatchObject({
 				reporters: [MAIL_REPORTER,],
 				triggers: [TRIGGER_A,],
 			},);
@@ -712,7 +712,7 @@ describe("scenario run-as-set", () => {
 					runAsUser: "robot",
 					effectiveRunAs: "robot",
 				},);
-				expect(sent.find((request,) => request.method === "PUT")?.body,).toMatchObject({
+				expect(sent.find((request,) => request.method === "PUT",)?.body,).toMatchObject({
 					id: "s1",
 					runAsUser: "robot",
 				},);
@@ -730,7 +730,7 @@ describe("scenario run-as-set", () => {
 				effectiveRunAs: "editor",
 				previousRunAsUser: "svc",
 			},);
-			expect(sent.find((request,) => request.method === "PUT")?.body,).not.toHaveProperty(
+			expect(sent.find((request,) => request.method === "PUT",)?.body,).not.toHaveProperty(
 				"runAsUser",
 			);
 		},);
@@ -748,7 +748,7 @@ describe("scenario run-as-set", () => {
 				currentRunAsUser: "svc",
 				method: "PUT",
 			},);
-			expect(sent.map((request,) => request.method),).toEqual(["GET",],);
+			expect(sent.map((request,) => request.method,),).toEqual(["GET",],);
 		},);
 	});
 
@@ -771,7 +771,7 @@ describe("future list --scenarios-only", () => {
 			async (env, sent,) => {
 				await dss(["future", "list", "--scenarios-only",], { env, },);
 				await dss(["future", "list",], { env, },);
-				const queries = sent.map((request,) => new URL(request.path, "http://x",).searchParams);
+				const queries = sent.map((request,) => new URL(request.path, "http://x",).searchParams,);
 				expect(queries[0]?.get("withScenarios",),).toBe("true",);
 				expect(queries[0]?.get("withNotScenarios",),).toBe("false",);
 				expect(queries[1]?.has("withNotScenarios",),).toBe(false,);

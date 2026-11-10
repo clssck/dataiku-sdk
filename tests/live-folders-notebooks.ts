@@ -142,7 +142,7 @@ async function exerciseFolderLifecycle(ctx: LiveContext, projectKey: string,): P
 	const localPath = await ctx.writeFile(`folder-lifecycle-${String(ctx.iteration,)}.txt`, marker,);
 
 	const before = await ctx.run<FolderSummary[]>(["folder", "list",], { projectKey, },);
-	expect(before.some((folder,) => folder.name === name),).toBe(false,);
+	expect(before.some((folder,) => folder.name === name,),).toBe(false,);
 
 	const created = await ctx.run<FolderDetails & { created: string; }>([
 		"folder",
@@ -180,14 +180,14 @@ async function exerciseFolderLifecycle(ctx: LiveContext, projectKey: string,): P
 		const contents = await ctx.run<FolderItem[]>(["folder", "contents", folderId,], {
 			projectKey,
 		},);
-		const item = contents.find((entry,) => entry.path === remotePath);
+		const item = contents.find((entry,) => entry.path === remotePath,);
 		expect(item?.size,).toBe(Buffer.byteLength(marker,),);
 
 		await ctx.run(["folder", "delete-file", folderId, remotePath,], { projectKey, },);
 		const emptied = await ctx.run<FolderItem[]>(["folder", "contents", folderId,], {
 			projectKey,
 		},);
-		expect(emptied.some((entry,) => entry.path === remotePath),).toBe(false,);
+		expect(emptied.some((entry,) => entry.path === remotePath,),).toBe(false,);
 
 		const removal = await ctx.run<{ deleted: string; }>(["folder", "delete", folderId,], {
 			projectKey,
@@ -195,7 +195,7 @@ async function exerciseFolderLifecycle(ctx: LiveContext, projectKey: string,): P
 		deleted = true;
 		expect(removal.deleted,).toBe(folderId,);
 		const after = await ctx.run<FolderSummary[]>(["folder", "list",], { projectKey, },);
-		expect(after.some((folder,) => folder.id === folderId),).toBe(false,);
+		expect(after.some((folder,) => folder.id === folderId,),).toBe(false,);
 	} finally {
 		if (!deleted) {
 			await ctx.run(["folder", "delete", folderId, "--if-exists",], { projectKey, },);
@@ -227,7 +227,7 @@ async function exerciseJupyterLifecycle(ctx: LiveContext, projectKey: string,): 
 		const list = await ctx.run<JupyterNotebookSummary[]>(["notebook", "list-jupyter",], {
 			projectKey,
 		},);
-		expect(list.some((notebook,) => notebook.name === name),).toBe(true,);
+		expect(list.some((notebook,) => notebook.name === name,),).toBe(true,);
 
 		const withOutputs = await ctx.run<
 			{ cells: Array<{ outputs?: unknown[]; source: string | string[]; }>; }
@@ -287,7 +287,7 @@ async function exerciseJupyterLifecycle(ctx: LiveContext, projectKey: string,): 
 	const afterDelete = await ctx.run<JupyterNotebookSummary[]>(["notebook", "list-jupyter",], {
 		projectKey,
 	},);
-	expect(afterDelete.some((notebook,) => notebook.name === name),).toBe(false,);
+	expect(afterDelete.some((notebook,) => notebook.name === name,),).toBe(false,);
 	const missing = await ctx.run<
 		{ deleted?: string; skipped?: string; reason?: string; }
 	>([
@@ -328,14 +328,14 @@ async function exerciseJupyterSessions(ctx: LiveContext, projectKey: string,): P
 			"--active",
 			"true",
 		], { projectKey, },);
-		expect(active.some((notebook,) => notebook.name === name),).toBe(sessions.length > 0,);
+		expect(active.some((notebook,) => notebook.name === name,),).toBe(sessions.length > 0,);
 		const inactive = await ctx.run<JupyterNotebookSummary[]>([
 			"notebook",
 			"list-jupyter",
 			"--active",
 			"false",
 		], { projectKey, },);
-		expect(inactive.some((notebook,) => notebook.name === name),).toBe(sessions.length === 0,);
+		expect(inactive.some((notebook,) => notebook.name === name,),).toBe(sessions.length === 0,);
 
 		for (const session of sessions) {
 			const unloaded = await ctx.run<{ unloaded: string; sessionId: string; }>([
@@ -434,14 +434,14 @@ async function runSqlNotebookLifecycle(
 	expect(sqlId,).not.toBe(requested,);
 	try {
 		const list = await ctx.run<SqlNotebookSummary[]>(["notebook", "list-sql",], { projectKey, },);
-		const summary = list.find((notebook,) => notebook.id === sqlId);
+		const summary = list.find((notebook,) => notebook.id === sqlId,);
 		expect(summary?.connection,).toBe(connection,);
 
 		const fetched = await ctx.run<SqlNotebookContent>(["notebook", "get-sql", sqlId,], {
 			projectKey,
 		},);
 		expect(fetched.connection,).toBe(connection,);
-		expect(fetched.cells.map(cell => cell.code),).toEqual([firstCellCode,],);
+		expect(fetched.cells.map(cell => cell.code,),).toEqual([firstCellCode,],);
 
 		// Update payload stays content-only (connection + cells): server receipt
 		// fields are never echoed back into a write.
@@ -467,7 +467,7 @@ async function runSqlNotebookLifecycle(
 			projectKey,
 		},);
 		expect(refetched.cells,).toHaveLength(2,);
-		expect(refetched.cells.map(cell => cell.code),).toEqual([firstCellCode, secondCellCode,],);
+		expect(refetched.cells.map(cell => cell.code,),).toEqual([firstCellCode, secondCellCode,],);
 
 		// No public endpoint executes SQL notebook cells, so the history surface
 		// is exercised on an unexecuted notebook: readable, then clearable.
@@ -501,7 +501,7 @@ async function runSqlNotebookLifecycle(
 	const afterDelete = await ctx.run<SqlNotebookSummary[]>(["notebook", "list-sql",], {
 		projectKey,
 	},);
-	expect(afterDelete.some((notebook,) => notebook.id === sqlId),).toBe(false,);
+	expect(afterDelete.some((notebook,) => notebook.id === sqlId,),).toBe(false,);
 }
 
 // ---------------------------------------------------------------------------
@@ -565,7 +565,7 @@ async function exerciseMacroDiscovery(ctx: LiveContext, projectKey: string,): Pr
 	process.stdout.write(
 		`${
 			JSON.stringify({
-				macroInventory: macros.map(macro => macro.runnableType ?? macroLabel(macro,)),
+				macroInventory: macros.map(macro => macro.runnableType ?? macroLabel(macro,),),
 			},)
 		}\n`,
 	);
@@ -618,12 +618,12 @@ async function resolveOwnedMacro(ctx: LiveContext, projectKey: string,): Promise
 	// Resolve the server's own runnableType through the unique owner plugin id
 	// (live identifier is pyrunnable_<pluginId>_<macroDir>, never predicted).
 	const macros = await ctx.run<MacroSummary[]>(["macro", "list",], { projectKey, },);
-	const owned = macros.find(macro => macro.ownerPluginId === pluginId);
+	const owned = macros.find(macro => macro.ownerPluginId === pluginId,);
 	if (!owned?.runnableType) {
 		return {
 			provisionedPlugin: pluginId,
 			problem: `No runnable of the installed plugin ${pluginId} is registered; macro list shows: ${
-				macros.map(macro => `${macro.runnableType ?? "?"} [${macroLabel(macro,)}]`).join(", ",)
+				macros.map(macro => `${macro.runnableType ?? "?"} [${macroLabel(macro,)}]`,).join(", ",)
 				|| "none"
 			}`,
 		};
@@ -775,7 +775,7 @@ export async function exerciseFoldersNotebooks(ctx: LiveContext,): Promise<void>
 	// selection restricts the module to ids matching a selector.
 	const selected = ctx.selection.length === 0
 		? [...SELECTED_IDS,]
-		: SELECTED_IDS.filter(id => ctx.selection.some(selection => matchesLiveCase(id, selection,)));
+		: SELECTED_IDS.filter(id => ctx.selection.some(selection => matchesLiveCase(id, selection,),),);
 	if (selected.length === 0) return;
 
 	const projectKey = await ctx.createProject("fldnb",);
@@ -922,7 +922,7 @@ export async function exerciseFoldersNotebooks(ctx: LiveContext,): Promise<void>
 				if (errors.length) {
 					throw new AggregateError(
 						errors,
-						errors.map(e => e instanceof Error ? e.message : String(e,)).join("; ",),
+						errors.map(e => e instanceof Error ? e.message : String(e,),).join("; ",),
 					);
 				}
 			};

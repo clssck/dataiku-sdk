@@ -88,7 +88,7 @@ export function deployRunQuery(
 	const modelVersionInfo = {
 		...(opts.evaluationDataset ? { gatherFeaturesFromDataset: opts.evaluationDataset, } : {}),
 		...(opts.targetColumnName ? { targetColumnName: opts.targetColumnName, } : {}),
-		classLabels: (opts.classLabels ?? []).map((label,) => ({ label, })),
+		classLabels: (opts.classLabels ?? []).map((label,) => ({ label, }),),
 		...(opts.codeEnvName ? { pythonCodeEnvName: opts.codeEnvName, } : {}),
 	};
 	const query = new URLSearchParams({

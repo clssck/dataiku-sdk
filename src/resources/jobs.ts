@@ -1,6 +1,6 @@
 import { ClientValidationError, DataikuError, } from "../errors.js";
-import { JobSummaryArraySchema, } from "../schemas.js";
 import type { BuildMode, JobSummary, JobWaitResult, } from "../schemas.js";
+import { JobSummaryArraySchema, } from "../schemas.js";
 import {
 	computeNextPollDelayMs,
 	DEFAULT_POLL_INTERVAL_MS,
@@ -137,7 +137,7 @@ function isSuccessfulTerminalState(state: string | undefined,): boolean {
 }
 
 function sleep(ms: number,): Promise<void> {
-	return new Promise((resolve,) => setTimeout(resolve, ms,));
+	return new Promise((resolve,) => setTimeout(resolve, ms,),);
 }
 
 const DEFAULT_TARGET_PARTITION = "NP";
@@ -175,13 +175,13 @@ function jobBuildDefinition(
 	}
 	const payload: Record<string, unknown> = {
 		outputs: targets.map((target,) =>
-			jobBuildOutput(target, defaultProjectKey, opts?.partition, opts?.targetType,)
+			jobBuildOutput(target, defaultProjectKey, opts?.partition, opts?.targetType,),
 		),
 		type: opts?.buildMode ?? "NON_RECURSIVE_FORCED_BUILD",
 	};
 	if (
 		opts?.autoUpdateSchema
-		&& targets.every((target,) => (target.type ?? opts?.targetType ?? "DATASET") === "DATASET")
+		&& targets.every((target,) => (target.type ?? opts?.targetType ?? "DATASET") === "DATASET",)
 	) {
 		payload.autoUpdateSchemaBeforeEachRecipeRun = true;
 	}
@@ -189,7 +189,7 @@ function jobBuildDefinition(
 }
 
 function jobLogLines(log: string,): string[] {
-	return log.split(/\r?\n/,).map((line,) => line.trimEnd());
+	return log.split(/\r?\n/,).map((line,) => line.trimEnd(),);
 }
 function countLogLines(log: string,): number {
 	if (!log) return 0;
@@ -367,8 +367,8 @@ function filterJobLogToErrors(lines: string[],): string {
 function filterJobLog(log: string, filter: JobLogFilter | undefined,): string {
 	if (!filter) return log;
 	const lines = jobLogLines(log,);
-	if (filter !== "errors" || !lines.some((line,) => DSS_RECORD_HEADER.test(line,))) {
-		return lines.filter((line,) => lineMatchesLogFilter(line, filter,)).join("\n",);
+	if (filter !== "errors" || !lines.some((line,) => DSS_RECORD_HEADER.test(line,),)) {
+		return lines.filter((line,) => lineMatchesLogFilter(line, filter,),).join("\n",);
 	}
 	return filterJobLogToErrors(lines,);
 }
@@ -439,7 +439,7 @@ function summarizeJobLog(
 	maxLines: number,
 	elapsedMs?: number,
 ): JobLogSummary {
-	const lines = jobLogLines(log,).map((line,) => line.trim()).filter((line,) => line.length > 0);
+	const lines = jobLogLines(log,).map((line,) => line.trim(),).filter((line,) => line.length > 0,);
 	const summaryLines = lines.slice(-Math.max(1, maxLines,),);
 	const progress = parseJobLogProgress(log, elapsedMs,);
 	return {
@@ -465,7 +465,7 @@ interface JobStatusPayload {
 }
 
 function nothingToBuildMessage(targets: JobUnbuildableTarget[],): string {
-	const names = targets.map((target,) => `${target.projectKey}.${target.id}`).join(", ",);
+	const names = targets.map((target,) => `${target.projectKey}.${target.id}`,).join(", ",);
 	return `The job ran no activity: ${names} ${
 		targets.length === 1 ? "is a managed dataset" : "are managed datasets"
 	} that no recipe produces, so nothing was built. Create a recipe that writes ${
@@ -882,7 +882,7 @@ export class JobsResource extends BaseResource {
 				if (written === undefined) {
 					const { graph, } = await this.client.projects.flowTopology(projectKey,);
 					written = new Set(
-						graph.edges.filter((edge,) => edge.relation === "writes").map((edge,) => edge.to),
+						graph.edges.filter((edge,) => edge.relation === "writes",).map((edge,) => edge.to,),
 					);
 					writtenByProject.set(projectKey, written,);
 				}

@@ -283,7 +283,7 @@ describe("Wiki schemas", () => {
 			attachments: [],
 		};
 		expect(parseSchema(WikiArticleDataSchema, data,),).toEqual(data,);
-		expect(() => parseSchema(WikiArticleDataSchema, { article: { name: "Article", }, },)).toThrow();
+		expect(() => parseSchema(WikiArticleDataSchema, { article: { name: "Article", }, },),).toThrow();
 	});
 });
 
@@ -301,8 +301,8 @@ describe("Dashboard schemas", () => {
 	});
 
 	it("rejects dashboard entries without required identifiers", () => {
-		expect(() => parseSchema(DashboardSummarySchema, { name: "Dashboard", },)).toThrow();
-		expect(() => parseSchema(DashboardDetailsSchema, { id: "dash-1", },)).toThrow();
+		expect(() => parseSchema(DashboardSummarySchema, { name: "Dashboard", },),).toThrow();
+		expect(() => parseSchema(DashboardDetailsSchema, { id: "dash-1", },),).toThrow();
 	});
 });
 
@@ -321,8 +321,8 @@ describe("Insight schemas", () => {
 	});
 
 	it("rejects insight entries without id or name", () => {
-		expect(() => parseSchema(InsightSummarySchema, { name: "Insight", },)).toThrow();
-		expect(() => parseSchema(InsightDetailsSchema, { id: "insight-1", },)).toThrow();
+		expect(() => parseSchema(InsightSummarySchema, { name: "Insight", },),).toThrow();
+		expect(() => parseSchema(InsightDetailsSchema, { id: "insight-1", },),).toThrow();
 	});
 });
 
@@ -352,7 +352,7 @@ describe("DataQuality schemas", () => {
 	});
 
 	it("rejects data quality rules without id", () => {
-		expect(() => parseSchema(DataQualityRuleSchema, { displayName: "No id", },)).toThrow();
+		expect(() => parseSchema(DataQualityRuleSchema, { displayName: "No id", },),).toThrow();
 	});
 });
 
@@ -438,7 +438,7 @@ describe("Array schemas", () => {
 			success: true,
 			hasResult: true,
 		},),).toHaveProperty("success", true,);
-		expect(() => parseSchema(DashboardSummaryArraySchema, [{ id: "dash-1", },],)).toThrow();
+		expect(() => parseSchema(DashboardSummaryArraySchema, [{ id: "dash-1", },],),).toThrow();
 	});
 });
 

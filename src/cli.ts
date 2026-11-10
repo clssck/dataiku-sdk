@@ -166,7 +166,7 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 		projectKey: entry.projectKey,
 		dssUrl: typeof entry.dssUrl === "string" ? canonicalDssUrl(entry.dssUrl,) : null,
 		cleanup: entry.cleanup,
-	}));
+	}),);
 	if (flags["apply"] !== true) {
 		return { result: { dryRun: true, steps, }, exitCode: 0, };
 	}
@@ -336,7 +336,7 @@ function parseBatchSteps(payload: unknown,): string[][] {
 		);
 	}
 	return payload.map((step, index,) => {
-		if (!Array.isArray(step,) || !step.every((token,) => typeof token === "string")) {
+		if (!Array.isArray(step,) || !step.every((token,) => typeof token === "string",)) {
 			throw new UsageError(
 				`Batch step ${index} must be an array of string arguments.`,
 				"validation_failed",
@@ -409,8 +409,8 @@ function supportedCommandFlags(entry: CommandRegistryEntry,): Record<string, tru
 function commandRegistrySelectors(flags: Record<string, string | boolean>,): string[] {
 	const fieldsFlag = flags["fields"];
 	if (typeof fieldsFlag !== "string") return [];
-	const selectors = fieldsFlag.split(",",).map((field,) => field.trim()).filter((field,) =>
-		field.length > 0
+	const selectors = fieldsFlag.split(",",).map((field,) => field.trim(),).filter((field,) =>
+		field.length > 0,
 	);
 	if (selectors.length === 0) {
 		throw new UsageError(
@@ -438,7 +438,7 @@ function validateSupportedCommandFlags(
 		throw new UsageError(
 			`--dry-run is not supported for ${resource} ${action}.`,
 			"unknown_flag",
-			entry.flags.some((flag,) => flag.name === "plan")
+			entry.flags.some((flag,) => flag.name === "plan",)
 				? "Remove --dry-run; use --plan to preview the mutation instead."
 				: `Remove --dry-run; ${resource} ${action} has no dry-run mode.`,
 		);
@@ -446,7 +446,7 @@ function validateSupportedCommandFlags(
 	// Registry commands reject --plan in buildMutationPlan; meta commands never reach it.
 	if (
 		META_COMMAND_RESOURCES[resource] === true && executionMode(flags,).plan
-		&& !entry.flags.some((flag,) => flag.name === "plan")
+		&& !entry.flags.some((flag,) => flag.name === "plan",)
 	) {
 		throw new UsageError(
 			`--plan is only supported for mutating commands; ${resource} ${action} has no plan mode.`,
@@ -479,7 +479,7 @@ function validateCommandInvocation(
 }
 
 function requireEntryPositionals(entry: CommandRegistryEntry, args: string[],): void {
-	const argCount = entry.positionalArguments.filter((positional,) => positional.required).length;
+	const argCount = entry.positionalArguments.filter((positional,) => positional.required,).length;
 	if (args.length < argCount) requireArgs(args, argCount, entry.usage,);
 }
 
@@ -672,7 +672,7 @@ function validateBatchStepMode(argv: string[], index: number,): void {
 	if (!meta) return;
 	const entry = cachedCommandRegistry(resource,)?.[action ?? ""];
 	if (!entry) return;
-	if (executionMode(flags,).plan && !entry.flags.some((flag,) => flag.name === "plan")) {
+	if (executionMode(flags,).plan && !entry.flags.some((flag,) => flag.name === "plan",)) {
 		throw new UsageError(
 			`Batch step ${index} requests --plan, which is not supported for ${resource} ${action}.`,
 			"unknown_flag",
@@ -786,7 +786,7 @@ async function runInstallSkill(
 				id: target.id,
 				name: target.def.name,
 				via: target.via,
-			})),
+			}),),
 		};
 	}
 
@@ -894,10 +894,10 @@ function batchPlan(flags: Record<string, string | boolean>,): Record<string, unk
 	return planResult("batch", "run", {
 		identifiers: {
 			total: steps.length,
-			needsClient: steps.some((argv,) => batchStepNeedsClient(argv,)),
+			needsClient: steps.some((argv,) => batchStepNeedsClient(argv,),),
 		},
 		payload: {
-			steps: steps.map((argv,) => redactArgv(argv,)),
+			steps: steps.map((argv,) => redactArgv(argv,),),
 			continueOnError: flags["continue-on-error"] === true,
 			dryRun: executionMode(flags,).dryRun,
 		},
@@ -986,7 +986,7 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 	const unknownSelectors: Record<string, { error: UsageError; suggestions: string[]; }> = {};
 	for (const selector of selectors) {
 		const selectorParts = selector.split(".",);
-		if (selectorParts.some((part,) => part.length === 0)) {
+		if (selectorParts.some((part,) => part.length === 0,)) {
 			throw new UsageError(
 				`Invalid --fields selector: ${selector}. Expected RESOURCE or RESOURCE.ACTION[.FIELD...].`,
 				"usage_error",
@@ -1019,7 +1019,7 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 			const hint = suggestions.length === 0
 				? COMMANDS_RUN_HINT
 				: `Did you mean ${
-					suggestions.map((name,) => `\`--fields ${name}\``).join(" or ",)
+					suggestions.map((name,) => `\`--fields ${name}\``,).join(" or ",)
 				}? ${COMMANDS_RUN_HINT}`;
 			const { suggestions: _commandSuggestions, ...details } = error.details ?? {};
 			throw new UsageError(error.message, error.code, hint, {
@@ -1034,7 +1034,7 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 				unknownNames.flatMap((name,) =>
 					unknownSelectors[name].suggestions.length > 0
 						? [[name, unknownSelectors[name].suggestions,],]
-						: []
+						: [],
 				),
 			),
 			hint:
@@ -1048,7 +1048,7 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 	// (RESOURCE.ACTION.FIELD) always resolve against the full entry.
 	const fullSelectors = typeof outputPath === "string"
 		? knownSelectors
-		: knownSelectors.filter((selector,) => selector.includes(".",));
+		: knownSelectors.filter((selector,) => selector.includes(".",),);
 	const selectedRegistry: Record<string, unknown> = selectors.length === 0 ? registry : {};
 	if (fullSelectors.length > 0) {
 		Object.assign(
@@ -1075,7 +1075,7 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 			Object.entries(registry[resource],).map(([action, entry,],) => [
 				action,
 				{ usage: entry.usage, description: entry.description, sideEffect: entry.sideEffect, },
-			]),
+			],),
 		);
 	}
 	if (typeof outputPath === "string") {
@@ -1313,7 +1313,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 		},),);
 		return {
 			result: { dryRun: true, total: steps.length, steps: planned, },
-			exitCode: planned.every((step,) => step.runnable) ? 0 : 1,
+			exitCode: planned.every((step,) => step.runnable,) ? 0 : 1,
 		};
 	}
 
@@ -1323,7 +1323,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 		? flags["project-key"]
 		: ambientProjectKey();
 	let client: DataikuClient | undefined;
-	const needsClient = steps.some((argv,) => batchStepNeedsClient(argv,));
+	const needsClient = steps.some((argv,) => batchStepNeedsClient(argv,),);
 	if (needsClient) {
 		const {
 			url,
@@ -1455,7 +1455,9 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 			}
 			const stepFieldsFlag = stepFlags["fields"];
 			const stepFields = typeof stepFieldsFlag === "string"
-				? stepFieldsFlag.split(",",).map((field,) => field.trim()).filter((field,) => field.length > 0)
+				? stepFieldsFlag.split(",",).map((field,) => field.trim(),).filter((field,) =>
+					field.length > 0,
+				)
 				: [];
 			const stepResult = stepFields.length > 0 && !(resource === "commands" && action === "run")
 				? projectResultFields(result, stepFields,)
@@ -1484,13 +1486,13 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 
 	const ok = firstFailureExit === undefined;
 	const failureSummary = summarizeFailureEnvelopes(
-		results.flatMap((step,) => step.error ? [{ index: step.index, error: step.error, },] : []),
+		results.flatMap((step,) => step.error ? [{ index: step.index, error: step.error, },] : [],),
 	);
 	return {
 		result: {
 			ok,
 			total: steps.length,
-			completed: results.filter((step,) => step.ok !== null).length,
+			completed: results.filter((step,) => step.ok !== null,).length,
 			...failureSummary,
 			steps: results,
 		},
@@ -1534,11 +1536,11 @@ function summarizeFailureEnvelopes(
 		category: error.category,
 		exitCode: error.exitCode,
 		retryable: error.retryable === true,
-	}));
+	}),);
 	return {
 		failed: failures.length,
-		retryable: failures.length > 0 && failureCodes.every((failure,) => failure.retryable),
-		hasRetryableFailures: failureCodes.some((failure,) => failure.retryable),
+		retryable: failures.length > 0 && failureCodes.every((failure,) => failure.retryable,),
+		hasRetryableFailures: failureCodes.some((failure,) => failure.retryable,),
 		failureCodes,
 	};
 }
@@ -1951,8 +1953,8 @@ async function main(): Promise<void> {
 	const { positional, flags, } = parseArgs(process.argv.slice(2,),);
 	const fieldsFlag = flags["fields"];
 	if (typeof fieldsFlag === "string") {
-		const selected = fieldsFlag.split(",",).map((field,) => field.trim()).filter((field,) =>
-			field.length > 0
+		const selected = fieldsFlag.split(",",).map((field,) => field.trim(),).filter((field,) =>
+			field.length > 0,
 		);
 		if (selected.length > 0) {
 			const commandsRunProjection = positional[0] === "commands" && positional[1] === "run";

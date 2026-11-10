@@ -200,7 +200,7 @@ describe("ContinuousActivitiesResource", () => {
 			res.end(`unexpected ${request}`,);
 		}, async (url,) => {
 			const resource = new ContinuousActivitiesResource(createClient(url,),);
-			const error = await resource.stop("missing recipe",).catch((caught: unknown,) => caught);
+			const error = await resource.stop("missing recipe",).catch((caught: unknown,) => caught,);
 			expect(error,).toBeInstanceOf(DataikuError,);
 			if (!(error instanceof DataikuError)) throw error;
 			expect(error.category,).toBe("not_found",);

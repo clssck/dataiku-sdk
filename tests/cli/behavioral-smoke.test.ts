@@ -24,10 +24,10 @@ type CliWarningEvent = {
 function parseCliWarningEvents(stderr: string,): CliWarningEvent[] {
 	return stderr
 		.split(/\r?\n/u,)
-		.filter((line,) => line.length > 0)
-		.map((line,) => JSON.parse(line,) as { type?: unknown; warnings?: unknown; })
+		.filter((line,) => line.length > 0,)
+		.map((line,) => JSON.parse(line,) as { type?: unknown; warnings?: unknown; },)
 		.filter((event,): event is CliWarningEvent =>
-			event.type === "warning" && Array.isArray(event.warnings,)
+			event.type === "warning" && Array.isArray(event.warnings,),
 		);
 }
 
@@ -218,8 +218,8 @@ describe("CLI command behavioral smoke coverage", () => {
 					truncated: false,
 				},);
 				const warningCodes = parseCliWarningEvents(stderr,)
-					.flatMap((event,) => event.warnings)
-					.map((warning,) => warning.code);
+					.flatMap((event,) => event.warnings,)
+					.map((warning,) => warning.code,);
 				expect(warningCodes,).not.toContain("dataset_download_default_location",);
 			},);
 		} finally {
@@ -1231,7 +1231,7 @@ describe("CLI command behavioral smoke coverage", () => {
 			expect(invalidExport.code,).toBe(1,);
 			expect(invalidExport.stderr,).toBe("",);
 			expect(invalidExport.stdout,).toContain("DSS dashboard export did not return a PDF.",);
-			expect(() => statSync(dashboardExportPath,)).toThrow();
+			expect(() => statSync(dashboardExportPath,),).toThrow();
 
 			const dashboardCreateDryRun = JSON.parse(
 				(

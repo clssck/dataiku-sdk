@@ -57,7 +57,7 @@ function redactSessionProperties(value: unknown,): unknown {
 				return [
 					name,
 					item.map((property,) =>
-						isSecretSessionProperty(property,) ? { ...property, value: SECRET_REDACTED, } : property
+						isSecretSessionProperty(property,) ? { ...property, value: SECRET_REDACTED, } : property,
 					),
 				];
 			}

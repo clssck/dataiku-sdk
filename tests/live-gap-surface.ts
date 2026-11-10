@@ -58,7 +58,7 @@ function firstFixtureDataset(ctx: LiveContext,): string {
 
 function schemaNames(dataset: JsonRecord,): string[] {
 	const schema = dataset["schema"] as { columns?: Array<{ name?: string; }>; } | undefined;
-	return (schema?.columns ?? []).map(column => column.name ?? "");
+	return (schema?.columns ?? []).map(column => column.name ?? "",);
 }
 
 /** Create a python recipe writing `output` from `script`, then build it. */
@@ -105,7 +105,7 @@ async function exerciseDatasetSelection(ctx: LiveContext,): Promise<void> {
 			"--max-rows",
 			"5",
 		],);
-		const picked = full.columns.slice(0, 2,).map(column => column.name);
+		const picked = full.columns.slice(0, 2,).map(column => column.name,);
 		expect(picked.length,).toBeGreaterThan(0,);
 		const selected = await ctx.run<{ columns: Array<{ name: string; }>; rows: string[][]; }>([
 			"dataset",
@@ -116,8 +116,8 @@ async function exerciseDatasetSelection(ctx: LiveContext,): Promise<void> {
 			"--columns",
 			picked.join(",",),
 		],);
-		expect(selected.columns.map(column => column.name),).toEqual(picked,);
-		expect(selected.rows.every(row => row.length === picked.length),).toBe(true,);
+		expect(selected.columns.map(column => column.name,),).toEqual(picked,);
+		expect(selected.rows.every(row => row.length === picked.length,),).toBe(true,);
 		const output = path.join(ctx.dir, `gap_selection_${ctx.iteration}.csv`,);
 		await ctx.run([
 			"dataset",
@@ -129,7 +129,7 @@ async function exerciseDatasetSelection(ctx: LiveContext,): Promise<void> {
 			output,
 		],);
 		const header = (await Bun.file(output,).text()).split("\n",)[0];
-		expect(header.split(",",).map(name => name.replace(/^"|"$/g, "",)),).toEqual(picked,);
+		expect(header.split(",",).map(name => name.replace(/^"|"$/g, "",),),).toEqual(picked,);
 	},);
 }
 
@@ -346,7 +346,7 @@ async function exerciseMlflowExtension(ctx: LiveContext,): Promise<void> {
 			], {
 				projectKey: key,
 			},);
-			expect(models.map(model => model.artifactPath),).toContain("model",);
+			expect(models.map(model => model.artifactPath,),).toContain("model",);
 
 			await ctx.run([
 				"mlflow",
@@ -365,7 +365,7 @@ async function exerciseMlflowExtension(ctx: LiveContext,): Promise<void> {
 				`${MLFLOW_API}/runs/get?run_id=${encodeURIComponent(runId,)}`,
 				{ headers, },
 			);
-			const tags = Object.fromEntries((run.run?.data?.tags ?? []).map(tag => [tag.key, tag.value,]),);
+			const tags = Object.fromEntries((run.run?.data?.tags ?? []).map(tag => [tag.key, tag.value,],),);
 			expect(tags["dku-ext.predictionType"],).toBe("BINARY_CLASSIFICATION",);
 			expect(tags["dku-ext.target"],).toBe("churn_flag",);
 			expect(JSON.parse(tags["dku-ext.targetClasses"] ?? "[]",),).toEqual(["0", "1",],);
@@ -380,7 +380,7 @@ async function exerciseMlflowExtension(ctx: LiveContext,): Promise<void> {
 			const datasets = await ctx.run<Array<{ name?: string; type?: string; }>>(["dataset", "list",], {
 				projectKey: key,
 			},);
-			expect(datasets.find(dataset => dataset.name === "gap_mlflow_runs")?.type,).toBe(
+			expect(datasets.find(dataset => dataset.name === "gap_mlflow_runs",)?.type,).toBe(
 				"ExperimentsDB",
 			);
 
@@ -445,13 +445,13 @@ async function exerciseModelDiagnostics(ctx: LiveContext,): Promise<void> {
 		const lab = [ids.analysisId, ids.mlTaskId, ids.modelId,];
 		const version = [ids.savedModelId, ids.versionId,];
 		const tasks = await ctx.run<Array<{ mlTaskId?: string; }>>(["ml-task", "list",],);
-		expect(tasks.some(task => task.mlTaskId === ids.mlTaskId),).toBe(true,);
+		expect(tasks.some(task => task.mlTaskId === ids.mlTaskId,),).toBe(true,);
 		const ofAnalysis = await ctx.run<Array<{ mlTaskId?: string; }>>([
 			"analysis",
 			"list-ml-tasks",
 			ids.analysisId,
 		],);
-		expect(ofAnalysis.map(task => task.mlTaskId),).toContain(ids.mlTaskId,);
+		expect(ofAnalysis.map(task => task.mlTaskId,),).toContain(ids.mlTaskId,);
 		// Diagnostics only run on features the task uses; the guess policy decides which.
 		const taskSettings = await ctx.run<
 			{ preprocessing?: { per_feature?: Record<string, { role?: string; }>; }; }
@@ -462,8 +462,8 @@ async function exerciseModelDiagnostics(ctx: LiveContext,): Promise<void> {
 			ids.mlTaskId,
 		],);
 		const inputs = Object.entries(taskSettings.preprocessing?.per_feature ?? {},)
-			.filter(([, feature,],) => feature.role === "INPUT")
-			.map(([name,],) => name);
+			.filter(([, feature,],) => feature.role === "INPUT",)
+			.map(([name,],) => name,);
 		const [dependencyFeature, subpopulationFeature = dependencyFeature,] = inputs;
 		if (dependencyFeature === undefined) {
 			throw new Error("the retained ML task uses no input feature",);
@@ -489,7 +489,7 @@ async function exerciseModelDiagnostics(ctx: LiveContext,): Promise<void> {
 			"--kind",
 			"partial-dependencies",
 		],);
-		expect(labDependencies.partialDependencies?.map(entry => entry.feature),).toContain(
+		expect(labDependencies.partialDependencies?.map(entry => entry.feature,),).toContain(
 			dependencyFeature,
 		);
 
@@ -515,7 +515,7 @@ async function exerciseModelDiagnostics(ctx: LiveContext,): Promise<void> {
 			"--kind",
 			"subpopulation-analyses",
 		],);
-		expect(versionSubpopulations.subpopulationAnalyses?.map(entry => entry.feature),).toContain(
+		expect(versionSubpopulations.subpopulationAnalyses?.map(entry => entry.feature,),).toContain(
 			subpopulationFeature,
 		);
 
@@ -591,10 +591,10 @@ async function exerciseLabScoringExports(ctx: LiveContext,): Promise<void> {
 		const ids = mlIds(ctx,);
 		const lab = [ids.analysisId, ids.mlTaskId, ids.modelId,];
 		for (
-			const [action, extension,] of [["download-scoring-jar", "jar",], [
-				"download-scoring-pmml",
-				"pmml",
-			],]
+			const [action, extension,] of [
+				["download-scoring-jar", "jar",],
+				["download-scoring-pmml", "pmml",],
+			]
 		) {
 			const output = path.join(ctx.dir, `gap_lab_scoring_${ctx.iteration}.${extension}`,);
 			const result = await ctx.run<{ bytes: number; }>([

@@ -230,7 +230,7 @@ export const connectionCommands: Record<string, CommandMeta> = withUsage("connec
 				};
 			}
 			if (f["if-exists"] === true) {
-				const current = await readIfExists(() => c.connections.adminGet(name,));
+				const current = await readIfExists(() => c.connections.adminGet(name,),);
 				if (!current) return skipResult("connection", name, "missing",);
 			}
 			return c.connections.adminDelete(name,);

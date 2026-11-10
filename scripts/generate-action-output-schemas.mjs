@@ -37,7 +37,10 @@ const schemas = typeBoxCommandOutputSchemas();
 const metadata = {
 	format: 1,
 	schemas: Object.fromEntries(
-		Object.entries(schemas,).sort(([left,], [right,],) => (left < right ? -1 : left > right ? 1 : 0)),
+		Object.entries(schemas,).sort((
+			[left,],
+			[right,],
+		) => (left < right ? -1 : left > right ? 1 : 0),),
 	),
 };
 const serialized = `${JSON.stringify(metadata, null, "\t",)}\n`;

@@ -252,7 +252,7 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 		expect(created.created,).toBe(id,);
 		try {
 			const list = await ctx.run<Array<{ id: string; }>>(["scenario", "list",],);
-			expect(list.some((scenario,) => scenario.id === id),).toBe(true,);
+			expect(list.some((scenario,) => scenario.id === id,),).toBe(true,);
 			const details = await ctx.run<{ id: string; name?: string; type?: string; }>([
 				"scenario",
 				"get",
@@ -321,7 +321,7 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 				"--full",
 			],);
 			expect(lastRuns.length,).toBeGreaterThan(0,);
-			const summary = lastRuns.find((entry,) => entry.runId === runId);
+			const summary = lastRuns.find((entry,) => entry.runId === runId,);
 			expect(summary,).toBeTruthy();
 			expect(summary?.result?.outcome,).toBe("SUCCESS",);
 
@@ -357,7 +357,7 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 		} finally {
 			await deleteScenarioIfExists(ctx, id,);
 			const remaining = await ctx.run<Array<{ id: string; }>>(["scenario", "list",],);
-			expect(remaining.some((scenario,) => scenario.id === id),).toBe(false,);
+			expect(remaining.some((scenario,) => scenario.id === id,),).toBe(false,);
 		}
 	},);
 
@@ -536,7 +536,7 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 				"list-worksheets",
 				dataset,
 			],);
-			expect(list.some((entry,) => entry.id === worksheetId && entry.name === name),).toBe(true,);
+			expect(list.some((entry,) => entry.id === worksheetId && entry.name === name,),).toBe(true,);
 
 			const got = await ctx.run<
 				{
@@ -600,7 +600,7 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 				"list-worksheets",
 				dataset,
 			],);
-			expect(remaining.some((entry,) => entry.id === worksheetId),).toBe(false,);
+			expect(remaining.some((entry,) => entry.id === worksheetId,),).toBe(false,);
 		}
 	},);
 
@@ -767,7 +767,7 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 			// The retained lab may have history from earlier days. Bound the empty
 			// window before its oldest recorded bucket, not relative to the current day.
 			const firstTimestamp = Math.min(
-				...timeline.map(entry => requireNumber(entry.timestamp, "timeline timestamp",)),
+				...timeline.map(entry => requireNumber(entry.timestamp, "timeline timestamp",),),
 			);
 			const emptyWindow = await ctx.run<Array<Record<string, unknown>>>([
 				"data-quality",
@@ -919,7 +919,7 @@ export async function exerciseScenariosStats(ctx: LiveContext,): Promise<void> {
 			const deleted = await ctx.run<{ deleted: string; }>(["dashboard", "delete", id,],);
 			expect(deleted.deleted,).toBe(id,);
 			const remaining = await ctx.run<Array<{ id: string; }>>(["dashboard", "list",],);
-			expect(remaining.some((dashboard,) => dashboard.id === id),).toBe(false,);
+			expect(remaining.some((dashboard,) => dashboard.id === id,),).toBe(false,);
 		}
 	}, { required: false, },);
 }

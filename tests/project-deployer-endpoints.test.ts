@@ -17,7 +17,7 @@ describe("Project Deployer and bundle endpoints", () => {
 				seen.push(`${req.method} ${req.url}`,);
 				res.setHeader("Content-Type", "application/json",);
 				res.end(req.url?.includes("stages",) ? "[]" : "{}",);
-			})()
+			})(),
 		);
 		const listening = Promise.withResolvers<void>();
 		server.listen(0, "127.0.0.1", () => listening.resolve(),);
@@ -49,7 +49,7 @@ describe("Project Deployer and bundle endpoints", () => {
 			await client.bundles.createProjectFromBundle({ filePath: bundleFile, },);
 		} finally {
 			const closed = Promise.withResolvers<void>();
-			server.close(() => closed.resolve());
+			server.close(() => closed.resolve(),);
 			await closed.promise;
 		}
 		expect(seen,).toEqual([

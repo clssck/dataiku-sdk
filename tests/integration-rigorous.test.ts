@@ -320,7 +320,7 @@ describeIntegration("Rigorous integration: CLI discoverability and local validat
 
 		for (const [resource, actions,] of Object.entries(registry,)) {
 			for (const [action, meta,] of Object.entries(actions,)) {
-				const flagNames = meta.flags?.map((flag,) => flag.name) ?? [];
+				const flagNames = meta.flags?.map((flag,) => flag.name,) ?? [];
 				expect(flagNames, `${resource} ${action} flags`,).not.toContain("help",);
 				expect(flagNames, `${resource} ${action} flags`,).not.toContain("report-json",);
 			}
@@ -879,7 +879,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			const created = await client.flowZones.create({ name: zoneName, color: "#2ab1ac", },);
 			zoneId = created.id;
 			cleanup.defer(async () => {
-				if (zoneId) await client.flowZones.delete(zoneId,).catch(() => undefined);
+				if (zoneId) await client.flowZones.delete(zoneId,).catch(() => undefined,);
 			},);
 			expect(created.name,).toBe(zoneName,);
 
@@ -922,7 +922,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				},);
 				expect(
 					movedBySdk.items?.some((item,) =>
-						item.objectType === "DATASET" && item.objectId === datasetName
+						item.objectType === "DATASET" && item.objectId === datasetName,
 					),
 				)
 					.toBe(true,);
@@ -934,7 +934,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				},);
 				secondZoneId = secondZone.id;
 				cleanup.defer(async () => {
-					if (secondZoneId) await client.flowZones.delete(secondZoneId,).catch(() => undefined);
+					if (secondZoneId) await client.flowZones.delete(secondZoneId,).catch(() => undefined,);
 				},);
 
 				const moveDryRun = parseCliJson(
@@ -953,7 +953,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				) as { items?: Array<{ objectId?: string; objectType?: string; }>; };
 				expect(
 					movedByCli.items?.some((item,) =>
-						item.objectType === "DATASET" && item.objectId === datasetName
+						item.objectType === "DATASET" && item.objectId === datasetName,
 					),
 				)
 					.toBe(true,);
@@ -988,7 +988,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			articleId = createdArticle.article?.id;
 			expect(articleId, "created wiki article id",).toBeTruthy();
 			cleanup.defer(async () => {
-				if (articleId) await client.wiki.delete(articleId,).catch(() => undefined);
+				if (articleId) await client.wiki.delete(articleId,).catch(() => undefined,);
 			},);
 			expect(createdArticle.article?.name,).toBe(articleName,);
 			expect(createdArticle.payload,).toBe("initial body",);
@@ -1018,7 +1018,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			const deletedArticleId = articleId;
 			articleId = undefined;
 			const remainingArticles = await client.wiki.list();
-			expect(remainingArticles.map((article,) => article.article.id),).not.toContain(
+			expect(remainingArticles.map((article,) => article.article.id,),).not.toContain(
 				deletedArticleId,
 			);
 
@@ -1030,7 +1030,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			dashboardId = createdDashboard.id;
 			expect(dashboardId, "created dashboard id",).toBeTruthy();
 			cleanup.defer(async () => {
-				if (dashboardId) await client.dashboards.delete(dashboardId,).catch(() => undefined);
+				if (dashboardId) await client.dashboards.delete(dashboardId,).catch(() => undefined,);
 			},);
 			expect(createdDashboard.name,).toBe(dashboardName,);
 			expect(Array.isArray(createdDashboard.pages,),).toBe(true,);
@@ -1056,7 +1056,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			const deletedDashboardId = dashboardId;
 			dashboardId = undefined;
 			const remainingDashboards = await client.dashboards.list();
-			expect(remainingDashboards.map((dashboard,) => dashboard.id),).not.toContain(
+			expect(remainingDashboards.map((dashboard,) => dashboard.id,),).not.toContain(
 				deletedDashboardId,
 			);
 		} finally {
@@ -1096,7 +1096,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				const createdInsight = await client.insights.create({ data: prototype, },);
 				insightId = createdInsight.id;
 				cleanup.defer(async () => {
-					if (insightId) await client.insights.delete(insightId,).catch(() => undefined);
+					if (insightId) await client.insights.delete(insightId,).catch(() => undefined,);
 				},);
 				expect(createdInsight.name,).toBe(insightName,);
 
@@ -1127,7 +1127,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				await client.insights.delete(insightId,);
 				const deletedInsightId = insightId;
 				insightId = undefined;
-				expect((await client.insights.list()).map((insight,) => insight.id),).not.toContain(
+				expect((await client.insights.list()).map((insight,) => insight.id,),).not.toContain(
 					deletedInsightId,
 				);
 			}
@@ -1180,7 +1180,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			cleanup.defer(async () => {
 				if (dataQualityRule) {
 					await client.dataQuality.deleteRule(dataQualityRule.datasetName, dataQualityRule.ruleId,)
-						.catch(() => undefined);
+						.catch(() => undefined,);
 				}
 			},);
 			expect(createdRule.displayName,).toBe(ruleName,);
@@ -1264,7 +1264,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			const deletedRuleId = dataQualityRule.ruleId;
 			dataQualityRule = undefined;
 			const remainingRules = await client.dataQuality.listRules(datasetName,);
-			expect(remainingRules.map((rule,) => rule.id),).not.toContain(deletedRuleId,);
+			expect(remainingRules.map((rule,) => rule.id,),).not.toContain(deletedRuleId,);
 		} finally {
 			await cleanup.run();
 		}
@@ -1535,20 +1535,20 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 		const cleanup = createCleanupStack();
 		cleanup.defer(async () => {
 			const contents = await client.folders.contents(folderId,);
-			if (contents.some(item => item.path === remotePath || item.path === remotePath.slice(1,))) {
+			if (contents.some(item => item.path === remotePath || item.path === remotePath.slice(1,),)) {
 				await client.folders.deleteFile(folderId, remotePath,);
 			}
 			await client.folders.delete(folderId,);
 		},);
 		try {
 			const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dss-rigorous-",),);
-			cleanup.defer(() => fs.rm(tempDir, { recursive: true, force: true, },));
+			cleanup.defer(() => fs.rm(tempDir, { recursive: true, force: true, },),);
 			const localPath = path.join(tempDir, "upload.txt",);
 			const downloadPath = path.join(tempDir, "download.txt",);
 			await fs.writeFile(localPath, "hello rigorous integration\n", "utf-8",);
 			await client.folders.upload(folderId, remotePath, localPath,);
 			const contents = await client.folders.contents(folderId,);
-			expect(contents.some(item => item.path === remotePath || item.path === remotePath.slice(1,)),)
+			expect(contents.some(item => item.path === remotePath || item.path === remotePath.slice(1,),),)
 				.toBe(true,);
 			await client.folders.download(folderId, remotePath, { localPath: downloadPath, },);
 			expect(await fs.readFile(downloadPath, "utf-8",),).toBe("hello rigorous integration\n",);

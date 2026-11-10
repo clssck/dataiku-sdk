@@ -465,7 +465,7 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 			const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
 			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const list = await c.datasets.list(pk,);
-				const existing = list.find((d,) => d.name === name);
+				const existing = list.find((d,) => d.name === name,);
 				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("dataset", name, "exists", { current: existing, },);
 				}
@@ -726,7 +726,7 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 			requireArgs(a, 1, commandUsage("dataset", "delete",),);
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.datasets.get(a[0], pk,));
+				const current = await readIfExists(() => c.datasets.get(a[0], pk,),);
 				if (!current) return skipResult("dataset", a[0], "missing",);
 				if (executionMode(f,).dryRun) {
 					return { dryRun: true, action: "delete", resource: "dataset", name: a[0], current, };

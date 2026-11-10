@@ -46,7 +46,7 @@ export const folderCommands: Record<string, CommandMeta> = withUsage("folder", {
 			};
 			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const list = await c.folders.list(pk,);
-				const existing = list.find((folder,) => folder.name === name);
+				const existing = list.find((folder,) => folder.name === name,);
 				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("folder", existing.id ?? name, "exists", { current: existing, },);
 				}
@@ -126,7 +126,7 @@ export const folderCommands: Record<string, CommandMeta> = withUsage("folder", {
 			const pk = f["project-key"] as string | undefined;
 			const folderId = await resolveFolderId(c, a[0], f,);
 			if (executionMode(f,).dryRun || f["if-exists"] === true) {
-				const current = await readIfExists(() => c.folders.get(folderId, pk,));
+				const current = await readIfExists(() => c.folders.get(folderId, pk,),);
 				if (!current) return skipResult("folder", folderId, "missing",);
 				if (executionMode(f,).dryRun) {
 					return {

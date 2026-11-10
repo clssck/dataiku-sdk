@@ -104,8 +104,8 @@ function flowAdjacency(map: NormalizedFlowMap,): {
 		if (edge.from === edge.to) selfLoops.add(edge.from,);
 	}
 	return {
-		outgoing: new Map([...outgoingSets,].map(([id, values,],) => [id, sorted(values,),]),),
-		undirected: new Map([...undirectedSets,].map(([id, values,],) => [id, sorted(values,),]),),
+		outgoing: new Map([...outgoingSets,].map(([id, values,],) => [id, sorted(values,),],),),
+		undirected: new Map([...undirectedSets,].map(([id, values,],) => [id, sorted(values,),],),),
 		selfLoops,
 	};
 }
@@ -115,7 +115,7 @@ function strongComponents(
 	outgoing: Map<string, string[]>,
 	selfLoops: Set<string>,
 ): StrongComponent[] {
-	const incoming = new Map(nodeIds.map((nodeId,) => [nodeId, [] as string[],]),);
+	const incoming = new Map(nodeIds.map((nodeId,) => [nodeId, [] as string[],],),);
 	for (const [nodeId, successors,] of outgoing) {
 		for (const successor of successors) incoming.get(successor,)?.push(nodeId,);
 	}
@@ -167,8 +167,8 @@ function strongComponents(
 			cyclic: members.length > 1 || selfLoops.has(members[0],),
 		},);
 	}
-	components.sort((a, b,) => compareStrings(a.nodeIds[0], b.nodeIds[0],));
-	components.forEach((component, index,) => component.id = index);
+	components.sort((a, b,) => compareStrings(a.nodeIds[0], b.nodeIds[0],),);
+	components.forEach((component, index,) => component.id = index,);
 	return components;
 }
 
@@ -195,8 +195,8 @@ function componentLayers(
 		outgoing.get(from,)!.add(to,);
 		indegree.set(to, indegree.get(to,)! + 1,);
 	}
-	const ready = strong.filter((component,) => indegree.get(component.id,) === 0).map((component,) =>
-		component.id
+	const ready = strong.filter((component,) => indegree.get(component.id,) === 0,).map((component,) =>
+		component.id,
 	);
 	while (ready.length > 0) {
 		const current = ready.pop()!;
@@ -206,7 +206,7 @@ function componentLayers(
 			if (indegree.get(successor,) === 0) ready.push(successor,);
 		}
 	}
-	return new Map([...strongByNode,].map(([nodeId, id,],) => [nodeId, layers.get(id,) ?? 0,]),);
+	return new Map([...strongByNode,].map(([nodeId, id,],) => [nodeId, layers.get(id,) ?? 0,],),);
 }
 
 function weakComponents(
@@ -219,7 +219,7 @@ function weakComponents(
 	const componentByNode = new Map<string, string>();
 	const rootSet = new Set(map.roots,);
 	const leafSet = new Set(map.leaves,);
-	for (const start of map.nodes.map((node,) => node.id)) {
+	for (const start of map.nodes.map((node,) => node.id,)) {
 		if (seen.has(start,)) continue;
 		const queue = [start,];
 		const nodeIds: string[] = [];
@@ -239,9 +239,9 @@ function weakComponents(
 		components.push({
 			id,
 			nodeIds,
-			rootIds: nodeIds.filter((nodeId,) => rootSet.has(nodeId,)),
-			leafIds: nodeIds.filter((nodeId,) => leafSet.has(nodeId,)),
-			cyclic: nodeIds.some((nodeId,) => cyclicNodes.has(nodeId,)),
+			rootIds: nodeIds.filter((nodeId,) => rootSet.has(nodeId,),),
+			leafIds: nodeIds.filter((nodeId,) => leafSet.has(nodeId,),),
+			cyclic: nodeIds.some((nodeId,) => cyclicNodes.has(nodeId,),),
 		},);
 	}
 	return { components, componentByNode, };
@@ -250,13 +250,13 @@ function weakComponents(
 export function flowTopologyFingerprint(map: NormalizedFlowMap,): string {
 	return stableHash({
 		nodes: [...map.nodes,]
-			.map((node,) => ({ id: node.id, kind: node.kind, }))
-			.sort((a, b,) => compareStrings(a.id, b.id,)),
+			.map((node,) => ({ id: node.id, kind: node.kind, }),)
+			.sort((a, b,) => compareStrings(a.id, b.id,),),
 		edges: [...map.edges,]
-			.map((edge,) => ({ from: edge.from, to: edge.to, relation: edge.relation, }))
+			.map((edge,) => ({ from: edge.from, to: edge.to, relation: edge.relation, }),)
 			.sort((a, b,) =>
 				compareStrings(a.from, b.from,) || compareStrings(a.to, b.to,)
-				|| compareStrings(a.relation, b.relation,)
+				|| compareStrings(a.relation, b.relation,),
 			),
 	},);
 }
@@ -266,7 +266,7 @@ export function analyzeFlowMap(
 	flowZones: FlowZone[],
 	options: { topologyFingerprint?: string; truncated?: boolean; } = {},
 ): AnalyzedFlowMap {
-	const nodeIds = new Set(map.nodes.map((node,) => node.id),);
+	const nodeIds = new Set(map.nodes.map((node,) => node.id,),);
 	const diagnostics: FlowMapDiagnostic[] = [];
 	const sortedZones = [...flowZones,].sort((a, b,) => {
 		if (a.id === "default") return b.id === "default" ? 0 : 1;
@@ -278,7 +278,7 @@ export function analyzeFlowMap(
 		if (bp) return 1;
 		return compareStrings(a.name, b.name,) || compareStrings(a.id, b.id,);
 	},);
-	if (!sortedZones.some((zone,) => zone.id === "default")) {
+	if (!sortedZones.some((zone,) => zone.id === "default",)) {
 		sortedZones.push({ id: "default", name: "Default", items: [], },);
 	}
 	const zoneByNode = new Map<string, FlowZone>();
@@ -301,7 +301,7 @@ export function analyzeFlowMap(
 			zoneByNode.set(nodeId, zone,);
 		}
 	}
-	const defaultZone = sortedZones.find((zone,) => zone.id === "default")!;
+	const defaultZone = sortedZones.find((zone,) => zone.id === "default",)!;
 	for (const nodeId of nodeIds) {
 		if (!zoneByNode.has(nodeId,)) zoneByNode.set(nodeId, defaultZone,);
 	}
@@ -311,10 +311,10 @@ export function analyzeFlowMap(
 	const strong = strongComponents(nodeIdList, adjacency.outgoing, adjacency.selfLoops,);
 	const layers = componentLayers(strong, map.edges,);
 	const cyclicNodes = new Set(
-		strong.filter((component,) => component.cyclic).flatMap((component,) => component.nodeIds),
+		strong.filter((component,) => component.cyclic,).flatMap((component,) => component.nodeIds,),
 	);
 	const { components, componentByNode, } = weakComponents(map, adjacency.undirected, cyclicNodes,);
-	for (const component of strong.filter((candidate,) => candidate.cyclic)) {
+	for (const component of strong.filter((candidate,) => candidate.cyclic,)) {
 		diagnostics.push({
 			code: "cycle_detected",
 			severity: "warning",
@@ -327,11 +327,11 @@ export function analyzeFlowMap(
 			code: "disconnected_components",
 			severity: "info",
 			message: `Flow contains ${components.length} disconnected components.`,
-			componentIds: components.map((component,) => component.id),
+			componentIds: components.map((component,) => component.id,),
 		},);
 	}
 	const isolated = nodeIdList.filter((nodeId,) =>
-		(adjacency.undirected.get(nodeId,) ?? []).length === 0
+		(adjacency.undirected.get(nodeId,) ?? []).length === 0,
 	);
 	if (isolated.length > 0) {
 		diagnostics.push({
@@ -341,7 +341,7 @@ export function analyzeFlowMap(
 			nodeIds: isolated,
 		},);
 	}
-	const defaultNodes = nodeIdList.filter((nodeId,) => zoneByNode.get(nodeId,)!.id === "default");
+	const defaultNodes = nodeIdList.filter((nodeId,) => zoneByNode.get(nodeId,)!.id === "default",);
 	if (defaultNodes.length > 0) {
 		diagnostics.push({
 			code: "default_zone_items",
@@ -371,7 +371,7 @@ export function analyzeFlowMap(
 		},);
 	}
 	diagnostics.sort((a, b,) =>
-		compareStrings(a.code, b.code,) || compareStrings(a.message, b.message,)
+		compareStrings(a.code, b.code,) || compareStrings(a.message, b.message,),
 	);
 
 	const analyzedNodes = map.nodes.map<AnalyzedFlowNode>((node,) => {
@@ -422,8 +422,8 @@ function mermaidLabel(value: string,): string {
 }
 
 function renderMermaid(map: AnalyzedFlowMap,): string {
-	const idByNode = new Map(map.nodes.map((node, index,) => [node.id, `n${index}`,]),);
-	const nodeById = new Map(map.nodes.map((node,) => [node.id, node,]),);
+	const idByNode = new Map(map.nodes.map((node, index,) => [node.id, `n${index}`,],),);
+	const nodeById = new Map(map.nodes.map((node,) => [node.id, node,],),);
 	const lines = ["flowchart LR",];
 	for (const [zoneIndex, zone,] of map.zones.entries()) {
 		if (zone.nodeIds.length === 0) continue;
@@ -447,7 +447,7 @@ function renderMermaid(map: AnalyzedFlowMap,): string {
 }
 
 function renderAscii(map: AnalyzedFlowMap,): string {
-	const nodeById = new Map(map.nodes.map((node,) => [node.id, node,]),);
+	const nodeById = new Map(map.nodes.map((node,) => [node.id, node,],),);
 	const lines: string[] = [];
 	for (const component of map.components) {
 		lines.push(`${component.id}${component.cyclic ? " (cyclic)" : ""}`,);
@@ -458,7 +458,7 @@ function renderAscii(map: AnalyzedFlowMap,): string {
 			entries.push(`${readableNode(node,)} [${node.zoneName}]`,);
 			layers.set(node.layer, entries,);
 		}
-		for (const [layer, entries,] of [...layers,].sort(([a,], [b,],) => a - b)) {
+		for (const [layer, entries,] of [...layers,].sort(([a,], [b,],) => a - b,)) {
 			lines.push(`  L${layer}: ${entries.sort(compareStrings,).join(" | ",)}`,);
 		}
 	}

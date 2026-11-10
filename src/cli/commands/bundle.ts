@@ -117,7 +117,7 @@ export const bundleCommands: Record<string, CommandMeta> = withUsage("bundle", {
 					typeof parsed !== "object"
 					|| parsed === null
 					|| Array.isArray(parsed,)
-					|| !Object.values(parsed,).every((value,) => typeof value === "boolean")
+					|| !Object.values(parsed,).every((value,) => typeof value === "boolean",)
 				) {
 					throw new UsageError(
 						`--scenarios must be a JSON object mapping scenario IDs to true|false. Usage: ${

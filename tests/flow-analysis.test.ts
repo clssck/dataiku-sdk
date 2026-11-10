@@ -37,7 +37,7 @@ function analyzedFixture() {
 describe("flow map analysis", () => {
 	it("joins zones and computes layers, components, and diagnostics", () => {
 		const result = analyzedFixture();
-		const byId = new Map(result.nodes.map((node,) => [node.id, node,]),);
+		const byId = new Map(result.nodes.map((node,) => [node.id, node,],),);
 
 		expect(byId.get("raw",),).toMatchObject({ layer: 0, zoneId: "raw-zone", zoneName: "Raw", },);
 		expect(byId.get("prepare",),).toMatchObject({ layer: 1, zoneId: "prepared-zone", },);
@@ -47,14 +47,14 @@ describe("flow map analysis", () => {
 			zoneId: "default",
 			zoneName: "Default",
 		},);
-		expect(result.zones.find((zone,) => zone.id === "raw-zone"),).toMatchObject({
+		expect(result.zones.find((zone,) => zone.id === "raw-zone",),).toMatchObject({
 			color: "#64748b",
 			position: { x: 10, y: 20, },
 			nodeIds: ["raw",],
 		},);
 		expect(result.components,).toHaveLength(2,);
 		expect(result.components[0]?.nodeIds,).toEqual(["clean", "prepare", "raw",],);
-		expect(result.diagnostics.map((diagnostic,) => diagnostic.code),).toEqual([
+		expect(result.diagnostics.map((diagnostic,) => diagnostic.code,),).toEqual([
 			"cross_zone_edges",
 			"default_zone_items",
 			"disconnected_components",
@@ -71,7 +71,7 @@ describe("flow map analysis", () => {
 			},
 		}, "TEST",);
 		const result = analyzeFlowMap(normalized, [],);
-		const byId = new Map(result.nodes.map((node,) => [node.id, node,]),);
+		const byId = new Map(result.nodes.map((node,) => [node.id, node,],),);
 
 		expect(byId.get("a",)?.layer,).toBe(0,);
 		expect(byId.get("b",)?.layer,).toBe(0,);
@@ -106,12 +106,12 @@ describe("flow map analysis", () => {
 				items: [{ objectType: "DATASET", objectId: "raw", },],
 			},
 		],);
-		const byId = new Map(result.nodes.map((node,) => [node.id, node,]),);
+		const byId = new Map(result.nodes.map((node,) => [node.id, node,],),);
 
 		expect(byId.get("raw",),).toMatchObject({ zoneId: "second", },);
 		expect(byId.get("prepare",),).toMatchObject({ zoneId: "first", },);
-		expect(result.zones.find((zone,) => zone.id === "first")?.nodeIds,).toEqual(["prepare",],);
-		expect(result.diagnostics.map((diagnostic,) => diagnostic.code),).not.toContain(
+		expect(result.zones.find((zone,) => zone.id === "first",)?.nodeIds,).toEqual(["prepare",],);
+		expect(result.diagnostics.map((diagnostic,) => diagnostic.code,),).not.toContain(
 			"duplicate_zone_assignment",
 		);
 	});
@@ -175,7 +175,7 @@ describe("flow map analysis", () => {
 
 	it("renders optional Mermaid and ASCII views", () => {
 		const result = analyzedFixture();
-		result.nodes.find((node,) => node.id === "raw")!.name = 'raw & "quoted"';
+		result.nodes.find((node,) => node.id === "raw",)!.name = 'raw & "quoted"';
 		const mermaid = renderFlowMap(result, "mermaid",);
 		const ascii = renderFlowMap(result, "ascii",);
 

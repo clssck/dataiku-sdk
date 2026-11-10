@@ -359,7 +359,7 @@ describe("Project cleanup ledger replay", () => {
 				},);
 			},);
 			// The DELETE request itself must never be issued for an absent target.
-			expect(requests.filter((request,) => request.startsWith("DELETE",)),).toEqual([],);
+			expect(requests.filter((request,) => request.startsWith("DELETE",),),).toEqual([],);
 		} finally {
 			rmSync(dir, { recursive: true, force: true, },);
 		}
@@ -552,7 +552,7 @@ describe("Project export credential warning", () => {
 			};
 			expect(warningEvent.type,).toBe("warning",);
 			const warning = warningEvent.warnings.find((entry,) =>
-				entry.code === "export_contains_credentials"
+				entry.code === "export_contains_credentials",
 			)!;
 			expect(warning,).toBeDefined();
 			expect(warning.total,).toBe(3,);
@@ -630,7 +630,7 @@ describe("Project export credential warning", () => {
 			};
 			expect(report.valid,).toBe(true,);
 			expect(report.credentialFindings,).toHaveLength(3,);
-			expect(report.issues.map((issue,) => issue.code),).toContain("credential_structure",);
+			expect(report.issues.map((issue,) => issue.code,),).toContain("credential_structure",);
 			for (const secret of ARCHIVE_FIXTURE_SECRETS) expect(stdout,).not.toContain(secret,);
 		} finally {
 			rmSync(dir, { recursive: true, force: true, },);

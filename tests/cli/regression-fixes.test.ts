@@ -36,8 +36,8 @@ describe("CLI regression fixes", () => {
 			// knowledge-bank search used to dereference its missing positional and exit internal_error.
 			const targets = Object.values(buildCommandRegistry(),).flatMap((actions,) =>
 				Object.values(actions,).filter((entry,) =>
-					entry.positionalArguments.some((positional,) => positional.required)
-				)
+					entry.positionalArguments.some((positional,) => positional.required,),
+				),
 			);
 			const env = { ...hermeticEnv, DATAIKU_URL: "http://127.0.0.1:9", DATAIKU_API_KEY: "x", };
 			const failures: string[] = [];
@@ -804,9 +804,9 @@ describe("CLI regression fixes", () => {
 			expect(failure.stderr,).toBe("",);
 			const events = failure.stdout
 				.split(/\r?\n/u,)
-				.filter((line,) => line.length > 0)
-				.map((line,) => JSON.parse(line,) as Record<string, unknown>);
-			const report = events.find((event,) => event.type === "error");
+				.filter((line,) => line.length > 0,)
+				.map((line,) => JSON.parse(line,) as Record<string, unknown>,);
+			const report = events.find((event,) => event.type === "error",);
 			expect(report,).toMatchObject({
 				code: "validation_failed",
 				category: "usage",
@@ -815,7 +815,7 @@ describe("CLI regression fixes", () => {
 			},);
 		},);
 		expect(requests,).toEqual(["GET /public/api/projects/INST/app-manifest",],);
-		expect(requests.some((request,) => request.startsWith("PUT ",)),).toBe(false,);
+		expect(requests.some((request,) => request.startsWith("PUT ",),),).toBe(false,);
 	});
 
 	it("flow-zone graph without an id fetches the full project graph", async () => {
@@ -980,7 +980,7 @@ describe("CLI regression fixes", () => {
 			},),
 		);
 		const datasetGetProjectKey = registry["dataset.get"]?.flags.find((flag,) =>
-			flag.name === "project-key"
+			flag.name === "project-key",
 		);
 		expect(datasetGetProjectKey,).toEqual(
 			expect.objectContaining({ name: "project-key", kind: "value", },),
@@ -1014,7 +1014,7 @@ describe("CLI regression fixes", () => {
 			expect(result,).toMatchObject({ skipped: "nope", reason: "missing", },);
 		},);
 		expect(requests,).toEqual(["GET /public/api/meanings/nope",],);
-		expect(requests.some((request,) => request.startsWith("DELETE ",)),).toBe(false,);
+		expect(requests.some((request,) => request.startsWith("DELETE ",),),).toBe(false,);
 	});
 	it("recipe clone maps missing output dataset creation to copy-output-settings usage guidance", async () => {
 		await withCliServer((req, res,) => {
@@ -1311,14 +1311,14 @@ describe("meta command flag validation", () => {
 		const report = JSON.parse(failure.stdout,) as {
 			steps: Array<{ resource: string; error?: { error?: string; resource?: string; }; }>;
 		};
-		expect(report.steps.map((step,) => step.resource),).toEqual(["dataset", "recipe", "scenario",],);
-		expect(report.steps.map((step,) => step.error?.resource),).toEqual([
+		expect(report.steps.map((step,) => step.resource,),).toEqual(["dataset", "recipe", "scenario",],);
+		expect(report.steps.map((step,) => step.error?.resource,),).toEqual([
 			undefined,
 			undefined,
 			undefined,
 		],);
 		expect(
-			report.steps.map((step,) => step.error?.error?.includes(`Usage: dss ${step.resource} get`,)),
+			report.steps.map((step,) => step.error?.error?.includes(`Usage: dss ${step.resource} get`,),),
 		)
 			.toEqual([true, true, true,],);
 	});
@@ -1341,18 +1341,15 @@ describe("meta command flag validation", () => {
 			"batch",
 			"--dry-run",
 			"--data",
-			JSON.stringify([["version", "--drop-data",], [
-				"cleanup",
-				"--file",
-				"x",
-				"--dry-run",
-				"--apply",
-			],],),
+			JSON.stringify([
+				["version", "--drop-data",],
+				["cleanup", "--file", "x", "--dry-run", "--apply",],
+			],),
 		], { env: hermeticEnv, },);
 		const report = JSON.parse(failure.stdout,) as {
 			steps: Array<{ runnable: boolean; error?: { code?: string; }; }>;
 		};
-		expect(report.steps.map((step,) => [step.runnable, step.error?.code,]),).toEqual([
+		expect(report.steps.map((step,) => [step.runnable, step.error?.code,],),).toEqual([
 			[false, "unknown_flag",],
 			[false, "usage_error",],
 		],);

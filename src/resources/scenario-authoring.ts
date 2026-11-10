@@ -120,10 +120,12 @@ export function temporalTrigger(
 	}
 	if (spec.frequency === "minutely") {
 		for (
-			const [flag, value,] of [["--hour", spec.hour,], ["--minute", spec.minute,], [
-				"--start-date",
-				spec.startDate,
-			], ["--timezone", spec.timezone,],] as const
+			const [flag, value,] of [
+				["--hour", spec.hour,],
+				["--minute", spec.minute,],
+				["--start-date", spec.startDate,],
+				["--timezone", spec.timezone,],
+			] as const
 		) {
 			if (value !== undefined) throw invalid(`${flag} does not apply to minutely triggers.`,);
 		}
@@ -166,10 +168,10 @@ export function temporalTrigger(
 				`--days is required for weekly triggers (${SCENARIO_WEEKDAYS.join(", ",)}, comma-separated).`,
 			);
 		}
-		const unknown = spec.days.filter((day,) => !isOneOf(SCENARIO_WEEKDAYS, day,));
+		const unknown = spec.days.filter((day,) => !isOneOf(SCENARIO_WEEKDAYS, day,),);
 		if (unknown.length > 0) {
 			throw invalid(
-				`Unknown weekday ${unknown.map((day,) => JSON.stringify(day,)).join(", ",)}; use ${
+				`Unknown weekday ${unknown.map((day,) => JSON.stringify(day,),).join(", ",)}; use ${
 					SCENARIO_WEEKDAYS.join(", ",)
 				}.`,
 			);
@@ -279,7 +281,7 @@ export function selectScenarioListIndex(
 		return selector.index;
 	}
 	const matches = items.flatMap((item, index,) =>
-		isRecord(item,) && item["name"] === selector.name ? [index,] : []
+		isRecord(item,) && item["name"] === selector.name ? [index,] : [],
 	);
 	if (matches.length !== 1) {
 		throw invalid(

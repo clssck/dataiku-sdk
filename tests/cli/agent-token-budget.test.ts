@@ -183,8 +183,8 @@ describe("agent-facing token budgets", () => {
 
 	it("preserves reserved-token validation with either counting backend", () => {
 		for (const token of ["<|endoftext|>", "<|endofprompt|>",]) {
-			expect(() => measureAgentText(token,)).toThrow();
-			expect(() => measureAgentText(token, "reference",)).toThrow();
+			expect(() => measureAgentText(token,),).toThrow();
+			expect(() => measureAgentText(token, "reference",),).toThrow();
 		}
 	});
 
@@ -349,7 +349,7 @@ describe("agent-facing token budgets", () => {
 		expect(defaultTokens * 100,).toBeLessThan(LEGACY_FULL_REGISTRY_TOKENS,);
 		expect(actionTokens * 100,).toBeLessThan(LEGACY_FULL_REGISTRY_TOKENS,);
 		expect(
-			Math.max(...datasetCreate.stdout.trimEnd().split("\n",).map(line => Buffer.byteLength(line,)),),
+			Math.max(...datasetCreate.stdout.trimEnd().split("\n",).map(line => Buffer.byteLength(line,),),),
 		)
 			.toBeLessThanOrEqual(760,);
 		const scoped = JSON.parse(datasetCreate.stdout,) as Record<string, Record<string, unknown>>;

@@ -37,7 +37,7 @@ const activeCommands = new Set<ReturnType<typeof Bun.spawn>>();
 export async function stopLiveCommands(): Promise<void> {
 	const children = [...activeCommands,];
 	for (const child of children) child.kill("SIGTERM",);
-	await Promise.allSettled(children.map(child => child.exited),);
+	await Promise.allSettled(children.map(child => child.exited,),);
 }
 /** Deterministic uploaded CSV parsing, shared by core and optional fixtures. */
 export const LIVE_CSV_FORMAT = {
@@ -409,7 +409,7 @@ function isHostDaemon(value: unknown, directory: HostDirectory,): value is HostD
 		&& new Set(repositories,).size === repositories.length
 		&& repositories.every(repo =>
 			typeof repo === "string" && path.posix.dirname(repo,) === directory.path
-			&& path.posix.normalize(repo,) === repo
+			&& path.posix.normalize(repo,) === repo,
 		);
 }
 
@@ -424,7 +424,7 @@ export async function loadLiveManifest(file: string,): Promise<LiveManifest> {
 	) {
 		throw new Error("Invalid live-suite manifest",);
 	}
-	if (data.profiles.some(p => !LIVE_PROFILES.includes(p as typeof LIVE_PROFILES[number],))) {
+	if (data.profiles.some(p => !LIVE_PROFILES.includes(p as typeof LIVE_PROFILES[number],),)) {
 		throw new Error("Unknown live profile in manifest",);
 	}
 	if (!Array.isArray(data.globals,)) data.globals = [];
@@ -440,7 +440,7 @@ export async function loadLiveManifest(file: string,): Promise<LiveManifest> {
 			|| directoryPaths.has(directory.path,)
 			|| !["pending", "bound", "deleted",].includes(directory.state,)
 			|| !data.projects.some(p =>
-				p.key === directory.projectKey && (directory.state === "deleted" || p.state === "bound")
+				p.key === directory.projectKey && (directory.state === "deleted" || p.state === "bound"),
 			)
 		) throw new Error("Invalid owned host directory",);
 		const daemon = directory.daemon;
@@ -647,9 +647,9 @@ function stableStringify(value: unknown,): string {
 	if (Array.isArray(value,)) return `[${value.map(stableStringify,).join(",",)}]`;
 	return `{${
 		Object.entries(value as Record<string, unknown>,).sort(([a,], [b,],) =>
-			a < b ? -1 : a > b ? 1 : 0
+			a < b ? -1 : a > b ? 1 : 0,
 		)
-			.map(([k, v,],) => `${JSON.stringify(k,)}:${stableStringify(v,)}`).join(",",)
+			.map(([k, v,],) => `${JSON.stringify(k,)}:${stableStringify(v,)}`,).join(",",)
 	}}`;
 }
 function asString(value: unknown,): string | undefined {
@@ -794,7 +794,7 @@ function globalEntry(
 	manifest: LiveManifest,
 	name: string,
 ): OwnedGlobal | undefined {
-	return manifest.globals.find(g => g.kind === kind && g.name === name);
+	return manifest.globals.find(g => g.kind === kind && g.name === name,);
 }
 function assertOwnedGlobalScope(
 	resource: string,
@@ -840,7 +840,7 @@ function assertOwnedGlobalScope(
 	if (target === "") {
 		throw new Error(`Global mutation target missing: ${resource}.${action}`,);
 	}
-	const entry = manifest.globals.find(g => g.kind === rule.kind && (g.id ?? g.name) === target);
+	const entry = manifest.globals.find(g => g.kind === rule.kind && (g.id ?? g.name) === target,);
 	if (!entry) {
 		throw new Error(`Global target is not owned by this run: ${resource}.${action} ${target}`,);
 	}
@@ -881,13 +881,13 @@ export function assertLiveCommandScope(
 	const owned = (key: unknown, pending = false,) =>
 		typeof key === "string"
 		&& manifest.projects.some(p =>
-			p.key === key && (p.state === "bound" || pending && p.state === "pending")
+			p.key === key && (p.state === "bound" || pending && p.state === "pending"),
 		);
 	for (const [flag, value,] of Object.entries(flags,)) {
 		const publishedTarget = flag === "published-project-key" && resource === "bundle"
 			&& action === "publish"
 			&& manifest.globals.some(g =>
-				g.kind === "project-deployer-project" && g.name === value && g.state === "bound"
+				g.kind === "project-deployer-project" && g.name === value && g.state === "bound",
 			);
 		if (
 			flag.endsWith("project-key",) && !publishedTarget
@@ -915,11 +915,11 @@ export function assertLiveCommandScope(
 			throw new Error("Cannot duplicate an unowned project",);
 		}
 		if (action === "delete") {
-			const identity = manifest.projects.find(p => p.key === target)!;
+			const identity = manifest.projects.find(p => p.key === target,)!;
 			if (!identity.incarnation || flags["expect-project-incarnation"] !== identity.incarnation) {
 				throw new Error("Deletion requires the bound project incarnation",);
 			}
-		} else if (manifest.projects.find(p => p.key === target)?.state !== "pending") {
+		} else if (manifest.projects.find(p => p.key === target,)?.state !== "pending") {
 			throw new Error("Creation requires a reserved new project",);
 		}
 		return;
@@ -946,7 +946,9 @@ export function assertLiveCommandScope(
 			}
 			return;
 		}
-		if (!owned(target, true,) || manifest.projects.find(p => p.key === target)?.state !== "pending") {
+		if (
+			!owned(target, true,) || manifest.projects.find(p => p.key === target,)?.state !== "pending"
+		) {
 			throw new Error("App creation requires a reserved project target",);
 		}
 		return;
@@ -1000,7 +1002,7 @@ export function assertLiveCommandScope(
 	}
 	if (resource === "project-folder" && ["move", "move-project", "create-child",].includes(action,)) {
 		const ownedFolder = (id: string | undefined,) =>
-			manifest.globals.some(g => g.kind === "project-folder" && g.state === "bound" && g.id === id);
+			manifest.globals.some(g => g.kind === "project-folder" && g.state === "bound" && g.id === id,);
 		const container = (id: string | undefined,) => id === "ROOT" || ownedFolder(id,);
 		if (action === "create-child") {
 			if (!container(args[2],)) throw new Error("New folder parent must be ROOT or an owned folder",);
@@ -1053,7 +1055,7 @@ export function assertLiveCommandScope(
 		const pluginId = args[2];
 		if (
 			typeof pluginId === "string" && pluginId !== ""
-			&& manifest.globals.some(g => g.kind === "plugin" && g.name === pluginId && g.state === "bound")
+			&& manifest.globals.some(g => g.kind === "plugin" && g.name === pluginId && g.state === "bound",)
 		) return;
 	}
 	if (
@@ -1061,9 +1063,9 @@ export function assertLiveCommandScope(
 		&& manifest.profiles.includes("infrastructure",)
 		&& args.length === 3 && args[2] === LIVE_SQL_PROBE
 		&& owned(flags["project-key"],) && flags["project-key"] === selectedProject
-		&& Object.keys(flags,).every(flag => ["connection", "dataset", "project-key",].includes(flag,))
-		&& [flags.connection, flags.dataset,].filter(value => typeof value === "string" && value.trim())
-				.length === 1
+		&& Object.keys(flags,).every(flag => ["connection", "dataset", "project-key",].includes(flag,),)
+		&& [flags.connection, flags.dataset,].filter(value => typeof value === "string" && value.trim(),)
+			.length === 1
 		&& (flags.connection === undefined || flags.dataset === undefined)
 	) return;
 	if (entry.mutatesDss && !entry.requiresProject) {
@@ -1115,7 +1117,7 @@ export class LiveRunContext implements LiveContext {
 		service?: "sse",
 	): Promise<HostDaemon> {
 		const output = await this.runHost(directory, "start", repositories, service,);
-		const line = output.split("\n",).find(value => value.startsWith("HOST_RESULT=",));
+		const line = output.split("\n",).find(value => value.startsWith("HOST_RESULT=",),);
 		if (!line) throw new Error("Host daemon returned no ownership receipt",);
 		const daemon: unknown = JSON.parse(line.slice("HOST_RESULT=".length,),);
 		if (
@@ -1130,7 +1132,7 @@ export class LiveRunContext implements LiveContext {
 	async startOwnedSseServer(handle: HostDirectory,): Promise<HostDaemon> {
 		const directory = this.manifest.ownedDirectories.find(d =>
 			d.path === handle.path && d.nonce === handle.nonce && d.projectKey === handle.projectKey
-			&& d.state === "bound"
+			&& d.state === "bound",
 		);
 		if (!directory || directory.daemon) {
 			throw new Error("SSE server requires an owned directory without an active daemon",);
@@ -1181,12 +1183,12 @@ export class LiveRunContext implements LiveContext {
 		if (this.gitScope) throw new Error("Nested Git scopes are not allowed",);
 		const directory = this.manifest.ownedDirectories.find(d =>
 			d.path === handle.path && d.nonce === handle.nonce && d.projectKey === handle.projectKey
-			&& d.state === "bound"
+			&& d.state === "bound",
 		);
 		const targetOwned = target.kind === "project"
-			? this.projects.some(p => p.key === target.key && p.state === "bound")
+			? this.projects.some(p => p.key === target.key && p.state === "bound",)
 			: this.globals.some(g =>
-				g.kind === "plugin" && g.name === target.id && (g.state === "pending" || g.state === "bound")
+				g.kind === "plugin" && g.name === target.id && (g.state === "pending" || g.state === "bound"),
 			);
 		if (!directory || !targetOwned) {
 			throw new Error("Git scope requires owned directory and reserved target",);
@@ -1194,7 +1196,7 @@ export class LiveRunContext implements LiveContext {
 		try {
 			const daemon = await this.startHostDaemon(directory, repositoryPaths,);
 			const urls = repositoryPaths.map(repo =>
-				`http://127.0.0.1:${daemon.port}/${encodeURIComponent(path.posix.basename(repo,),)}`
+				`http://127.0.0.1:${daemon.port}/${encodeURIComponent(path.posix.basename(repo,),)}`,
 			);
 			this.gitScope = { target, directory, urls: new Set(urls,), };
 			return await body(urls,);
@@ -1262,7 +1264,7 @@ export class LiveRunContext implements LiveContext {
 			if (
 				libraries.some(library =>
 					!("remote" in library) || typeof library.remote !== "string"
-					|| !grant.urls.has(library.remote,)
+					|| !grant.urls.has(library.remote,),
 				)
 			) {
 				throw new Error("Git scope contains a foreign library",);
@@ -1349,12 +1351,12 @@ export class LiveRunContext implements LiveContext {
 		if (
 			!grant || grant.target.kind !== "plugin" || grant.target.id !== name || !grant.urls.has(url,)
 		) throw new Error("Plugin installation requires the exact owned Git scope",);
-		const owned = this.globals.find(g => g.kind === "plugin" && g.name === name);
+		const owned = this.globals.find(g => g.kind === "plugin" && g.name === name,);
 		if (!owned || owned.state !== (action === "install" ? "pending" : "bound")) {
 			throw new Error("Plugin Git mutation requires a matching reservation state",);
 		}
 		const repositoryPath = grant.directory.daemon!.repositories.find(repo =>
-			new URL(url,).pathname === `/${encodeURIComponent(path.posix.basename(repo,),)}`
+			new URL(url,).pathname === `/${encodeURIComponent(path.posix.basename(repo,),)}`,
 		);
 		if (!repositoryPath) throw new Error("Plugin repository is not in the daemon receipt",);
 		const checkout = await readBare(this, grant.directory, repositoryPath, [
@@ -1478,7 +1480,7 @@ export class LiveRunContext implements LiveContext {
 	}
 	private async assertGlobalIdentity(kind: OwnedGlobalKind, id: string,): Promise<OwnedGlobal> {
 		const entry = this.manifest.globals.find(value =>
-			value.kind === kind && (value.id ?? value.name) === id
+			value.kind === kind && (value.id ?? value.name) === id,
 		);
 		if (!entry || entry.state !== "bound" || !entry.identity) {
 			throw new Error(`Global target is not a confirmed bound identity: ${id}`,);
@@ -1539,7 +1541,7 @@ export class LiveRunContext implements LiveContext {
 			}
 			const key = archive.sourceProjectKey;
 			const project = this.manifest.projects.find(value =>
-				value.key === key && value.state === "bound"
+				value.key === key && value.state === "bound",
 			);
 			const global = globalEntry("project-deployer-project", this.manifest, key,);
 			if (!project?.incarnation || !global || !["pending", "bound",].includes(global.state,)) {
@@ -1561,7 +1563,7 @@ export class LiveRunContext implements LiveContext {
 			entry?.mutatesDss && (entry.requiresProject || resource === "sql" && action === "query")
 			&& !executionMode(parsed.flags,).plan
 		) {
-			const identity = this.manifest.projects.find(p => p.key === selected);
+			const identity = this.manifest.projects.find(p => p.key === selected,);
 			const details = await this.client.projects.get(selected,);
 			if (
 				!identity?.incarnation || projectIncarnationHash(selected, details,) !== identity.incarnation
@@ -1579,7 +1581,7 @@ export class LiveRunContext implements LiveContext {
 				? [args[2],]
 				: [];
 			if (action === "move-project") {
-				const project = this.manifest.projects.find(p => p.key === args[3] && p.state === "bound");
+				const project = this.manifest.projects.find(p => p.key === args[3] && p.state === "bound",);
 				if (
 					!project?.incarnation
 					|| projectIncarnationHash(project.key, await this.client.projects.get(project.key,),)
@@ -1653,7 +1655,7 @@ export class LiveRunContext implements LiveContext {
 		const mode = executionMode(parsed.flags,);
 		this.manifest.commands.push({
 			action: `${resource}.${action}`,
-			args: redactArgv(args.map(s => this.redact(s,)),),
+			args: redactArgv(args.map(s => this.redact(s,),),),
 			exitCode: exit,
 			durationMs: Date.now() - started,
 			mode: mode.plan ? "plan" : mode.dryRun ? "dry-run" : "execute",
@@ -1687,7 +1689,7 @@ export class LiveRunContext implements LiveContext {
 			const receipt = asRecord(result,);
 			const project = this.manifest.projects.find(p =>
 				p.key === selected && p.state === "bound"
-				&& p.incarnation === parsed.flags["expect-project-incarnation"]
+				&& p.incarnation === parsed.flags["expect-project-incarnation"],
 			);
 			if (project && receipt?.["deleted"] === true && receipt["projectKey"] === selected) {
 				// A guarded deletion already succeeded; a later GET may mask absence as 403.
@@ -1703,8 +1705,8 @@ export class LiveRunContext implements LiveContext {
 			// receipt source; previews (plan/dry-run) never confer abort rights.
 			const receipt = asRecord(result,);
 			const jobId = ["jobId", "job_id", "futureId",]
-				.map(key => receipt?.[key])
-				.find(v => typeof v === "string" && v.length > 0);
+				.map(key => receipt?.[key],)
+				.find(v => typeof v === "string" && v.length > 0,);
 			if (typeof jobId === "string") this.futureReceipts.set(jobId, `${resource}.${action}`,);
 		}
 		return result as T;
@@ -1717,7 +1719,7 @@ export class LiveRunContext implements LiveContext {
 	): Promise<void> {
 		if (
 			this.selection.length
-			&& !this.selection.some(selected => matchesLiveCase(id, selected,))
+			&& !this.selection.some(selected => matchesLiveCase(id, selected,),)
 		) return;
 		const started = Date.now();
 		const first = this.manifest.commands.length;
@@ -1751,7 +1753,7 @@ export class LiveRunContext implements LiveContext {
 		result.durationMs = Date.now() - started;
 		result.executedActions = [
 			...new Set(
-				this.manifest.commands.slice(first,).filter(c => c.mode === "execute" && c.exitCode === 0).map(
+				this.manifest.commands.slice(first,).filter(c => c.mode === "execute" && c.exitCode === 0,).map(
 					c => c.action,
 				),
 			),
@@ -1791,7 +1793,7 @@ export class LiveRunContext implements LiveContext {
 		const target = appCreateTarget(action, flags,);
 		if (!details || target === undefined || details["targetProjectKey"] !== target) return;
 		const index = this.manifest.projects.findIndex(project =>
-			project.key === target && project.state === "pending"
+			project.key === target && project.state === "pending",
 		);
 		if (index < 0) return;
 		this.manifest.projects.splice(index, 1,);
@@ -1803,20 +1805,20 @@ export class LiveRunContext implements LiveContext {
 		// Retiring unused reservations shrinks the array but leaves other receipts.
 		// Skip every recorded key, including deleted projects.
 		let index = this.manifest.projects.length;
-		while (this.manifest.projects.some(project => project.key === `${prefix}${index}`)) {
+		while (this.manifest.projects.some(project => project.key === `${prefix}${index}`,)) {
 			index += 1;
 		}
 		return this.reserveProjectKey(`${prefix}${index}`,);
 	}
 	private async reserveProjectKey(key: string,): Promise<string> {
-		if (this.manifest.projects.some(project => project.key === key)) {
+		if (this.manifest.projects.some(project => project.key === key,)) {
 			// A recorded receipt in ANY state already owns this key: re-reserving
 			// it would alias a deleted or bound identity onto a new intent.
 			throw new Error(`Refusing to re-reserve a recorded project key: ${key}`,);
 		}
 		// DSS can return 403 for nonexistent keys; creation is exclusive and never updates a collision.
 		const visible = await this.client.projects.list();
-		if (visible.some(project => project.projectKey === key)) {
+		if (visible.some(project => project.projectKey === key,)) {
 			throw new Error(`Refusing to overwrite an existing project: ${key}`,);
 		}
 		this.manifest.projects.push({ key, state: "pending", createdAt: new Date().toISOString(), },);
@@ -1876,7 +1878,7 @@ export class LiveRunContext implements LiveContext {
 		if (mode === "successor" && parsed.flags["from"] !== precursorProjectKey) {
 			throw new Error("Successor creation requires --from to name the owned precursor instance",);
 		}
-		const precursor = this.manifest.projects.find(p => p.key === precursorProjectKey);
+		const precursor = this.manifest.projects.find(p => p.key === precursorProjectKey,);
 		if (!precursor || precursor.state !== "bound" || !precursor.incarnation) {
 			throw new Error(
 				`Generated app creation requires a bound owned precursor: ${precursorProjectKey}`,
@@ -1959,7 +1961,7 @@ export class LiveRunContext implements LiveContext {
 			await this.save();
 			throw new Error(`Fresh APP_INSTANCE incarnation does not match the receipt: ${target}`,);
 		}
-		if (this.manifest.projects.some(project => project.key === target)) {
+		if (this.manifest.projects.some(project => project.key === target,)) {
 			// A recorded receipt in ANY state already owns this key: the CLI
 			// naming it again would alias a bound or deleted identity.
 			precursor.pendingDependentCreation.outcome = "indeterminate";
@@ -1984,7 +1986,7 @@ export class LiveRunContext implements LiveContext {
 		return target;
 	}
 	async bindProject(key: string, expectedHash?: string,): Promise<void> {
-		const project = this.manifest.projects.find(p => p.key === key && p.state === "pending");
+		const project = this.manifest.projects.find(p => p.key === key && p.state === "pending",);
 		if (!project) throw new Error("Project was not reserved",);
 		const details = await this.client.projects.get(key,);
 		const identity = projectIncarnationHash(key, details,);
@@ -2018,7 +2020,7 @@ export class LiveRunContext implements LiveContext {
 		}, this.manifest.dssUrl,);
 	}
 	async propagateRecipeSchema(name: string,): Promise<void> {
-		const owned = this.manifest.projects.find(p => p.key === this.projectKey && p.state === "bound");
+		const owned = this.manifest.projects.find(p => p.key === this.projectKey && p.state === "bound",);
 		if (
 			!owned?.incarnation
 			|| projectIncarnationHash(this.projectKey, await this.client.projects.get(this.projectKey,),)
@@ -2044,7 +2046,7 @@ export class LiveRunContext implements LiveContext {
 		}
 	}
 	async createManagedDataset(name: string,): Promise<void> {
-		const owned = this.manifest.projects.find(p => p.key === this.projectKey && p.state === "bound");
+		const owned = this.manifest.projects.find(p => p.key === this.projectKey && p.state === "bound",);
 		if (!owned?.incarnation) throw new Error("Managed dataset requires a bound project",);
 		const details = await this.client.projects.get(this.projectKey,);
 		if (projectIncarnationHash(this.projectKey, details,) !== owned.incarnation) {
@@ -2095,10 +2097,10 @@ export class LiveRunContext implements LiveContext {
 		return key;
 	}
 	async deleteProject(key: string,): Promise<void> {
-		if (this.manifest.ownedDirectories.some(d => d.projectKey === key && d.state !== "deleted")) {
+		if (this.manifest.ownedDirectories.some(d => d.projectKey === key && d.state !== "deleted",)) {
 			throw new Error("Owned host directory must be cleaned before its runner project",);
 		}
-		const project = this.manifest.projects.find(p => p.key === key);
+		const project = this.manifest.projects.find(p => p.key === key,);
 		if (!project) throw new Error("Project is not owned by this run",);
 		if (project.state === "deleted") return;
 		if (project.pendingDependentCreation) {
@@ -2164,7 +2166,7 @@ export class LiveRunContext implements LiveContext {
 		nonce = crypto.randomUUID().replaceAll("-", "",),
 	): Promise<string> {
 		if (
-			this.manifest.globals.some(g => g.kind === kind && g.name === name && g.state !== "deleted")
+			this.manifest.globals.some(g => g.kind === kind && g.name === name && g.state !== "deleted",)
 		) {
 			throw new Error(`Global identity is already reserved: ${kind} ${name}`,);
 		}
@@ -2221,7 +2223,7 @@ export class LiveRunContext implements LiveContext {
 	}
 	/** The lab-controlled marker for a reserved entry, verified on every GET. */
 	markerFor(kind: OwnedGlobalKind, name: string,): string {
-		const entry = this.manifest.globals.find(g => g.kind === kind && g.name === name);
+		const entry = this.manifest.globals.find(g => g.kind === kind && g.name === name,);
 		if (!entry?.nonce) throw new Error(`Global has no reservation nonce: ${kind} ${name}`,);
 		return globalMarker(this.manifest.runId, entry.nonce,);
 	}
@@ -2231,7 +2233,7 @@ export class LiveRunContext implements LiveContext {
 	 * create call, never from a name-prefix search.
 	 */
 	async bindGlobal(kind: OwnedGlobalKind, name: string, id?: string,): Promise<OwnedGlobal> {
-		const entry = this.manifest.globals.find(g => g.kind === kind && g.name === name);
+		const entry = this.manifest.globals.find(g => g.kind === kind && g.name === name,);
 		if (!entry) throw new Error(`Global was not reserved: ${kind} ${name}`,);
 		const resolved = id ?? name;
 		const marker = this.markerFor(kind, name,);
@@ -2284,7 +2286,7 @@ export class LiveRunContext implements LiveContext {
 		try {
 			result = await this.run(argv(name, marker,),);
 		} catch (error) {
-			const entry = this.manifest.globals.find(g => g.kind === kind && g.name === name)!;
+			const entry = this.manifest.globals.find(g => g.kind === kind && g.name === name,)!;
 			if (error instanceof LiveCommandError && this.isConflictResult(error,)) {
 				entry.state = "conflict";
 				entry.reason = this.redact(error,).slice(0, 300,);
@@ -2312,7 +2314,7 @@ export class LiveRunContext implements LiveContext {
 	): Promise<OwnedGlobal> {
 		const name = await this.reserveGlobal("plugin", label,);
 		const marker = this.markerFor("plugin", name,);
-		const entry = this.manifest.globals.find(g => g.kind === "plugin" && g.name === name)!;
+		const entry = this.manifest.globals.find(g => g.kind === "plugin" && g.name === name,)!;
 		// Validate the builder BEFORE any request so an invalid builder cannot
 		// orphan a created plugin: parseable JSON, matching id, marker embedded
 		// exactly inside meta.description (not anywhere in the file).
@@ -2388,7 +2390,7 @@ export class LiveRunContext implements LiveContext {
 			if (
 				records.length !== await zip.entriesCount
 				|| records.some(entry =>
-					!entry.name.startsWith(prefix,) || ((entry.attr >>> 16) & 0o170000) === 0o120000
+					!entry.name.startsWith(prefix,) || ((entry.attr >>> 16) & 0o170000) === 0o120000,
 				)
 			) {
 				throw new Error(
@@ -2418,7 +2420,7 @@ export class LiveRunContext implements LiveContext {
 			await zip.close();
 		}
 		const owned = this.manifest.globals.find(entry =>
-			entry.kind === "plugin" && entry.name === name
+			entry.kind === "plugin" && entry.name === name,
 		)!;
 		this.creationAuthority = { kind: "plugin-archive", name, file, };
 		try {
@@ -2438,7 +2440,7 @@ export class LiveRunContext implements LiveContext {
 	}
 
 	async deleteGlobal(kind: OwnedGlobalKind, id: string,): Promise<void> {
-		const entry = this.manifest.globals.find(g => g.kind === kind && (g.id ?? g.name) === id);
+		const entry = this.manifest.globals.find(g => g.kind === kind && (g.id ?? g.name) === id,);
 		if (!entry) throw new Error(`Global is not owned by this run: ${kind} ${id}`,);
 		if (entry.state === "deleted") return;
 		if (entry.state !== "bound" || !entry.identity) {
@@ -2462,8 +2464,8 @@ export class LiveRunContext implements LiveContext {
 		const matches = kind === "code-env"
 			? record !== undefined
 				&& stableStringify(
-						asRecord(asRecord(record,)?.["desc"],)?.["creationTag"],
-					) === entry.identity
+					asRecord(asRecord(record,)?.["desc"],)?.["creationTag"],
+				) === entry.identity
 			: record !== undefined
 				&& globalMarkerVerified(
 					kind,
@@ -2583,10 +2585,10 @@ export class LiveRunContext implements LiveContext {
 				return !!lang && !!envName
 					&& envs.every(env =>
 						typeof env.envName === "string" && env.envName.length > 0
-						&& typeof env.envLang === "string" && env.envLang.length > 0
+						&& typeof env.envLang === "string" && env.envLang.length > 0,
 					)
 					&& !envs.some(env =>
-						env.envName === envName && env.envLang?.toLowerCase() === lang.toLowerCase()
+						env.envName === envName && env.envLang?.toLowerCase() === lang.toLowerCase(),
 					);
 			} catch {
 				return false;
@@ -2596,7 +2598,7 @@ export class LiveRunContext implements LiveContext {
 		try {
 			if (kind === "workspace") {
 				const list = await this.client.workspaces.list();
-				return !list.some(w => w.id === name);
+				return !list.some(w => w.id === name,);
 			}
 			if (kind === "project-folder") {
 				// Reservations are named children of ROOT; the id is server-generated,
@@ -2636,7 +2638,7 @@ export class LiveRunContext implements LiveContext {
 				return this.client.codeEnvs.getDefinition(lang ?? "", name ?? id,);
 			}
 			case "plugin": {
-				const found = (await this.client.plugins.list()).find(p => p.id === id);
+				const found = (await this.client.plugins.list()).find(p => p.id === id,);
 				if (!found) throw new DataikuError(404, "Not Found", `plugin not found: ${id}`,);
 				if (!found.isDev) return found;
 				// DSS caches loaded metadata; a dev plugin's current nonce lives in its file.
@@ -2726,7 +2728,7 @@ export async function initializeLiveManifest(
 ): Promise<LiveManifest> {
 	if (
 		!profiles.length
-		|| profiles.some(profile => !LIVE_PROFILES.includes(profile as typeof LIVE_PROFILES[number],))
+		|| profiles.some(profile => !LIVE_PROFILES.includes(profile as typeof LIVE_PROFILES[number],),)
 	) throw new Error("Unknown or empty live profiles",);
 	if (!owner.trim() || !connection.trim()) {
 		throw new Error("Live owner and managed connection are required",);

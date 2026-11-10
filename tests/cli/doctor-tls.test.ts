@@ -43,7 +43,7 @@ describe("doctor TLS trust failures", () => {
 					res.setHeader("Content-Type", "application/json",);
 					res.end("[]",);
 				},);
-				await new Promise<void>((resolve,) => https.listen(0, "127.0.0.1", resolve,));
+				await new Promise<void>((resolve,) => https.listen(0, "127.0.0.1", resolve,),);
 				try {
 					const port = (https.address() as AddressInfo).port;
 					const env = cliEnv(`https://localhost:${port}`,);
@@ -53,7 +53,7 @@ describe("doctor TLS trust failures", () => {
 					const failure = await dssFailure(["doctor",], { env, },);
 					const report = JSON.parse(failure.stdout,) as { ok: boolean; checks: DoctorCheck[]; };
 					expect(report.ok,).toBe(false,);
-					const connectivity = report.checks.find((check,) => check.name === "connectivity");
+					const connectivity = report.checks.find((check,) => check.name === "connectivity",);
 					expect(connectivity?.ok,).toBe(false,);
 					expect(String(connectivity?.details?.message,),).toMatch(
 						/self.signed|SELF_SIGNED_CERT|unable to verify/i,

@@ -98,7 +98,7 @@ describeProjectIntegration("Dataiku playground integration: read-only SDK resour
 		expect(Array.isArray(insights,),).toBe(true,);
 		expect(wikiSettings,).toHaveProperty("projectKey",);
 		const firstDatasetName = await selectSafeDataset()
-			?? datasets.find((dataset,) => typeof dataset.name === "string")?.name;
+			?? datasets.find((dataset,) => typeof dataset.name === "string",)?.name;
 		if (firstDatasetName) {
 			expect(Array.isArray(await client.dataQuality.listRules(firstDatasetName,),),).toBe(true,);
 			expect(await client.dataQuality.statusByPartition(firstDatasetName,),).toBeDefined();
@@ -112,7 +112,7 @@ describeProjectIntegration("Dataiku playground integration: read-only CLI comman
 	it("runs resource list/info commands against the configured project", async () => {
 		const client = createClient();
 		const datasetName = await selectSafeDataset()
-			?? (await client.datasets.list()).find((dataset,) => typeof dataset.name === "string")?.name;
+			?? (await client.datasets.list()).find((dataset,) => typeof dataset.name === "string",)?.name;
 		const commands: string[][] = [
 			["project", "get",],
 			["project", "metadata",],
@@ -170,14 +170,14 @@ describeMutatingProjectIntegration("Dataiku playground integration: flow zone mu
 			expect(updated.color,).toBe("#cc0000",);
 
 			const datasets = await client.datasets.list();
-			const firstDataset = datasets.find((dataset,) => typeof dataset.name === "string");
+			const firstDataset = datasets.find((dataset,) => typeof dataset.name === "string",);
 			if (firstDataset?.name) {
 				const moved = await client.flowZones.moveItems(zoneId, [
 					{ objectType: "DATASET", objectId: firstDataset.name, },
 				],);
 				expect(
 					moved.items?.some((item,) =>
-						item.objectType === "DATASET" && item.objectId === firstDataset.name
+						item.objectType === "DATASET" && item.objectId === firstDataset.name,
 					),
 				).toBe(true,);
 			}

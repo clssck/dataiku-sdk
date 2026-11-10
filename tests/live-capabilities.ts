@@ -80,7 +80,7 @@ function mlRow(id: number,): [number, number, number, number, number, number,] {
 }
 
 function mlCsv(): string {
-	const rows: string[] = [ML_COLUMNS.map((column,) => column.name).join(",",),];
+	const rows: string[] = [ML_COLUMNS.map((column,) => column.name,).join(",",),];
 	for (let id = 1; id <= 24; id++) {
 		rows.push(mlRow(id,).join(",",),);
 	}
@@ -159,7 +159,7 @@ async function assertMlDataset(
 		"--project-key",
 		projectKey,
 	],);
-	if (preview.rowCount !== 24 || new Set(preview.rows.map(row => row[5]),).size !== 2) {
+	if (preview.rowCount !== 24 || new Set(preview.rows.map(row => row[5],),).size !== 2) {
 		throw new Error("ML fixture must contain 24 rows and both target classes",);
 	}
 }
@@ -251,8 +251,8 @@ async function exerciseMlLifecycle(ctx: LiveContext,): Promise<void> {
 			projectKey,
 		],);
 		const modelIds = Array.isArray(trained["trainedModelIds"],)
-			? trained["trainedModelIds"].map((id,) => asString(id,)).filter((id,): id is string =>
-				Boolean(id,)
+			? trained["trainedModelIds"].map((id,) => asString(id,),).filter((id,): id is string =>
+				Boolean(id,),
 			)
 			: [];
 		if (modelIds.length === 0) {
@@ -323,7 +323,7 @@ async function exerciseMlLifecycle(ctx: LiveContext,): Promise<void> {
 		],);
 		if (
 			!Array.isArray(savedList,)
-			|| !savedList.some((item,) => asRecord(item,)?.["id"] === savedModelId)
+			|| !savedList.some((item,) => asRecord(item,)?.["id"] === savedModelId,)
 		) {
 			throw new Error(`Deployed saved model ${savedModelId} missing from saved-model list.`,);
 		}
@@ -345,7 +345,7 @@ async function exerciseMlLifecycle(ctx: LiveContext,): Promise<void> {
 			projectKey,
 		],);
 		const versionId = Array.isArray(versions,)
-			? versions.map((item,) => asRecord(item,)).find(Boolean,)?.["id"]
+			? versions.map((item,) => asRecord(item,),).find(Boolean,)?.["id"]
 			: undefined;
 		const versionIdString = asString(versionId,);
 		if (!versionIdString) throw new Error("saved-model list-versions returned no version id.",);
@@ -520,14 +520,14 @@ function rememberMlId(
 
 function firstListItemId(items: unknown,): string | undefined {
 	const first = Array.isArray(items,)
-		? items.map((item,) => asRecord(item,)).find(Boolean,)
+		? items.map((item,) => asRecord(item,),).find(Boolean,)
 		: undefined;
 	return asString(first?.["id"],);
 }
 
 function activeVersionId(versions: unknown,): string | undefined {
 	const active = Array.isArray(versions,)
-		? versions.map((item,) => asRecord(item,)).find(item => item?.["active"] === true)
+		? versions.map((item,) => asRecord(item,),).find(item => item?.["active"] === true,)
 		: undefined;
 	return asString(active?.["id"],) ?? firstListItemId(versions,);
 }
@@ -583,7 +583,7 @@ async function findOwnedRecipe(
  */
 async function ensureManagedMlOutput(ctx: LiveContext, name: string,): Promise<void> {
 	const datasets = await ctx.run<Array<{ name?: string; }>>(["dataset", "list",],);
-	const exists = Array.isArray(datasets,) && datasets.some(entry => entry?.name === name);
+	const exists = Array.isArray(datasets,) && datasets.some(entry => entry?.name === name,);
 	if (!exists) await ctx.createManagedDataset(name,);
 	ctx.fixtures.datasets[name] = name;
 }
@@ -604,7 +604,7 @@ export async function provisionMlFixtures(ctx: LiveContext,): Promise<void> {
 			"list",
 		],);
 		const existing = Array.isArray(datasets,)
-			&& datasets.some(entry => entry?.name === RETAINED_DATASET_NAME);
+			&& datasets.some(entry => entry?.name === RETAINED_DATASET_NAME,);
 		ml.datasetName = existing
 			? RETAINED_DATASET_NAME
 			: await provisionMlDataset(ctx, ctx.projectKey, RETAINED_DATASET_NAME,);
@@ -619,7 +619,7 @@ export async function provisionMlFixtures(ctx: LiveContext,): Promise<void> {
 			"list",
 		],);
 		const existing = (Array.isArray(analyses,) ? analyses : [])
-			.find(entry => entry?.name === RETAINED_ANALYSIS_NAME);
+			.find(entry => entry?.name === RETAINED_ANALYSIS_NAME,);
 		if (existing) {
 			ml.analysisId = requireId(existing["id"], "retained analysis id",);
 		} else {
@@ -667,8 +667,8 @@ export async function provisionMlFixtures(ctx: LiveContext,): Promise<void> {
 			ML_TRAIN_TIMEOUT_MS,
 		],);
 		const modelIds = Array.isArray(trained["trainedModelIds"],)
-			? trained["trainedModelIds"].map((id,) => asString(id,)).filter((id,): id is string =>
-				Boolean(id,)
+			? trained["trainedModelIds"].map((id,) => asString(id,),).filter((id,): id is string =>
+				Boolean(id,),
 			)
 			: [];
 		if (modelIds.length === 0) {
@@ -682,7 +682,7 @@ export async function provisionMlFixtures(ctx: LiveContext,): Promise<void> {
 			"list",
 		],);
 		const existing = (Array.isArray(savedModels,) ? savedModels : [])
-			.find(entry => entry?.name === RETAINED_MODEL_NAME);
+			.find(entry => entry?.name === RETAINED_MODEL_NAME,);
 		if (existing) {
 			ml.savedModelId = requireId(existing["id"], "retained saved model id",);
 		} else {
@@ -835,8 +835,8 @@ async function trainPredictionTask(
 		projectKey,
 	],);
 	const modelIds = Array.isArray(trained["trainedModelIds"],)
-		? trained["trainedModelIds"].map((id,) => asString(id,)).filter((id,): id is string =>
-			Boolean(id,)
+		? trained["trainedModelIds"].map((id,) => asString(id,),).filter((id,): id is string =>
+			Boolean(id,),
 		)
 		: [];
 	if (modelIds.length === 0) {
@@ -974,7 +974,7 @@ export async function exerciseExpandedMl(ctx: LiveContext,): Promise<void> {
 	const mlflowSelected = ctx.selection.length === 0
 		|| ctx.selection.some(selected =>
 			matchesLiveCase("ml.mlflow.import", selected,)
-			|| matchesLiveCase("ml.mlflow.evaluate", selected,)
+			|| matchesLiveCase("ml.mlflow.evaluate", selected,),
 		);
 	if (mlflowSelected) {
 		const runtime = await resolveMlflowRuntime(ctx,);
@@ -1023,7 +1023,7 @@ async function exerciseAnalysisRead(ctx: LiveContext,): Promise<void> {
 	const listed = await ctx.run<Array<{ analysisId?: string; }>>(["analysis", "list",],);
 	// GET /lab list items carry analysisId/analysisName/inputDataset (DSS 15
 	// REST reference), not id/name.
-	if (!Array.isArray(listed,) || !listed.some(item => item?.analysisId === analysisId)) {
+	if (!Array.isArray(listed,) || !listed.some(item => item?.analysisId === analysisId,)) {
 		throw new Error(`analysis list did not include the retained analysis ${analysisId}.`,);
 	}
 	const analysis = await ctx.run<JsonRecord>(["analysis", "get", analysisId,],);
@@ -1264,7 +1264,7 @@ async function provisionRetainedEvaluation(ctx: LiveContext,): Promise<void> {
 			"model-evaluation-store",
 			"list",
 		],);
-		const existing = (Array.isArray(stores,) ? stores : []).find(item => item?.name === storeName);
+		const existing = (Array.isArray(stores,) ? stores : []).find(item => item?.name === storeName,);
 		if (existing) {
 			ml.evaluationStoreId = requireId(existing["id"], "retained evaluation store id",);
 		} else {
@@ -1370,7 +1370,7 @@ async function exerciseMesLifecycle(ctx: LiveContext,): Promise<void> {
 		],);
 		if (
 			!Array.isArray(listed,)
-			|| !listed.some(item => asRecord(item,)?.["id"] === storeId)
+			|| !listed.some(item => asRecord(item,)?.["id"] === storeId,)
 		) {
 			throw new Error(`Created evaluation store ${storeId} missing from list.`,);
 		}
@@ -1532,14 +1532,14 @@ async function mlflowVersionIds(
 		projectKey,
 	],);
 	return (Array.isArray(versions,) ? versions : [])
-		.map((entry,) => asString(asRecord(entry,)?.["id"],))
-		.filter((id,): id is string => Boolean(id,));
+		.map((entry,) => asString(asRecord(entry,)?.["id"],),)
+		.filter((id,): id is string => Boolean(id,),);
 }
 
 function projectFiles(
 	files: Record<string, string>,
 ): Array<{ relative: string; content: string; }> {
-	return Object.entries(files,).map(([relative, content,],) => ({ relative, content, }));
+	return Object.entries(files,).map(([relative, content,],) => ({ relative, content, }),);
 }
 
 /** Single-line, redaction-safe message for a CLI failure. */
@@ -1594,7 +1594,7 @@ export function selectMlflowCodeEnvironment(
 		const name = asString(environment?.envName,);
 		if (!name || environment?.deploymentMode === "DSS_INTERNAL") continue;
 		const packages = packagesByEnvName[name] ?? [];
-		if (packages.some((entry,) => /^mlflow(\W|$)/u.test(String(entry,).trim().toLowerCase(),))) {
+		if (packages.some((entry,) => /^mlflow(\W|$)/u.test(String(entry,).trim().toLowerCase(),),)) {
 			return name;
 		}
 	}
@@ -1634,8 +1634,8 @@ async function resolveMlflowRuntime(ctx: LiveContext,): Promise<MlflowRuntimeRes
 		};
 	}
 	const eligible = (Array.isArray(environments,) ? environments : [])
-		.filter(environment => asString(environment?.envName,) !== undefined)
-		.filter(environment => environment?.deploymentMode !== "DSS_INTERNAL");
+		.filter(environment => asString(environment?.envName,) !== undefined,)
+		.filter(environment => environment?.deploymentMode !== "DSS_INTERNAL",);
 	const packagesByEnvName: Record<string, string[]> = {};
 	for (const environment of eligible) {
 		const name = asString(environment.envName,)!;
@@ -1646,13 +1646,13 @@ async function resolveMlflowRuntime(ctx: LiveContext,): Promise<MlflowRuntimeRes
 		packagesByEnvName[name] = [
 			...(Array.isArray(details.requestedPackages,) ? details.requestedPackages : []),
 			...(Array.isArray(details.installedPackages,) ? details.installedPackages : []),
-		].map((entry,) => String(entry,).trim());
+		].map((entry,) => String(entry,).trim(),);
 	}
 	const selected = selectMlflowCodeEnvironment(eligible, packagesByEnvName,);
 	if (selected) return { envName: selected, };
 	return {
 		blocked: `No usable MLflow runtime available. Checked eligible PYTHON code environment(s): ${
-			eligible.map(environment => asString(environment.envName,)).filter(Boolean,).join(", ",)
+			eligible.map(environment => asString(environment.envName,),).filter(Boolean,).join(", ",)
 			|| "none"
 		} — none lists mlflow in requested or installed packages; an explicit import attempt with a non-MLflow environment was observed to fail at model load (500: "Interactive Model Python kernel failed to start. Check that code environment ... contains core packages and visual ML packages."), and DSS rejects INHERIT when no project/instance default code environment exists. Set ${MLFLOW_CODE_ENV_ENV} to an environment shipping mlflow (or provision an owned compatible code environment) before importing MLflow models.`,
 	};
@@ -1694,7 +1694,7 @@ async function verifyOwnedMlflowRuntime(
 	const installed = Array.isArray(details.installedPackages,) ? details.installedPackages : [];
 	const verified = selectMlflowCodeEnvironment(
 		[{ envName, },],
-		{ [envName]: installed.map((entry,) => String(entry,)), },
+		{ [envName]: installed.map((entry,) => String(entry,),), },
 	);
 	if (verified !== envName) {
 		return {
@@ -1857,7 +1857,7 @@ async function exerciseMlflowImport(ctx: LiveContext, codeEnvName: string,): Pro
 			projectKey,
 		],);
 		const idsAfterV2 = await mlflowVersionIds(ctx, savedModelId, projectKey,);
-		const v2Id = idsAfterV2.find(id => id !== v1Id);
+		const v2Id = idsAfterV2.find(id => id !== v1Id,);
 		if (v2Id === undefined || idsAfterV2.length !== 2) {
 			throw new Error(
 				`Expected two distinct versions after the managed-folder import, got ${idsAfterV2.length}: ${
@@ -1899,7 +1899,7 @@ async function exerciseMlflowImport(ctx: LiveContext, codeEnvName: string,): Pro
 					projectKey,
 				],);
 				const stillPresent = (Array.isArray(remaining,) ? remaining : [])
-					.some(entry => asRecord(entry,)?.["id"] === savedModelId);
+					.some(entry => asRecord(entry,)?.["id"] === savedModelId,);
 				if (stillPresent) {
 					failures.push(`saved-model ${savedModelId} still listed after delete`,);
 				}
@@ -1965,7 +1965,7 @@ async function stageMlflowFolder(
 		"--project-key",
 		projectKey,
 	],);
-	const folder = folders.find(item => item?.name === "mlflow_model_folder");
+	const folder = folders.find(item => item?.name === "mlflow_model_folder",);
 	if (!folder) throw new Error("MLflow staging folder was not created.",);
 	for (const { relative, content, } of projectFiles(MLFLOW_MODEL_FILES,)) {
 		const localPath = await ctx.writeFile(`mlflow_model_${ctx.iteration}/${relative}`, content,);
@@ -2084,7 +2084,7 @@ async function exerciseMlflowEvaluate(ctx: LiveContext, codeEnvName: string,): P
 					projectKey,
 				],);
 				const stillPresent = (Array.isArray(remaining,) ? remaining : [])
-					.some(entry => asRecord(entry,)?.["id"] === savedModelId);
+					.some(entry => asRecord(entry,)?.["id"] === savedModelId,);
 				if (stillPresent) {
 					failures.push(`saved-model ${savedModelId} still listed after delete`,);
 				}

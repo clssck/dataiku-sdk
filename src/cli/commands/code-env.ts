@@ -66,7 +66,7 @@ function codeEnvParams(flags: Record<string, string | boolean>,): Record<string,
 }
 
 function splitPackageSpec(raw: string,): string[] {
-	return raw.split(/\r?\n/,).map((line,) => line.trim()).filter((line,) => line.length > 0);
+	return raw.split(/\r?\n/,).map((line,) => line.trim(),).filter((line,) => line.length > 0,);
 }
 
 /**
@@ -162,7 +162,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = withUsage("code-env"
 					const limits = [
 						result.tailed ? `tail limited to ${maxLines ?? 500} lines` : undefined,
 						result.truncated ? "byte cap reached" : undefined,
-					].filter((part,) => part !== undefined);
+					].filter((part,) => part !== undefined,);
 					enqueueCliWarning({
 						code: "code_env_log_truncated",
 						message: `Code env ${envLang}/${a[1]} log '${a[2]}' was truncated (${
@@ -220,7 +220,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = withUsage("code-env"
 			const wait = codeEnvWait(f,);
 			if (f["if-not-exists"] === true || executionMode(f,).dryRun) {
 				const existing = (await c.codeEnvs.list({ envLang, },))
-					.find((env,) => env.envName === a[1]);
+					.find((env,) => env.envName === a[1],);
 				if (existing && f["if-not-exists"] === true && !executionMode(f,).dryRun) {
 					return skipResult("code-env", a[1], "exists", { envLang, current: existing, },);
 				}
@@ -272,7 +272,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = withUsage("code-env"
 			const expectHash = validateExpectHash(f["expect-hash"],);
 			const definitionHash = stableHash(definition,);
 			if (executionMode(f,).dryRun) {
-				const current = await readIfExists(() => c.codeEnvs.getDefinition(envLang, a[1],));
+				const current = await readIfExists(() => c.codeEnvs.getDefinition(envLang, a[1],),);
 				const currentHash = current ? stableHash(current,) : undefined;
 				if (expectHash !== undefined && currentHash !== expectHash) {
 					throw definitionHashMismatch(envLang, a[1], expectHash, currentHash,);
@@ -426,7 +426,7 @@ export const codeEnvCommands: Record<string, CommandMeta> = withUsage("code-env"
 			const envLang = requireEnvLang(a[0], usage,);
 			const wait = codeEnvWait(f,);
 			if (executionMode(f,).dryRun) {
-				const current = await readIfExists(() => c.codeEnvs.get(envLang, a[1],));
+				const current = await readIfExists(() => c.codeEnvs.get(envLang, a[1],),);
 				if (!current) return skipResult("code-env", a[1], "missing", { envLang, },);
 				return {
 					dryRun: true,

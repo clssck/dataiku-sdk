@@ -1251,7 +1251,7 @@ describe("Project map metadata budget", () => {
 			}
 		}, async (url,) => {
 			const result = await createClient(url,).projects.map();
-			const byId = new Map(result.map.nodes.map((node,) => [node.id, node,] as const),);
+			const byId = new Map(result.map.nodes.map((node,) => [node.id, node,] as const,),);
 
 			expect(byId.get("raw",),).toMatchObject({ zoneId: "zone-raw", zoneName: "Raw", },);
 			expect(byId.get("meta_dataset",),).toMatchObject({ kind: "dataset", },);
@@ -1270,7 +1270,7 @@ describe("Project map metadata budget", () => {
 			const pathname = new URL(req.url ?? "/", "http://localhost",).pathname;
 			requests.push({ path: pathname, at: Date.now(), },);
 			if (pathname === slowPath) {
-				void holdResponse(res, 4_000,).then((aborted,) => slowClosed.resolve(aborted,));
+				void holdResponse(res, 4_000,).then((aborted,) => slowClosed.resolve(aborted,),);
 				return;
 			}
 			if (!sendFastPath(res, pathname,)) {
@@ -1283,21 +1283,21 @@ describe("Project map metadata budget", () => {
 			const elapsed = Date.now() - startedAt;
 			expect(await slowClosed.promise,).toBe(true,);
 
-			expect(requests.filter((request,) => request.path === slowPath),).toHaveLength(1,);
+			expect(requests.filter((request,) => request.path === slowPath,),).toHaveLength(1,);
 			// No retry may start once the shared metadata budget is spent.
-			expect(requests.filter((request,) => request.at > startedAt + 1_600),).toEqual([],);
+			expect(requests.filter((request,) => request.at > startedAt + 1_600,),).toEqual([],);
 			expect(elapsed,).toBeLessThan(3_000,);
 
 			const timedOut = result.map.warnings.filter((warning,) =>
-				/metadata timed out after/.test(warning,)
+				/metadata timed out after/.test(warning,),
 			);
 			expect(timedOut,).toHaveLength(1,);
 			expect(timedOut[0],).toContain("Managed folders",);
-			expect(result.map.warnings.some((warning,) => /metadata unavailable:/.test(warning,)),).toBe(
+			expect(result.map.warnings.some((warning,) => /metadata unavailable:/.test(warning,),),).toBe(
 				false,
 			);
 			// Fast metadata fetched within the budget still lands in the map.
-			const byId = new Map(result.map.nodes.map((node,) => [node.id, node,] as const),);
+			const byId = new Map(result.map.nodes.map((node,) => [node.id, node,] as const,),);
 			expect(byId.get("meta_dataset",),).toMatchObject({ kind: "dataset", },);
 		},);
 	});
@@ -1311,7 +1311,7 @@ describe("Project map metadata budget", () => {
 			const pathname = new URL(req.url ?? "/", "http://localhost",).pathname;
 			requests.push({ path: pathname, at: Date.now(), },);
 			if (pathname === slowPath) {
-				void holdResponse(res, 4_000,).then((aborted,) => slowClosed.resolve(aborted,));
+				void holdResponse(res, 4_000,).then((aborted,) => slowClosed.resolve(aborted,),);
 				return;
 			}
 			if (!sendFastPath(res, pathname,)) {
@@ -1324,17 +1324,17 @@ describe("Project map metadata budget", () => {
 			const elapsed = Date.now() - startedAt;
 			expect(await slowClosed.promise,).toBe(true,);
 
-			expect(requests.filter((request,) => request.path === slowPath),).toHaveLength(1,);
-			expect(requests.filter((request,) => request.at > startedAt + 1_600),).toEqual([],);
+			expect(requests.filter((request,) => request.path === slowPath,),).toHaveLength(1,);
+			expect(requests.filter((request,) => request.at > startedAt + 1_600,),).toEqual([],);
 			expect(elapsed,).toBeLessThan(3_000,);
 
 			const timedOut = result.map.warnings.filter((warning,) =>
-				/metadata timed out after/.test(warning,)
+				/metadata timed out after/.test(warning,),
 			);
 			expect(timedOut,).toHaveLength(1,);
 			expect(timedOut[0],).toContain("Flow zones",);
 
-			const byId = new Map(result.map.nodes.map((node,) => [node.id, node,] as const),);
+			const byId = new Map(result.map.nodes.map((node,) => [node.id, node,] as const,),);
 			expect(byId.get("meta_dataset",),).toMatchObject({ kind: "dataset", },);
 		},);
 	});
@@ -1371,14 +1371,14 @@ describe("Project map metadata budget", () => {
 
 			expect(elapsed,).toBeLessThan(1_400,);
 			const unavailable = result.map.warnings.filter((warning,) =>
-				/metadata unavailable:/.test(warning,)
+				/metadata unavailable:/.test(warning,),
 			);
 			expect(unavailable,).toHaveLength(4,);
-			expect(result.map.warnings.some((warning,) => /metadata timed out after/.test(warning,)),).toBe(
+			expect(result.map.warnings.some((warning,) => /metadata timed out after/.test(warning,),),).toBe(
 				false,
 			);
 			for (const metadataPath of Object.keys(FAST_METADATA,)) {
-				expect(requests.filter((request,) => request.path === metadataPath),).toHaveLength(1,);
+				expect(requests.filter((request,) => request.path === metadataPath,),).toHaveLength(1,);
 			}
 		},);
 	});

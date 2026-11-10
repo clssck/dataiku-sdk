@@ -97,7 +97,7 @@ export function parseAgentEvalArgs(argv: string[],): AgentEvalOptions {
 			return next;
 		};
 		if (flag === "--case") {
-			options.cases.push(...value().split(",",).map((id,) => id.trim()).filter(Boolean,),);
+			options.cases.push(...value().split(",",).map((id,) => id.trim(),).filter(Boolean,),);
 		} else if (flag === "--model") options.model = value();
 		else if (flag === "--max-time") options.maxTime = value();
 		else if (flag === "--keep") options.keep = true;
@@ -106,8 +106,8 @@ export function parseAgentEvalArgs(argv: string[],): AgentEvalOptions {
 		else throw new AgentEvalUsageError(`Unknown argument: ${raw}`,);
 	}
 	parseMaxTimeMs(options.maxTime,);
-	const known = EVAL_CASES.map((evalCase,) => evalCase.id);
-	const unknown = options.cases.filter((id,) => !known.includes(id,));
+	const known = EVAL_CASES.map((evalCase,) => evalCase.id,);
+	const unknown = options.cases.filter((id,) => !known.includes(id,),);
 	if (unknown.length > 0) {
 		throw new AgentEvalUsageError(
 			`Unknown case: ${unknown.join(", ",)} (known: ${known.join(", ",)})`,
@@ -244,7 +244,7 @@ function newProjectKey(caseId: string,): string {
 
 async function findSessionFile(sessionDir: string,): Promise<string | undefined> {
 	const files = [...new Bun.Glob("*.jsonl",).scanSync(sessionDir,),].filter((file,) =>
-		!file.startsWith("__",)
+		!file.startsWith("__",),
 	);
 	files.sort();
 	return files.at(-1,);
@@ -283,7 +283,7 @@ async function runCase(
 		setupConfig: path.join(root, "cfg-setup",),
 		agentConfig: path.join(root, "cfg-agent",),
 	};
-	await Promise.all(Object.values(dirs,).map((dir,) => fsp.mkdir(dir, { recursive: true, },)),);
+	await Promise.all(Object.values(dirs,).map((dir,) => fsp.mkdir(dir, { recursive: true, },),),);
 	const ctx: CaseContext = {
 		projectKey,
 		owner: environment.owner,
@@ -377,7 +377,7 @@ async function runCase(
 			record.toolCalls = metrics.toolCalls;
 			record.toolCallsByTool = metrics.toolCallsByTool;
 			record.dssInvocationCount = metrics.dssInvocations.length;
-			record.dssInvocations = metrics.dssInvocations.map(({ argv, },) => argv.join(" ",));
+			record.dssInvocations = metrics.dssInvocations.map(({ argv, },) => argv.join(" ",),);
 			record.failedDssCalls = metrics.failedDssCalls;
 			record.usageErrors = metrics.usageErrors;
 			record.tokens = metrics.tokens;
@@ -469,7 +469,7 @@ async function main(): Promise<void> {
 	}
 
 	const selected = options.cases.length > 0
-		? EVAL_CASES.filter((evalCase,) => options.cases.includes(evalCase.id,))
+		? EVAL_CASES.filter((evalCase,) => options.cases.includes(evalCase.id,),)
 		: EVAL_CASES;
 	const environment = await resolveEnvironment();
 	const startedAt = new Date();
@@ -489,7 +489,7 @@ async function main(): Promise<void> {
 		runId,
 		startedAt: startedAt.toISOString(),
 		finishedAt: new Date().toISOString(),
-		model: options.model || records.find((record,) => record.model)?.model || "",
+		model: options.model || records.find((record,) => record.model,)?.model || "",
 		maxTime: options.maxTime,
 		cases: records,
 	};
@@ -504,7 +504,7 @@ async function main(): Promise<void> {
 	log(`report: ${path.relative(process.cwd(), outDir,) || outDir}`,);
 	if (
 		records.some((record,) =>
-			!record.success || record.error !== undefined || !record.cleanedUp && !options.keep
+			!record.success || record.error !== undefined || !record.cleanedUp && !options.keep,
 		)
 	) {
 		process.exitCode = 1;

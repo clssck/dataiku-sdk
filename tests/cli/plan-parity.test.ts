@@ -105,8 +105,8 @@ describe("--plan matches the request the command sends", () => {
 					payload?: unknown;
 				};
 				expect(sent,).toEqual([],);
-				await dss(argv, { env, },).catch(() => undefined);
-				const request = sent.find((entry,) => entry.method === plan.method);
+				await dss(argv, { env, },).catch(() => undefined,);
+				const request = sent.find((entry,) => entry.method === plan.method,);
 				expect(request?.path,).toBe(plan.endpoint,);
 				expect(stableJson(request?.body ?? null,),).toBe(stableJson(plan.payload ?? null,),);
 			},);

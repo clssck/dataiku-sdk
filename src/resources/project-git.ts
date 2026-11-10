@@ -229,7 +229,7 @@ function normalizeLibraryList(raw: unknown,): unknown {
 	return Object.entries(refs,).map(([localTargetPath, spec,],) => ({
 		localTargetPath,
 		...(typeof spec === "object" && spec !== null ? spec as Record<string, unknown> : {}),
-	}));
+	}),);
 }
 
 /* ------------------------------------------------------------------ */

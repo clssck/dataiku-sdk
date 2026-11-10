@@ -68,7 +68,7 @@ interface JobWait {
 
 function outputRefs(settings: RecipeSettings,): string[] {
 	return Object.values(settings.recipe.outputs ?? {},).flatMap((role,) =>
-		(role.items ?? []).map((item,) => item.ref)
+		(role.items ?? []).map((item,) => item.ref,),
 	);
 }
 
@@ -125,7 +125,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 	async function ensureSyncRecipe(): Promise<void> {
 		await ensureOrdersDataset();
 		const datasets = await run<Array<{ name: string; }>>(["dataset", "list",],);
-		if (!datasets.some((entry,) => entry.name === SYNCED)) {
+		if (!datasets.some((entry,) => entry.name === SYNCED,)) {
 			await createManaged(SYNCED,);
 			await run([
 				"recipe",
@@ -146,7 +146,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 	async function ensureSlowRecipe(): Promise<void> {
 		await ensureOrdersDataset();
 		const recipes = await run<Array<{ name: string; }>>(["recipe", "list",],);
-		if (!recipes.some((entry,) => entry.name === SLOW_RECIPE)) {
+		if (!recipes.some((entry,) => entry.name === SLOW_RECIPE,)) {
 			await createManaged(SLOW_OUTPUT,);
 			await run([
 				"recipe",
@@ -205,8 +205,8 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 				"schema",
 				ORDERS,
 			],);
-			expect(schema.columns.map((column,) => column.name),).toEqual(
-				ORDERS_COLUMNS.map((column,) => column.name),
+			expect(schema.columns.map((column,) => column.name,),).toEqual(
+				ORDERS_COLUMNS.map((column,) => column.name,),
 			);
 
 			const validation = await run<{
@@ -318,7 +318,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 		], async () => {
 			await ensureOrdersDataset();
 			const datasets = await run<Array<{ name: string; }>>(["dataset", "list",],);
-			if (!datasets.some((entry,) => entry.name === PARTITIONED)) {
+			if (!datasets.some((entry,) => entry.name === PARTITIONED,)) {
 				await createManaged(PARTITIONED,);
 				await run([
 					"dataset",
@@ -339,7 +339,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 				"get",
 				PARTITIONED,
 			],);
-			expect(settings.partitioning?.dimensions?.map((dimension,) => dimension.name),).toEqual([
+			expect(settings.partitioning?.dimensions?.map((dimension,) => dimension.name,),).toEqual([
 				"day",
 			],);
 			// list-partitions on a never-built partitioned dataset surfaces DSS's
@@ -347,7 +347,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 			// starts once the first partition exists below.
 
 			const recipes = await run<Array<{ name: string; }>>(["recipe", "list",],);
-			if (!recipes.some((entry,) => entry.name === PARTITION_RECIPE)) {
+			if (!recipes.some((entry,) => entry.name === PARTITION_RECIPE,)) {
 				await run([
 					"recipe",
 					"create",
@@ -520,7 +520,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 			], 4,);
 			expect(changed.code,).toBe("assertion_failed",);
 			expect(changed.details?.result?.unchanged,).toBe(false,);
-			expect(changed.details?.result?.failures.map((failure,) => failure.name),).toEqual([
+			expect(changed.details?.result?.failures.map((failure,) => failure.name,),).toEqual([
 				"payload",
 			],);
 
@@ -559,7 +559,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 				["flow-zone", "plan",],
 			);
 			expect(typeof before.topologyFingerprint,).toBe("string",);
-			expect(before.zones.some((zone,) => zone.name === ZONE_NAME),).toBe(false,);
+			expect(before.zones.some((zone,) => zone.name === ZONE_NAME,),).toBe(false,);
 
 			const plan = {
 				topologyFingerprint: before.topologyFingerprint,
@@ -598,7 +598,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 			}>(["flow-zone", "organize", "--data", JSON.stringify(plan,), "--validate-objects",],);
 			expect(organized.organized,).toBe(true,);
 			expect(organized.topologyUnchanged,).toBe(true,);
-			expect(organized.created.map((zone,) => zone.name),).toEqual([ZONE_NAME,],);
+			expect(organized.created.map((zone,) => zone.name,),).toEqual([ZONE_NAME,],);
 			const zoneId = organized.created[0].id;
 			expect(organized.moved,).toEqual([
 				expect.objectContaining({
@@ -618,10 +618,10 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 					"find",
 					ZONE_NAME,
 				],);
-				expect(byName.map((zone,) => zone.id),).toEqual([zoneId,],);
+				expect(byName.map((zone,) => zone.id,),).toEqual([zoneId,],);
 				// recipe.clone inherits the source recipe's zone, so the zone may
 				// hold more than the two planned objects; assert containment.
-				const itemIds = byName[0].items.map((item,) => item.objectId);
+				const itemIds = byName[0].items.map((item,) => item.objectId,);
 				expect(itemIds,).toEqual(expect.arrayContaining([ORDERS, SYNC_RECIPE,],),);
 				const byDataset = await run<Array<{ id: string; containsMatchingObject: boolean; }>>([
 					"flow-zone",
@@ -633,7 +633,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 					expect.objectContaining({ id: zoneId, containsMatchingObject: true, },),
 				],);
 				const notInZone = await run<unknown[]>(["flow-zone", "find", "--dataset", SLOW_OUTPUT,],);
-				expect(notInZone.some((zone,) => (zone as { id: string; }).id === zoneId),).toBe(false,);
+				expect(notInZone.some((zone,) => (zone as { id: string; }).id === zoneId,),).toBe(false,);
 
 				const zone = await run<{ id: string; name: string; color?: string; }>([
 					"flow-zone",
@@ -652,9 +652,9 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 				>(
 					["flow-zone", "plan",],
 				);
-				const exportedZone = exported.zones.find((entry,) => entry.id === zoneId);
+				const exportedZone = exported.zones.find((entry,) => entry.id === zoneId,);
 				expect(exportedZone?.name,).toBe(ZONE_NAME,);
-				expect(exportedZone?.items.map((item,) => item.objectId) ?? [],).toEqual(
+				expect(exportedZone?.items.map((item,) => item.objectId,) ?? [],).toEqual(
 					expect.arrayContaining([ORDERS, SYNC_RECIPE,],),
 				);
 

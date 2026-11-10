@@ -108,7 +108,7 @@ export const groupCommands: Record<string, CommandMeta> = withUsage("group", {
 				};
 			}
 			if (f["if-exists"] === true) {
-				const current = await readIfExists(() => c.groups.get(name,));
+				const current = await readIfExists(() => c.groups.get(name,),);
 				if (!current) return skipResult("group", name, "missing",);
 			}
 			return c.groups.delete(name,);

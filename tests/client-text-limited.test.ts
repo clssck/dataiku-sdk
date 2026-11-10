@@ -15,7 +15,7 @@ beforeAll(async () => {
 		res.writeHead(200, { "content-type": "text/plain; charset=utf-8", },);
 		res.end(Buffer.from(BODY, "utf-8",),);
 	},);
-	await new Promise<void>((resolve,) => server.listen(0, "127.0.0.1", () => resolve(),));
+	await new Promise<void>((resolve,) => server.listen(0, "127.0.0.1", () => resolve(),),);
 	const addr = server.address();
 	baseUrl = `http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`;
 },);

@@ -11,7 +11,7 @@ const servers: Server[] = [];
 async function listen(handler: Handler,): Promise<string> {
 	const server = createServer(handler,);
 	servers.push(server,);
-	await new Promise<void>((resolve,) => server.listen(0, "127.0.0.1", resolve,));
+	await new Promise<void>((resolve,) => server.listen(0, "127.0.0.1", resolve,),);
 	return `http://127.0.0.1:${String((server.address() as AddressInfo).port,)}`;
 }
 
@@ -20,8 +20,8 @@ afterEach(async () => {
 		servers.splice(0,).map((server,) =>
 			new Promise<void>((resolve,) => {
 				server.closeAllConnections();
-				server.close(() => resolve());
-			},)
+				server.close(() => resolve(),);
+			},),
 		),
 	);
 },);
@@ -51,7 +51,7 @@ describe("DataikuClient redirect policy", () => {
 					res.end("moved",);
 				},);
 
-				const failure = await call(clientFor(source,),).catch((error: unknown,) => error);
+				const failure = await call(clientFor(source,),).catch((error: unknown,) => error,);
 
 				expect(failure,).toBeInstanceOf(DataikuError,);
 				const error = failure as DataikuError;
@@ -79,7 +79,7 @@ describe("DataikuClient redirect policy", () => {
 
 		const failure = await clientFor(source,).post("/things", {}, { retryMaxAttempts: 3, },).catch((
 			error: unknown,
-		) => error);
+		) => error,);
 
 		expect(failure,).toBeInstanceOf(DataikuError,);
 		expect((failure as DataikuError).status,).toBe(307,);
@@ -92,7 +92,7 @@ describe("DataikuClient redirect policy", () => {
 			res.end();
 		},);
 
-		const failure = await clientFor(source,).post("/things", {},).catch((error: unknown,) => error);
+		const failure = await clientFor(source,).post("/things", {},).catch((error: unknown,) => error,);
 
 		expect(failure,).toBeInstanceOf(DataikuError,);
 		expect((failure as DataikuError).category,).toBe("unexpected_response",);

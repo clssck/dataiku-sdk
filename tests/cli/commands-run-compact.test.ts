@@ -183,13 +183,13 @@ describe("commands run --fields RESOURCE.ACTION compact entries", () => {
 		const entry = registry.commands.run;
 		expect(entry.usage,).toContain("[--full]",);
 		expect(entry.description,).toContain("--full",);
-		expect(entry.flags.map((flag,) => flag.name),).toContain("full",);
+		expect(entry.flags.map((flag,) => flag.name,),).toContain("full",);
 	});
 });
 
 describe("compactCommandEntry over the whole registry", () => {
 	const all = Object.entries(registry,).flatMap(([resource, actions,],) =>
-		Object.keys(actions,).map((action,) => `${resource}.${action}`)
+		Object.keys(actions,).map((action,) => `${resource}.${action}`,),
 	);
 
 	it("is a strict subset of the full entry with identical values for the kept keys", () => {

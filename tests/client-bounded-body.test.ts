@@ -84,7 +84,7 @@ describe("DataikuClient bounded response bodies", () => {
 			res.end("busy",);
 		}, async client => {
 			const failure = await client.get("/deadline", { timeoutMs: 100, },).catch((error: unknown,) =>
-				error
+				error,
 			);
 			if (!(failure instanceof DataikuError)) throw new Error("Expected timeout",);
 			expect(failure.retry?.timedOut,).toBe(true,);
@@ -99,7 +99,7 @@ describe("DataikuClient bounded response bodies", () => {
 			res.writeHead(429, { "Retry-After": "999999999999999999999", },);
 			res.end("rate limited",);
 		}, async client => {
-			const failure = await client.get("/excessive-backoff",).catch((error: unknown,) => error);
+			const failure = await client.get("/excessive-backoff",).catch((error: unknown,) => error,);
 			if (!(failure instanceof DataikuError)) throw new Error("Expected original error",);
 			expect(failure.status,).toBe(429,);
 			expect(failure.retry?.delaysMs,).toEqual([],);
@@ -115,7 +115,7 @@ describe("DataikuClient bounded response bodies", () => {
 			res.end("😀".repeat(2_000,),);
 		}, async (client,) => {
 			const failure = await client.post("/oversized-mutation-error", {},).catch((error: unknown,) =>
-				error
+				error,
 			);
 			if (!(failure instanceof DataikuError)) throw new Error("Expected a DataikuError",);
 			expect(failure.status,).toBe(503,);
@@ -161,7 +161,7 @@ describe("DataikuClient bounded response bodies", () => {
 			res.writeHead(503,);
 			res.write("partial error",);
 		}, async (client,) => {
-			const failure = await client.post("/stalled-mutation", {},).catch((error: unknown,) => error);
+			const failure = await client.post("/stalled-mutation", {},).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).status,).toBe(503,);
 		}, { requestTimeoutMs: 500, },);
@@ -172,7 +172,7 @@ describe("DataikuClient bounded response bodies", () => {
 			res.statusCode = 200;
 			res.end("x".repeat(2_000,),);
 		}, async (client,) => {
-			const failure = await client.getText("/big",).catch((error: unknown,) => error);
+			const failure = await client.getText("/big",).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).status,).toBe(200,);
 			expect((failure as Error).message,).toContain("exceeded the 512-byte limit",);
@@ -194,7 +194,7 @@ describe("DataikuClient bounded response bodies", () => {
 			res.statusCode = 200;
 			res.end("y".repeat(2_000,),);
 		}, async (client,) => {
-			const failure = await client.postText("/big-post", {},).catch((error: unknown,) => error);
+			const failure = await client.postText("/big-post", {},).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as Error).message,).toContain("exceeded the 512-byte limit",);
 		}, { maxResponseBodyBytes: 512, },);
@@ -207,7 +207,7 @@ describe("DataikuClient bounded response bodies", () => {
 			res.setHeader("content-type", "application/json",);
 			res.end(oversizedJson,);
 		}, async (client,) => {
-			const failure = await client.get("/big-json",).catch((error: unknown,) => error);
+			const failure = await client.get("/big-json",).catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as Error).message,).toContain("exceeded the 512-byte limit",);
 		}, { maxResponseBodyBytes: 512, },);
@@ -224,7 +224,7 @@ describe("DataikuClient bounded response bodies", () => {
 			setTimeout(() => res.end("late body",), 500,);
 		}, async (client,) => {
 			const started = Date.now();
-			const failure = await client.getText("/stalled",).catch((error: unknown,) => error);
+			const failure = await client.getText("/stalled",).catch((error: unknown,) => error,);
 			const elapsed = Date.now() - started;
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).status,).toBe(0,);
@@ -280,7 +280,7 @@ describe("DataikuClient bounded response bodies", () => {
 			res.flushHeaders();
 			for (const character of body) {
 				res.write(character,);
-				await new Promise<void>((resolvePromise,) => setImmediate(resolvePromise,));
+				await new Promise<void>((resolvePromise,) => setImmediate(resolvePromise,),);
 			}
 			res.end();
 		}, async (client,) => {
@@ -376,7 +376,7 @@ describe("DataikuClient bounded response bodies", () => {
 			}, async (client,) => {
 				const failure = await client.readBoundedBytes(await client[method]("/big",),).catch((
 					error: unknown,
-				) => error);
+				) => error,);
 				expect(failure,).toBeInstanceOf(DataikuError,);
 				expect((failure as DataikuError).statusText,).toBe(RESPONSE_TOO_LARGE_STATUS_TEXT,);
 				expect((failure as Error).message,).toContain("exceeded the 512-byte limit",);
@@ -389,7 +389,7 @@ describe("DataikuClient bounded response bodies", () => {
 				res.write("first chunk",);
 			}, async (client,) => {
 				const res = await client[method]("/stalled",);
-				const failure = await client.readBoundedBytes(res,).catch((error: unknown,) => error);
+				const failure = await client.readBoundedBytes(res,).catch((error: unknown,) => error,);
 				expect(failure,).toBeInstanceOf(DataikuError,);
 				expect((failure as DataikuError).status,).toBe(0,);
 			}, { requestTimeoutMs: 500, },);
@@ -454,7 +454,7 @@ describe("DataikuClient bounded response bodies", () => {
 			const started = Date.now();
 			const failure = await client.getTextTailLimited("/stalled-log", 64,).catch((
 				error: unknown,
-			) => error);
+			) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).status,).toBe(0,);
 			expect((failure as Error).message,).toContain(
@@ -478,7 +478,7 @@ describe("DataikuClient bounded response bodies", () => {
 			const started = Date.now();
 			const failure = await client.getTextTailLimited("/endless-log", 64,).catch((
 				error: unknown,
-			) => error);
+			) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as Error).message,).toContain("still arriving after 3000ms",);
 			expect((failure as Error).message,).toContain("10x --request-timeout",);
@@ -493,7 +493,7 @@ describe("DataikuClient bounded response bodies", () => {
 		}, async (client,) => {
 			const failure = await new ProjectGitResource(client,).status("PROJ",).catch((
 				error: unknown,
-			) => error);
+			) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).status,).toBe(0,);
 			expect((failure as DataikuError).statusText,).toBe("Request Timeout",);
@@ -506,7 +506,7 @@ describe("DataikuClient bounded response bodies", () => {
 			res.write("{",);
 		}, async (client,) => {
 			const failure = await client.requestGitText("GET", "/git", undefined, Date.now() + 150,)
-				.catch((error: unknown,) => error);
+				.catch((error: unknown,) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).statusText,).toBe("Request Timeout",);
 		}, { requestTimeoutMs: 30_000, },);
@@ -519,7 +519,7 @@ describe("DataikuClient bounded response bodies", () => {
 		}, async (client,) => {
 			const failure = await new ProjectGitResource(client,).status("PROJ",).catch((
 				error: unknown,
-			) => error);
+			) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).statusText,).toBe(RESPONSE_TOO_LARGE_STATUS_TEXT,);
 			expect((failure as DataikuError).retryable,).toBe(false,);
@@ -533,7 +533,7 @@ describe("DataikuClient bounded response bodies", () => {
 		}, async (client,) => {
 			const failure = await client.postRawBody("/upload", "payload",).catch((
 				error: unknown,
-			) => error);
+			) => error,);
 			expect(failure,).toBeInstanceOf(DataikuError,);
 			expect((failure as DataikuError).status,).toBe(0,);
 			expect((failure as DataikuError).statusText,).toBe("Request Timeout",);

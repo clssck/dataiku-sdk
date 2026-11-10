@@ -256,7 +256,7 @@ export function encodePluginPath(path: string,): string {
 	const normalized = validatePluginPath(path,);
 	return normalized
 		.split("/",)
-		.map((segment,) => encodeURIComponent(segment,))
+		.map((segment,) => encodeURIComponent(segment,),)
 		.join("/",);
 }
 

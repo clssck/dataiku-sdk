@@ -1,5 +1,6 @@
 import { describe, expect, it, } from "bun:test";
 import { projectIncarnationHash, } from "../../src/utils/project-incarnation.js";
+import type { IncomingMessage, ServerResponse, } from "./_harness.js";
 import {
 	cliEnv,
 	dss,
@@ -13,7 +14,6 @@ import {
 	tmpdir,
 	withCliServer,
 } from "./_harness.js";
-import type { IncomingMessage, ServerResponse, } from "./_harness.js";
 
 describe("CLI batch command", () => {
 	const hermetic = {
@@ -72,7 +72,7 @@ describe("CLI batch command", () => {
 			], { env: hermetic, },)).stdout,
 		) as { steps: Array<{ runnable: boolean; }>; };
 		expect(accepted.steps,).toHaveLength(3,);
-		expect(accepted.steps.every((step,) => step.runnable),).toBe(true,);
+		expect(accepted.steps.every((step,) => step.runnable,),).toBe(true,);
 
 		const rejected = await dssFailure([
 			"batch",
@@ -363,7 +363,7 @@ describe("CLI batch command", () => {
 				{ args: string[]; runnable: boolean; error?: { code: string; error: string; }; }
 			>;
 		};
-		expect(report.steps.map((step,) => step.runnable),).toEqual([false, false, false, false,],);
+		expect(report.steps.map((step,) => step.runnable,),).toEqual([false, false, false, false,],);
 		for (const step of report.steps) {
 			expect(step.error?.code,).toBe("usage_error",);
 			expect(step.error?.error,).toContain("--api-key",);
@@ -460,12 +460,10 @@ describe("CLI batch command", () => {
 			expect(liveReport.steps[0].error?.code,).toBe("usage_error",);
 
 			for (
-				const step of [["project-folder", "delete", "",], [
-					"project-folder",
-					"delete",
-					"",
-					"--dry-run",
-				],]
+				const step of [
+					["project-folder", "delete", "",],
+					["project-folder", "delete", "", "--dry-run",],
+				]
 			) {
 				const dry = await dssFailure(
 					["batch", "--dry-run", "--data", JSON.stringify([step,],),],
@@ -518,7 +516,7 @@ describe("CLI batch command", () => {
 				const report = JSON.parse(dry.stdout,) as {
 					steps: Array<{ runnable: boolean; error?: { code: string; }; }>;
 				};
-				expect(report.steps.map((step,) => step.runnable),).toEqual([true, false, false,],);
+				expect(report.steps.map((step,) => step.runnable,),).toEqual([true, false, false,],);
 				expect(report.steps[1].error?.code,).toBe("usage_error",);
 				expect(report.steps[2].error?.code,).toBe("usage_error",);
 			},);
@@ -556,7 +554,7 @@ describe("CLI batch command", () => {
 		const dryOutput = JSON.stringify(dry,);
 		for (const secret of secrets) expect(dryOutput,).not.toContain(secret,);
 		// The unparseable --data is unrunnable, but its value is echoed unchanged.
-		expect(dry.steps.map((step,) => step.runnable),).toEqual([true, true, true, true, false,],);
+		expect(dry.steps.map((step,) => step.runnable,),).toEqual([true, true, true, true, false,],);
 		expect(dry.steps[0].args.join(" ",),).toContain('"login":"probe"',);
 		expect(dry.steps[1].args.join(" ",),).toContain('"login":"probe"',);
 		expect(dry.steps[1].args[2],).toStartWith("--data=",);

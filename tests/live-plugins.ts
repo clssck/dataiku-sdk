@@ -163,7 +163,7 @@ async function withOwnedPlugin(
 		errors.push(error,);
 	} finally {
 		ctx.fixtures.pluginId = undefined;
-		if (errors.some(e => e instanceof AmbiguousMutationError)) {
+		if (errors.some(e => e instanceof AmbiguousMutationError,)) {
 			process.stdout.write(
 				`${
 					JSON.stringify({
@@ -185,7 +185,7 @@ async function withOwnedPlugin(
 	if (errors.length) {
 		throw new AggregateError(
 			errors,
-			errors.map(e => e instanceof Error ? e.message : String(e,)).join("; ",),
+			errors.map(e => e instanceof Error ? e.message : String(e,),).join("; ",),
 		);
 	}
 }
@@ -347,7 +347,7 @@ export async function writePluginArchive(
 async function listedPlugin(ctx: LiveContext, id: string,): Promise<JsonRecord> {
 	const list = await ctx.run<unknown>(["plugin", "list",],);
 	const found = Array.isArray(list,)
-		? list.map(asRecord,).find(record => record?.["id"] === id)
+		? list.map(asRecord,).find(record => record?.["id"] === id,)
 		: undefined;
 	if (!found) throw new Error(`plugin ${id} missing from plugin list`,);
 	return found;
@@ -424,7 +424,7 @@ async function pluginLifecycle(ctx: LiveContext,): Promise<void> {
 		await ctx.run(["plugin", "folder-add", id, "resources",],);
 		await ctx.run(["plugin", "contents-put", id, "resources/README.md", "--content", body,],);
 		const paths = await contentsListPaths(ctx, id,);
-		if (!paths.some(p => p.endsWith("resources/README.md",))) {
+		if (!paths.some(p => p.endsWith("resources/README.md",),)) {
 			throw new Error(
 				`plugin contents-list ${id} does not show resources/README.md: ${paths.join(", ",)}`,
 			);
@@ -438,7 +438,7 @@ async function pluginLifecycle(ctx: LiveContext,): Promise<void> {
 		await assertContent(ctx, id, "INTRO.md", body,);
 		await ctx.run(["plugin", "contents-delete", id, "INTRO.md",],);
 		const remaining = await contentsListPaths(ctx, id,);
-		if (remaining.some(p => p === "INTRO.md" || p.endsWith("/INTRO.md",))) {
+		if (remaining.some(p => p === "INTRO.md" || p.endsWith("/INTRO.md",),)) {
 			throw new Error(`plugin contents-delete ${id} left INTRO.md listed`,);
 		}
 		const archive = join(ctx.dir, `plugin-download-${id}-i${String(ctx.iteration,)}.zip`,);

@@ -246,7 +246,7 @@ describe("CLI command registry discovery", () => {
 			}
 		>;
 		// Global flags are listed once in the agent contract, not in every entry.
-		const projectFlags = registry["project.list"].flags?.map((flag,) => flag.name) ?? [];
+		const projectFlags = registry["project.list"].flags?.map((flag,) => flag.name,) ?? [];
 		expect(projectFlags,).not.toContain("verbose",);
 		expect(projectFlags,).not.toContain("help",);
 		expect(projectFlags,).not.toContain("report-json",);
@@ -255,7 +255,7 @@ describe("CLI command registry discovery", () => {
 		const contract = JSON.parse(
 			(await dss(["agent", "contract", "--fields", "commands.globalFlags",],)).stdout,
 		) as { "commands.globalFlags": Array<{ name: string; }>; };
-		expect(contract["commands.globalFlags"].map((flag,) => flag.name),).toEqual(
+		expect(contract["commands.globalFlags"].map((flag,) => flag.name,),).toEqual(
 			expect.arrayContaining(["verbose", "fields", "url", "api-key",],),
 		);
 		expect(registry["recipe.get-payload"].action,).toBe("get-payload",);
@@ -269,7 +269,7 @@ describe("CLI command registry short flags", () => {
 		const { stdout, stderr, } = await dss(["commands", "run", "--fields", "project.get", "--full",],);
 		expect(stderr,).toBe("",);
 		const registry = JSON.parse(stdout,) as Record<string, { flags?: Array<{ name: string; }>; }>;
-		const projectFlags = registry["project.get"].flags?.map((flag,) => flag.name) ?? [];
+		const projectFlags = registry["project.get"].flags?.map((flag,) => flag.name,) ?? [];
 		expect(projectFlags,).toContain("project-key",);
 		expect(projectFlags,).not.toContain("help",);
 	});
@@ -331,7 +331,7 @@ describe("CLI registry required-input usage accuracy", () => {
 			"dashboard.create.structuredExamples"?: Array<{ payload?: Record<string, unknown>; }>;
 		};
 		const examples = registry["dashboard.create.structuredExamples"] ?? [];
-		expect(examples.find((example,) => example.payload)?.payload,).toEqual({
+		expect(examples.find((example,) => example.payload,)?.payload,).toEqual({
 			name: "Agent dashboard",
 			pages: [],
 		},);
@@ -374,7 +374,7 @@ describe("CLI registry required-input usage accuracy", () => {
 				if (/validate/.test(action,)) continue; // validation commands are out of audit scope
 				if (optionalPayload.has(`${resource} ${action}`,)) continue;
 				const bracketed = meta.usage.match(/\[[^\]]*\]/g,) ?? [];
-				const offending = bracketed.filter((group,) => payloadTokens.test(group,));
+				const offending = bracketed.filter((group,) => payloadTokens.test(group,),);
 				expect(
 					offending,
 					`${resource} ${action} marks a handler-required payload optional: ${offending.join(" ",)}`,

@@ -86,7 +86,7 @@ function parse<T,>(stdout: string,): T {
 }
 
 function ids(attachments: Attachment[],): string[] {
-	return attachments.map((entry,) => entry.smartId);
+	return attachments.map((entry,) => entry.smartId,);
 }
 
 function fileAttachment(smartId: string, name: string, size: number,): Attachment {
@@ -353,7 +353,7 @@ describe("wiki detach", () => {
 				},);
 			}
 		},);
-		expect(wiki.requests.every((request,) => request.startsWith("GET ",)),).toBe(true,);
+		expect(wiki.requests.every((request,) => request.startsWith("GET ",),),).toBe(true,);
 	});
 
 	it("--if-exists turns a missing attachment or a missing article into a skipped success", async () => {
@@ -383,7 +383,7 @@ describe("wiki detach", () => {
 			);
 			expect(missingArticleStrict.code,).not.toBe(0,);
 		},);
-		expect(wiki.requests.some((request,) => request.startsWith("PUT ",)),).toBe(false,);
+		expect(wiki.requests.some((request,) => request.startsWith("PUT ",),),).toBe(false,);
 		expect(wiki.attachments,).toEqual([keep,],);
 	});
 
@@ -465,7 +465,7 @@ describe("wiki SDK attach/detach", () => {
 		await withCliServer(wiki.handler, async (url,) => {
 			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
 			const missing = join(tmpdir(), `dss-wiki-sdk-missing-${Date.now()}.png`,);
-			const error = await client.wiki.attach("article-1", missing,).catch((cause: unknown,) => cause);
+			const error = await client.wiki.attach("article-1", missing,).catch((cause: unknown,) => cause,);
 			expect(error instanceof ClientValidationError ? error.code : String(error,),).toBe(
 				"not_found",
 			);
@@ -477,7 +477,7 @@ describe("wiki SDK attach/detach", () => {
 		const wiki = mockWiki([fileAttachment("keep-1", "keep.png", 3,),],);
 		await withCliServer(wiki.handler, async (url,) => {
 			const client = new DataikuClient({ url, apiKey: "test-key", projectKey: "TEST", },);
-			const error = await client.wiki.detach("article-1", "nope",).catch((cause: unknown,) => cause);
+			const error = await client.wiki.detach("article-1", "nope",).catch((cause: unknown,) => cause,);
 			expect(error instanceof ClientValidationError ? error.code : String(error,),).toBe(
 				"not_found",
 			);

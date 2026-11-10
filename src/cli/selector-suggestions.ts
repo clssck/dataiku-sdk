@@ -25,7 +25,7 @@ function closeNames(name: string, candidates: readonly string[],): string[] {
 	return candidates.filter((candidate,) =>
 		candidate !== name
 		&& (editDistance(name, candidate,) <= maxDistance
-			|| (name.length >= 3 && candidate.includes(name,)))
+			|| (name.length >= 3 && candidate.includes(name,))),
 	);
 }
 
@@ -47,21 +47,21 @@ export function suggestSelectors(
 	const resources = Object.keys(actionsByResource,);
 	const sameActionElsewhere = action === undefined
 		? []
-		: resources.filter((other,) => other !== resource && actionsByResource[other].includes(action,))
+		: resources.filter((other,) => other !== resource && actionsByResource[other].includes(action,),)
 			.map((
 				other,
-			) => `${other}.${action}${suffix}`);
+			) => `${other}.${action}${suffix}`,);
 	let suggestions: string[];
 	if (Object.hasOwn(actionsByResource, resource,)) {
 		const closeActions = action === undefined
 			? []
 			: closeNames(action, actionsByResource[resource],).map((close,) =>
-				`${resource}.${close}${suffix}`
+				`${resource}.${close}${suffix}`,
 			);
 		suggestions = [...sameActionElsewhere, ...closeActions,];
 	} else {
 		const tail = action === undefined ? "" : `.${[action, ...rest,].join(".",)}`;
-		const closeResources = closeNames(resource, resources,).map((close,) => `${close}${tail}`);
+		const closeResources = closeNames(resource, resources,).map((close,) => `${close}${tail}`,);
 		suggestions = closeResources.length > 0 ? closeResources : sameActionElsewhere;
 	}
 	return [...new Set(suggestions,),].slice(0, MAX_SUGGESTIONS,);

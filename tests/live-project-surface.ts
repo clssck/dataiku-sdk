@@ -68,7 +68,7 @@ export async function withChildProject(
 	if (errors.length) {
 		throw new AggregateError(
 			errors,
-			errors.map(e => e instanceof Error ? e.message : String(e,)).join("; ",),
+			errors.map(e => e instanceof Error ? e.message : String(e,),).join("; ",),
 		);
 	}
 }
@@ -94,7 +94,7 @@ async function ensureDataQualityRule(
 		"rules",
 		dataset,
 	],);
-	const existing = rules.find(rule => rule.displayName === DQ_RULE_DISPLAY_NAME);
+	const existing = rules.find(rule => rule.displayName === DQ_RULE_DISPLAY_NAME,);
 	if (existing?.id) return { dataset, ruleId: existing.id, };
 	const created = await ctx.run<{ created: string; id?: string; }>([
 		"data-quality",
@@ -139,7 +139,7 @@ async function exerciseProjectReads(ctx: LiveContext,): Promise<void> {
 		"project.map",
 	], async () => {
 		const list = await ctx.run<ProjectSummary[]>(["project", "list",],);
-		const listed = list.find(project => project.projectKey === ctx.projectKey);
+		const listed = list.find(project => project.projectKey === ctx.projectKey,);
 		expect(listed,).toBeTruthy();
 		const details = await ctx.run<ProjectDetails>(["project", "get",],);
 		expect(details.projectKey,).toBe(ctx.projectKey,);
@@ -153,7 +153,7 @@ async function exerciseProjectReads(ctx: LiveContext,): Promise<void> {
 		expect(mapped.truncation,).toBeUndefined();
 		expect(mapped.map.nodes.length,).toBeGreaterThanOrEqual(datasets.length,);
 		for (const dataset of datasets) {
-			expect(mapped.map.nodes.some(node => node.id === dataset || node.id.endsWith(`.${dataset}`,)),)
+			expect(mapped.map.nodes.some(node => node.id === dataset || node.id.endsWith(`.${dataset}`,),),)
 				.toBe(true,);
 		}
 		const rendered = await ctx.run<CompactFlowMapResult>([
@@ -187,7 +187,7 @@ async function exerciseProjectMetadata(ctx: LiveContext,): Promise<void> {
 			const next: ProjectMetadata = {
 				...before,
 				shortDesc,
-				tags: [...(before.tags ?? []).filter(tag => tag !== TAG_NAME), TAG_NAME,],
+				tags: [...(before.tags ?? []).filter(tag => tag !== TAG_NAME,), TAG_NAME,],
 			};
 			const planned = await ctx.run<{ dryRun: boolean; next: ProjectMetadata; }>([
 				"project",
@@ -252,7 +252,7 @@ async function exerciseProjectTags(ctx: LiveContext,): Promise<void> {
 /** A group rule already granted on the root project proves the group exists on this instance. */
 async function rootGroupRule(ctx: LiveContext,): Promise<ProjectPermissionRule | undefined> {
 	const root = await ctx.client.projects.getPermissions(ctx.projectKey,);
-	return root.permissions?.find(rule => typeof rule.group === "string" && rule.group.trim());
+	return root.permissions?.find(rule => typeof rule.group === "string" && rule.group.trim(),);
 }
 
 async function exerciseProjectPermissions(ctx: LiveContext,): Promise<void> {
@@ -269,7 +269,7 @@ async function exerciseProjectPermissions(ctx: LiveContext,): Promise<void> {
 			const baseline = before.permissions ?? [];
 			const borrowed = await rootGroupRule(ctx,);
 			const added: ProjectPermissionRule | undefined = borrowed
-					&& !baseline.some(rule => rule.group === borrowed.group)
+					&& !baseline.some(rule => rule.group === borrowed.group,)
 				? { ...borrowed, admin: false, readProjectContent: true, writeProjectContent: false, }
 				: undefined;
 			const next: ProjectPermissions = {
@@ -289,7 +289,7 @@ async function exerciseProjectPermissions(ctx: LiveContext,): Promise<void> {
 			expect(after.owner,).toBe(before.owner,);
 			expect(after.permissions?.length,).toBe(next.permissions!.length,);
 			if (added) {
-				const landed = after.permissions?.find(rule => rule.group === added.group);
+				const landed = after.permissions?.find(rule => rule.group === added.group,);
 				expect(landed,).toBeTruthy();
 				expect(landed?.readProjectContent,).toBe(true,);
 				expect(landed?.writeProjectContent,).toBe(false,);
@@ -299,7 +299,7 @@ async function exerciseProjectPermissions(ctx: LiveContext,): Promise<void> {
 					projectKey: key,
 				},);
 				const restored = await ctx.client.projects.getPermissions(key,);
-				expect(restored.permissions?.some(rule => rule.group === added.group),).toBe(false,);
+				expect(restored.permissions?.some(rule => rule.group === added.group,),).toBe(false,);
 				expect(restored.permissions?.length,).toBe(baseline.length,);
 			}
 		},);
@@ -336,12 +336,12 @@ async function exerciseDiscussionLifecycle(ctx: LiveContext,): Promise<void> {
 			const listed = await ctx.run<Discussion[]>(["discussion", "list", ...object,], {
 				projectKey: key,
 			},);
-			expect(listed.map(discussion => discussion.id),).toEqual([id,],);
+			expect(listed.map(discussion => discussion.id,),).toEqual([id,],);
 			const fetched = await ctx.run<Discussion>(["discussion", "get", ...object, id,], {
 				projectKey: key,
 			},);
 			expect(fetched.id,).toBe(id,);
-			expect(fetched.replies?.map(reply => reply.text),).toEqual([firstReply,],);
+			expect(fetched.replies?.map(reply => reply.text,),).toEqual([firstReply,],);
 			const secondReply = "Follow-up reply from the live project surface case.";
 			const replied = await ctx.run<Discussion>([
 				"discussion",
@@ -354,8 +354,8 @@ async function exerciseDiscussionLifecycle(ctx: LiveContext,): Promise<void> {
 			expect(replied.id,).toBe(id,);
 			const final = await ctx.client.discussions.get(...object, id, key,);
 			// DSS returns replies newest-first; the reply count and contents are the contract.
-			expect(final.replies?.map(reply => reply.text),).toHaveLength(2,);
-			expect([...final.replies ?? [],].map(reply => reply.text).sort(),).toEqual(
+			expect(final.replies?.map(reply => reply.text,),).toHaveLength(2,);
+			expect([...final.replies ?? [],].map(reply => reply.text,).sort(),).toEqual(
 				[firstReply, secondReply,].sort(),
 			);
 			const editedTopic = `${topic} (edited)`;
@@ -382,7 +382,7 @@ async function exerciseDoctor(ctx: LiveContext,): Promise<void> {
 		expect(report.context.projectKey,).toBe(ctx.projectKey,);
 		expect(report.context.hasUrl && report.context.hasApiKey,).toBe(true,);
 		for (const name of ["credentials_present", "connectivity", "default_project",]) {
-			const check = report.checks.find(entry => entry.name === name);
+			const check = report.checks.find(entry => entry.name === name,);
 			expect(check?.ok,).toBe(true,);
 		}
 		expect(report.permissions,).toBeUndefined();
@@ -432,7 +432,7 @@ async function exerciseFixtures(ctx: LiveContext,): Promise<void> {
 			for (const name of datasets) {
 				if (ctx.fixtures.datasets[name] === name) {
 					expect(
-						restricted.unsafe.datasets.some(entry => entry.name === name),
+						restricted.unsafe.datasets.some(entry => entry.name === name,),
 					).toBe(true,);
 				}
 			}

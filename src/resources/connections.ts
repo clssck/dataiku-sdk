@@ -10,7 +10,7 @@ import { BaseResource, requireNonEmpty, } from "./base.js";
 function normalizeConnectionNames(value: unknown,): string[] {
 	if (!Array.isArray(value,)) return [];
 	return (value as unknown[])
-		.filter((v,): v is string => typeof v === "string" && v.length > 0)
+		.filter((v,): v is string => typeof v === "string" && v.length > 0,)
 		.sort();
 }
 
@@ -152,13 +152,13 @@ async function inferRichConnections(
 	}
 
 	return [...map.entries(),]
-		.sort(([a,], [b,],) => a.localeCompare(b,))
+		.sort(([a,], [b,],) => a.localeCompare(b,),)
 		.map(([name, { types, managed, dbSchemas, },],) => ({
 			name,
 			types: [...types,].sort(),
 			managed,
 			dbSchemas: [...dbSchemas,].sort(),
-		}));
+		}),);
 }
 
 // ---------------------------------------------------------------------------
@@ -200,7 +200,7 @@ export class ConnectionsResource extends BaseResource {
 		try {
 			const names = await this.list();
 			if (names.length > 0) {
-				return names.map((name,) => ({ name, }));
+				return names.map((name,) => ({ name, }),);
 			}
 		} catch {
 			// Fall through to rich inference.
@@ -369,7 +369,7 @@ export class ConnectionsResource extends BaseResource {
 	): Promise<FutureState> {
 		if (
 			!Array.isArray(opts?.keys,) || opts.keys.length === 0
-			|| opts.keys.some((k,) => k === null || typeof k !== "object" || Array.isArray(k,))
+			|| opts.keys.some((k,) => k === null || typeof k !== "object" || Array.isArray(k,),)
 		) {
 			throw new ClientValidationError(
 				"connections.prepareTablesImport: keys must be a non-empty array of key objects.",

@@ -187,11 +187,10 @@ describe("macro CLI commands", () => {
 
 	it("returns raw text as a JSON string for non-JSON results and parsed JSON otherwise", async () => {
 		await withCliServer(
-			macroServer({ resultBody: "<html>Report</html>", resultContentType: "text/html", }, {
-				runBodies: [],
-				abortBodies: [],
-				stateHits: 0,
-			},),
+			macroServer(
+				{ resultBody: "<html>Report</html>", resultContentType: "text/html", },
+				{ runBodies: [], abortBodies: [], stateHits: 0, },
+			),
 			async (url,) => {
 				const { stdout, } = await dss(["macro", "result", "m1", "run-42",], {
 					env: cliEnv(url,),
@@ -204,11 +203,10 @@ describe("macro CLI commands", () => {
 		);
 
 		await withCliServer(
-			macroServer({ resultBody: '{"n":1}', resultContentType: "application/json", }, {
-				runBodies: [],
-				abortBodies: [],
-				stateHits: 0,
-			},),
+			macroServer(
+				{ resultBody: '{"n":1}', resultContentType: "application/json", },
+				{ runBodies: [], abortBodies: [], stateHits: 0, },
+			),
 			async (url,) => {
 				const { stdout, } = await dss(["macro", "result", "m1", "run-42",], {
 					env: cliEnv(url,),

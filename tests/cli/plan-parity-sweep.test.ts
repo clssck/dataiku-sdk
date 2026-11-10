@@ -74,7 +74,7 @@ function exampleArgv(example: string,): string[] | undefined {
 		token.replace(
 			/'([^']*)'|"([^"]*)"/g,
 			(_match, single: string | undefined, double: string | undefined,) => single ?? double ?? "",
-		)
+		),
 	);
 }
 
@@ -142,7 +142,7 @@ async function probe(argv: string[], home: string,): Promise<Outcome> {
 		if (plan.exact === false) return { kind: "skipped", reason: "plan-inexact", };
 		if (!plan.method || !plan.endpoint) return { kind: "skipped", reason: "plan-no-request", };
 		const applied = await runCli(base, home,);
-		const request = sent.find((entry,) => entry.method === plan.method);
+		const request = sent.find((entry,) => entry.method === plan.method,);
 		if (!request) {
 			return applied.timedOut
 				? { kind: "failed", detail: "apply timed out before sending the planned request", }

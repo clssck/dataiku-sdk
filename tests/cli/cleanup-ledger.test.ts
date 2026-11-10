@@ -458,14 +458,14 @@ describe("--record-cleanup registry coherence", () => {
 	const registry = buildCommandRegistry();
 	const advertised = Object.entries(registry,).flatMap(([resource, actions,],) =>
 		Object.entries(actions,)
-			.filter(([, entry,],) => entry.flags.some((flag,) => flag.name === "record-cleanup"))
-			.map(([action,],) => `${resource}.${action}`)
+			.filter(([, entry,],) => entry.flags.some((flag,) => flag.name === "record-cleanup",),)
+			.map(([action,],) => `${resource}.${action}`,),
 	);
 
 	it("advertises --record-cleanup exactly where the contract supports the ledger", () => {
 		const supported = Object.entries(registry,).flatMap(([resource, actions,],) =>
-			Object.keys(actions,).filter((action,) => supportsCleanupLedger(resource, action,))
-				.map((action,) => `${resource}.${action}`)
+			Object.keys(actions,).filter((action,) => supportsCleanupLedger(resource, action,),)
+				.map((action,) => `${resource}.${action}`,),
 		);
 		expect(advertised.toSorted(),).toEqual(supported.toSorted(),);
 	});
