@@ -25,15 +25,22 @@ jobs:
     name: ${{ matrix.os }} / Bun ${{ matrix.bun }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    # engines.bun is an open range: the newest Bun is a signal, never a gate.
+    continue-on-error: ${{ matrix.bun == 'latest' }}
     strategy:
       fail-fast: false
       matrix:
         # Pushes and PRs gate on Linux; releases (workflow_call) and manual
         # dispatches run every supported OS before anything is published.
         os: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'pull_request') && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest","windows-latest"]') }}
-        # The supported Bun (package.json engines).
-        bun:
-          - 1.4.3
+        # The supported floor (package.json engines); releases and manual
+        # dispatches also try the newest Bun on Linux.
+        bun: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'pull_request') && '["1.4.3"]' || '["1.4.3","latest"]') }}
+        exclude:
+          - os: macos-latest
+            bun: latest
+          - os: windows-latest
+            bun: latest
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
