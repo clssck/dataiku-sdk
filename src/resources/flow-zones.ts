@@ -44,7 +44,7 @@ export class FlowZonesResource extends BaseResource {
 	 * request (attempts, backoff, and body read) by a total budget.
 	 */
 	async list(projectKey?: string, options?: DataikuGetOptions,): Promise<FlowZone[]> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/flow/zones`,
 			options,
 		);
@@ -53,7 +53,7 @@ export class FlowZonesResource extends BaseResource {
 
 	/** Get one flow zone by id. */
 	async get(zoneId: string, projectKey?: string,): Promise<FlowZone> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/flow/zones/${encodeURIComponent(zoneId,)}`,
 		);
 		return this.client.safeParse(FlowZoneSchema, raw, "flowZones.get",);
@@ -64,7 +64,7 @@ export class FlowZonesResource extends BaseResource {
 	 * zone positioning is off; with it on, DSS auto-places the zone.
 	 */
 	async create(opts: FlowZoneCreateOptions,): Promise<FlowZone> {
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`/public/api/projects/${this.enc(opts.projectKey,)}/flow/zones`,
 			{
 				name: opts.name,
@@ -127,7 +127,7 @@ export class FlowZonesResource extends BaseResource {
 			}
 			completed.push("items",);
 			for (const item of shared ?? []) {
-				await this.client.post<unknown>(
+				await this.client.post(
 					`${base}/${encodeURIComponent(created.id,)}/shared`,
 					normalizeZoneItem(item,),
 				);
@@ -167,7 +167,7 @@ export class FlowZonesResource extends BaseResource {
 				"validation_failed",
 			);
 		}
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`/public/api/projects/${this.enc(projectKey,)}/flow/zones/${
 				encodeURIComponent(zoneId,)
 			}/add-items`,
@@ -184,9 +184,9 @@ export class FlowZonesResource extends BaseResource {
 	/** Get the full flow graph, or the graph for a single non-default flow zone. */
 	async graph(zoneId?: string, projectKey?: string,): Promise<unknown> {
 		if (zoneId === undefined || zoneId === "default") {
-			return this.client.get<unknown>(`/public/api/projects/${this.enc(projectKey,)}/flow/graph/`,);
+			return this.client.get(`/public/api/projects/${this.enc(projectKey,)}/flow/graph/`,);
 		}
-		return this.client.get<unknown>(
+		return this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/flow/zones/${encodeURIComponent(zoneId,)}/graph`,
 		);
 	}

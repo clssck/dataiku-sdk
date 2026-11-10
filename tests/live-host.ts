@@ -96,7 +96,7 @@ export function hostDirectoryScript(
 	if (service === "sse") {
 		if (repositories.length) throw new Error("SSE host daemon takes no repositories",);
 	} else if (service) {
-		throw new Error(`Unsupported host daemon service: ${service}`,);
+		throw new Error(`Unsupported host daemon service: ${String(service,)}`,);
 	} else if (operation === "start" && !repositories.length) {
 		throw new Error("Git host daemon requires repositories",);
 	}

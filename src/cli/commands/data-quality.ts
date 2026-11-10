@@ -51,7 +51,7 @@ export const dataQualityCommands: Record<string, CommandMeta> = withUsage("data-
 	},
 	"partitions-status": {
 		handler: (c, a, f,) =>
-			c.dataQuality.partitionsStatus(a[0]!, {
+			c.dataQuality.partitionsStatus(a[0], {
 				projectKey: f["project-key"] as string | undefined,
 				partitions: splitCsvFlag(f["partitions"],),
 			},),
@@ -72,7 +72,7 @@ export const dataQualityCommands: Record<string, CommandMeta> = withUsage("data-
 					partition,
 				};
 			}
-			await c.dataQuality.deleteHistory(a[0]!, { projectKey: pk, partition, },);
+			await c.dataQuality.deleteHistory(a[0], { projectKey: pk, partition, },);
 			return { deleted: "history", resource: "data-quality", dataset: a[0], partition, };
 		},
 		description:

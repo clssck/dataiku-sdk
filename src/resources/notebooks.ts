@@ -64,7 +64,7 @@ export class NotebooksResource extends BaseResource {
 		const suffix = opts?.active === undefined
 			? "/"
 			: `/?active=${String(opts.active,)}`;
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/jupyter-notebooks${suffix}`,
 		);
 		return this.client.safeParse(JupyterNotebookSummaryArraySchema, raw, "notebooks.listJupyter",);
@@ -73,7 +73,7 @@ export class NotebooksResource extends BaseResource {
 	/** Get the full content of a Jupyter notebook. */
 	async getJupyter(name: string, projectKey?: string,): Promise<JupyterNotebookContent> {
 		const nameEnc = encodeURIComponent(name,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/jupyter-notebooks/${nameEnc}`,
 		);
 		return this.client.safeParse(JupyterNotebookContentSchema, raw, "notebooks.getJupyter",);
@@ -169,7 +169,7 @@ export class NotebooksResource extends BaseResource {
 	/** List running kernel sessions for a Jupyter notebook. */
 	async listJupyterSessions(name: string, projectKey?: string,): Promise<NotebookSession[]> {
 		const nameEnc = encodeURIComponent(name,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/jupyter-notebooks/${nameEnc}/sessions`,
 		);
 		return this.client.safeParse(NotebookSessionArraySchema, raw, "notebooks.sessionsJupyter",);
@@ -222,7 +222,7 @@ export class NotebooksResource extends BaseResource {
 
 	/** List all SQL notebooks in a project. */
 	async listSql(projectKey?: string,): Promise<SqlNotebookSummary[]> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/sql-notebooks/`,
 		);
 		return this.client.safeParse(SqlNotebookSummaryArraySchema, raw, "notebooks.listSql",);
@@ -231,7 +231,7 @@ export class NotebooksResource extends BaseResource {
 	/** Get the full content of a SQL notebook. */
 	async getSql(id: string, projectKey?: string,): Promise<SqlNotebookContent> {
 		const idEnc = encodeURIComponent(id,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/sql-notebooks/${idEnc}`,
 		);
 		return this.client.safeParse(SqlNotebookContentSchema, raw, "notebooks.getSql",);
@@ -259,7 +259,7 @@ export class NotebooksResource extends BaseResource {
 		// spread) is stripped before the request — DSS rejects it outright.
 		delete body["id"];
 		if (opts?.name !== undefined && body["name"] === undefined) body["name"] = opts.name;
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`/public/api/projects/${this.enc(projectKey,)}/sql-notebooks/`,
 			body,
 		);
@@ -341,7 +341,7 @@ export class NotebooksResource extends BaseResource {
 	/** Get execution history for a SQL notebook (keyed by cell ID). */
 	async getSqlHistory(id: string, projectKey?: string,): Promise<SqlNotebookHistory> {
 		const idEnc = encodeURIComponent(id,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/sql-notebooks/${idEnc}/history`,
 		);
 		return this.client.safeParse(SqlNotebookHistorySchema, raw, "notebooks.getSqlHistory",);

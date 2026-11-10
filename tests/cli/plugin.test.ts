@@ -84,7 +84,7 @@ async function run(
 	args: string[] = [],
 	flags: Record<string, string | boolean> = {},
 ): Promise<unknown> {
-	return await pluginCommands[action]!.handler(client, args, flags,);
+	return await pluginCommands[action].handler(client, args, flags,);
 }
 
 describe("plugin CLI registration", () => {
@@ -447,7 +447,7 @@ function planOf(
 	args: string[],
 	flags: Record<string, string | boolean>,
 ): Record<string, unknown> {
-	return buildMutationPlan("plugin", action, pluginCommands[action]!, args, flags,);
+	return buildMutationPlan("plugin", action, pluginCommands[action], args, flags,);
 }
 
 async function dryRunOf(

@@ -423,7 +423,7 @@ export class RecipesResource extends BaseResource {
 	/** List all recipes in a project. */
 	async list(projectKey?: string,): Promise<RecipeSummary[]> {
 		const enc = this.enc(projectKey,);
-		const raw = await this.client.get<unknown>(`/public/api/projects/${enc}/recipes/`,);
+		const raw = await this.client.get(`/public/api/projects/${enc}/recipes/`,);
 		return this.client.safeParse(RecipeSummaryArraySchema, raw, "recipes.list",);
 	}
 
@@ -434,7 +434,7 @@ export class RecipesResource extends BaseResource {
 	): Promise<ProjectMetadata> {
 		const enc = this.enc(opts?.projectKey,);
 		const rnEnc = encodeURIComponent(recipeName,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${enc}/recipes/${rnEnc}/metadata`,
 		);
 		return this.client.safeParse(ProjectMetadataSchema, raw, "recipes.metadata",);
@@ -1052,7 +1052,7 @@ export class RecipesResource extends BaseResource {
 		recipeName: string,
 		projectKey?: string,
 	): Promise<RecipeSchemaUpdates> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/recipes/${
 				encodeURIComponent(recipeName,)
 			}/schema-update`,

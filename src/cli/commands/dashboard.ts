@@ -1,6 +1,6 @@
 import { ClientValidationError, } from "../../errors.js";
 import { deepMerge, } from "../../utils/deep-merge.js";
-import { jsonInput, parseBooleanOption, rejectEmptyFlagValues, } from "../coerce.js";
+import { jsonInput, num, parseBooleanOption, rejectEmptyFlagValues, } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { readIfExists, skipResult, } from "../output.js";
 import { commandUsage, withUsage, } from "../syntax.js";
@@ -65,7 +65,7 @@ export const dashboardCommands: Record<string, CommandMeta> = withUsage("dashboa
 			) {
 				throw new UsageError("--slide-index must be a non-negative integer.",);
 			}
-			const slideIndex = slideIndexFlag === undefined ? 0 : Number(slideIndexFlag,);
+			const slideIndex = num(slideIndexFlag, "--slide-index",) ?? 0;
 
 			const response = await c.dashboards.export(a[0], {
 				paperSize,
@@ -74,7 +74,7 @@ export const dashboardCommands: Record<string, CommandMeta> = withUsage("dashboa
 				slideIndex,
 				projectKey: f["project-key"] as string | undefined,
 			},);
-			const bytes = Buffer.from(await response.arrayBuffer(),);
+			const bytes = Buffer.from(await c.readBoundedBytes(response,),);
 			const isPdf = bytes.length >= 5
 				&& bytes[0] === 0x25
 				&& bytes[1] === 0x50

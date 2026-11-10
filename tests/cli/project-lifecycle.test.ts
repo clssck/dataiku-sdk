@@ -420,7 +420,7 @@ describe("Project import CLI wiring", () => {
 					projectIncarnationHash: LANDED_HASH,
 				},);
 				const entry = JSON.parse(
-					readFileSync(ledger, "utf8",).trim().split("\n",)[0]!,
+					readFileSync(ledger, "utf8",).trim().split("\n",)[0],
 				) as Record<string, unknown>;
 				expect(entry,).toMatchObject({
 					action: "import",

@@ -83,7 +83,7 @@ export const mlTaskCommands: Record<string, CommandMeta> = withUsage("ml-task", 
 			const usage = commandUsage("ml-task", "create",);
 			requireArgs(a, 1, usage,);
 			const created = await c.mlTasks.create({
-				analysisId: a[0]!,
+				analysisId: a[0],
 				...mlTaskFieldsFromFlags(f, usage,),
 				projectKey: f["project-key"] as string | undefined,
 			},);
@@ -258,7 +258,7 @@ export const mlTaskCommands: Record<string, CommandMeta> = withUsage("ml-task", 
 			const usage = commandUsage("ml-task", "create-for-dataset",);
 			requireArgs(a, 1, usage,);
 			const created = await c.mlTasks.createForDataset({
-				inputDataset: a[0]!,
+				inputDataset: a[0],
 				...mlTaskFieldsFromFlags(f, usage,),
 				projectKey: f["project-key"] as string | undefined,
 			},);
@@ -275,8 +275,8 @@ export const mlTaskCommands: Record<string, CommandMeta> = withUsage("ml-task", 
 		handler: async (c, a, f,) => {
 			requireArgs(a, 2, commandUsage("ml-task", "reguess",),);
 			await c.mlTasks.reguess(
-				a[0]!,
-				a[1]!,
+				a[0],
+				a[1],
 				mlTaskReguessOptionsFromFlags(f,),
 				f["project-key"] as string | undefined,
 			);
@@ -290,8 +290,8 @@ export const mlTaskCommands: Record<string, CommandMeta> = withUsage("ml-task", 
 		handler: async (c, a, f,) => {
 			requireArgs(a, 2, commandUsage("ml-task", "reguess-forecasting",),);
 			await c.mlTasks.reguessForecasting(
-				a[0]!,
-				a[1]!,
+				a[0],
+				a[1],
 				requiredJsonInput(
 					f,
 					"Forecasting parameters are required via --data, --data-file, or --stdin (forecastHorizon, validationHorizons, timestepParams, updateAlgorithmSettings).",
@@ -310,7 +310,7 @@ export const mlTaskCommands: Record<string, CommandMeta> = withUsage("ml-task", 
 		resource: "ml-task",
 		ids: "ANALYSIS_ID TASK_ID MODEL_ID",
 		noun: "lab model",
-		model: (c, a, pk,) => c.mlTasks.model(a[0]!, a[1]!, a[2]!, pk,),
+		model: (c, a, pk,) => c.mlTasks.model(a[0], a[1], a[2], pk,),
 		downloadDocumentation: (c, exportId, pk,) => c.mlTasks.downloadModelDocumentation(exportId, pk,),
 	},),
 },);

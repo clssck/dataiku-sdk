@@ -80,7 +80,7 @@ export const workspaceCommands: Record<string, CommandMeta> = withUsage("workspa
 	},
 	"remove-object": {
 		handler: async (c, a,) => {
-			await c.workspaces.removeObject(a[0]!, a[1]!,);
+			await c.workspaces.removeObject(a[0], a[1],);
 			return { removed: a[1], resource: "workspace", workspace: a[0], };
 		},
 		description: "Remove an object from a workspace by its workspace object id (see list-objects).",

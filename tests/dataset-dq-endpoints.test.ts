@@ -16,16 +16,18 @@ async function recordRequests(
 	run: (client: DataikuClient,) => Promise<void>,
 ): Promise<Seen[]> {
 	const seen: Seen[] = [];
-	const server = createServer(async (req, res,) => {
-		let text = "";
-		for await (const chunk of req) text += chunk.toString();
-		seen.push({
-			method: req.method ?? "",
-			url: req.url ?? "",
-			body: text ? JSON.parse(text,) : undefined,
-		},);
-		respond(req, res,);
-	},);
+	const server = createServer((req, res,) =>
+		void (async () => {
+			let text = "";
+			for await (const chunk of req) text += chunk.toString();
+			seen.push({
+				method: req.method ?? "",
+				url: req.url ?? "",
+				body: text ? JSON.parse(text,) : undefined,
+			},);
+			respond(req, res,);
+		})()
+	);
 	const listening = Promise.withResolvers<void>();
 	server.listen(0, "127.0.0.1", () => listening.resolve(),);
 	await listening.promise;
@@ -146,6 +148,6 @@ describe("dataset actions, checks, and data quality", () => {
 			"POST /public/api/projects/TEST/datasets/logs/data-quality/get-partitions-status?partitions=a&partitions=b",
 			"DELETE /public/api/projects/TEST/datasets/logs/data-quality/history/ALL",
 		],);
-		expect(seen[2]!.body,).toEqual({ checks: [{ type: "numericRange", },], },);
+		expect(seen[2].body,).toEqual({ checks: [{ type: "numericRange", },], },);
 	});
 });

@@ -724,7 +724,7 @@ describe("inspectProjectArchive", () => {
 			expect(report.valid,).toBe(true,);
 			const skipped = report.issues.filter((issue,) => issue.code === "residue_scan_skipped");
 			expect(skipped.map((issue,) => issue.member),).toEqual(["project_config/variables.json",],);
-			expect(skipped[0]!.severity,).toBe("warning",);
+			expect(skipped[0].severity,).toBe("warning",);
 			expect(JSON.stringify(report,),).not.toContain("oversized-secret-7",);
 		});
 

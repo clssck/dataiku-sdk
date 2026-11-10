@@ -29,7 +29,7 @@
 		"prepublishOnly": "bun run prepack",
 		"verify": "bun check -p tsconfig.json && bun check -p tools/oxlint/tsconfig.json && bun run check:tests && bun scripts/generate-action-output-schemas.mjs --check && bun scripts/sync-plugin-version.mjs --check && bun scripts/cut-changelog.mjs --check",
 		"version": "bun scripts/sync-plugin-version.mjs && bun scripts/cut-changelog.mjs && git add plugin.json CHANGELOG.md",
-		"lint": "oxlint src/ tools/oxlint/ scripts/ tests/",
+		"lint": "oxlint --deny-warnings src/ tools/oxlint/ scripts/ tests/",
 		"lint:fix": "oxlint --fix src/ tools/oxlint/ scripts/ tests/",
 		"format": "dprint fmt",
 		"format:check": "dprint check",
@@ -54,6 +54,7 @@
 		"dprint": "^0.64.3",
 		"js-tiktoken": "1.0.21",
 		"oxlint": "1.93.0",
+		"oxlint-tsgolint": "7.0.2006",
 		"typescript": "^7.0.2"
 	},
 	"bundleDependencies": [

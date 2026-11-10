@@ -884,7 +884,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			expect(created.name,).toBe(zoneName,);
 
 			const dryRun = parseCliJson(
-				await dssRaw(["flow-zone", "delete", zoneId!, "--dryrun",],),
+				await dssRaw(["flow-zone", "delete", zoneId, "--dryrun",],),
 				"flow-zone dryrun",
 			) as Record<string, unknown>;
 			expect(dryRun.dryRun,).toBe(true,);
@@ -916,7 +916,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			}
 
 			if (datasetName) {
-				const movedBySdk = await client.flowZones.moveItem(zoneId!, {
+				const movedBySdk = await client.flowZones.moveItem(zoneId, {
 					objectType: "DATASET",
 					objectId: datasetName,
 				},);
@@ -938,7 +938,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				},);
 
 				const moveDryRun = parseCliJson(
-					await dssRaw(["flow-zone", "move", secondZoneId!, "--dataset", datasetName, "--dry-run",],),
+					await dssRaw(["flow-zone", "move", secondZoneId, "--dataset", datasetName, "--dry-run",],),
 					"flow-zone move dry-run",
 				) as { dryRun?: boolean; items?: Array<{ objectId?: string; objectType?: string; }>; };
 				expect(moveDryRun.dryRun,).toBe(true,);
@@ -948,7 +948,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				},);
 
 				const movedByCli = parseCliJson(
-					await dssRaw(["flow-zone", "move", secondZoneId!, "--dataset", datasetName,],),
+					await dssRaw(["flow-zone", "move", secondZoneId, "--dataset", datasetName,],),
 					"flow-zone move",
 				) as { items?: Array<{ objectId?: string; objectType?: string; }>; };
 				expect(
@@ -963,7 +963,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 				await client.flowZones.delete(secondZoneId,);
 				secondZoneId = undefined;
 			}
-			await client.flowZones.delete(zoneId!,);
+			await client.flowZones.delete(zoneId,);
 			zoneId = undefined;
 			expect(await client.flowZones.list(),).not.toContainEqual(
 				expect.objectContaining({ id: created.id, },),
@@ -1304,14 +1304,14 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			}
 
 			const buildDryRun = parseCliJson(
-				await dssRaw(["job", "build", datasetName!, "--dry-run",],),
+				await dssRaw(["job", "build", datasetName, "--dry-run",],),
 				"job build dry-run",
 			) as Record<string, unknown>;
 			expect(buildDryRun.dryRun,).toBe(true,);
 			expect(buildDryRun.target,).toBe(datasetName,);
 			expect(buildDryRun.method,).toBe("POST",);
 
-			const build = await client.jobs.build(datasetName!, {
+			const build = await client.jobs.build(datasetName, {
 				buildMode: "NON_RECURSIVE_FORCED_BUILD",
 			},);
 			expect(build.jobId, "build job id",).toBeTruthy();
@@ -1346,13 +1346,13 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			expect(cliWait.jobId,).toBe(build.jobId,);
 
 			const buildAndWaitDryRun = parseCliJson(
-				await dssRaw(["job", "build-and-wait", datasetName!, "--dry-run",],),
+				await dssRaw(["job", "build-and-wait", datasetName, "--dry-run",],),
 				"job build-and-wait dry-run",
 			) as Record<string, unknown>;
 			expect(buildAndWaitDryRun.dryRun,).toBe(true,);
 			expect(buildAndWaitDryRun.target,).toBe(datasetName,);
 
-			const buildAndWait = await client.jobs.buildAndWait(datasetName!, {
+			const buildAndWait = await client.jobs.buildAndWait(datasetName, {
 				buildMode: "NON_RECURSIVE_FORCED_BUILD",
 				includeLogs: true,
 				maxLogLines: 20,
@@ -1371,7 +1371,7 @@ describeMutatingProjectIntegration("Rigorous integration: safe mutating workflow
 			expect(abortDryRun.id,).toBe(buildAndWait.jobId,);
 
 			const abortInputDataset = await selectSafeDataset()
-				?? datasetName!;
+				?? datasetName;
 			const abortRecipeName = uniqueTestName("sdk_cli_it_abort_recipe",);
 			const abortOutputDataset = uniqueTestName("sdk_cli_it_abort_output",);
 			const abortPayload = [

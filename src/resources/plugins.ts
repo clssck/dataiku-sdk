@@ -628,7 +628,7 @@ export class PluginsResource extends BaseResource {
 	async getFileBytes(pluginId: string, path: string,): Promise<Uint8Array> {
 		const valid = validatePluginPath(path,);
 		const res = await this.client.stream(this.contentsPath(pluginId, valid,),);
-		return new Uint8Array(await res.arrayBuffer(),);
+		return this.client.readBoundedBytes(res,);
 	}
 
 	/** Download a dev plugin file as a raw stream (binary-safe). */

@@ -161,7 +161,7 @@ describe("agent-facing token budgets", () => {
 				);
 				for (const [index, encoding,] of encodings.entries()) {
 					const tokens = native.countTokens(stdout, encoding,);
-					const maximum = Math.ceil(baseline[index]! * 1.1,);
+					const maximum = Math.ceil(baseline[index] * 1.1,);
 					expect(
 						Number.isSafeInteger(tokens,) && tokens > 0,
 						`${encoding} must return a valid native count`,
@@ -266,7 +266,7 @@ describe("agent-facing token budgets", () => {
 		const skill = AGENTS.omp?.content();
 		expect(skill,).toBeDefined();
 
-		expectWithinBudget("installed skill", skill!, TOKEN_BUDGETS.skill,);
+		expectWithinBudget("installed skill", skill, TOKEN_BUDGETS.skill,);
 		expectWithinBudget("agent contract", agentContract.stdout, TOKEN_BUDGETS.agentContract,);
 		const defaultTokens = expectWithinBudget(
 			"commands run default action summary",

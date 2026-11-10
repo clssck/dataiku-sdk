@@ -193,9 +193,9 @@ describe("recipe create prepare flags and naming", () => {
 		const event = JSON.parse(stderr,) as { type: string; warnings: Array<Record<string, unknown>>; };
 		expect(event.type,).toBe("warning",);
 		expect(event.warnings.length,).toBe(1,);
-		expect(event.warnings[0]!.code,).toBe("recipe_formula_uses_renamed_column",);
-		expect(event.warnings[0]!.flag,).toBe("--formula",);
-		expect(event.warnings[0]!.columns,).toEqual([{ renamed: "kind", to: "k2", },],);
+		expect(event.warnings[0].code,).toBe("recipe_formula_uses_renamed_column",);
+		expect(event.warnings[0].flag,).toBe("--formula",);
+		expect(event.warnings[0].columns,).toEqual([{ renamed: "kind", to: "k2", },],);
 	});
 
 	it("also warns on --dry-run and on a --filter that runs after --rename", async () => {
@@ -263,10 +263,10 @@ describe("recipe create prepare flags and naming", () => {
 			expect(result.requestedName,).toBe("add_status",);
 			const event = JSON.parse(stderr,) as { warnings: Array<Record<string, unknown>>; };
 			expect(event.warnings.length,).toBe(1,);
-			expect(event.warnings[0]!.code,).toBe("recipe_renamed",);
-			expect(event.warnings[0]!.requestedName,).toBe("add_status",);
-			expect(event.warnings[0]!.recipe,).toBe("compute_out_ds",);
-			expect(event.warnings[0]!.reason,).toBe("dss_chose_name",);
+			expect(event.warnings[0].code,).toBe("recipe_renamed",);
+			expect(event.warnings[0].requestedName,).toBe("add_status",);
+			expect(event.warnings[0].recipe,).toBe("compute_out_ds",);
+			expect(event.warnings[0].reason,).toBe("dss_chose_name",);
 		},);
 	});
 
@@ -298,7 +298,7 @@ describe("recipe create prepare flags and naming", () => {
 			];
 			const taken = await dss(args, { env: cliEnv(url,), },);
 			const event = JSON.parse(taken.stderr,) as { warnings: Array<Record<string, unknown>>; };
-			expect(event.warnings[0]!.reason,).toBe("name_taken",);
+			expect(event.warnings[0].reason,).toBe("name_taken",);
 			const honored = await dss(args, { env: cliEnv(url,), },);
 			expect(honored.stderr,).toBe("",);
 			expect(JSON.parse(honored.stdout,),).not.toHaveProperty("requestedName",);
@@ -622,6 +622,23 @@ describe("recipe diff and local file validation", () => {
 const columns = (names: string[],) => ({
 	columns: names.map((name,) => ({ name, type: "string", })),
 });
+
+const payloadStdout = async (
+	command: "get-payload" | "cat",
+	type: string,
+	payload: string,
+): Promise<string> => {
+	let stdout = "";
+	await withCliServer((_req, res,) => {
+		sendJson(res, { recipe: { type, }, payload, },);
+	}, async (url,) => {
+		const result = await dss(["recipe", command, "my_recipe",], { env: cliEnv(url,), },);
+		expect(result.stderr,).toBe("",);
+		stdout = result.stdout;
+	},);
+	return stdout;
+};
+
 describe("CLI recipe get-payload and set-payload", () => {
 	it("get-payload prints recipe code to stdout", async () => {
 		await withCliServer((_req, res,) => {
@@ -683,22 +700,6 @@ describe("CLI recipe get-payload and set-payload", () => {
 			],
 		};
 		const prepareText = JSON.stringify(prepare, null, 2,);
-
-		const payloadStdout = async (
-			command: "get-payload" | "cat",
-			type: string,
-			payload: string,
-		): Promise<string> => {
-			let stdout = "";
-			await withCliServer((_req, res,) => {
-				sendJson(res, { recipe: { type, }, payload, },);
-			}, async (url,) => {
-				const result = await dss(["recipe", command, "my_recipe",], { env: cliEnv(url,), },);
-				expect(result.stderr,).toBe("",);
-				stdout = result.stdout;
-			},);
-			return stdout;
-		};
 
 		for (const command of ["get-payload", "cat",] as const) {
 			it(`${command} prints a JSON object payload as an object, not an escaped string`, async () => {

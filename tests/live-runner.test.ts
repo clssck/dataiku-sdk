@@ -147,9 +147,9 @@ async function run(statuses: Record<string, number>, changed: string[] = [],) {
 			sendJson(res, keys.map(projectKey => ({ projectKey, })),);
 			return;
 		}
-		const key = decodeURIComponent(match[1]!,);
+		const key = decodeURIComponent(match[1],);
 		if (statuses[key]) {
-			res.writeHead(statuses[key]!, { "Content-Type": "application/json", },);
+			res.writeHead(statuses[key], { "Content-Type": "application/json", },);
 			res.end("{}",);
 			return;
 		}

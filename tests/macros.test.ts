@@ -78,8 +78,8 @@ describe("MacrosResource", () => {
 		}, async (client,) => {
 			const list = await client.macros.list();
 			expect(list,).toHaveLength(2,);
-			expect(list[0]!.runnableType,).toBe("compute_orders",);
-			expect(list[1]!.meta?.label,).toBe("Cleanup",);
+			expect(list[0].runnableType,).toBe("compute_orders",);
+			expect(list[1].meta?.label,).toBe("Cleanup",);
 		},);
 	});
 

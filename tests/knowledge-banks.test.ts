@@ -89,8 +89,8 @@ describe("KnowledgeBanksResource", () => {
 			expect(parsed["query"],).toBe("Hello, world!",);
 			expect(parsed["params"],).toEqual({ maxDocuments: 2, searchType: "SIMILARITY", },);
 			expect(result.documents,).toHaveLength(2,);
-			expect(result.documents![0]!.score,).toBe(0.912,);
-			expect(result.documents![1]!.metadata,).toEqual({ Category: "Technology", },);
+			expect(result.documents![0].score,).toBe(0.912,);
+			expect(result.documents![1].metadata,).toEqual({ Category: "Technology", },);
 		},);
 	});
 

@@ -48,14 +48,14 @@ function applyInsightFields(
 
 export class InsightsResource extends BaseResource {
 	async list(projectKey?: string,): Promise<InsightSummary[]> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/insights/`,
 		);
 		return this.client.safeParse(InsightSummaryArraySchema, raw, "insights.list",);
 	}
 
 	async get(insightId: string, projectKey?: string,): Promise<InsightDetails> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/insights/${encodeURIComponent(insightId,)}/`,
 		);
 		return this.client.safeParse(InsightDetailsSchema, raw, "insights.get",);
@@ -92,7 +92,7 @@ export class InsightsResource extends BaseResource {
 			opts,
 		);
 		const pk = this.resolveProjectKey(opts.projectKey,);
-		await this.client.post<unknown>(
+		await this.client.post(
 			`/public/api/projects/${encodeURIComponent(pk,)}/insights/${encodeURIComponent(insightId,)}/`,
 			{
 				insight: next,

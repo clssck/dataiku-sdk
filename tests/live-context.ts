@@ -1,6 +1,7 @@
 import StreamZip from "node-stream-zip";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { inspect, } from "node:util";
 import { jsonInput, } from "../src/cli/coerce.js";
 import { buildCommandRegistry, } from "../src/cli/contract.js";
 import { executionMode, parseArgs, } from "../src/cli/flags.js";
@@ -298,6 +299,11 @@ export interface LiveContext {
 	recordFuture(id: string,): Promise<void>;
 	/** The lab-controlled ownership marker for a reserved global. */
 	markerFor(kind: OwnedGlobalKind, name: string,): string;
+}
+/** Message for a caught value of unknown type: an Error's message, a string as is, anything else inspected (never `[object Object]`). */
+export function thrownMessage(value: unknown,): string {
+	if (value instanceof Error) return value.message;
+	return typeof value === "string" ? value : inspect(value,);
 }
 export class LiveCapabilityError extends Error {
 	constructor(message: string, readonly status: "blocked" | "unsupported" = "blocked",) {
@@ -632,7 +638,7 @@ function globalMarkerVerified(
 				&& asString(record["envLang"],)?.toUpperCase()
 					=== (reservedName.startsWith("plugin_",)
 						? "PYTHON"
-						: reservedName.split("_",)[0]!.toUpperCase())
+						: reservedName.split("_",)[0].toUpperCase())
 				&& Object.keys(asRecord(record["desc"],)?.["creationTag"] ?? {},).length > 0;
 	}
 }
@@ -1208,7 +1214,7 @@ export class LiveRunContext implements LiveContext {
 		const { positional, flags, } = parseArgs(argv,);
 		if (positional[0] === "plugin") return this.authorizePluginGit(positional, flags, authority,);
 		if (positional[0] !== "project-git") return;
-		const action = positional[1]!;
+		const action = positional[1];
 		const scoped = [
 			"set-remote",
 			"remove-remote",
@@ -1288,7 +1294,7 @@ export class LiveRunContext implements LiveContext {
 		flags: Record<string, string | boolean>,
 		authority?: CreationAuthority,
 	): Promise<typeof GIT_AUTHORITY | undefined> {
-		const action = args[1]!;
+		const action = args[1];
 		if (
 			![
 				"install-from-git",
@@ -1509,7 +1515,7 @@ export class LiveRunContext implements LiveContext {
 		options: { projectKey?: string; expectedExit?: number; } = {},
 	): Promise<T> {
 		const parsed = parseArgs(argv,);
-		const resource = parsed.positional[0]!;
+		const resource = parsed.positional[0];
 		const action = parsed.positional[1] ?? "run";
 		const selected = typeof parsed.flags["project-key"] === "string"
 			? parsed.flags["project-key"]
@@ -2672,7 +2678,7 @@ export class LiveRunContext implements LiveContext {
 			errors.push(`${entry.kind} ${entry.id ?? entry.name}: ${reason}`,);
 		};
 		for (let index = this.manifest.globals.length - 1; index >= 0; index--) {
-			const entry = this.manifest.globals[index]!;
+			const entry = this.manifest.globals[index];
 			try {
 				if (entry.state === "conflict") {
 					note(entry, "left in place: identity conflicts with a pre-existing resource",);
@@ -2690,7 +2696,7 @@ export class LiveRunContext implements LiveContext {
 			}
 		}
 		for (let index = this.manifest.ownedDirectories.length - 1; index >= 0; index--) {
-			const directory = this.manifest.ownedDirectories[index]!;
+			const directory = this.manifest.ownedDirectories[index];
 			try {
 				await this.cleanupHostDirectory(directory,);
 			} catch (error) {
@@ -2698,7 +2704,7 @@ export class LiveRunContext implements LiveContext {
 			}
 		}
 		for (let index = this.manifest.projects.length - 1; index >= 0; index--) {
-			const project = this.manifest.projects[index]!;
+			const project = this.manifest.projects[index];
 			try {
 				await this.deleteProject(project.key,);
 			} catch (error) {

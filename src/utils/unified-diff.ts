@@ -74,7 +74,7 @@ function buildHunks(ops: DiffOp[],): DiffHunk[] {
 	type Block = { kind: "equal" | "change"; start: number; ops: DiffOp[]; };
 	const blocks: Block[] = [];
 	for (let z = 0; z < ops.length; z++) {
-		const op = ops[z]!;
+		const op = ops[z];
 		const kind = op.type === "equal" ? "equal" : "change";
 		const last = blocks[blocks.length - 1];
 		if (last && last.kind === kind) last.ops.push(op,);
@@ -85,14 +85,14 @@ function buildHunks(ops: DiffOp[],): DiffHunk[] {
 	const beforePrefix = new Uint32Array(ops.length + 1,);
 	const afterPrefix = new Uint32Array(ops.length + 1,);
 	for (let z = 0; z < ops.length; z++) {
-		const op = ops[z]!;
+		const op = ops[z];
 		beforePrefix[z + 1] = beforePrefix[z] + (op.type === "insert" ? 0 : 1);
 		afterPrefix[z + 1] = afterPrefix[z] + (op.type === "delete" ? 0 : 1);
 	}
 	const hunks: DiffHunk[] = [];
 	let index = 0;
 	while (index < blocks.length) {
-		const block = blocks[index]!;
+		const block = blocks[index];
 		if (block.kind === "equal") {
 			index++;
 			continue;
@@ -101,28 +101,28 @@ function buildHunks(ops: DiffOp[],): DiffHunk[] {
 		let endBlock = index;
 		while (
 			endBlock + 2 < blocks.length
-			&& blocks[endBlock + 1]!.kind === "equal"
-			&& blocks[endBlock + 1]!.ops.length <= DIFF_CONTEXT_LINES * 2
-			&& blocks[endBlock + 2]!.kind === "change"
+			&& blocks[endBlock + 1].kind === "equal"
+			&& blocks[endBlock + 1].ops.length <= DIFF_CONTEXT_LINES * 2
+			&& blocks[endBlock + 2].kind === "change"
 		) {
 			endBlock += 2;
 		}
-		const hasBeforeContext = index > 0 && blocks[index - 1]!.kind === "equal";
-		const hasAfterContext = endBlock + 1 < blocks.length && blocks[endBlock + 1]!.kind === "equal";
-		const beforeBlock = hasBeforeContext ? blocks[index - 1]! : undefined;
-		const afterBlock = hasAfterContext ? blocks[endBlock + 1]! : undefined;
+		const hasBeforeContext = index > 0 && blocks[index - 1].kind === "equal";
+		const hasAfterContext = endBlock + 1 < blocks.length && blocks[endBlock + 1].kind === "equal";
+		const beforeBlock = hasBeforeContext ? blocks[index - 1] : undefined;
+		const afterBlock = hasAfterContext ? blocks[endBlock + 1] : undefined;
 		const contextBefore = beforeBlock?.ops.slice(-DIFF_CONTEXT_LINES,) ?? [];
 		const contextAfter = afterBlock?.ops.slice(0, DIFF_CONTEXT_LINES,) ?? [];
 		const windowStart = beforeBlock
 			? beforeBlock.start + beforeBlock.ops.length - contextBefore.length
 			: block.start;
-		const windowEnd = (afterBlock?.start ?? blocks[endBlock]!.start + blocks[endBlock]!.ops.length)
+		const windowEnd = (afterBlock?.start ?? blocks[endBlock].start + blocks[endBlock].ops.length)
 			+ (afterBlock ? contextAfter.length : 0);
 		const body: string[] = [];
 		let beforeCount = 0;
 		let afterCount = 0;
 		for (let z = windowStart; z < windowEnd; z++) {
-			const op = ops[z]!;
+			const op = ops[z];
 			if (op.type === "equal") {
 				body.push(` ${op.line}`,);
 				beforeCount++;

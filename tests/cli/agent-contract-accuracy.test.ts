@@ -95,7 +95,7 @@ describe("agent contract accuracy", () => {
 		const sqlPlan = buildMutationPlan(
 			"sql",
 			"query",
-			commands.sql!.query!,
+			commands.sql.query,
 			["DROP TABLE obsolete",],
 			{ connection: "WAREHOUSE", },
 		);
@@ -110,7 +110,7 @@ describe("agent contract accuracy", () => {
 		const trainPlan = buildMutationPlan(
 			"ml-task",
 			"train",
-			commands["ml-task"]!.train!,
+			commands["ml-task"].train,
 			["analysis", "task",],
 			{ "project-key": "PROJECT", "session-name": "baseline", wait: true, },
 		);
@@ -438,7 +438,7 @@ describe("agent contract accuracy", () => {
 			"flow.propagate-schema",
 			"recipe.update-schema",
 		],);
-		expect(matches[0]!.usage,).toStartWith("dss flow propagate-schema",);
+		expect(matches[0].usage,).toStartWith("dss flow propagate-schema",);
 
 		const broad = await dss(["commands", "run", "--contains", "dataset",],);
 		expect((JSON.parse(broad.stdout,) as unknown[]).length,).toBe(5,);
@@ -596,7 +596,7 @@ describe("agent contract accuracy", () => {
 		const { stdout, stderr, } = await dss(["agent", "contract",],);
 		expect(stderr,).toBe("",);
 		const contract = JSON.parse(stdout,) as Record<string, Record<string, unknown>>;
-		const contractCommands = contract.commands as Record<string, unknown>;
+		const contractCommands = contract.commands;
 		expect(contractCommands.scopedDiscoveryCommand,).toBe(
 			"dss commands run --fields RESOURCE[.ACTION[.FIELD...]]",
 		);
@@ -1018,11 +1018,11 @@ describe("agent contract accuracy", () => {
 
 describe("agent contract accuracy: coding plans", () => {
 	it("never guesses endpoints for uncovered mutations", () => {
-		const streaming = commands["streaming-endpoint"]!;
+		const streaming = commands["streaming-endpoint"];
 		const plan = buildMutationPlan(
 			"streaming-endpoint",
 			"create",
-			streaming.create!,
+			streaming.create,
 			["stream", "kafka",],
 			{ "project-key": "TEST", },
 		);
@@ -1043,7 +1043,7 @@ describe("agent contract accuracy: coding plans", () => {
 		const sourcePath = join(dir, "script.py",);
 		writeFileSync(sourcePath, "print('contract_secret_marker')\n",);
 		try {
-			const plan = buildMutationPlan("code", "run", commands.code!.run!, [], {
+			const plan = buildMutationPlan("code", "run", commands.code.run, [], {
 				file: sourcePath,
 				"project-key": "TEST",
 			},);
@@ -1061,7 +1061,7 @@ describe("agent contract accuracy: coding plans", () => {
 	});
 
 	it("marks recipe output resolution as unavailable offline", () => {
-		const plan = buildMutationPlan("recipe", "run", commands.recipe!.run!, ["prepare",], {
+		const plan = buildMutationPlan("recipe", "run", commands.recipe.run, ["prepare",], {
 			"project-key": "TEST",
 		},);
 		expect(plan,).toMatchObject({
@@ -1075,7 +1075,7 @@ describe("agent contract accuracy: coding plans", () => {
 	});
 
 	it("publishes raw-text stdin for code run", () => {
-		const codeRun = buildCommandRegistry().code!.run!;
+		const codeRun = buildCommandRegistry().code.run;
 		expect(codeRun.payloadSchema,).toEqual({ stdin: true, contentType: "text/plain", },);
 		expect(codeRun.schemas.input,).toEqual({ type: "string", contentMediaType: "text/plain", },);
 		// Copy before matching: Bun's toMatchObject assigns asymmetric matchers
@@ -1093,7 +1093,7 @@ describe("agent contract accuracy: coding plans", () => {
 			buildMutationPlan(
 				"project-library",
 				"create-file",
-				commands["project-library"]!["create-file"]!,
+				commands["project-library"]["create-file"],
 				[
 					"../escape.py",
 				],
@@ -1102,7 +1102,7 @@ describe("agent contract accuracy: coding plans", () => {
 		).toThrow();
 
 		const expectSha256 = "a".repeat(64,);
-		const plan = buildMutationPlan("project-library", "put", commands["project-library"]!.put!, [
+		const plan = buildMutationPlan("project-library", "put", commands["project-library"].put, [
 			"python/lib.py",
 		], {
 			content: "library_secret_marker",
@@ -1127,7 +1127,7 @@ describe("agent contract accuracy: coding plans", () => {
 		const clear = buildMutationPlan(
 			"notebook",
 			"clear-jupyter-outputs",
-			commands.notebook!["clear-jupyter-outputs"]!,
+			commands.notebook["clear-jupyter-outputs"],
 			["analysis.ipynb",],
 			{ "project-key": "TEST", },
 		);
@@ -1139,7 +1139,7 @@ describe("agent contract accuracy: coding plans", () => {
 		const unloadAll = buildMutationPlan(
 			"notebook",
 			"unload-jupyter",
-			commands.notebook!["unload-jupyter"]!,
+			commands.notebook["unload-jupyter"],
 			[],
 			{ all: true, "project-key": "TEST", },
 		);
@@ -1156,7 +1156,7 @@ describe("agent contract accuracy: coding plans", () => {
 	});
 
 	it("describes code-env entity, merge, image, and delete requests", () => {
-		const create = buildMutationPlan("code-env", "create", commands["code-env"]!.create!, [
+		const create = buildMutationPlan("code-env", "create", commands["code-env"].create, [
 			"PYTHON",
 			"audit_env",
 		], { "deployment-mode": "DESIGN_MANAGED", },);
@@ -1170,7 +1170,7 @@ describe("agent contract accuracy: coding plans", () => {
 		const definition = buildMutationPlan(
 			"code-env",
 			"set-definition",
-			commands["code-env"]!["set-definition"]!,
+			commands["code-env"]["set-definition"],
 			["PYTHON", "audit_env",],
 			{
 				data: '{"desc":{"secret":"definition_secret_marker"}}',
@@ -1203,7 +1203,7 @@ describe("agent contract accuracy: coding plans", () => {
 		const packages = buildMutationPlan(
 			"code-env",
 			"set-packages",
-			commands["code-env"]!["set-packages"]!,
+			commands["code-env"]["set-packages"],
 			[
 				"PYTHON",
 				"audit_env",
@@ -1220,7 +1220,7 @@ describe("agent contract accuracy: coding plans", () => {
 		const clearedPackages = buildMutationPlan(
 			"code-env",
 			"set-packages",
-			commands["code-env"]!["set-packages"]!,
+			commands["code-env"]["set-packages"],
 			[
 				"PYTHON",
 				"audit_env",
@@ -1237,7 +1237,7 @@ describe("agent contract accuracy: coding plans", () => {
 		const images = buildMutationPlan(
 			"code-env",
 			"update-images",
-			commands["code-env"]!["update-images"]!,
+			commands["code-env"]["update-images"],
 			[
 				"PYTHON",
 				"audit_env",
@@ -1248,7 +1248,7 @@ describe("agent contract accuracy: coding plans", () => {
 			"/public/api/admin/code-envs/PYTHON/audit_env/images?envVersion=v1&wait=false",
 		);
 
-		const remove = buildMutationPlan("code-env", "delete", commands["code-env"]!.delete!, [
+		const remove = buildMutationPlan("code-env", "delete", commands["code-env"].delete, [
 			"PYTHON",
 			"audit_env",
 		], { "no-wait": true, },);
@@ -1263,7 +1263,7 @@ describe("agent contract accuracy: coding plans", () => {
 		const webapp = buildMutationPlan(
 			"webapp",
 			"update-settings",
-			commands.webapp!["update-settings"]!,
+			commands.webapp["update-settings"],
 			[
 				"web-1",
 			],
@@ -1280,12 +1280,12 @@ describe("agent contract accuracy: coding plans", () => {
 		},);
 		expect(webapp.requests,).toHaveLength(2,);
 		expect(JSON.stringify(webapp,),).not.toContain("webapp_secret_marker",);
-		expect(buildCommandRegistry().webapp!["restart-backend"]!.async,).toBe("future",);
+		expect(buildCommandRegistry().webapp["restart-backend"].async,).toBe("future",);
 
 		const service = buildMutationPlan(
 			"api-service",
 			"save-settings",
-			commands["api-service"]!["save-settings"]!,
+			commands["api-service"]["save-settings"],
 			["svc",],
 			{
 				data: '{"secret":"api_service_secret_marker"}',
@@ -1306,7 +1306,7 @@ describe("agent contract accuracy: coding plans", () => {
 		const publishPackage = buildMutationPlan(
 			"api-service",
 			"publish-package",
-			commands["api-service"]!["publish-package"]!,
+			commands["api-service"]["publish-package"],
 			["svc", "v1",],
 			{ "project-key": "TEST", "published-service-id": "prod svc", },
 		);
@@ -1314,7 +1314,7 @@ describe("agent contract accuracy: coding plans", () => {
 			"/public/api/projects/TEST/apiservices/svc/packages/v1/publish?publishedServiceId=prod+svc",
 		);
 
-		const exported = buildMutationPlan("bundle", "export", commands.bundle!.export!, ["v1",], {
+		const exported = buildMutationPlan("bundle", "export", commands.bundle.export, ["v1",], {
 			"project-key": "TEST",
 			"release-notes": "ready now",
 			"evaluate-standards-checks": "false",
@@ -1325,7 +1325,7 @@ describe("agent contract accuracy: coding plans", () => {
 			"/public/api/projects/TEST/bundles/exported/v1?releaseNotes=ready+now&evaluateProjectStandardsChecks=false",
 		);
 
-		const activated = buildMutationPlan("bundle", "activate", commands.bundle!.activate!, ["v1",], {
+		const activated = buildMutationPlan("bundle", "activate", commands.bundle.activate, ["v1",], {
 			"project-key": "TEST",
 			scenarios: '{"daily":true,"hourly":false}',
 		},);
@@ -1406,10 +1406,10 @@ describe("agent contract accuracy: project-git surface", () => {
 	it("refuses planning for project-git reads like status and log", () => {
 		const git = commands["project-git"];
 		expect(
-			() => buildMutationPlan("project-git", "status", git.status!, [], { "project-key": "P", },),
+			() => buildMutationPlan("project-git", "status", git.status, [], { "project-key": "P", },),
 		).toThrow(/only supported for mutating|mutating commands/i,);
 		expect(
-			() => buildMutationPlan("project-git", "log", git.log!, [], { "project-key": "P", },),
+			() => buildMutationPlan("project-git", "log", git.log, [], { "project-key": "P", },),
 		).toThrow(/only supported for mutating|mutating commands/i,);
 	});
 });

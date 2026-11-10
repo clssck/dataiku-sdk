@@ -46,7 +46,7 @@ export async function resolveAdminManagedStorageConnection(
 	preferredName?: string,
 ): Promise<string | undefined> {
 	try {
-		const raw = await client.get<unknown>("/public/api/admin/connections/",);
+		const raw = await client.get("/public/api/admin/connections/",);
 		if (!raw || typeof raw !== "object" || Array.isArray(raw,)) return undefined;
 
 		const candidates: string[] = [];
@@ -78,7 +78,7 @@ async function inferRichConnections(
 	client: DataikuClient,
 	projectEnc: string,
 ): Promise<ConnectionSummary[]> {
-	const datasetsRaw = await client.get<unknown>(`/public/api/projects/${projectEnc}/datasets/`,);
+	const datasetsRaw = await client.get(`/public/api/projects/${projectEnc}/datasets/`,);
 	const datasets = Array.isArray(datasetsRaw,) ? datasetsRaw : [];
 	const map = new Map<string, { types: Set<string>; managed: boolean; dbSchemas: Set<string>; }>();
 
@@ -115,7 +115,7 @@ async function inferRichConnections(
 	}
 
 	try {
-		const foldersRaw = await client.get<unknown>(
+		const foldersRaw = await client.get(
 			`/public/api/projects/${projectEnc}/managedfolders/`,
 		);
 		const folders = Array.isArray(foldersRaw,) ? foldersRaw : [];
@@ -128,7 +128,7 @@ async function inferRichConnections(
 				const id = summary["id"];
 				if (typeof id !== "string" || id.length === 0) return summary;
 				try {
-					return await client.get<unknown>(
+					return await client.get(
 						`/public/api/projects/${projectEnc}/managedfolders/${encodeURIComponent(id,)}`,
 					);
 				} catch {
@@ -171,7 +171,7 @@ export class ConnectionsResource extends BaseResource {
 	 */
 	async list(opts?: { type?: string; },): Promise<string[]> {
 		const type = opts?.type?.trim() || "all";
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/connections/get-names/?type=${encodeURIComponent(type,)}`,
 		);
 		return normalizeConnectionNames(raw,);
@@ -244,7 +244,7 @@ export class ConnectionsResource extends BaseResource {
 	 * the server payload faithfully, and CLI output/plan layers redact them.
 	 */
 	async adminList(): Promise<Record<string, Record<string, unknown>>> {
-		const raw = await this.client.get<unknown>("/public/api/admin/connections",);
+		const raw = await this.client.get("/public/api/admin/connections",);
 		if (raw === undefined || raw === null || typeof raw !== "object" || Array.isArray(raw,)) {
 			return {};
 		}
@@ -269,7 +269,7 @@ export class ConnectionsResource extends BaseResource {
 	 */
 	async info(connectionName: string,): Promise<Record<string, unknown>> {
 		const enc = requireNonEmpty(connectionName, "connectionName",).trim();
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/connections/${encodeURIComponent(enc,)}/info`,
 		);
 		return raw !== undefined && raw !== null && typeof raw === "object" && !Array.isArray(raw,)
@@ -287,7 +287,7 @@ export class ConnectionsResource extends BaseResource {
 			body,
 			"connections.adminCreate",
 		);
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			"/public/api/admin/connections",
 			validated,
 		);
@@ -311,7 +311,7 @@ export class ConnectionsResource extends BaseResource {
 			body,
 			"connections.adminUpdate",
 		);
-		const raw = await this.client.put<unknown>(
+		const raw = await this.client.put(
 			`/public/api/admin/connections/${encodeURIComponent(enc,)}`,
 			validated,
 		);
@@ -342,7 +342,7 @@ export class ConnectionsResource extends BaseResource {
 	 */
 	async adminTest(connectionName: string,): Promise<Record<string, unknown>> {
 		const enc = requireNonEmpty(connectionName, "connectionName",).trim();
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/connections/${encodeURIComponent(enc,)}/test`,
 		);
 		return raw !== undefined && raw !== null && typeof raw === "object" && !Array.isArray(raw,)
@@ -376,8 +376,8 @@ export class ConnectionsResource extends BaseResource {
 			);
 		}
 		for (const key of opts.keys) {
-			const connectionName = (key as Record<string, unknown>)["connectionName"];
-			const name = (key as Record<string, unknown>)["name"];
+			const connectionName = key["connectionName"];
+			const name = key["name"];
 			if (
 				typeof connectionName !== "string" || connectionName.trim().length === 0
 				|| typeof name !== "string" || name.trim().length === 0
@@ -388,7 +388,7 @@ export class ConnectionsResource extends BaseResource {
 			}
 		}
 		const pk = this.resolveProjectKey(opts.projectKey,);
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`/public/api/projects/${
 				encodeURIComponent(pk,)
 			}/datasets/tables-import/actions/prepare-from-keys`,
@@ -425,7 +425,7 @@ export class ConnectionsResource extends BaseResource {
 		const body: Record<string, unknown> = {};
 		if (sql !== undefined) body.sqlImportCandidates = sql;
 		if (hive !== undefined) body.hiveImportCandidates = hive;
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`/public/api/projects/${
 				encodeURIComponent(pk,)
 			}/datasets/tables-import/actions/execute-from-candidates`,

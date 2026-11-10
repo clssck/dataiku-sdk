@@ -81,8 +81,8 @@ describe("LlmsResource", () => {
 			const client = createClient(url,);
 			const llms = await client.llms.list();
 			expect(llms,).toHaveLength(1,);
-			expect(llms[0]!.id,).toBe("openai:openai1:gpt-4",);
-			expect(llms[0]!.promptDriven,).toBe(true,);
+			expect(llms[0].id,).toBe("openai:openai1:gpt-4",);
+			expect(llms[0].promptDriven,).toBe(true,);
 		},);
 	});
 
@@ -121,7 +121,7 @@ describe("LlmsResource", () => {
 				queries: [{ messages: [{ role: "user", content: "Who wrote Beethoven's 9th?", },], },],
 				settings: { temperature: 0.9, maxOutputTokens: 2048, topP: 0.7, },
 			},);
-			const parsed = JSON.parse(capturedBody!,) as Record<string, unknown>;
+			const parsed = JSON.parse(capturedBody,) as Record<string, unknown>;
 			expect(parsed["llmId"],).toBe("openai:openai1:gpt-4",);
 			expect(Array.isArray(parsed["queries"],),).toBe(true,);
 			expect(parsed["settings"],).toEqual({
@@ -130,7 +130,7 @@ describe("LlmsResource", () => {
 				topP: 0.7,
 			},);
 			expect(result.responses,).toHaveLength(1,);
-			expect(result.responses![0]!.text,).toBe("Ludwig Van Beethoven",);
+			expect(result.responses![0].text,).toBe("Ludwig Van Beethoven",);
 		},);
 	});
 
@@ -159,8 +159,8 @@ describe("LlmsResource", () => {
 			expect(capturedPath,).toBe("/public/api/projects/TEST/llms/embeddings",);
 			const parsed = JSON.parse(capturedBody,) as Record<string, unknown>;
 			expect(parsed["llmId"],).toBe("openai:openai1:ada002-text-embedding",);
-			expect(result.responses![0]!.embedding,).toEqual([0.1235243, 0.2196464, 0.365436456546,],);
-			expect(result.responses![0]!.estimatedCost,).toBe(0.000000012,);
+			expect(result.responses![0].embedding,).toEqual([0.1235243, 0.2196464, 0.365436456546,],);
+			expect(result.responses![0].estimatedCost,).toBe(0.000000012,);
 		},);
 	});
 

@@ -25,7 +25,7 @@ function flowRenderFormat(value: string | boolean | undefined,): FlowRenderForma
 /** Local, DSS-free archive inspection shared by the local handler and the command handler. */
 function inspectArchiveCommand(args: string[],): Promise<ProjectArchiveInspection> {
 	requireArgs(args, 1, INSPECT_ARCHIVE_USAGE,);
-	return inspectProjectArchive(args[0]!,);
+	return inspectProjectArchive(args[0],);
 }
 
 export const projectCommands: Record<string, CommandMeta> = withUsage("project", {
@@ -403,7 +403,7 @@ export const projectCommands: Record<string, CommandMeta> = withUsage("project",
 	},
 	"push-to-git-remote": {
 		handler: async (c, a, f,) => {
-			await c.projects.pushToGitRemote(a[0]!, f["project-key"] as string | undefined,);
+			await c.projects.pushToGitRemote(a[0], f["project-key"] as string | undefined,);
 			return { pushed: a[0], resource: "project", };
 		},
 		description:

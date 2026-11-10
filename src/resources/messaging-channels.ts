@@ -107,7 +107,7 @@ export class MessagingChannelsResource extends BaseResource {
 		if (options.channelType !== undefined) query.set("channelType", options.channelType,);
 		if (options.channelFamily !== undefined) query.set("channelFamily", options.channelFamily,);
 		const suffix = query.size > 0 ? `?${query.toString()}` : "";
-		const channels = await this.client.get<unknown>(`/public/api/messaging-channels/${suffix}`,);
+		const channels = await this.client.get(`/public/api/messaging-channels/${suffix}`,);
 		return requireArrayResponse<MessagingChannel>(channels, "messagingChannels.list",);
 	}
 
@@ -139,7 +139,7 @@ export class MessagingChannelsResource extends BaseResource {
 
 	/** Get the users and groups allowed to use a channel. */
 	async getPermissions(channelId: string,): Promise<MessagingChannelPermission[]> {
-		const permissions = await this.client.get<unknown>(
+		const permissions = await this.client.get(
 			`${this.channelPath(channelId,)}/permissions`,
 		);
 		return requireArrayResponse<MessagingChannelPermission>(

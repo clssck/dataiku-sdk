@@ -4,14 +4,8 @@ import * as path from "node:path";
 import { ClientValidationError, } from "../errors.js";
 import { canonicalDssUrl, } from "./dss-url.js";
 
-export type CleanupLedgerAction =
-	| "create"
-	| "upload"
-	| "delete"
-	| "update"
-	| "set"
-	| "run"
-	| string;
+/** Known actions: create, upload, delete, update, set, run; other verbs are accepted. */
+export type CleanupLedgerAction = string;
 
 export interface CleanupLedgerEntry {
 	ts: string;

@@ -31,7 +31,7 @@ const DEFAULT_LOG_MAX_LINES = 500;
 
 export class CodeEnvsResource extends BaseResource {
 	async list(opts?: { envLang?: "PYTHON" | "R"; },): Promise<CodeEnvSummary[]> {
-		const raw = await this.client.get<unknown>("/public/api/admin/code-envs/",);
+		const raw = await this.client.get("/public/api/admin/code-envs/",);
 		const envs = this.client.safeParse(CodeEnvSummaryArraySchema, raw, "codeEnvs.list",);
 		if (opts?.envLang) {
 			return envs.filter((e,) => e.envLang === opts.envLang);
@@ -78,7 +78,7 @@ export class CodeEnvsResource extends BaseResource {
 	async listLogs(envLang: string, envName: string,): Promise<CodeEnvLogSummary[]> {
 		const langEnc = encodeURIComponent(envLang,);
 		const nameEnc = encodeURIComponent(envName,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/admin/code-envs/${langEnc}/${nameEnc}/logs`,
 		);
 		return this.client.safeParse(CodeEnvLogSummaryArraySchema, raw, "codeEnvs.listLogs",);
@@ -146,7 +146,7 @@ export class CodeEnvsResource extends BaseResource {
 		const langEnc = encodeURIComponent(envLang,);
 		const nameEnc = encodeURIComponent(envName,);
 		const pkEnc = encodeURIComponent(projectKey,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/admin/code-envs/${langEnc}/${nameEnc}/${pkEnc}/version`,
 		);
 		return this.client.safeParse(
@@ -270,11 +270,11 @@ export class CodeEnvsResource extends BaseResource {
 			}
 			const langEnc = encodeURIComponent(envLang,);
 			const nameEnc = encodeURIComponent(envName,);
-			raw = await this.client.get<unknown>(
+			raw = await this.client.get(
 				`/public/api/admin/code-envs/${langEnc}/${nameEnc}/usages`,
 			);
 		} else {
-			raw = await this.client.get<unknown>("/public/api/admin/code-envs/usages",);
+			raw = await this.client.get("/public/api/admin/code-envs/usages",);
 		}
 
 		return this.client.safeParse(CodeEnvUsageArraySchema, raw, "codeEnvs.listUsages",);

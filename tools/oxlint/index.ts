@@ -313,6 +313,306 @@ const directProcessEnv = defineRule({
 	},
 },);
 
+const FUNCTION_TYPES: Record<string, true> = {
+	FunctionDeclaration: true,
+	FunctionExpression: true,
+	ArrowFunctionExpression: true,
+};
+
+/** Strip parentheses, type assertions, non-null assertions, and optional-chain wrappers. */
+function peel(node: ESTree.Node,): ESTree.Node {
+	for (;;) {
+		switch (node.type) {
+			case "ParenthesizedExpression":
+			case "TSNonNullExpression":
+			case "TSAsExpression":
+			case "TSSatisfiesExpression":
+			case "TSTypeAssertion":
+			case "ChainExpression":
+				node = node.expression;
+				break;
+			default:
+				return node;
+		}
+	}
+}
+
+/** The nearest enclosing function, or the outermost ancestor (the Program) at top level. */
+function enclosingFunction(node: ESTree.Node,): ESTree.Node {
+	let outermost: ESTree.Node = node;
+	for (let parent: ESTree.Node | null = node.parent; parent; parent = parent.parent) {
+		if (FUNCTION_TYPES[parent.type] === true) return parent;
+		outermost = parent;
+	}
+	return outermost;
+}
+
+const FLAG_BAGS: Record<string, true> = { f: true, flags: true, };
+
+/**
+ * Whether an expression reads a CLI flag: a member or index access on `f` or
+ * `flags`, directly or through one local `const` of the same function that was
+ * initialized from such an access.
+ */
+function flagRead(context: Context, node: ESTree.Node, followConst: boolean,): boolean {
+	const value = peel(node,);
+	if (value.type === "LogicalExpression") {
+		return flagRead(context, value.left, followConst,)
+			|| flagRead(context, value.right, followConst,);
+	}
+	if (value.type === "MemberExpression") {
+		const object = peel(value.object,);
+		return object.type === "Identifier" && FLAG_BAGS[object.name] === true;
+	}
+	if (value.type !== "Identifier" || !followConst) return false;
+	const declarator = binding(context, value,)?.defs[0]?.node;
+	if (declarator?.type !== "VariableDeclarator" || !declarator.init) return false;
+	const declaration = declarator.parent;
+	return declaration.type === "VariableDeclaration" && declaration.kind === "const"
+		&& enclosingFunction(declarator,) === enclosingFunction(value,)
+		&& flagRead(context, declarator.init, false,);
+}
+
+const NUMBER_COERCERS: Record<string, true> = { Number: true, parseInt: true, parseFloat: true, };
+
+/** A blank flag value is "" and Number("") is 0: numeric flags go through the validating helpers. */
+const rawNumberCoercion = defineRule({
+	meta: { type: "problem", schema: [], },
+	create(context,) {
+		const path = sourcePath(context,);
+		if (!path.includes("/src/cli/",) || path.endsWith("/src/cli/coerce.ts",)) return {};
+		const report = (node: ESTree.Node,) =>
+			context.report({
+				node,
+				message:
+					"Coerce flag values with num() or numFlag() from src/cli/coerce.ts: Number(), parseInt(), parseFloat() and unary + turn a blank flag into 0 or NaN.",
+			},);
+		return {
+			CallExpression(node,) {
+				const callee = node.callee;
+				let coerces = false;
+				if (callee.type === "Identifier") {
+					coerces = NUMBER_COERCERS[callee.name] === true
+						&& context.sourceCode.isGlobalReference(callee,);
+				} else if (
+					callee.type === "MemberExpression" && callee.object.type === "Identifier"
+					&& callee.object.name === "Number" && context.sourceCode.isGlobalReference(callee.object,)
+				) {
+					coerces = ["parseInt", "parseFloat",].includes(memberName(callee,) ?? "",);
+				}
+				const argument = node.arguments[0];
+				if (
+					coerces && argument && argument.type !== "SpreadElement" && flagRead(context, argument, true,)
+				) {
+					report(node,);
+				}
+			},
+			UnaryExpression(node,) {
+				if (node.operator === "+" && flagRead(context, node.argument, true,)) report(node,);
+			},
+		};
+	},
+},);
+
+const BODY_READERS: Record<string, true> = {
+	text: true,
+	json: true,
+	arrayBuffer: true,
+	bytes: true,
+	blob: true,
+	formData: true,
+};
+
+/**
+ * `res.text()` and friends read without a size cap or a deadline. Buffered
+ * reads go through the client (getText, readBoundedBytes, ...), which holds
+ * both. Local files (`Bun.file(...)`) and in-memory `Blob`/`File` are exempt.
+ */
+const unboundedResponseBody = defineRule({
+	meta: { type: "problem", schema: [], },
+	create(context,) {
+		const path = sourcePath(context,);
+		if (!path.includes("/src/resources/",) && !path.includes("/src/cli/",)) return {};
+		return {
+			CallExpression(node,) {
+				const callee = node.callee;
+				if (
+					node.arguments.length > 0 || callee.type !== "MemberExpression"
+					|| BODY_READERS[memberName(callee,) ?? ""] !== true
+				) return;
+				const receiver = peel(callee.object,);
+				if (
+					receiver.type === "CallExpression" && receiver.callee.type === "MemberExpression"
+					&& receiver.callee.object.type === "Identifier" && receiver.callee.object.name === "Bun"
+					&& memberName(receiver.callee,) === "file"
+				) return;
+				if (
+					receiver.type === "NewExpression" && receiver.callee.type === "Identifier"
+					&& (receiver.callee.name === "Blob" || receiver.callee.name === "File")
+				) return;
+				context.report({
+					node,
+					message:
+						"Read buffered response bodies through the client's bounded readers (getText, readBoundedBytes, ...): a bare body read has no size cap and no deadline.",
+				},);
+			},
+		};
+	},
+},);
+
+const STDIN_READERS: Record<string, true> = { readStdinText: true, };
+const STDIN_TEST = /\.stdin\b|["']stdin["']|[=!]==?\s*["']-["']|["']-["']\s*[=!]==?/;
+
+/** Whether an enclosing `if`, ternary, or `&&` tests the stdin flag or compares against the `-` marker. */
+function guardedByStdinTest(context: Context, node: ESTree.Node,): boolean {
+	let child: ESTree.Node = node;
+	for (let parent: ESTree.Node | null = node.parent; parent; parent = parent.parent) {
+		let test: ESTree.Node | undefined;
+		if (
+			(parent.type === "IfStatement" || parent.type === "ConditionalExpression")
+			&& child !== parent.test
+		) {
+			test = parent.test;
+		} else if (parent.type === "LogicalExpression" && child === parent.right) {
+			test = parent.left;
+		}
+		if (test && STDIN_TEST.test(context.sourceCode.getText(test,),)) return true;
+		child = parent;
+	}
+	return false;
+}
+
+function isWithin(node: ESTree.Node, scope: ESTree.Node,): boolean {
+	for (let parent: ESTree.Node | null = node.parent; parent; parent = parent.parent) {
+		if (parent === scope) return true;
+	}
+	return false;
+}
+
+/**
+ * Stdin is read only when asked for. Falling back to it when no source flag is
+ * given writes an empty file wherever stdin is closed. A use of the stdin
+ * reader needs an enclosing test of the stdin flag or the `-` marker, or an
+ * earlier requireContentSource() call in one of its enclosing functions.
+ */
+const implicitStdin = defineRule({
+	meta: { type: "problem", schema: [], },
+	create(context,) {
+		const path = sourcePath(context,);
+		if (!path.includes("/src/cli/commands/",) && !path.includes("/src/cli/helpers/",)) return {};
+		const requirements: { scope: ESTree.Node; start: number; }[] = [];
+		return {
+			CallExpression(node,) {
+				if (node.callee.type === "Identifier" && node.callee.name === "requireContentSource") {
+					requirements.push({ scope: enclosingFunction(node,), start: node.start, },);
+				}
+			},
+			Identifier(node,) {
+				const parent = node.parent;
+				if (STDIN_READERS[node.name] !== true) return;
+				// Uses only: not an import/export name, a declaration, a property key, or a member name.
+				if (
+					parent.type === "ImportSpecifier" || parent.type === "ExportSpecifier"
+					|| (parent.type === "FunctionDeclaration" && parent.id === node)
+					|| (parent.type === "MemberExpression" && parent.property === node && !parent.computed)
+					|| (parent.type === "Property" && parent.key === node && !parent.computed && !parent.shorthand)
+				) return;
+				if (guardedByStdinTest(context, node,)) return;
+				if (requirements.some((entry,) => entry.start < node.start && isWithin(node, entry.scope,))) {
+					return;
+				}
+				context.report({
+					node,
+					message:
+						"Read stdin only when asked: guard it with a test of --stdin or the - marker, or call requireContentSource() first, so a closed stdin cannot write an empty file.",
+				},);
+			},
+		};
+	},
+},);
+
+const WRITERS: Record<string, true> = { writeFile: true, writeFileSync: true, "Bun.write": true, };
+const CHMODS: Record<string, true> = {
+	chmod: true,
+	chmodSync: true,
+	fchmod: true,
+	fchmodSync: true,
+};
+const OWNER_ONLY_MODES = new Set([0o600, 0o700, 0o400,],);
+
+function callName(node: ESTree.CallExpression,): string | undefined {
+	const callee = node.callee;
+	if (callee.type === "Identifier") return callee.name;
+	if (callee.type !== "MemberExpression") return undefined;
+	const name = memberName(callee,);
+	return name === "write" && callee.object.type === "Identifier" && callee.object.name === "Bun"
+		? "Bun.write"
+		: name;
+}
+
+function hasModeOption(node: ESTree.CallExpression,): boolean {
+	return node.arguments.some((argument,) =>
+		argument.type === "ObjectExpression"
+		&& argument.properties.some((property,) =>
+			property.type === "Property" && !property.computed
+			&& (property.key.type === "Identifier"
+				? property.key.name === "mode"
+				: property.key.type === "Literal" && property.key.value === "mode")
+		)
+	);
+}
+
+/**
+ * A credential file written and then chmodded is world-readable in between.
+ * Owner-only files are created with the mode at open time (see src/config.ts,
+ * src/utils/response-file.ts, src/cli/helpers/app-permissions.ts). Syntactic:
+ * an owner-only literal mode passed to chmod in a function that also writes a
+ * file without a `mode` option.
+ */
+const chmodAfterWrite = defineRule({
+	meta: { type: "problem", schema: [], },
+	create(context,) {
+		if (!sourcePath(context,).includes("/src/",)) return {};
+		const scopes = new Map<
+			ESTree.Node,
+			{ chmods: ESTree.CallExpression[]; unmodedWrite: boolean; }
+		>();
+		return {
+			CallExpression(node,) {
+				const name = callName(node,);
+				if (name === undefined) return;
+				const key = enclosingFunction(node,);
+				let scope = scopes.get(key,);
+				if (!scope) {
+					scope = { chmods: [], unmodedWrite: false, };
+					scopes.set(key, scope,);
+				}
+				if (CHMODS[name] === true) {
+					const mode = node.arguments[1];
+					if (
+						mode?.type === "Literal" && typeof mode.value === "number"
+						&& OWNER_ONLY_MODES.has(mode.value,)
+					) scope.chmods.push(node,);
+				} else if (WRITERS[name] === true && !hasModeOption(node,)) {
+					scope.unmodedWrite = true;
+				}
+			},
+			"Program:exit"() {
+				for (const scope of scopes.values()) {
+					if (!scope.unmodedWrite) continue;
+					for (const call of scope.chmods) {
+						context.report({
+							node: call,
+							message:
+								"Create owner-only files with the mode at open time (writeFile mode option, or open with a mode and then write): chmod after the write leaves the file readable in between.",
+						},);
+					}
+				}
+			},
+		};
+	},
+},);
+
 export default definePlugin({
 	meta: { name: "dss", },
 	rules: {
@@ -323,5 +623,9 @@ export default definePlugin({
 		"no-raw-json-parse-in-resources": rawJsonParseInResources,
 		"no-usage-literals": usageLiterals,
 		"no-direct-process-env": directProcessEnv,
+		"no-raw-number-coercion": rawNumberCoercion,
+		"no-unbounded-response-body": unboundedResponseBody,
+		"no-implicit-stdin": implicitStdin,
+		"no-chmod-after-write": chmodAfterWrite,
 	},
 },);

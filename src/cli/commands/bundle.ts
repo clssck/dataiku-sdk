@@ -158,7 +158,7 @@ export const bundleCommands: Record<string, CommandMeta> = withUsage("bundle", {
 		examples: ["dss bundle delete-imported v1",],
 	},
 	"get-exported": {
-		handler: (c, a, f,) => c.bundles.getExported(a[0]!, f["project-key"] as string | undefined,),
+		handler: (c, a, f,) => c.bundles.getExported(a[0], f["project-key"] as string | undefined,),
 		description: "Get an exported bundle's details (content summary, export manifest, changelog).",
 		examples: ["dss bundle get-exported v1",],
 	},

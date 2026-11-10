@@ -3,6 +3,9 @@
 	"plugins": ["typescript", "import", "unicorn", "oxc"],
 	"ignorePatterns": ["dist/"],
 	"jsPlugins": [{ "name": "dss", "specifier": "./tools/oxlint/index.ts" }],
+	"options": {
+		"typeAware": true
+	},
 	"overrides": [
 		{
 			"files": ["src/**", "tools/**"],
@@ -25,19 +28,52 @@
 			"rules": {
 				"dss/no-uncoded-errors": "error",
 				"dss/no-usage-literals": "error",
-				"dss/no-direct-process-env": "error"
+				"dss/no-direct-process-env": "error",
+				"dss/no-chmod-after-write": "error",
+				"no-restricted-globals": ["error", {
+					"name": "fetch",
+					"message": "Every HTTP call goes through DataikuClient (retry, redirect policy, deadline, redaction live there)."
+				}, {
+					"name": "XMLHttpRequest",
+					"message": "Every HTTP call goes through DataikuClient (retry, redirect policy, deadline, redaction live there)."
+				}, {
+					"name": "WebSocket",
+					"message": "Network access goes through DataikuClient, not a raw WebSocket."
+				}]
+			}
+		},
+		{
+			"files": ["src/client.ts"],
+			"rules": {
+				"no-restricted-globals": "off"
 			}
 		},
 		{
 			"files": ["src/resources/**"],
 			"rules": {
-				"dss/no-raw-json-parse-in-resources": "error"
+				"dss/no-raw-json-parse-in-resources": "error",
+				"dss/no-unbounded-response-body": "error"
+			}
+		},
+		{
+			"files": ["src/cli/**"],
+			"rules": {
+				"dss/no-raw-number-coercion": "error",
+				"dss/no-unbounded-response-body": "error"
+			}
+		},
+		{
+			"files": ["src/cli/commands/**", "src/cli/helpers/**"],
+			"rules": {
+				"dss/no-implicit-stdin": "error"
 			}
 		},
 		{
 			"files": ["tests/**"],
 			"rules": {
-				"no-restricted-imports": "off"
+				"no-restricted-imports": "off",
+				"typescript/await-thenable": "off",
+				"typescript/no-unnecessary-type-arguments": "off"
 			}
 		}
 	],
@@ -85,7 +121,42 @@
 		"no-await-in-loop": "off",
 		"no-control-regex": "off",
 
+		"no-implicit-coercion": ["error", { "boolean": false }],
+		"no-throw-literal": "error",
+		"prefer-promise-reject-errors": "error",
+		"no-self-compare": "error",
+		"no-unmodified-loop-condition": "error",
+		"no-constructor-return": "error",
+		"default-case-last": "error",
+		"array-callback-return": "error",
+		"radix": "error",
+		"unicorn/prefer-node-protocol": "error",
+
 		"typescript/no-explicit-any": "warn",
+		"typescript/no-floating-promises": "error",
+		"typescript/no-misused-promises": "error",
+		"typescript/no-base-to-string": "error",
+		"typescript/restrict-template-expressions": "error",
+		"typescript/switch-exhaustiveness-check": [
+			"error",
+			{ "considerDefaultExhaustiveForUnions": true }
+		],
+		"typescript/no-for-in-array": "error",
+		"typescript/unbound-method": "error",
+		"typescript/await-thenable": "error",
+		"typescript/no-array-delete": "error",
+		"typescript/no-implied-eval": "error",
+		"typescript/require-array-sort-compare": "error",
+		"typescript/no-unsafe-enum-comparison": "error",
+		"typescript/no-unsafe-enum-assignment": "error",
+		"typescript/no-unsafe-type-assertion": "off",
+		"typescript/consistent-return": "off",
+		"typescript/no-unnecessary-boolean-literal-compare": "off",
+		"typescript/no-unnecessary-template-expression": "off",
+		"typescript/no-unnecessary-type-conversion": "off",
+		"typescript/no-unnecessary-type-parameters": "off",
+		"typescript/no-unnecessary-type-assertion": "error",
+		"typescript/no-unnecessary-type-arguments": "error",
 
 		"import/no-duplicates": "error",
 		"import/no-self-import": "error",

@@ -386,7 +386,7 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 	},
 	"sync-hive-metastore": {
 		handler: async (c, a, f,) => {
-			await c.datasets.synchronizeHiveMetastore(a[0]!, f["project-key"] as string | undefined,);
+			await c.datasets.synchronizeHiveMetastore(a[0], f["project-key"] as string | undefined,);
 			return { synchronized: a[0], resource: "dataset", };
 		},
 		description:
@@ -395,7 +395,7 @@ export const datasetCommands: Record<string, CommandMeta> = withUsage("dataset",
 	},
 	"update-from-hive": {
 		handler: async (c, a, f,) => {
-			await c.datasets.updateFromHive(a[0]!, f["project-key"] as string | undefined,);
+			await c.datasets.updateFromHive(a[0], f["project-key"] as string | undefined,);
 			return { updated: a[0], resource: "dataset", };
 		},
 		description:

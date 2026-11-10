@@ -865,7 +865,7 @@ export function buildDatasetCloneSettings(
 export class DatasetsResource extends BaseResource {
 	/** List all datasets in a project. */
 	async list(projectKey?: string,): Promise<DatasetSummary[]> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/datasets/`,
 		);
 		return this.client.safeParse(DatasetSummaryArraySchema, raw, "datasets.list",);
@@ -874,7 +874,7 @@ export class DatasetsResource extends BaseResource {
 	/** Get full dataset details. */
 	async get(datasetName: string, projectKey?: string,): Promise<DatasetDetails> {
 		const dsEnc = encodeURIComponent(datasetName,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}`,
 		);
 		return this.client.safeParse(DatasetDetailsSchema, raw, "datasets.get",);
@@ -883,7 +883,7 @@ export class DatasetsResource extends BaseResource {
 	/** Get dataset schema (column names and types). */
 	async schema(datasetName: string, projectKey?: string,): Promise<DatasetSchema> {
 		const dsEnc = encodeURIComponent(datasetName,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}/schema`,
 		);
 		return this.client.safeParse(DatasetSchemaSchema, raw, "datasets.schema",);
@@ -918,7 +918,7 @@ export class DatasetsResource extends BaseResource {
 			encodeURIComponent(datasetName,)
 		}`;
 		try {
-			const raw = await this.client.post<unknown>(
+			const raw = await this.client.post(
 				`${base}/actions/testAndDetectSettings/externalSQL`,
 			);
 			const detection = isRecord(raw,) ? raw["schemaDetection"] : undefined;
@@ -935,7 +935,7 @@ export class DatasetsResource extends BaseResource {
 			if (!isRecord(newSchema,) || columns.length === 0) {
 				return { detected: false, columns: [], error: describeSqlDetectionFailure(raw,), };
 			}
-			await this.client.put<unknown>(`${base}/schema`, newSchema,);
+			await this.client.put(`${base}/schema`, newSchema,);
 			return { detected: true, columns, };
 		} catch (error) {
 			if (error instanceof DataikuError) {
@@ -951,7 +951,7 @@ export class DatasetsResource extends BaseResource {
 	 */
 	async getSchemaObject(datasetName: string, projectKey?: string,): Promise<unknown> {
 		const dsEnc = encodeURIComponent(datasetName,);
-		return this.client.get<unknown>(
+		return this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/datasets/${dsEnc}/schema`,
 		);
 	}
@@ -1058,7 +1058,7 @@ export class DatasetsResource extends BaseResource {
 			return { columns: [], rows: [], rowCount: 0, truncated: false, limit: maxRows, };
 		}
 		const { columns, rows, truncated, } = await collectPreviewRows(
-			res.body as ReadableStream<Uint8Array>,
+			res.body,
 			maxRows,
 			timeoutMs,
 			onHeader,
@@ -1103,7 +1103,7 @@ export class DatasetsResource extends BaseResource {
 			return { expected: target, count: 0, exact: true, satisfied: target === 0, };
 		}
 		const { count, bounded, } = await collectTsvRowCount(
-			res.body as ReadableStream<Uint8Array>,
+			res.body,
 			probe,
 			timeoutMs,
 		);
@@ -1273,7 +1273,7 @@ export class DatasetsResource extends BaseResource {
 		if (maxDatasetCount !== undefined) {
 			params.push(`maxDatasetCount=${encodeURIComponent(String(maxDatasetCount,),)}`,);
 		}
-		return this.client.get<unknown>(
+		return this.client.get(
 			`/public/api/projects/${this.enc(opts?.projectKey,)}/datasets/${dsEnc}/column-lineage?${
 				params.join("&",)
 			}`,
@@ -1526,7 +1526,7 @@ export class DatasetsResource extends BaseResource {
 		datasetName: string,
 		projectKey?: string,
 	): Promise<UploadedFileMetadata[]> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/datasets/${
 				encodeURIComponent(datasetName,)
 			}/uploaded/files`,

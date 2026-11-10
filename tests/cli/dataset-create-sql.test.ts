@@ -72,14 +72,14 @@ describe("dataset create over SQL tables and queries", () => {
 				"POST /public/api/projects/TEST/datasets/sales/actions/testAndDetectSettings/externalSQL",
 				"PUT /public/api/projects/TEST/datasets/sales/schema",
 			],);
-			expect(recorded[0]!.body,).toEqual({
+			expect(recorded[0].body,).toEqual({
 				projectKey: "TEST",
 				name: "sales",
 				type: "Snowflake",
 				params: { connection: "sf", mode: "table", table: "SALES", schema: "PUBLIC", catalog: "DB", },
 				managed: false,
 			},);
-			expect(recorded[2]!.body,).toEqual(NEW_SCHEMA,);
+			expect(recorded[2].body,).toEqual(NEW_SCHEMA,);
 			expect(JSON.parse(stdout,),).toEqual({
 				created: "sales",
 				resource: "dataset",
@@ -110,8 +110,8 @@ describe("dataset create over SQL tables and queries", () => {
 					file,
 				], { env: cliEnv(url,), },);
 
-				expect(recorded[0]!.call,).toBe("POST /public/api/projects/TEST/datasets/",);
-				expect(recorded[0]!.body,).toEqual({
+				expect(recorded[0].call,).toBe("POST /public/api/projects/TEST/datasets/",);
+				expect(recorded[0].body,).toEqual({
 					projectKey: "TEST",
 					name: "open_orders",
 					type: "PostgreSQL",
@@ -167,7 +167,7 @@ describe("dataset create over SQL tables and queries", () => {
 				schemaError: "warehouse is suspended",
 			},);
 			const event = JSON.parse(stderr.trim(),) as { warnings: Array<Record<string, unknown>>; };
-			const warning = event.warnings[0]!;
+			const warning = event.warnings[0];
 			expect(warning["code"],).toBe("dataset_schema_not_detected",);
 			expect(warning["dataset"],).toBe("sales",);
 			expect(warning["error"],).toBe("warehouse is suspended",);

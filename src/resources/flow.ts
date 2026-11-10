@@ -48,7 +48,7 @@ export class FlowResource extends BaseResource {
 			);
 		}
 		const pk = this.resolveProjectKey(opts.projectKey,);
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`${this.flowPath(pk,)}/tools/propagate-schema/`,
 			schemaPropagationBody(pk, name, opts,),
 		);

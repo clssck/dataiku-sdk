@@ -203,7 +203,8 @@ function describeFutureFailure(error: unknown,): string | undefined {
 		}
 		return JSON.stringify(error,);
 	}
-	return String(error,);
+	// DSS reports a future's `error` as JSON, so only numbers and booleans remain here.
+	return typeof error === "number" || typeof error === "boolean" ? String(error,) : undefined;
 }
 
 /* ------------------------------------------------------------------ */

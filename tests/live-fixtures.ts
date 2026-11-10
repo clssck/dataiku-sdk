@@ -240,7 +240,7 @@ export async function provisionCoreFixtures(ctx: LiveContext,): Promise<void> {
 	// UploadedFiles inputs with deterministic CSV bytes and explicit schemas.
 	for (const name of UPLOAD_DATASETS) {
 		const fileName = `${name}.csv`;
-		const localPath = await ctx.writeFile(`core/${fileName}`, CORE_CSV[name]!,);
+		const localPath = await ctx.writeFile(`core/${fileName}`, CORE_CSV[name],);
 		await ctx.run(["dataset", "create", "--name", name, "--type", "UploadedFiles",],);
 		await ctx.run(["dataset", "upload-file", name, localPath, "--file-name", fileName,],);
 		const schemaPath = await ctx.writeFile(

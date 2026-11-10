@@ -68,17 +68,17 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 						name: a[0],
 						...(predictionType !== undefined ? { predictionType, } : {}),
 						...(configuration !== undefined
-							? { proxyModelConfiguration: configuration as Record<string, unknown>, }
+							? { proxyModelConfiguration: configuration, }
 							: {}),
 					},
 				};
 			}
 			return c.savedModels.createExternal({
 				savedModelType,
-				name: a[0]!,
+				name: a[0],
 				...(predictionType !== undefined ? { predictionType, } : {}),
 				...(configuration !== undefined
-					? { proxyModelConfiguration: configuration as Record<string, unknown>, }
+					? { proxyModelConfiguration: configuration, }
 					: {}),
 			}, projectKey,);
 		},
@@ -116,7 +116,7 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 					payload: settings,
 				};
 			}
-			return c.savedModels.updateSettings(a[0]!, settings, projectKey,).then(() => ({
+			return c.savedModels.updateSettings(a[0], settings, projectKey,).then(() => ({
 				updated: a[0],
 				resource: "saved-model",
 			}));
@@ -202,7 +202,7 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 		handler: async (c, a, f,) => {
 			const usage = commandUsage("saved-model", "delete-versions",);
 			requireArgs(a, 2, usage,);
-			const versions = a[1]!.split(",",).map((v,) => v.trim()).filter((v,) => v.length > 0);
+			const versions = a[1].split(",",).map((v,) => v.trim()).filter((v,) => v.length > 0);
 			if (versions.length === 0) {
 				throw new UsageError(
 					"<versionsCSV> must contain at least one version id.",
@@ -222,7 +222,7 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 					payload: { versions, removeIntermediate, },
 				};
 			}
-			await c.savedModels.deleteVersions(versions, { removeIntermediate, }, a[0]!, projectKey,);
+			await c.savedModels.deleteVersions(versions, { removeIntermediate, }, a[0], projectKey,);
 			return { deletedVersions: versions, resource: "saved-model", id: a[0], };
 		},
 		description:
@@ -275,7 +275,7 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 					payload: { ...options, source: { kind: "local-archive", archive, }, },
 				};
 			}
-			return c.savedModels.importMlflowVersion(archive, a[1]!, options, a[0]!, projectKey,);
+			return c.savedModels.importMlflowVersion(archive, a[1], options, a[0], projectKey,);
 		},
 		description:
 			"Import a new MLflow version from a local zip archive of the MLflow model folder (multipart upload). The saved model must be of type MLFLOW_PYFUNC.",
@@ -310,9 +310,9 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 			return c.savedModels.importMlflowVersionFromFolder(
 				folder,
 				path,
-				a[1]!,
+				a[1],
 				options,
-				a[0]!,
+				a[0],
 				projectKey,
 			);
 		},
@@ -365,8 +365,8 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 				};
 			}
 			return c.savedModels.externalMetadataPut(
-				a[0]!,
-				a[1]!,
+				a[0],
+				a[1],
 				metadata,
 				containerExecConfigName === undefined ? undefined : { containerExecConfigName, },
 				projectKey,
@@ -429,7 +429,7 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 					payload: { ...body, ...options, },
 				};
 			}
-			await c.savedModels.evaluateVersion(body, options, a[0]!, a[1]!, projectKey,);
+			await c.savedModels.evaluateVersion(body, options, a[0], a[1], projectKey,);
 			return { evaluated: a[0], versionId: a[1], resource: "saved-model", };
 		},
 		description:
@@ -443,7 +443,7 @@ export const savedModelCommands: Record<string, CommandMeta> = withUsage("saved-
 		resource: "saved-model",
 		ids: "MODEL_ID VERSION_ID",
 		noun: "saved-model version",
-		model: (c, a, pk,) => c.savedModels.version(a[0]!, a[1]!, pk,),
+		model: (c, a, pk,) => c.savedModels.version(a[0], a[1], pk,),
 		downloadDocumentation: (c, exportId, pk,) => c.savedModels.downloadDocumentation(exportId, pk,),
 	},),
 },);

@@ -459,12 +459,12 @@ function splitShellLike(input: string,): string[] | undefined {
 	let current = "";
 	let quote: "'" | '"' | undefined;
 	for (let index = 0; index < input.length; index++) {
-		const char = input[index]!;
+		const char = input[index];
 		if (quote) {
 			if (char === quote) {
 				quote = undefined;
 			} else if (char === "\\" && quote === '"' && index + 1 < input.length) {
-				current += input[++index]!;
+				current += input[++index];
 			} else {
 				current += char;
 			}
@@ -511,14 +511,14 @@ function canonicalizeArgv(argv: string[],): string[] {
 	const canonical: string[] = [];
 	let afterSeparator = false;
 	for (let index = 0; index < argv.length; index++) {
-		const token = argv[index]!;
+		const token = argv[index];
 		if (afterSeparator || token === "--") {
 			canonical.push(token,);
 			afterSeparator = true;
 			continue;
 		}
 		if (token.length === 2 && token[0] === "-" && token[1] !== "-") {
-			const flagName = SHORT_FLAGS[token[1]!];
+			const flagName = SHORT_FLAGS[token[1]];
 			if (!flagName) {
 				canonical.push(token,);
 				continue;
@@ -740,7 +740,7 @@ function argvJsonSchema(
 	for (const choice of requiredOneOf) {
 		const alternativeSchema = (alternative: string[],): Record<string, unknown> => {
 			const required = alternative.map((name,) => contains([name, ...(aliases[name] ?? []),],));
-			return required.length === 1 ? required[0]! : { allOf: required, };
+			return required.length === 1 ? required[0] : { allOf: required, };
 		};
 		constraints.push({ anyOf: choice.oneOf.map(alternativeSchema,), },);
 	}
@@ -1473,7 +1473,7 @@ function commandDefinitions(
 	for (const resource of Object.keys(commands,)) {
 		if (resourceFilter !== undefined && resource !== resourceFilter) continue;
 		// Forward the lazy lookup: enumerating resources must not load command modules.
-		Object.defineProperty(registry, resource, { enumerable: true, get: () => commands[resource]!, },);
+		Object.defineProperty(registry, resource, { enumerable: true, get: () => commands[resource], },);
 	}
 	if (resourceFilter === undefined || resourceFilter === "commands") {
 		registry.commands = {

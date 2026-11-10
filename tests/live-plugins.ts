@@ -3,7 +3,7 @@ import { readFile, } from "node:fs/promises";
 import { join, } from "node:path";
 import { crc32, } from "node:zlib";
 import type { LiveContext, OwnedGlobal, } from "./live-context.js";
-import { LiveCapabilityError, LiveCommandError, } from "./live-context.js";
+import { LiveCapabilityError, LiveCommandError, thrownMessage, } from "./live-context.js";
 import { provisionGit, readBare, } from "./live-host.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -628,9 +628,7 @@ async function pluginCodeEnv(ctx: LiveContext,): Promise<void> {
 					}${
 						bodyError === undefined
 							? ""
-							: ` | preceding case failure: ${
-								bodyError instanceof Error ? bodyError.message : String(bodyError,)
-							}`
+							: ` | preceding case failure: ${thrownMessage(bodyError,)}`
 					}`,
 				);
 			}
@@ -721,7 +719,7 @@ async function pluginGitSync(ctx: LiveContext,): Promise<void> {
 		await ctx.withOwnedHostDirectory("plugin_sync", async directory => {
 			const repo = await provisionGit(ctx, directory,);
 			await ctx.withOwnedGitScope({ kind: "plugin", id, }, directory, [repo,], async urls => {
-				const url = urls[0]!;
+				const url = urls[0];
 				try {
 					await ctx.run(["plugin", "set-git-remote", id, "--repository", url,],);
 					const branches = await ctx.run<string[]>(["plugin", "git-branches", id,],);
@@ -761,12 +759,12 @@ async function pluginGitInstall(ctx: LiveContext,): Promise<void> {
 			updated: { "plugin.json": pluginJson(name, marker, "1.1.0",), },
 		},);
 		await ctx.withOwnedGitScope({ kind: "plugin", id: name, }, directory, [repo,], async urls => {
-			const entry = await ctx.pluginFromGit("install", name, urls[0]!, "main",);
+			const entry = await ctx.pluginFromGit("install", name, urls[0], "main",);
 			await withOwnedPlugin(ctx, entry, async id => {
 				if ((await listedPlugin(ctx, id,)).version !== "1.0.0") {
 					throw new Error("Git plugin installation returned the wrong version",);
 				}
-				await ctx.pluginFromGit("update", name, urls[0]!, "updated",);
+				await ctx.pluginFromGit("update", name, urls[0], "updated",);
 				if ((await listedPlugin(ctx, id,)).version !== "1.1.0") {
 					throw new Error("Git plugin update did not change the installed version",);
 				}

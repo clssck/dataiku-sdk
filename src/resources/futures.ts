@@ -106,7 +106,7 @@ export class FuturesResource extends BaseResource {
 	): Promise<FutureState> {
 		const params = new URLSearchParams();
 		params.set("peek", String(opts.peek === true,),);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/futures/${encodeURIComponent(futureId,)}?${params.toString()}`,
 			{ timeoutMs: opts.timeoutMs, noRetry: opts.noRetry, },
 		);

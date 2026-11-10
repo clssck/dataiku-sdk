@@ -12,18 +12,20 @@ interface Seen {
 
 async function withServer(run: (client: DataikuClient,) => Promise<void>,): Promise<Seen[]> {
 	const seen: Seen[] = [];
-	const server = createServer(async (req, res,) => {
-		let text = "";
-		for await (const chunk of req) text += chunk.toString();
-		const header = req.headers["x-dku-mlflow-project-key"];
-		seen.push({
-			request: `${req.method} ${req.url}`,
-			projectHeader: typeof header === "string" ? header : undefined,
-			body: text ? JSON.parse(text,) : undefined,
-		},);
-		res.setHeader("Content-Type", "application/json",);
-		res.end(req.url?.includes("/models/",) ? '[{"runId":"r1","artifactPath":"model"}]' : "{}",);
-	},);
+	const server = createServer((req, res,) =>
+		void (async () => {
+			let text = "";
+			for await (const chunk of req) text += chunk.toString();
+			const header = req.headers["x-dku-mlflow-project-key"];
+			seen.push({
+				request: `${req.method} ${req.url}`,
+				projectHeader: typeof header === "string" ? header : undefined,
+				body: text ? JSON.parse(text,) : undefined,
+			},);
+			res.setHeader("Content-Type", "application/json",);
+			res.end(req.url?.includes("/models/",) ? '[{"runId":"r1","artifactPath":"model"}]' : "{}",);
+		})()
+	);
 	const listening = Promise.withResolvers<void>();
 	server.listen(0, "127.0.0.1", () => listening.resolve(),);
 	await listening.promise;

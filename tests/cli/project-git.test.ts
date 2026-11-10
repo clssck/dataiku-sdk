@@ -75,7 +75,7 @@ async function run(
 	args: string[] = [],
 	flags: Record<string, string | boolean> = {},
 ): Promise<unknown> {
-	return await projectGitCommands[action]!.handler(client, args, flags,);
+	return await projectGitCommands[action].handler(client, args, flags,);
 }
 
 describe("project-git CLI registration", () => {
@@ -178,8 +178,8 @@ describe("project-git read dispatch", () => {
 		const { client, calls, } = recordingClient();
 		await run("get-remote", client, [], { "project-key": "MYPROJECT", },);
 		await run("get-remote", client, [], { "project-key": "MYPROJECT", name: "upstream", },);
-		expect(calls[0]!.args,).toEqual(["MYPROJECT", "origin",],);
-		expect(calls[1]!.args,).toEqual(["MYPROJECT", "upstream",],);
+		expect(calls[0].args,).toEqual(["MYPROJECT", "origin",],);
+		expect(calls[1].args,).toEqual(["MYPROJECT", "upstream",],);
 	});
 	it("uses --repository for the Git remote without colliding with the global DSS --url", async () => {
 		const { client, calls, } = recordingClient({ setRemote: { success: true, }, },);
@@ -187,7 +187,7 @@ describe("project-git read dispatch", () => {
 			"project-key": "MYPROJECT",
 			repository: "git@github.com:acme/analytics.git",
 		},);
-		expect(calls[0]!.args,).toEqual([
+		expect(calls[0].args,).toEqual([
 			"MYPROJECT",
 			{ url: "git@github.com:acme/analytics.git", name: "origin", },
 		],);
@@ -272,8 +272,8 @@ describe("project-git read dispatch", () => {
 		const { client, calls, } = recordingClient();
 		await run("branches", client, [], { "project-key": "MYPROJECT", },);
 		await run("branches", client, [], { "project-key": "MYPROJECT", remote: true, },);
-		expect(calls[0]!.args[1],).toBeUndefined();
-		expect(calls[1]!.args[1],).toBe(true,);
+		expect(calls[0].args[1],).toBeUndefined();
+		expect(calls[1].args[1],).toBe(true,);
 	});
 
 	it("maps log and diff flags onto the DSS query names", async () => {
@@ -285,11 +285,11 @@ describe("project-git read dispatch", () => {
 			count: "20",
 		},);
 		await run("diff", client, [], { "project-key": "MYPROJECT", from: "4f1c2ab", to: "9de77c1", },);
-		expect(calls[0]!.args,).toEqual([
+		expect(calls[0].args,).toEqual([
 			"MYPROJECT",
 			{ path: "lib/python", startCommit: "4f1c2ab", count: 20, },
 		],);
-		expect(calls[1]!.args,).toEqual([
+		expect(calls[1].args,).toEqual([
 			"MYPROJECT",
 			{ commitFrom: "4f1c2ab", commitTo: "9de77c1", },
 		],);
@@ -332,7 +332,7 @@ describe("project-git write dispatch", () => {
 			"delete-remotely": true,
 			"force-delete": true,
 		},);
-		expect(calls[0]!.args,).toEqual([
+		expect(calls[0].args,).toEqual([
 			"MYPROJECT",
 			"feature/pricing",
 			{ remote: true, deleteRemotely: true, forceDelete: true, },
@@ -378,7 +378,7 @@ describe("project-git write dispatch", () => {
 			"project-key": "MYPROJECT",
 			name: "upstream",
 		},);
-		expect(calls[0]!.args,).toEqual(["MYPROJECT", "upstream",],);
+		expect(calls[0].args,).toEqual(["MYPROJECT", "upstream",],);
 		expect(result,).toEqual({ removed: "upstream", resource: "project-git-remote", },);
 	});
 });
@@ -394,9 +394,9 @@ describe("project-git library dispatch", () => {
 			login: "deploy-bot",
 			"no-add-to-python-path": true,
 		},);
-		expect(calls[0]!.method,).toBe("addLibrary",);
-		expect(calls[0]!.args[0],).toBe("MYPROJECT",);
-		expect(calls[0]!.args[1],).toEqual({
+		expect(calls[0].method,).toBe("addLibrary",);
+		expect(calls[0].args[0],).toBe("MYPROJECT",);
+		expect(calls[0].args[1],).toEqual({
 			repository: "git@github.com:acme/utils.git",
 			localTargetPath: "shared-utils",
 			checkout: "main",
@@ -415,7 +415,7 @@ describe("project-git library dispatch", () => {
 			checkout: "main",
 		},);
 		// Recorded argument: the CLI itself built this object, so its shape is known.
-		const options = calls[0]!.args[1] as ProjectGitAddLibraryOptions;
+		const options = calls[0].args[1] as ProjectGitAddLibraryOptions;
 		expect(options.addToPythonPath,).toBeUndefined();
 	});
 
@@ -439,9 +439,9 @@ describe("project-git library dispatch", () => {
 			repository: "git@github.com:acme/utils.git",
 			checkout: "v2",
 		},);
-		expect(calls[0]!.args[0],).toBe("MYPROJECT",);
-		expect(calls[0]!.args[1],).toBe("shared-utils",);
-		expect(calls[0]!.args[2],).toEqual({
+		expect(calls[0].args[0],).toBe("MYPROJECT",);
+		expect(calls[0].args[1],).toBe("shared-utils",);
+		expect(calls[0].args[2],).toEqual({
 			repository: "git@github.com:acme/utils.git",
 			pathInGitRepository: undefined,
 			checkout: "v2",
@@ -459,8 +459,8 @@ describe("project-git library dispatch", () => {
 			"project-key": "MYPROJECT",
 			"delete-directory": true,
 		},);
-		expect(calls[0]!.args,).toEqual(["MYPROJECT", "shared-utils", false,],);
-		expect(calls[1]!.args,).toEqual(["MYPROJECT", "shared-utils", true,],);
+		expect(calls[0].args,).toEqual(["MYPROJECT", "shared-utils", false,],);
+		expect(calls[1].args,).toEqual(["MYPROJECT", "shared-utils", true,],);
 		expect(kept,).toEqual({
 			removed: "shared-utils",
 			resource: "project-git-library",
@@ -540,7 +540,7 @@ describe("project-git library password handling", () => {
 			delete process.env[ENV_NAME];
 		}
 		// Recorded argument: the CLI itself built this object, so its shape is known.
-		const options = calls[0]!.args[1] as ProjectGitAddLibraryOptions;
+		const options = calls[0].args[1] as ProjectGitAddLibraryOptions;
 		expect(options.password,).toBe(SECRET,);
 	});
 

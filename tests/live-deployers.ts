@@ -19,7 +19,6 @@
 // the only caller of exerciseDeployers.
 import { join, } from "node:path";
 import { provisionTrainedSavedModel, } from "./live-capabilities.js";
-import type { LiveCaseId, } from "./live-cases.js";
 import {
 	LiveCapabilityError,
 	LiveCommandError,
@@ -1033,7 +1032,7 @@ export async function exerciseOwnedDeployerDetails(ctx: LiveContext,): Promise<v
 
 export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 	await ctx.check(
-		"infrastructure.api-deployer" as LiveCaseId,
+		"infrastructure.api-deployer",
 		[
 			"api-deployer.list-stages",
 			"api-deployer.create-infra",
@@ -1051,7 +1050,7 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 		{ capability: "infrastructure.api-deployer-metadata", },
 	);
 	await ctx.check(
-		"infrastructure.api-deployer.publish-version" as LiveCaseId,
+		"infrastructure.api-deployer.publish-version",
 		[
 			"api-deployer.create-infra",
 			"api-deployer.create-service",
@@ -1067,7 +1066,7 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 		{ capability: "infrastructure.api-deployer-versions", },
 	);
 	await ctx.check(
-		"infrastructure.api-deployer.deployment-lifecycle" as LiveCaseId,
+		"infrastructure.api-deployer.deployment-lifecycle",
 		[
 			"api-deployer.create-infra",
 			"api-deployer.create-service",
@@ -1087,7 +1086,7 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 		{ capability: "infrastructure.api-deployer-deployments", },
 	);
 	await ctx.check(
-		"infrastructure.api-deployer.deploy" as LiveCaseId,
+		"infrastructure.api-deployer.deploy",
 		[
 			"api-deployer.create-deployment",
 			"api-deployer.deployment-status",
@@ -1100,7 +1099,7 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 		{ capability: "infrastructure.api-deployer-node", required: false, },
 	);
 	await ctx.check(
-		"infrastructure.project-deployer.reads" as LiveCaseId,
+		"infrastructure.project-deployer.reads",
 		[
 			"project-deployer.list-projects",
 			"project-deployer.list-deployments",
@@ -1113,7 +1112,7 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 		{ capability: "infrastructure.project-deployer-reads", required: false, },
 	);
 	await ctx.check(
-		"infrastructure.project-deployer.infra-lifecycle" as LiveCaseId,
+		"infrastructure.project-deployer.infra-lifecycle",
 		[
 			"project-deployer.create-infra",
 			"project-deployer.list-infras",
@@ -1128,7 +1127,7 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 		{ capability: "infrastructure.project-deployer-infra", required: false, },
 	);
 	await ctx.check(
-		"infrastructure.project-deployer" as LiveCaseId,
+		"infrastructure.project-deployer",
 		[
 			"project-deployer.create-project",
 			"project-deployer.project-status",
@@ -1143,7 +1142,7 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 		{ capability: "infrastructure.project-deployer-publish", required: false, },
 	);
 	await ctx.check(
-		"infrastructure.project-deployer.upload-bundle" as LiveCaseId,
+		"infrastructure.project-deployer.upload-bundle",
 		[
 			"bundle.export",
 			"bundle.download-exported",
@@ -1160,7 +1159,7 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 		{ capability: "infrastructure.project-deployer-publish", required: false, },
 	);
 	await ctx.check(
-		"infrastructure.project-deployer.deployment-lifecycle" as LiveCaseId,
+		"infrastructure.project-deployer.deployment-lifecycle",
 		[
 			"project-deployer.upload-bundle",
 			"project-deployer.project-status",
@@ -1181,7 +1180,7 @@ export async function exerciseDeployers(ctx: LiveContext,): Promise<void> {
 		{ capability: "infrastructure.project-deployer-deployments", required: false, },
 	);
 	await ctx.check(
-		"infrastructure.project-deployer.deploy" as LiveCaseId,
+		"infrastructure.project-deployer.deploy",
 		[
 			"project-deployer.create-deployment",
 			"project-deployer.deployment-status",

@@ -566,21 +566,21 @@ export class ProjectsResource extends BaseResource {
 
 	/** List all projects visible to the API key. */
 	async list(): Promise<ProjectSummary[]> {
-		const raw = await this.client.get<unknown>("/public/api/projects/",);
+		const raw = await this.client.get("/public/api/projects/",);
 		return this.client.safeParse(ProjectSummaryArraySchema, raw, "projects.list",);
 	}
 
 	/** Get details for a single project. */
 	async get(projectKey?: string,): Promise<ProjectDetails> {
 		const enc = this.enc(projectKey,);
-		const raw = await this.client.get<unknown>(`/public/api/projects/${enc}/`,);
+		const raw = await this.client.get(`/public/api/projects/${enc}/`,);
 		return this.client.safeParse(ProjectDetailsSchema, raw, "projects.get",);
 	}
 
 	/** Get metadata (tags, custom fields, checklists) for a project. */
 	async metadata(projectKey?: string,): Promise<ProjectMetadata> {
 		const enc = this.enc(projectKey,);
-		const raw = await this.client.get<unknown>(`/public/api/projects/${enc}/metadata`,);
+		const raw = await this.client.get(`/public/api/projects/${enc}/metadata`,);
 		return this.client.safeParse(ProjectMetadataSchema, raw, "projects.metadata",);
 	}
 
@@ -671,7 +671,7 @@ export class ProjectsResource extends BaseResource {
 	/** Get project-level tags (tag name → {color?}). */
 	async tags(projectKey?: string,): Promise<ProjectTags> {
 		const enc = this.enc(projectKey,);
-		const raw = await this.client.get<unknown>(`/public/api/projects/${enc}/tags`,);
+		const raw = await this.client.get(`/public/api/projects/${enc}/tags`,);
 		return this.client.safeParse(ProjectTagsSchema, raw, "projects.tags",);
 	}
 
@@ -692,7 +692,7 @@ export class ProjectsResource extends BaseResource {
 	/** Get the raw flow graph for a project. */
 	async flow(projectKey?: string,): Promise<unknown> {
 		const enc = this.enc(projectKey,);
-		return this.client.get<unknown>(`/public/api/projects/${enc}/flow/graph/`,);
+		return this.client.get(`/public/api/projects/${enc}/flow/graph/`,);
 	}
 
 	/**
@@ -727,7 +727,7 @@ export class ProjectsResource extends BaseResource {
 		const timeoutMs = DEFAULT_METADATA_TIMEOUT_MS;
 
 		const [rawGraph, foldersMeta, datasetsMeta, recipesMeta, zonesMeta,] = await Promise.all([
-			this.client.get<unknown>(`/public/api/projects/${enc}/flow/graph/`,),
+			this.client.get(`/public/api/projects/${enc}/flow/graph/`,),
 			fetchWithTimeout(
 				"Managed folders",
 				timeoutMs,

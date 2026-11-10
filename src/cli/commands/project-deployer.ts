@@ -166,12 +166,12 @@ export const projectDeployerCommands: Record<string, CommandMeta> = withUsage("p
 		examples: ["dss project-deployer list-stages",],
 	},
 	"get-infra": {
-		handler: (c, a,) => c.projectDeployer.getInfra(a[0]!,),
+		handler: (c, a,) => c.projectDeployer.getInfra(a[0],),
 		description: "Get a Project Deployer infrastructure (stage, automation node, deployments).",
 		examples: ["dss project-deployer get-infra prod-infra",],
 	},
 	"infra-settings": {
-		handler: (c, a,) => c.projectDeployer.getInfraSettings(a[0]!,),
+		handler: (c, a,) => c.projectDeployer.getInfraSettings(a[0],),
 		description:
 			"Get an infrastructure's settings (permissions, automation node URL, connection remappings).",
 		examples: ["dss project-deployer infra-settings prod-infra",],
@@ -179,7 +179,7 @@ export const projectDeployerCommands: Record<string, CommandMeta> = withUsage("p
 	"save-infra-settings": {
 		handler: async (c, a, f,) => {
 			await c.projectDeployer.saveInfraSettings(
-				a[0]!,
+				a[0],
 				requiredJsonInput(
 					f,
 					"--data, --data-file, or --stdin is required (settings from infra-settings).",
@@ -192,42 +192,42 @@ export const projectDeployerCommands: Record<string, CommandMeta> = withUsage("p
 	},
 	"delete-infra": {
 		handler: async (c, a,) => {
-			await c.projectDeployer.deleteInfra(a[0]!,);
+			await c.projectDeployer.deleteInfra(a[0],);
 			return { deleted: a[0], resource: "project-deployer", };
 		},
 		description: "Delete an infrastructure that no deployment uses.",
 		examples: ["dss project-deployer delete-infra old-infra --plan",],
 	},
 	"deployment-settings": {
-		handler: (c, a,) => c.projectDeployer.getDeploymentSettings(a[0]!,),
+		handler: (c, a,) => c.projectDeployer.getDeploymentSettings(a[0],),
 		description:
 			"Get a deployment's settings (infra, bundle, remappings); edit and send to save-deployment-settings.",
 		examples: ["dss project-deployer deployment-settings v1-on-prod",],
 	},
 	"governance-status": {
 		handler: (c, a, f,) =>
-			c.projectDeployer.getGovernanceStatus(a[0]!, f["bundle-id"] as string | undefined,),
+			c.projectDeployer.getGovernanceStatus(a[0], f["bundle-id"] as string | undefined,),
 		description:
 			"Governance status of a deployment's bundle (or --bundle-id): messages on whether it may be deployed.",
 		examples: ["dss project-deployer governance-status v1-on-prod",],
 	},
 	"delete-project": {
 		handler: async (c, a,) => {
-			await c.projectDeployer.deleteProject(a[0]!,);
+			await c.projectDeployer.deleteProject(a[0],);
 			return { deleted: a[0], resource: "project-deployer", };
 		},
 		description: "Delete a published project that no deployment uses.",
 		examples: ["dss project-deployer delete-project MYPROJECT --plan",],
 	},
 	"project-settings": {
-		handler: (c, a,) => c.projectDeployer.getProjectSettings(a[0]!,),
+		handler: (c, a,) => c.projectDeployer.getProjectSettings(a[0],),
 		description: "Get a published project's settings (owner, permissions).",
 		examples: ["dss project-deployer project-settings MYPROJECT",],
 	},
 	"save-project-settings": {
 		handler: async (c, a, f,) => {
 			await c.projectDeployer.saveProjectSettings(
-				a[0]!,
+				a[0],
 				requiredJsonInput(
 					f,
 					"--data, --data-file, or --stdin is required (settings from project-settings).",
@@ -240,7 +240,7 @@ export const projectDeployerCommands: Record<string, CommandMeta> = withUsage("p
 	},
 	"delete-bundle": {
 		handler: async (c, a,) => {
-			await c.projectDeployer.deleteBundle(a[0]!, a[1]!,);
+			await c.projectDeployer.deleteBundle(a[0], a[1],);
 			return { deleted: a[1], resource: "project-deployer", project: a[0], };
 		},
 		description: "Delete a bundle of a published project that no deployment uses.",

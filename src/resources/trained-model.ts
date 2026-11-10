@@ -117,7 +117,7 @@ export class TrainedModel {
 				"invalid_enum",
 			);
 		}
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`${this.modelPath}/${kind}`,
 			modelDiagnosticsBody(kind, features, computation,),
 		);
@@ -132,7 +132,7 @@ export class TrainedModel {
 				"invalid_enum",
 			);
 		}
-		return this.client.get<unknown>(`${this.modelPath}/${kind}`,);
+		return this.client.get(`${this.modelPath}/${kind}`,);
 	}
 
 	/** Start generating the model documentation (docx); the finished result carries `exportId`. */

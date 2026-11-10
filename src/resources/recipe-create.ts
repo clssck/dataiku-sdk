@@ -200,7 +200,7 @@ export function groupingPayloadConfig(
 		}
 		aggregates[column] = [
 			...(aggregates[column] ?? []),
-			...fns.map((fn,) => GROUPING_AGGREGATES[fn]!),
+			...fns.map((fn,) => GROUPING_AGGREGATES[fn]),
 		];
 	}
 	const ordered = Object.values(aggregates,).some((fns,) =>
@@ -365,11 +365,11 @@ export function prepareSteps(opts: RecipeCreateOptions,): Record<string, unknown
 function expressionColumnReferences(expression: string,): Set<string> {
 	const references = new Set<string>();
 	for (const match of expression.matchAll(/\bval\(\s*(['"])((?:\\.|(?!\1).)*)\1\s*\)/g,)) {
-		references.add(match[2]!,);
+		references.add(match[2],);
 	}
 	const withoutStrings = expression.replace(/(['"])(?:\\.|(?!\1).)*\1/g, " ",);
 	for (const match of withoutStrings.matchAll(/(?<![\w.$])([A-Za-z_]\w*)(?!\w)(?!\s*\()/g,)) {
-		references.add(match[1]!,);
+		references.add(match[1],);
 	}
 	return references;
 }

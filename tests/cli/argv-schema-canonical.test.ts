@@ -52,10 +52,10 @@ function validates(schema: Schema, value: unknown,): boolean {
 		if (prefixItems) {
 			for (let index = 0; index < prefixItems.length; index++) {
 				if (index >= value.length) break;
-				if (!validates(prefixItems[index]!, value[index],)) return false;
+				if (!validates(prefixItems[index], value[index],)) return false;
 			}
 		}
-		if (typeof schema["minItems"] === "number" && value.length < (schema["minItems"] as number)) {
+		if (typeof schema["minItems"] === "number" && value.length < (schema["minItems"])) {
 			return false;
 		}
 		if (typeof schema["items"] === "object" && schema["items"] !== null) {
@@ -64,7 +64,7 @@ function validates(schema: Schema, value: unknown,): boolean {
 			}
 		}
 		if (typeof schema["contains"] === "object" && schema["contains"] !== null) {
-			const min = typeof schema["minContains"] === "number" ? (schema["minContains"] as number) : 1;
+			const min = typeof schema["minContains"] === "number" ? (schema["minContains"]) : 1;
 			const matches = (value as unknown[]).filter((item,) =>
 				validates(schema["contains"] as Schema, item,)
 			).length;
@@ -168,7 +168,9 @@ describe("argv schema canonical form", () => {
 		for (const [resource, actions,] of Object.entries(registry,)) {
 			for (const [action, entry,] of Object.entries(actions,)) {
 				const schema = argvSchemaOf(entry,);
-				const head = prefixOf(schema,).map((item,) => String(item["const"] ?? "x",));
+				const head = prefixOf(schema,).map((item,) =>
+					typeof item["const"] === "string" ? item["const"] : "x"
+				);
 				// Entries that also need required flags fail both probes alike; skip them.
 				if (!argvValidates(schema, [...head, "--fields=a",],)) continue;
 				if (!argvValidates(schema, [...head, "--output=out.json",],)) {
@@ -418,7 +420,7 @@ describe("argv schema canonical form", () => {
 		const entrySchema = (registrySchema["additionalProperties"] as Schema)[
 			"additionalProperties"
 		] as Schema;
-		const flagSchema = (entrySchema["properties"] as Record<string, Schema>)["flags"] as Schema;
+		const flagSchema = (entrySchema["properties"] as Record<string, Schema>)["flags"];
 		expect(
 			validates(flagSchema["items"] as Schema, {
 				name: "version-notes",

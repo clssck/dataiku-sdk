@@ -123,10 +123,10 @@ describe("stdoutJson default layout", () => {
 		const value = { [key]: fits, next: "x".repeat(budget,), };
 		const lines = stdoutJson(value,).split("\n",);
 		expect(lines[1],).toBe(` "${key}":"${fits}",`,);
-		expect(bytes(lines[1]!,),).toBe(budget,);
+		expect(bytes(lines[1],),).toBe(budget,);
 		const over = { [key]: `${fits}v`, next: 1, };
 		// Compact parent is over budget; the child line itself is `<indent><key>:"…",` one byte too long.
-		expect(bytes(stdoutJson(over,).split("\n",)[1]!,),).toBe(budget + 1,);
+		expect(bytes(stdoutJson(over,).split("\n",)[1],),).toBe(budget + 1,);
 	});
 
 	it("matches JSON.parse(JSON.stringify(value)) for toJSON, undefined and non-finite numbers", () => {
@@ -232,6 +232,6 @@ describe("real CLI stdout", () => {
 		expect(Object.keys(JSON.parse(stdout,),),).toEqual(["dataset.list.usage",],);
 		const lines = stderr.trimEnd().split("\n",);
 		expect(lines.length,).toBe(1,);
-		expect(JSON.parse(lines[0]!,),).toMatchObject({ type: "warning", },);
+		expect(JSON.parse(lines[0],),).toMatchObject({ type: "warning", },);
 	});
 });

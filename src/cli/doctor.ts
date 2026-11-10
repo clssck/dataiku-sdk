@@ -548,7 +548,7 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 		},);
 
 		try {
-			const projects = await client.getWithMetadata<unknown>("/public/api/projects/",);
+			const projects = await client.getWithMetadata("/public/api/projects/",);
 			// Documented headers on the public project-list call populate the
 			// optional environment fields; absent headers stay absent. Header
 			// provenance is independent of the body being well-formed.
@@ -594,7 +594,7 @@ export async function runDoctor(flags: Record<string, string | boolean>,): Promi
 		// 403s on objects the user's UI profile can use. Diagnostic only: an
 		// unanswered /auth/info (older DSS) never fails doctor.
 		if (accessibleProjects) {
-			identity = await client.get<unknown>("/public/api/auth/info",).then(
+			identity = await client.get("/public/api/auth/info",).then(
 				doctorIdentityFromAuthInfo,
 				(): undefined => undefined,
 			);

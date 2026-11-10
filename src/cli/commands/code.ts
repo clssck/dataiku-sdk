@@ -82,7 +82,7 @@ export function resolveCodeInputWithSource(
 			`Choose exactly one Python source: --file or --stdin. Usage: ${CODE_RUN_USAGE}`,
 		);
 	}
-	const source = sources[0]!;
+	const source = sources[0];
 	const script = stripUtf8Bom(source.read(),);
 	if (script.trim().length === 0) {
 		throw new UsageError(

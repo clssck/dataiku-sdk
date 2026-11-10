@@ -1131,7 +1131,7 @@ describe("CLI command surface", () => {
 			for (const [action, meta,] of Object.entries(actions,)) {
 				const advertised = new Set(meta.flags.map((flag,) => flag.name),);
 				for (const match of meta.usage.matchAll(/--([a-z0-9-]+)/g,)) {
-					const flag = match[1]!;
+					const flag = match[1];
 					if (aliasFlags.has(flag,)) continue;
 					expect(
 						advertised.has(flag,),

@@ -1111,6 +1111,38 @@ export class DataikuClient {
 		return text;
 	}
 
+	/**
+	 * Buffer a whole response body as bytes under the same rules as
+	 * {@link getText}: a hard byte cap (`maxResponseBodyBytes`, default 50 MiB)
+	 * and the request deadline measured from the first read. A body over the
+	 * cap throws the "Response Too Large" DataikuError instead of being read
+	 * without limit, and a stalled body times out. Use it for binary bodies
+	 * from {@link stream}/{@link postStream}; large files belong in a
+	 * streaming download (`writeResponseToFile`), not a buffer.
+	 */
+	async readBoundedBytes(res: Response,): Promise<Uint8Array> {
+		const chunks: Uint8Array[] = [];
+		let length = 0;
+		const truncated = await this.readBoundedChunks(
+			res,
+			this.maxResponseBodyBytes,
+			undefined,
+			(chunk,) => {
+				chunks.push(chunk,);
+				length += chunk.byteLength;
+			},
+		);
+		if (truncated) throw this.buildResponseTooLargeError(res, this.maxResponseBodyBytes,);
+		if (chunks.length === 1) return chunks[0];
+		const bytes = new Uint8Array(length,);
+		let offset = 0;
+		for (const chunk of chunks) {
+			bytes.set(chunk, offset,);
+			offset += chunk.byteLength;
+		}
+		return bytes;
+	}
+
 	/** Send raw file contents through the shared authenticated transport. */
 	async postRawBody(path: string, body: string | Uint8Array,): Promise<void> {
 		const payload = typeof body === "string"
@@ -1383,7 +1415,7 @@ export class DataikuClient {
 	 */
 	parse<S extends TSchema,>(schema: S, data: unknown,): Static<S> {
 		Value.Assert(schema, data,);
-		return data as Static<S>;
+		return data;
 	}
 
 	/**
@@ -1452,27 +1484,15 @@ export class DataikuClient {
 	/**
 	 * Read at most `maxBytes` of a response body as UTF-8 text.
 	 *
-	 * The body is consumed with the request deadline still active (measured
-	 * from the first read): a stalled body throws a DataikuError instead of
-	 * hanging. When the stream yields more than the cap, the reader cancels the
-	 * body and returns the collected prefix with `truncated: true`; truncated
-	 * text is trimmed to a UTF-8 character boundary so it never decodes beyond
-	 * the byte cap.
+	 * The body is consumed under {@link readBoundedChunks}; truncated text is
+	 * trimmed to a UTF-8 character boundary so it never decodes beyond the
+	 * byte cap.
 	 */
 	private async readBoundedBodyText(
 		res: Response,
 		maxBytes: number,
 		deadlineAt?: number,
 	): Promise<{ text: string; truncated: boolean; }> {
-		const limit = Math.max(0, Math.floor(maxBytes,),);
-		if (!res.body) return { text: "", truncated: false, };
-		// Total-budget mode: the read shares the call's absolute deadline, so
-		// the budget already spent on attempts/backoff is not re-credited here.
-		const bodyTimeoutMs = deadlineAt === undefined
-			? this.requestTimeoutMs
-			: Math.min(this.requestTimeoutMs, Math.max(1, deadlineAt - Date.now(),),);
-
-		const reader = res.body.getReader();
 		const decoder = new TextDecoder();
 		const parts: string[] = [];
 		// Keep the final UTF-8 sequence undecoded until truncation is known.
@@ -1499,6 +1519,35 @@ export class DataikuClient {
 				tailLength += chunk.byteLength;
 			}
 		};
+		const truncated = await this.readBoundedChunks(res, maxBytes, deadlineAt, append,);
+		const remaining = tail.subarray(0, tailLength,);
+		parts.push(decoder.decode(truncated ? trimToUtf8Boundary(remaining,) : remaining,),);
+		return { text: parts.join("",), truncated, };
+	}
+
+	/**
+	 * Feed at most `maxBytes` of a response body to `append`, chunk by chunk.
+	 *
+	 * The body is consumed with the request deadline still active (measured
+	 * from the first read): a stalled body throws a DataikuError instead of
+	 * hanging. When the stream yields more than the cap, the reader cancels the
+	 * body after appending the prefix that fits and returns `true` (truncated).
+	 */
+	private async readBoundedChunks(
+		res: Response,
+		maxBytes: number,
+		deadlineAt: number | undefined,
+		append: (chunk: Uint8Array,) => void,
+	): Promise<boolean> {
+		const limit = Math.max(0, Math.floor(maxBytes,),);
+		if (!res.body) return false;
+		// Total-budget mode: the read shares the call's absolute deadline, so
+		// the budget already spent on attempts/backoff is not re-credited here.
+		const bodyTimeoutMs = deadlineAt === undefined
+			? this.requestTimeoutMs
+			: Math.min(this.requestTimeoutMs, Math.max(1, deadlineAt - Date.now(),),);
+
+		const reader = res.body.getReader();
 		let bytesRead = 0;
 		let truncated = false;
 		const startedAt = Date.now();
@@ -1537,10 +1586,7 @@ export class DataikuClient {
 		} finally {
 			void reader.cancel().catch(() => {},);
 		}
-
-		const remaining = tail.subarray(0, tailLength,);
-		parts.push(decoder.decode(truncated ? trimToUtf8Boundary(remaining,) : remaining,),);
-		return { text: parts.join("",), truncated, };
+		return truncated;
 	}
 
 	/**

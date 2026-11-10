@@ -55,7 +55,7 @@ async function run(
 	args: string[] = [],
 	flags: Record<string, string | boolean> = {},
 ): Promise<unknown> {
-	return await projectLibraryCommands[action]!.handler(client, args, flags,);
+	return await projectLibraryCommands[action].handler(client, args, flags,);
 }
 
 describe("project-library CLI registration", () => {
@@ -80,8 +80,8 @@ describe("project-library CLI registration", () => {
 				},
 			} as unknown as DataikuClient;
 			await run("put", client, ["python/lib.py",], { file: tmpFile, "project-key": "P", },);
-			expect(calls[0]!.path,).toBe("python/lib.py",);
-			const content = calls[0]!.content as Uint8Array;
+			expect(calls[0].path,).toBe("python/lib.py",);
+			const content = calls[0].content as Uint8Array;
 			expect(content,).toBeInstanceOf(Uint8Array,);
 			expect(Array.from(content,),).toEqual(Array.from(binary,),);
 		} finally {
@@ -201,8 +201,8 @@ describe("project-library put", () => {
 			bytes: 11,
 			sha256: "b".repeat(64,),
 		},);
-		expect(calls[0]!.method,).toBe("addOrUpdateFile",);
-		expect(calls[0]!.args,).toEqual(["python/a.py", "hello world", "P", undefined,],);
+		expect(calls[0].method,).toBe("addOrUpdateFile",);
+		expect(calls[0].args,).toEqual(["python/a.py", "hello world", "P", undefined,],);
 	});
 
 	it("passes --expect-sha256 through to the resource precondition", async () => {
@@ -220,7 +220,7 @@ describe("project-library put", () => {
 			"project-key": "P",
 		},);
 		expect(result,).toMatchObject({ beforeSha256: "d".repeat(64,), },);
-		expect(calls[0]!.args[3],).toEqual({ expectSha256: "d".repeat(64,), },);
+		expect(calls[0].args[3],).toEqual({ expectSha256: "d".repeat(64,), },);
 	});
 
 	it("rejects a malformed --expect-sha256 before any request", async () => {
@@ -293,10 +293,10 @@ describe("project-library diff", () => {
 			"project-key": "P",
 		},);
 		expect(result,).toMatchObject({ unchanged: false, added: 1, removed: 1, },);
-		expect(calls[0]!.method,).toBe("diffFile",);
-		expect(calls[0]!.args[0],).toBe("python/a.py",);
-		expect(calls[0]!.args[1],).toBe("new\n",);
-		expect(calls[0]!.args[3],).toEqual({ maxLines: 50, },);
+		expect(calls[0].method,).toBe("diffFile",);
+		expect(calls[0].args[0],).toBe("python/a.py",);
+		expect(calls[0].args[1],).toBe("new\n",);
+		expect(calls[0].args[3],).toEqual({ maxLines: 50, },);
 	});
 });
 

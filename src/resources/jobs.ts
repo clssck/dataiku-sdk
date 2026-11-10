@@ -405,12 +405,12 @@ export function parseJobLogProgress(log: string, elapsedMs?: number,): JobLogPro
 				/\b(scanned|matched|joined|written|emitted)\s+([0-9][0-9,]*)/gi,
 			)
 		) {
-			counters[match[1]!.toLowerCase()] = parsedCounterValue(match[2]!,);
+			counters[match[1].toLowerCase()] = parsedCounterValue(match[2],);
 			matched = true;
 		}
 		const written = normalized.match(/\b([0-9][0-9,]*)\s+rows\s+successfully\s+written\b/i,);
 		if (written) {
-			counters.written = parsedCounterValue(written[1]!,);
+			counters.written = parsedCounterValue(written[1],);
 			doneLine = normalized;
 			matched = true;
 		}
@@ -476,7 +476,7 @@ function nothingToBuildMessage(targets: JobUnbuildableTarget[],): string {
 export class JobsResource extends BaseResource {
 	/** List jobs in a project. */
 	async list(projectKey?: string,): Promise<JobSummary[]> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/jobs/`,
 		);
 		return this.client.safeParse(JobSummaryArraySchema, raw, "jobs.list",);

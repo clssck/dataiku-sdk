@@ -215,7 +215,7 @@ export async function provisionCollaboration(ctx: LiveContext,): Promise<void> {
 			insightId,
 		],);
 		expect(details.type,).toBe("dataset_table",);
-		expect((details.params as Record<string, unknown> | undefined)?.datasetSmartName,).toBe(dataset,);
+		expect(details.params?.datasetSmartName,).toBe(dataset,);
 		ctx.fixtures.insightId = insightId;
 	},);
 
@@ -366,7 +366,7 @@ export async function provisionCollaboration(ctx: LiveContext,): Promise<void> {
 			const compute = await ctx.run<Record<string, unknown>>([
 				"data-quality",
 				"compute",
-				datasetList(ctx,)[0]!,
+				datasetList(ctx,)[0],
 				"--wait",
 				"--timeout",
 				String(DQ_COMPUTE_TIMEOUT_MS,),
@@ -442,7 +442,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 		if (keys.length === 0) {
 			throw new LiveCapabilityError("project settings are empty; cannot round-trip a settings key",);
 		}
-		const key = keys[0]!;
+		const key = keys[0];
 		await ctx.run([
 			"project",
 			"settings-set",
@@ -696,7 +696,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 		],);
 		expect(details.type,).toBe("dataset_table",);
 		const originalDataset = requireString(
-			(details.params as Record<string, unknown> | undefined)?.datasetSmartName,
+			details.params?.datasetSmartName,
 			"insight params.datasetSmartName",
 		);
 		const altDataset = Object.keys(ctx.fixtures.datasets,).find((name,) => name !== originalDataset)
@@ -709,7 +709,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 				"--params",
 				JSON.stringify({ datasetSmartName: altDataset, },),
 			],);
-			expect((updated.params as Record<string, unknown> | undefined)?.datasetSmartName,).toBe(
+			expect(updated.params?.datasetSmartName,).toBe(
 				altDataset,
 			);
 			await ctx.run([
@@ -724,7 +724,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 				"get",
 				insightId,
 			],);
-			expect((restored.params as Record<string, unknown> | undefined)?.datasetSmartName,).toBe(
+			expect(restored.params?.datasetSmartName,).toBe(
 				originalDataset,
 			);
 		}
@@ -760,7 +760,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 				"--params",
 				JSON.stringify({ datasetSmartName: dataset, },),
 			],);
-			expect((updated.params as Record<string, unknown> | undefined)?.datasetSmartName,).toBe(
+			expect(updated.params?.datasetSmartName,).toBe(
 				dataset,
 			);
 		} finally {
@@ -940,7 +940,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 		const recipe = await ctx.run<{ recipe: { outputs?: unknown; }; }>([
 			"recipe",
 			"get",
-			recipeName!,
+			recipeName,
 		],);
 		const output = itemsRef(recipe.recipe.outputs,);
 		expect(output,).toBeTruthy();
@@ -1011,7 +1011,7 @@ export async function exerciseCollaboration(ctx: LiveContext,): Promise<void> {
 			const folderMetrics = await ctx.run<{ metrics: unknown[]; }>([
 				"metrics",
 				"folder-get",
-				ctx.fixtures.folderId as string,
+				ctx.fixtures.folderId,
 			],);
 			expect(Array.isArray(folderMetrics.metrics,),).toBe(true,);
 		}

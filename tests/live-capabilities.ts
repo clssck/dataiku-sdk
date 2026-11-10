@@ -275,7 +275,7 @@ async function exerciseMlLifecycle(ctx: LiveContext,): Promise<void> {
 			"model-details",
 			analysisId,
 			mlTaskId,
-			modelIds[0]!,
+			modelIds[0],
 			"--project-key",
 			projectKey,
 		],);
@@ -288,7 +288,7 @@ async function exerciseMlLifecycle(ctx: LiveContext,): Promise<void> {
 			"deploy",
 			analysisId,
 			mlTaskId,
-			modelIds[0]!,
+			modelIds[0],
 			"--model-name",
 			`live_cap_model_${ctx.iteration}`,
 			"--train-dataset",
@@ -305,7 +305,7 @@ async function exerciseMlLifecycle(ctx: LiveContext,): Promise<void> {
 			"deploy",
 			analysisId,
 			mlTaskId,
-			modelIds[0]!,
+			modelIds[0],
 			"--model-name",
 			`live_cap_model_${ctx.iteration}`,
 			"--train-dataset",
@@ -842,7 +842,7 @@ async function trainPredictionTask(
 	if (modelIds.length === 0) {
 		throw new Error("ML training finished without reporting any trained model IDs.",);
 	}
-	return modelIds[0]!;
+	return modelIds[0];
 }
 
 /** Short lowercase suffix keeping concurrent retained names unique per run. */
@@ -1809,7 +1809,7 @@ async function exerciseMlflowImport(ctx: LiveContext, codeEnvName: string,): Pro
 				`Expected exactly one version after the archive import, got ${idsAfterV1.length}.`,
 			);
 		}
-		const v1Id = idsAfterV1[0]!;
+		const v1Id = idsAfterV1[0];
 		await ctx.run([
 			"saved-model",
 			"version-details",
@@ -1921,7 +1921,7 @@ async function exerciseMlflowImport(ctx: LiveContext, codeEnvName: string,): Pro
 
 /** Build the local MLflow model folder + zip once per run. */
 async function buildMlflowModel(ctx: LiveContext,): Promise<MlflowModelBuild> {
-	const versionId = MLFLOW_VERSIONS[0]!;
+	const versionId = MLFLOW_VERSIONS[0];
 	const codeDir = path.join(ctx.dir, `mlflow_model_${ctx.iteration}_${versionId}`,);
 	await mkdir(codeDir, { recursive: true, },);
 	for (const { relative, content, } of projectFiles(MLFLOW_MODEL_FILES,)) {

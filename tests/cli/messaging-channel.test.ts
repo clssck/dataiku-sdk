@@ -145,7 +145,7 @@ describe("messaging-channel settings-set", () => {
 			"GET /public/api/messaging-channels/smtp-main/settings",
 			"PUT /public/api/messaging-channels/smtp-main/settings",
 		],);
-		expect(JSON.parse(seen[1]!.body,),).toEqual({ ...smtpSettings, sender: "ops@example.com", },);
+		expect(JSON.parse(seen[1].body,),).toEqual({ ...smtpSettings, sender: "ops@example.com", },);
 	});
 
 	it("refuses a stale --expect-hash before writing and accepts the current one", async () => {
@@ -313,7 +313,7 @@ describe("messaging-channel create, permissions-set, delete", () => {
 		expect(seen.map((request,) => `${request.method} ${request.path}`),).toEqual([
 			"POST /public/api/messaging-channels/",
 		],);
-		expect(JSON.parse(seen[0]!.body,),).toEqual({
+		expect(JSON.parse(seen[0].body,),).toEqual({
 			id: "ops-shell",
 			type: "shell",
 			configuration: shellConfiguration,
@@ -329,7 +329,7 @@ describe("messaging-channel create, permissions-set, delete", () => {
 				await dss(["messaging-channel", "create", "--type", "shell",], { env: cliEnv(url,), },);
 			},
 		);
-		expect(JSON.parse(seen[0]!.body,),).toEqual({
+		expect(JSON.parse(seen[0].body,),).toEqual({
 			id: "",
 			type: "shell",
 			configuration: {},
@@ -356,8 +356,8 @@ describe("messaging-channel create, permissions-set, delete", () => {
 				const plan = JSON.parse((await dss([...argv, "--plan",], { env, },)).stdout,);
 				expect(seen,).toEqual([],);
 				await dss(argv, { env, },);
-				expect(seen[0]!.path,).toBe(plan.endpoint,);
-				expect(JSON.parse(seen[0]!.body,),).toEqual(plan.payload,);
+				expect(seen[0].path,).toBe(plan.endpoint,);
+				expect(JSON.parse(seen[0].body,),).toEqual(plan.payload,);
 			},
 		);
 	});
@@ -435,7 +435,7 @@ describe("messaging-channel create, permissions-set, delete", () => {
 			expect(seen.map((request,) => `${request.method} ${request.path}`),).toEqual([
 				"PUT /public/api/messaging-channels/smtp-main/permissions",
 			],);
-			expect(JSON.parse(seen[0]!.body,),).toEqual(permissions,);
+			expect(JSON.parse(seen[0].body,),).toEqual(permissions,);
 			seen.length = 0;
 			const failure = await dssFailure([
 				"messaging-channel",
@@ -506,7 +506,7 @@ describe("messaging-channel create, permissions-set, delete", () => {
 						"--record-cleanup",
 						ledger,
 					], { env: cliEnv(url,), },);
-					const entry = JSON.parse((await Bun.file(ledger,).text()).trim().split("\n",)[0]!,);
+					const entry = JSON.parse((await Bun.file(ledger,).text()).trim().split("\n",)[0],);
 					expect(entry,).toMatchObject({
 						cleanup: { argv: ["messaging-channel", "delete", "ops-shell", "--if-exists",], },
 					},);
@@ -568,7 +568,7 @@ describe("messaging-channel send", () => {
 				"POST /public/api/messaging-channels/smtp-main/actions/send?projectKey=TEST&sendAsSingleMessage=true",
 			],);
 			expect(contentType,).toStartWith("multipart/form-data; boundary=",);
-			const body = seen[0]!.body;
+			const body = seen[0].body;
 			expect(body,).toMatch(
 				/name="message"; filename="send-payload\.json"\r\nContent-Type: application\/json/,
 			);
@@ -610,10 +610,10 @@ describe("messaging-channel send", () => {
 					"OTHER",
 				], { env: cliEnv(url,), },);
 			},);
-			expect(seen[0]!.path,).toBe(
+			expect(seen[0].path,).toBe(
 				"/public/api/messaging-channels/smtp-main/actions/send?projectKey=OTHER&sendAsSingleMessage=false",
 			);
-			expect(seen[0]!.body,).toContain("<p>from file</p>",);
+			expect(seen[0].body,).toContain("<p>from file</p>",);
 		} finally {
 			rmSync(dir, { recursive: true, force: true, },);
 		}
@@ -744,22 +744,22 @@ describe("messaging-channel --stdin under --dry-run", () => {
 });
 
 describe("messaging-channel contract", () => {
-	const registry = buildCommandRegistry("messaging-channel",)["messaging-channel"]!;
+	const registry = buildCommandRegistry("messaging-channel",)["messaging-channel"];
 
 	it("classifies send as an irreversible external write and the reads as reads", () => {
-		const send = registry["send"]!;
+		const send = registry["send"];
 		expect(send.sideEffect,).toBe("write",);
 		expect(send.destructive,).toBe("destructive",);
 		expect(send.dryRun,).toBe(true,);
 		expect(send.requiresProject,).toBe(true,);
 		for (const action of ["list", "get", "settings-get", "permissions-get",]) {
-			expect(registry[action]!.sideEffect, action,).toBe("read",);
+			expect(registry[action].sideEffect, action,).toBe("read",);
 		}
 		for (const action of ["create", "settings-set", "permissions-set", "delete", "send",]) {
-			expect(registry[action]!.sideEffect, action,).toBe("write",);
-			expect(registry[action]!.dryRun, action,).toBe(true,);
+			expect(registry[action].sideEffect, action,).toBe("write",);
+			expect(registry[action].dryRun, action,).toBe(true,);
 		}
-		expect(registry["permissions-get"]!.outputShape,).toBe("array",);
-		expect(registry["delete"]!.idempotency,).toBe("if-exists",);
+		expect(registry["permissions-get"].outputShape,).toBe("array",);
+		expect(registry["delete"].idempotency,).toBe("if-exists",);
 	});
 });

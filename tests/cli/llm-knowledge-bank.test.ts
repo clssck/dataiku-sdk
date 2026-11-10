@@ -298,14 +298,14 @@ describe("LLM and knowledge-bank CLI commands", () => {
 					'{"llmId":"openai:openai1:gpt-4","queries":[{"messages":[{"role":"user","content":"Hi"}]}]}',
 				], { env: cliEnv(url,), },)).stdout,
 			) as Record<string, unknown>;
-			expect((completion["responses"] as Array<Record<string, unknown>>)[0]!["text"],).toBe("Hello!",);
+			expect((completion["responses"] as Array<Record<string, unknown>>)[0]["text"],).toBe("Hello!",);
 
 			const search = JSON.parse(
 				(await dss(["knowledge-bank", "search", "my-kb", "--data", '{"query":"q"}',], {
 					env: cliEnv(url,),
 				},)).stdout,
 			) as Record<string, unknown>;
-			expect((search["documents"] as Array<Record<string, unknown>>)[0]!["text"],).toBe("doc",);
+			expect((search["documents"] as Array<Record<string, unknown>>)[0]["text"],).toBe("doc",);
 		},);
 	});
 

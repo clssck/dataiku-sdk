@@ -85,7 +85,7 @@ function assertBasicAuth(request: RecordedRequest,): void {
 function last(records: RecordedRequest[],): RecordedRequest {
 	const record = records[records.length - 1];
 	expect(record,).toBeDefined();
-	return record!;
+	return record;
 }
 
 const API = "/dip/publicapi";

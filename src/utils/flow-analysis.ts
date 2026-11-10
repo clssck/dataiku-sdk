@@ -128,7 +128,7 @@ function strongComponents(
 		visited.add(start,);
 		const stack: Array<{ nodeId: string; next: number; }> = [{ nodeId: start, next: 0, },];
 		while (stack.length > 0) {
-			const frame = stack[stack.length - 1]!;
+			const frame = stack[stack.length - 1];
 			const successors = outgoing.get(frame.nodeId,) ?? [];
 			const successor = successors[frame.next];
 			if (successor !== undefined) {
@@ -146,7 +146,7 @@ function strongComponents(
 	const assigned = new Set<string>();
 	const components: StrongComponent[] = [];
 	for (let index = finished.length - 1; index >= 0; index -= 1) {
-		const start = finished[index]!;
+		const start = finished[index];
 		if (assigned.has(start,)) continue;
 		const members: string[] = [];
 		const stack = [start,];

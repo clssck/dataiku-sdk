@@ -85,7 +85,7 @@ interface RecordedRequest {
  * answers from a scripted handler.
  */
 function recordingClient(
-	handler: (req: RecordedRequest,) => unknown | undefined,
+	handler: (req: RecordedRequest,) => unknown,
 ): { client: DataikuClient; requests: RecordedRequest[]; } {
 	const requests: RecordedRequest[] = [];
 	const raw: Record<string, unknown> = {
@@ -280,7 +280,7 @@ describe("ProjectLibraryResource create overwrite guard", () => {
 		},);
 
 		expect(requests.map((request,) => request.method),).toEqual(["GET",],);
-		expect(requests[0]!.url,).toBe(
+		expect(requests[0].url,).toBe(
 			"/public/api/projects/TEST/libraries/contents/python/exists.py",
 		);
 	});

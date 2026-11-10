@@ -912,7 +912,7 @@ describe("CLI agent-readiness mutation contracts", () => {
 					return;
 				}
 				if (req.method === "DELETE" && match) {
-					deleted.push(match[1]!,);
+					deleted.push(match[1],);
 					sendJson(res, {},);
 					return;
 				}
@@ -1312,7 +1312,7 @@ describe("machine contract: project-git mutation plans", () => {
 		action: string,
 		args: string[],
 		flags: Record<string, string | boolean>,
-	): Record<string, unknown> => buildMutationPlan("project-git", action, git[action]!, args, flags,);
+	): Record<string, unknown> => buildMutationPlan("project-git", action, git[action], args, flags,);
 
 	it("pins set-remote and remove-remote remotes with an origin default", () => {
 		const set = plan("set-remote", [], {
@@ -1349,7 +1349,7 @@ describe("machine contract: project-git mutation plans", () => {
 	});
 
 	it("rejects HTTP(S) repository URLs with embedded userinfo and allows SSH/scp URLs", () => {
-		const usage = git["set-remote"]!.usage;
+		const usage = git["set-remote"].usage;
 		expect(
 			() =>
 				plan("set-remote", [], {

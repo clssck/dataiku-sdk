@@ -10,9 +10,8 @@
 // the serialized live-suite dispatcher.
 import { randomBytes, } from "node:crypto";
 import type { FutureState, FutureWaitResult, } from "../src/schemas.js";
-import type { LiveCaseId, } from "./live-cases.js";
 import type { LiveContext, OwnedGlobal, } from "./live-context.js";
-import { LiveCapabilityError, LiveCommandError, } from "./live-context.js";
+import { LiveCapabilityError, LiveCommandError, thrownMessage, } from "./live-context.js";
 import type { HostDirectory, } from "./live-host.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -213,7 +212,7 @@ async function awaitMutationFuture(
 	if (!terminal) {
 		throw new UnsettledOwnedFutureError(
 			`${label} future ${jobId} could not be confirmed terminal after a failed wait: ${
-				waitError instanceof Error ? waitError.message : String(waitError,)
+				thrownMessage(waitError,)
 			}`,
 		);
 	}
@@ -276,7 +275,7 @@ function listArgv(kind: string, id: string,): string[] {
 }
 
 function listExists(list: unknown, id: string,): boolean {
-	const needle = id.includes("/",) ? id.split("/",)[1]! : id;
+	const needle = id.includes("/",) ? id.split("/",)[1] : id;
 	if (Array.isArray(list,)) {
 		return list.some(item => {
 			if (typeof item === "string") return item === id || item === needle;
@@ -884,7 +883,7 @@ export async function withOwnedCodeEnv<T,>(
 		if (!terminal) {
 			throw new LiveCapabilityError(
 				`code-env create future ${jobId} could not be confirmed terminal after a failed wait; reservation ${name} preserved for inspection instead of deleted mid-build: ${
-					waitError instanceof Error ? waitError.message : String(waitError,)
+					thrownMessage(waitError,)
 				}`,
 			);
 		}
@@ -1257,7 +1256,7 @@ async function projectFolderMoveProject(ctx: LiveContext,): Promise<void> {
 
 export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promise<void> {
 	await ctx.check(
-		"infrastructure.user" as LiveCaseId,
+		"infrastructure.user",
 		["user.create", "user.list", "user.get", "user.update", "user.activity-get", "user.delete",],
 		async () => {
 			await userLifecycle(ctx,);
@@ -1268,7 +1267,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 		{ capability: "infrastructure.user-crud", required: false, },
 	);
 	await ctx.check(
-		"infrastructure.group" as LiveCaseId,
+		"infrastructure.group",
 		["group.create", "group.list", "group.get", "group.update", "group.delete",],
 		async () => {
 			await groupLifecycle(ctx,);
@@ -1277,7 +1276,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 		{ capability: "infrastructure.group-crud", required: false, },
 	);
 	await ctx.check(
-		"infrastructure.meaning" as LiveCaseId,
+		"infrastructure.meaning",
 		["meaning.create", "meaning.list", "meaning.get", "meaning.update", "meaning.delete",],
 		async () => {
 			await meaningLifecycle(ctx,);
@@ -1285,7 +1284,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 		{ capability: "infrastructure.meaning-crud", required: false, },
 	);
 	await ctx.check(
-		"infrastructure.workspace" as LiveCaseId,
+		"infrastructure.workspace",
 		[
 			"workspace.create",
 			"workspace.list",
@@ -1302,7 +1301,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 		{ capability: "infrastructure.workspace-crud", },
 	);
 	await ctx.check(
-		"infrastructure.data-collection" as LiveCaseId,
+		"infrastructure.data-collection",
 		[
 			"data-collection.create",
 			"data-collection.list",
@@ -1319,7 +1318,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 		{ capability: "infrastructure.data-collection-crud", },
 	);
 	await ctx.check(
-		"infrastructure.project-folder" as LiveCaseId,
+		"infrastructure.project-folder",
 		[
 			"project-folder.root",
 			"project-folder.create-child",
@@ -1334,7 +1333,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 		{ capability: "infrastructure.project-folder-crud", },
 	);
 	await ctx.check(
-		"infrastructure.connection" as LiveCaseId,
+		"infrastructure.connection",
 		[
 			"connection.create",
 			"connection.list",
@@ -1349,7 +1348,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 		{ capability: "infrastructure.connection-crud", },
 	);
 	await ctx.check(
-		"infrastructure.code-env" as LiveCaseId,
+		"infrastructure.code-env",
 		[
 			"code-env.create",
 			"code-env.list",
@@ -1368,7 +1367,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 		{ capability: "infrastructure.code-env-lifecycle", },
 	);
 	await ctx.check(
-		"infrastructure.user.external-sync" as LiveCaseId,
+		"infrastructure.user.external-sync",
 		[
 			"user.external-users",
 			"user.external-groups",
@@ -1384,7 +1383,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 		{ capability: "infrastructure.user-external", required: false, },
 	);
 	await ctx.check(
-		"infrastructure.user.activity" as LiveCaseId,
+		"infrastructure.user.activity",
 		["user.activity", "user.get", "user.activity-get",],
 		async () => {
 			await userActivity(ctx,);
@@ -1392,7 +1391,7 @@ export async function exerciseInfrastructureDisposable(ctx: LiveContext,): Promi
 		{ capability: "infrastructure.user-activity", required: false, },
 	);
 	await ctx.check(
-		"infrastructure.project-folder.move-project" as LiveCaseId,
+		"infrastructure.project-folder.move-project",
 		[
 			"project-folder.root",
 			"project-folder.create-child",

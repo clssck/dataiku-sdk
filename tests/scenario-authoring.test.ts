@@ -33,7 +33,7 @@ async function withScenarioServer(
 			requests,
 		);
 	} finally {
-		server.stop(true,);
+		await server.stop(true,);
 	}
 }
 

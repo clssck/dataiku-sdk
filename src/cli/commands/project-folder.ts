@@ -89,7 +89,7 @@ export const projectFolderCommands: Record<string, CommandMeta> = withUsage("pro
 			}
 			await c.projectFolders.updateSettings(
 				a[0],
-				settings as Parameters<typeof c.projectFolders.updateSettings>[1],
+				settings,
 			);
 			return { updated: a[0], resource: "project-folder", };
 		},

@@ -66,8 +66,8 @@ export const discussionCommands: Record<string, CommandMeta> = withUsage("discus
 					"missing_required_flag",
 				);
 			}
-			const next = body ?? { ...await c.discussions.get(a[0]!, a[1]!, a[2]!, pk,), topic, };
-			return c.discussions.update(a[0]!, a[1]!, a[2]!, next, pk,);
+			const next = body ?? { ...await c.discussions.get(a[0], a[1], a[2], pk,), topic, };
+			return c.discussions.update(a[0], a[1], a[2], next, pk,);
 		},
 		description:
 			"Update a discussion: --topic TEXT edits the topic of the current discussion, or --data sends a full discussion object from get (e.g. to move it to another object of the project).",

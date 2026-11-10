@@ -32,9 +32,9 @@ export const flowCommands: Record<string, CommandMeta> = withUsage("flow", {
 				projectKey: f["project-key"] as string | undefined,
 			};
 			if (f["wait"] === true) {
-				return c.flow.propagateSchemaAndWait(a[0]!, { ...opts, ...taskWaitOptions(f,), },);
+				return c.flow.propagateSchemaAndWait(a[0], { ...opts, ...taskWaitOptions(f,), },);
 			}
-			return c.flow.propagateSchema(a[0]!, opts,);
+			return c.flow.propagateSchema(a[0], opts,);
 		},
 		description:
 			"Propagate a dataset's schema change through all downstream recipes and datasets (UI schema propagation). Rebuilds as needed unless --no-auto-rebuild; --stop-at / --mark-ok RECIPES limit it. Returns the DSS task; --wait waits. One recipe only: dss recipe update-schema.",
@@ -65,7 +65,7 @@ export const flowCommands: Record<string, CommandMeta> = withUsage("flow", {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, commandUsage("flow", "download-documentation",),);
 			const output = f["output"] as string;
-			const res = await c.flow.downloadDocumentation(a[0]!, f["project-key"] as string | undefined,);
+			const res = await c.flow.downloadDocumentation(a[0], f["project-key"] as string | undefined,);
 			return { path: output, bytes: await writeResponseToFile(output, res,), };
 		},
 		description:

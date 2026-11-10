@@ -120,7 +120,7 @@ async function mapWithConcurrency<T, U,>(
 		while (nextIndex < items.length) {
 			const index = nextIndex;
 			nextIndex++;
-			results[index] = await mapper(items[index]!,);
+			results[index] = await mapper(items[index],);
 		}
 	}
 	await Promise.all(
@@ -131,7 +131,7 @@ async function mapWithConcurrency<T, U,>(
 
 export class WikiResource extends BaseResource {
 	async settings(projectKey?: string,): Promise<WikiSettings> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/wiki/`,
 		);
 		return this.client.safeParse(WikiSettingsSchema, raw, "wiki.settings",);
@@ -157,7 +157,7 @@ export class WikiResource extends BaseResource {
 	}
 
 	async get(articleIdOrName: string, projectKey?: string,): Promise<WikiArticleData> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/wiki/${encodeURIComponent(articleIdOrName,)}`,
 		);
 		return this.client.safeParse(WikiArticleDataSchema, raw, "wiki.get",);
@@ -165,7 +165,7 @@ export class WikiResource extends BaseResource {
 
 	async create(opts: WikiArticleCreateOptions,): Promise<WikiArticleData> {
 		const pk = this.resolveProjectKey(opts.projectKey,);
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`/public/api/projects/${encodeURIComponent(pk,)}/wiki/`,
 			{
 				projectKey: pk,
@@ -184,7 +184,7 @@ export class WikiResource extends BaseResource {
 		const next = deepMerge(current, patch,);
 		if (opts.name !== undefined) next.article = { ...next.article, name: opts.name, };
 		if (opts.content !== undefined) next.payload = opts.content;
-		const raw = await this.client.put<unknown>(
+		const raw = await this.client.put(
 			`/public/api/projects/${this.enc(opts.projectKey,)}/wiki/${
 				encodeURIComponent(current.article.id,)
 			}`,
@@ -266,7 +266,7 @@ export class WikiResource extends BaseResource {
 		const remaining = wikiAttachments(current,).filter((attachment,) =>
 			attachment.smartId !== smartId
 		);
-		const raw = await this.client.put<unknown>(
+		const raw = await this.client.put(
 			`/public/api/projects/${encodeURIComponent(pk,)}/wiki/${
 				encodeURIComponent(current.article.id,)
 			}`,

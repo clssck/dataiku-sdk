@@ -25,6 +25,7 @@
 - Fix: `project-library diff` hunks carry at most 3 lines of leading context, so a change late in a long file is shown. Before, 300 unchanged lines followed by an edit produced 200 lines of context, `diffTruncated: true`, and no changed line.
 - Fix: a failed or incomplete `dataset download` keeps the previous file at the destination; the export is staged next to it and renamed into place only after the completeness check passes.
 - Fix: Git API responses and raw file-upload acknowledgements are read under the response size cap and request timeout, so a server that stalls after sending 2xx headers cannot hang the call.
+- Fix: buffered binary responses (`plugin contents-get` bytes, `dashboard export`) are read through the client's bounded reader: a body over `maxResponseBodyBytes` (50 MiB by default) fails with the existing Response Too Large error instead of being read without limit, and a stalled body times out. SDK: `DataikuClient.readBoundedBytes(response)`.
 - Fix: `messaging-channel create`, `permissions-set` and `send` no longer read `--stdin` twice under `--dry-run` (it failed with "Invalid JSON in stdin", and `send` previewed an empty body).
 - Fix: a blank `--binary-classification-threshold=` on `saved-model import-mlflow-version` is rejected as `invalid_flag_value` instead of becoming `0`.
 - Fix: the `job.monitor` output schema describes both the single-job result and the multi-job aggregate (`jobs`, `state`, `success`, `elapsedMs`, `pollCount`, `until`).
@@ -36,6 +37,7 @@
 - The command registry fails to build when an action name cannot be classified as read or write, instead of defaulting to `sideEffect: "read"`. Every existing action keeps its classification.
 - Docs: `SECURITY.md` names the current major as the supported line; the API coverage document's catalogue totals (58 resources / 555 actions) are checked against the registry by a test; README corrections (eight skill references, lint rule list, CI matrix).
 - Contributors: `bun run verify` type-checks every test and script (`tsconfig.test.json` replaces `tsconfig.live.json`; `check:live` is now `check:tests`). `bun run test` and `test:tokens` pass `--no-env-file`, so the offline suite never loads the checkout `.env`. The plan-parity sweep reports how many examples it compared and fails when comparisons turn into skips or a child is killed. Releases and manual CI dispatches also run the newest Bun on Linux as a non-blocking leg.
+- Contributors: `bun run lint` fails on warnings and runs type-aware through the pinned `oxlint-tsgolint` (about 3.5 s). New `dss/no-raw-number-coercion`, `dss/no-unbounded-response-body`, `dss/no-implicit-stdin` and `dss/no-chmod-after-write` rules, a `fetch`/`XMLHttpRequest`/`WebSocket` ban outside `src/client.ts`, and promise, stringification, exhaustiveness and coercion checks cover the bug classes of this release's audit; 596 redundant type assertions were removed by autofix. oxlint and `@oxlint/plugins` 1.93.0, dprint 0.64.3, `@types/bun` 1.4.4.
 
 ## 4.2.1
 

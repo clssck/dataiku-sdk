@@ -129,7 +129,15 @@ async function previewRows(
 		| undefined;
 	return {
 		columns: (json?.columns ?? []).map((column,) => String(column.name ?? "",)),
-		rows: (json?.rows ?? []).map((row,) => row.map((cell,) => String(cell ?? "",))),
+		rows: (json?.rows ?? []).map((row,) =>
+			row.map((cell,) =>
+				typeof cell === "string"
+					? cell
+					: cell === null || cell === undefined
+					? ""
+					: JSON.stringify(cell,)
+			)
+		),
 	};
 }
 

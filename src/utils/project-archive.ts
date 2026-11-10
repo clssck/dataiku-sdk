@@ -540,7 +540,7 @@ function isCredentialName(key: string,): boolean {
 	const last = tokens.at(-1,);
 	if (last !== undefined && NON_SECRET_SUFFIX_TOKENS[last] === true) return false;
 	for (let i = 0; i < tokens.length; i++) {
-		const token = tokens[i]!;
+		const token = tokens[i];
 		if (CREDENTIAL_SINGLE_TOKENS[token] === true) return true;
 		const next = tokens[i + 1];
 		if (

@@ -143,7 +143,7 @@ export class MacrosResource extends BaseResource {
 	 * DSS 15, while get/run/state/result stay slashless.
 	 */
 	async list(projectKey?: string,): Promise<MacroSummary[]> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/runnables/`,
 		);
 		return this.client.safeParse(MacroSummaryArraySchema, raw, "macros.list",);
@@ -155,7 +155,7 @@ export class MacrosResource extends BaseResource {
 		opts?: { projectKey?: string; },
 	): Promise<MacroDefinition> {
 		requireNonEmpty(runnableType, "runnableType",);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`${this.base(runnableType, opts?.projectKey,)}`,
 		);
 		return this.client.safeParse(MacroDefinitionSchema, raw, "macros.definition",);
@@ -173,7 +173,7 @@ export class MacrosResource extends BaseResource {
 		requireNonEmpty(runnableType, "runnableType",);
 		const wait = opts?.wait === true;
 		const query = wait ? "?wait=true" : "?wait=false";
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`${this.base(runnableType, opts?.projectKey,)}${query}`,
 			macroRunBody(opts?.params, opts?.adminParams,),
 		);
@@ -225,7 +225,7 @@ export class MacrosResource extends BaseResource {
 		requireNonEmpty(runnableType, "runnableType",);
 		requireNonEmpty(runId, "runId",);
 		const remainingMs = opts?.timeoutMs;
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`${this.base(runnableType, opts?.projectKey,)}/state/${encodeURIComponent(runId,)}`,
 			...(remainingMs !== undefined ? [{ timeoutMs: remainingMs, },] : []),
 		);

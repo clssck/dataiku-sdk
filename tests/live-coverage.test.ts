@@ -8,12 +8,12 @@ describe("live action coverage", () => {
 		const summary = commandActionSummary();
 		checkLiveCoverageCatalogue(summary,);
 		expect(() =>
-			checkLiveCoverageCatalogue({ ...summary, dataset: [...summary.dataset!, "new-action",], },)
+			checkLiveCoverageCatalogue({ ...summary, dataset: [...summary.dataset, "new-action",], },)
 		).toThrow();
 		expect(() =>
 			checkLiveCoverageCatalogue({
 				...summary,
-				dataset: summary.dataset!.filter(action => action !== "preview"),
+				dataset: summary.dataset.filter(action => action !== "preview"),
 			},)
 		).toThrow();
 	});

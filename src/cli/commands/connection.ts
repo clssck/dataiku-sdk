@@ -163,7 +163,7 @@ export const connectionCommands: Record<string, CommandMeta> = withUsage("connec
 			}
 			try {
 				return await c.connections.adminCreate(
-					body as Parameters<typeof c.connections.adminCreate>[0],
+					body,
 				);
 			} catch (error) {
 				throw sanitizeConnectionError(error, connectionSecretsFromBody(body,),);
@@ -198,7 +198,7 @@ export const connectionCommands: Record<string, CommandMeta> = withUsage("connec
 			try {
 				const result = await c.connections.adminUpdate(
 					name,
-					body as Parameters<typeof c.connections.adminUpdate>[1],
+					body,
 				);
 				return sanitizeConnectionSecrets(result, secrets,);
 			} catch (error) {

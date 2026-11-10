@@ -403,7 +403,7 @@ export class ProjectLibraryResource extends BaseResource {
 		const localBytes = typeof local === "string" ? Buffer.from(local, "utf8",) : local;
 		const localSha256 = sha256Hex(localBytes,);
 		const localDecoded = typeof local === "string"
-			? { text: local as string, binary: false, }
+			? { text: local, binary: false, }
 			: decodeUtf8(localBytes,);
 		let remoteBytes: Uint8Array | undefined;
 		let remoteAbsent = false;

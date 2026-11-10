@@ -16,11 +16,11 @@ function createInputFromFlags(
 	flags: Record<string, string | boolean>,
 ): Record<string, unknown> | undefined {
 	const text = typeof flags["data"] === "string"
-		? flags["data"] as string
+		? flags["data"]
 		: typeof flags["data-file"] === "string"
 		? ((): string | undefined => {
 			try {
-				return readFileSync(flags["data-file"] as string, "utf-8",);
+				return readFileSync(flags["data-file"], "utf-8",);
 			} catch {
 				return undefined;
 			}

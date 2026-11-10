@@ -80,7 +80,7 @@ export const groupCommands: Record<string, CommandMeta> = withUsage("group", {
 						"PUT replaces the whole Group object; the body must come from `dss group get`. No GET was issued in dry-run.",
 				};
 			}
-			await c.groups.update(name, body as Parameters<typeof c.groups.update>[1],);
+			await c.groups.update(name, body,);
 			return { updated: name, };
 		},
 		description:

@@ -15,25 +15,27 @@ interface Seen {
 
 async function withServer(run: (client: DataikuClient,) => Promise<void>,): Promise<Seen[]> {
 	const seen: Seen[] = [];
-	const server = createServer(async (req, res,) => {
-		let text = "";
-		for await (const chunk of req) text += chunk.toString();
-		const json = req.headers["content-type"]?.includes("application/json",) === true;
-		seen.push({
-			request: `${req.method} ${req.url}`,
-			body: text ? (json ? JSON.parse(text,) : "multipart") : undefined,
-		},);
-		res.setHeader("Content-Type", "application/json",);
-		if (req.url?.endsWith("/models/lab/",) || req.url?.endsWith("/models/",)) {
-			res.end(
-				req.method === "GET"
-					? '{"mlTasks":[{"analysisId":"a1","mlTaskId":"t1"}]}'
-					: '{"analysisId":"a2","mlTaskId":"t2"}',
-			);
-			return;
-		}
-		res.end('{"jobId":"j1","hasResult":false}',);
-	},);
+	const server = createServer((req, res,) =>
+		void (async () => {
+			let text = "";
+			for await (const chunk of req) text += chunk.toString();
+			const json = req.headers["content-type"]?.includes("application/json",) === true;
+			seen.push({
+				request: `${req.method} ${req.url}`,
+				body: text ? (json ? JSON.parse(text,) : "multipart") : undefined,
+			},);
+			res.setHeader("Content-Type", "application/json",);
+			if (req.url?.endsWith("/models/lab/",) || req.url?.endsWith("/models/",)) {
+				res.end(
+					req.method === "GET"
+						? '{"mlTasks":[{"analysisId":"a1","mlTaskId":"t1"}]}'
+						: '{"analysisId":"a2","mlTaskId":"t2"}',
+				);
+				return;
+			}
+			res.end('{"jobId":"j1","hasResult":false}',);
+		})()
+	);
 	const listening = Promise.withResolvers<void>();
 	server.listen(0, "127.0.0.1", () => listening.resolve(),);
 	await listening.promise;

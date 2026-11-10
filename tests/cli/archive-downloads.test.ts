@@ -26,8 +26,8 @@ describe("CLI archive downloads", () => {
 				bundles: { downloadExportedArchive: async () => new Response(null, { status: 204, },), },
 			} as unknown as DataikuClient;
 			const cases = [
-				{ command: apiServiceCommands["download-package"]!, args: ["service", "package",], },
-				{ command: bundleCommands["download-exported"]!, args: ["bundle",], },
+				{ command: apiServiceCommands["download-package"], args: ["service", "package",], },
+				{ command: bundleCommands["download-exported"], args: ["bundle",], },
 			];
 			for (const { command, args, } of cases) {
 				const output = join(root, `${args[0]}.zip`,);

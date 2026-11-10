@@ -336,7 +336,7 @@ describe("global --output in batches", () => {
 			JSON.stringify([["dataset", "list", "--output", "x.json",],],),
 		], { env: hermetic, },);
 		expect(
-			(JSON.parse(dry.stdout,) as { steps: Array<{ runnable: boolean; }>; }).steps[0]!.runnable,
+			(JSON.parse(dry.stdout,) as { steps: Array<{ runnable: boolean; }>; }).steps[0].runnable,
 		).toBe(false,);
 	});
 

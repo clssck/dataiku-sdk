@@ -9,14 +9,16 @@ import { DataikuClient, } from "../src/client.js";
 describe("Project Deployer and bundle endpoints", () => {
 	it("call the documented routes", async () => {
 		const seen: string[] = [];
-		const server = createServer(async (req, res,) => {
-			const drained = Promise.withResolvers<void>();
-			req.resume().on("end", () => drained.resolve(),);
-			await drained.promise;
-			seen.push(`${req.method} ${req.url}`,);
-			res.setHeader("Content-Type", "application/json",);
-			res.end(req.url?.includes("stages",) ? "[]" : "{}",);
-		},);
+		const server = createServer((req, res,) =>
+			void (async () => {
+				const drained = Promise.withResolvers<void>();
+				req.resume().on("end", () => drained.resolve(),);
+				await drained.promise;
+				seen.push(`${req.method} ${req.url}`,);
+				res.setHeader("Content-Type", "application/json",);
+				res.end(req.url?.includes("stages",) ? "[]" : "{}",);
+			})()
+		);
 		const listening = Promise.withResolvers<void>();
 		server.listen(0, "127.0.0.1", () => listening.resolve(),);
 		await listening.promise;

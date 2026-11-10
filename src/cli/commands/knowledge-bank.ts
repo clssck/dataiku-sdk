@@ -44,7 +44,7 @@ function requireNonEmptyPositional(value: string, usage: string,): string {
 export const knowledgeBankCommands: Record<string, CommandMeta> = withUsage("knowledge-bank", {
 	search: {
 		handler: async (c, a, f,) => {
-			const knowledgeBankId = requireNonEmptyPositional(a[0]!, KB_SEARCH_USAGE,);
+			const knowledgeBankId = requireNonEmptyPositional(a[0], KB_SEARCH_USAGE,);
 			const body = requireKnowledgeBankSearchBody(f,);
 			const projectKey = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
@@ -73,7 +73,7 @@ export const knowledgeBankCommands: Record<string, CommandMeta> = withUsage("kno
 	clear: {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, KB_CLEAR_USAGE,);
-			const knowledgeBankId = requireNonEmptyPositional(a[0]!, KB_CLEAR_USAGE,);
+			const knowledgeBankId = requireNonEmptyPositional(a[0], KB_CLEAR_USAGE,);
 			const projectKey = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
 				return planResult("knowledge-bank", "clear", {

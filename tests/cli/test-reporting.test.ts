@@ -140,13 +140,13 @@ describe("project-deployer testing", () => {
 	});
 
 	it("classifies reads as reads and run-test-scenarios as a plannable write", () => {
-		const projectDeployer = buildCommandRegistry("project-deployer",)["project-deployer"]!;
-		const project = buildCommandRegistry("project",)["project"]!;
-		expect(projectDeployer["testing-status"]!.sideEffect,).toBe("read",);
-		expect(projectDeployer["run-test-scenarios"]!.sideEffect,).toBe("write",);
-		expect(projectDeployer["run-test-scenarios"]!.dryRun,).toBe(true,);
-		expect(project["test-report"]!.sideEffect,).toBe("read",);
-		expect(project["test-report"]!.producesLocalFile,).toBe(true,);
-		expect(project["testing-status"]!.sideEffect,).toBe("read",);
+		const projectDeployer = buildCommandRegistry("project-deployer",)["project-deployer"];
+		const project = buildCommandRegistry("project",)["project"];
+		expect(projectDeployer["testing-status"].sideEffect,).toBe("read",);
+		expect(projectDeployer["run-test-scenarios"].sideEffect,).toBe("write",);
+		expect(projectDeployer["run-test-scenarios"].dryRun,).toBe(true,);
+		expect(project["test-report"].sideEffect,).toBe("read",);
+		expect(project["test-report"].producesLocalFile,).toBe(true,);
+		expect(project["testing-status"].sideEffect,).toBe("read",);
 	});
 });

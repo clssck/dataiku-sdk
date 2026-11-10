@@ -65,7 +65,7 @@ export const streamingEndpointCommands: Record<string, CommandMeta> = withUsage(
 					throw new UsageError("--connection CONN is required.", "missing_required_flag",);
 				}
 				const formatOptionId = f["format-option"];
-				await c.streamingEndpoints.createManaged(a[0]!, {
+				await c.streamingEndpoints.createManaged(a[0], {
 					connectionId,
 					...(typeof formatOptionId === "string" ? { formatOptionId, } : {}),
 				}, f["project-key"] as string | undefined,);
@@ -77,14 +77,14 @@ export const streamingEndpointCommands: Record<string, CommandMeta> = withUsage(
 		},
 		schema: {
 			handler: (c, a, f,) =>
-				c.streamingEndpoints.getSchema(a[0]!, f["project-key"] as string | undefined,),
+				c.streamingEndpoints.getSchema(a[0], f["project-key"] as string | undefined,),
 			description: "Get a streaming endpoint's schema ({columns: [{name, type}]}).",
 			examples: ["dss streaming-endpoint schema orders_stream",],
 		},
 		"set-schema": {
 			handler: async (c, a, f,) => {
 				await c.streamingEndpoints.setSchema(
-					a[0]!,
+					a[0],
 					requiredJsonInput(f, '--data, --data-file, or --stdin is required ({"columns": [...]}).',),
 					f["project-key"] as string | undefined,
 				);

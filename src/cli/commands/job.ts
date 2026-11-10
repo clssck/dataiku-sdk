@@ -148,7 +148,7 @@ function aggregateJobWaitResults<
 	success: boolean;
 	until: string;
 } {
-	if (jobs.length === 1) return jobs[0]!;
+	if (jobs.length === 1) return jobs[0];
 	const failed = jobs.find((job,) => !job.success);
 	return {
 		elapsedMs: jobs.reduce((maximum, job,) => Math.max(maximum, job.elapsedMs,), 0,),
@@ -176,7 +176,7 @@ function jobSummaryType(job: JobSummary | Record<string, unknown>,): string {
 }
 
 function jobSummaryState(job: JobSummary | Record<string, unknown>,): string {
-	const listState = compactValue(job, COMPACT_LIST_FIELDS["job"]!["state"]!,);
+	const listState = compactValue(job, COMPACT_LIST_FIELDS["job"]["state"],);
 	return stringPath(job, ["baseStatus", "state",],)
 		?? (typeof listState === "string" ? listState : undefined)
 		?? "unknown";

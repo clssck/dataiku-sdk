@@ -9,7 +9,12 @@
 // defaults. Streaming endpoints and continuous activities provision their own
 // owned HTTPSSE fixture, so no broker prerequisite exists for the default
 // path. Real command defects stay failures.
-import { LiveCapabilityError, LiveCommandError, type LiveContext, } from "./live-context.js";
+import {
+	LiveCapabilityError,
+	LiveCommandError,
+	type LiveContext,
+	thrownMessage,
+} from "./live-context.js";
 import { exerciseOwnedDeployerDetails, } from "./live-deployers.js";
 import { withOwnedSqlConnection, } from "./live-infrastructure-disposable.js";
 
@@ -255,7 +260,7 @@ async function runImportLifecycle(
 			if (ownedFixture) throw new Error(message,);
 			capabilityBlocked(message,);
 		}
-		const tableName = tableNames[0]!;
+		const tableName = tableNames[0];
 
 		// --- prepare-import: returns a future whose RESULT carries the
 		// authoritative import candidates for this connection/table.
@@ -477,7 +482,7 @@ async function resolvePythonCodeEnv(ctx: LiveContext,): Promise<string> {
 			"No PYTHON code environment exists on this instance (code-env list --lang PYTHON returned zero); get/get-definition/logs need an existing env and the infrastructure profile never creates globals.",
 		);
 	}
-	return envs[0]!;
+	return envs[0];
 }
 
 async function exerciseCodeEnvReads(ctx: LiveContext,): Promise<void> {
@@ -1163,7 +1168,7 @@ async function runContinuousActivityLifecycle(
 	} catch (error) {
 		failure = failure === undefined
 			? error
-			: new Error(`${String(failure,)}; stop failed: ${String(error,)}`,);
+			: new Error(`${thrownMessage(failure,)}; stop failed: ${String(error,)}`,);
 	}
 	let stopped: JsonRecord | undefined;
 	for (let attempt = 0; attempt < CONTINUOUS_STOP_POLL_ATTEMPTS; attempt++) {
@@ -1287,7 +1292,7 @@ async function exerciseContinuousActivities(ctx: LiveContext,): Promise<void> {
 		if (chain.activityStarted && !chain.activityConfirmedStopped) {
 			throw new Error(
 				`Retaining the case-owned continuous chain in project ${projectKey} (recipe ${chain.recipeName}, endpoint ${chain.endpointId}, dataset ${chain.outputName}) because the activity could not be confirmed stopped${
-					failure === undefined ? "" : `; original failure: ${String(failure,)}`
+					failure === undefined ? "" : `; original failure: ${thrownMessage(failure,)}`
 				}.`,
 			);
 		}
@@ -1295,7 +1300,7 @@ async function exerciseContinuousActivities(ctx: LiveContext,): Promise<void> {
 			await releaseContinuousChain(ctx, projectKey, chain,);
 		} catch (error) {
 			if (failure !== undefined) {
-				throw new Error(`${String(failure,)}; ${String(error,)}`, { cause: error, },);
+				throw new Error(`${thrownMessage(failure,)}; ${String(error,)}`, { cause: error, },);
 			}
 			throw error;
 		}

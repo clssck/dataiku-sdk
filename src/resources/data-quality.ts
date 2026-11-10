@@ -100,7 +100,7 @@ function projectPath(projectKey: string,): string {
 export class DataQualityResource extends BaseResource {
 	async rules(datasetName: string, projectKey?: string,): Promise<DataQualityRules> {
 		const pk = this.resolveProjectKey(projectKey,);
-		const raw = await this.client.get<unknown>(`${dataQualityPath(pk, datasetName,)}/rules`,);
+		const raw = await this.client.get(`${dataQualityPath(pk, datasetName,)}/rules`,);
 		return this.client.safeParse(DataQualityRulesSchema, raw, "dataQuality.rules",);
 	}
 
@@ -114,7 +114,7 @@ export class DataQualityResource extends BaseResource {
 		opts: DataQualityRuleCreateOptions,
 	): Promise<DataQualityRule> {
 		const pk = this.resolveProjectKey(opts.projectKey,);
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`${dataQualityPath(pk, datasetName,)}/rules`,
 			opts.config,
 		);
@@ -169,7 +169,7 @@ export class DataQualityResource extends BaseResource {
 
 	async status(datasetName: string, projectKey?: string,): Promise<DataQualityStatus> {
 		const pk = this.resolveProjectKey(projectKey,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`${dataQualityPath(pk, datasetName,)}/status-by-partition`,
 		);
 		return this.client.safeParse(DataQualityStatusSchema, raw, "dataQuality.status",);
@@ -182,7 +182,7 @@ export class DataQualityResource extends BaseResource {
 		const pk = this.resolveProjectKey(opts.projectKey,);
 		const params = new URLSearchParams();
 		addQuery(params, "includeAllPartitions", opts.includeAllPartitions,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`${dataQualityPath(pk, datasetName,)}/status-by-partition${queryString(params,)}`,
 		);
 		return this.client.safeParse(
@@ -200,7 +200,7 @@ export class DataQualityResource extends BaseResource {
 		const params = new URLSearchParams();
 		addQuery(params, "partition", partitionValue(opts.partition,),);
 		addQuery(params, "ruleId", opts.ruleId,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`${dataQualityPath(pk, datasetName,)}/last-rules-result${queryString(params,)}`,
 		);
 		return this.client.safeParse(DataQualityRuleResultArraySchema, raw, "dataQuality.lastResults",);
@@ -217,7 +217,7 @@ export class DataQualityResource extends BaseResource {
 		addQuery(params, "resultsPerPage", opts.resultsPerPage,);
 		addQuery(params, "page", opts.page,);
 		addQuery(params, "ruleId", opts.ruleId,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`${dataQualityPath(pk, datasetName,)}/rules-history${queryString(params,)}`,
 		);
 		return this.client.safeParse(DataQualityRuleResultArraySchema, raw, "dataQuality.history",);
@@ -231,7 +231,7 @@ export class DataQualityResource extends BaseResource {
 		const params = new URLSearchParams();
 		addQuery(params, "partition", partitionValue(opts.partition,),);
 		addQuery(params, "ruleId", opts.ruleId,);
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`${dataQualityPath(pk, datasetName,)}/actions/compute-rules${queryString(params,)}`,
 		);
 		return this.client.safeParse(DataQualityComputeResultSchema, raw, "dataQuality.computeRules",);
@@ -257,7 +257,7 @@ export class DataQualityResource extends BaseResource {
 		const pk = this.resolveProjectKey(opts.projectKey,);
 		const params = new URLSearchParams();
 		addQuery(params, "onlyMonitored", opts.onlyMonitored,);
-		const raw = await this.client.get<unknown>(`${projectPath(pk,)}/status${queryString(params,)}`,);
+		const raw = await this.client.get(`${projectPath(pk,)}/status${queryString(params,)}`,);
 		return this.client.safeParse(DataQualityProjectStatusSchema, raw, "dataQuality.projectStatus",);
 	}
 
@@ -268,7 +268,7 @@ export class DataQualityResource extends BaseResource {
 		const params = new URLSearchParams();
 		addQuery(params, "minTimestamp", opts.minTimestamp,);
 		addQuery(params, "maxTimestamp", opts.maxTimestamp,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`${projectPath(pk,)}/timeline${queryString(params,)}`,
 		);
 		return this.client.safeParse(DataQualityTimelineSchema, raw, "dataQuality.projectTimeline",);

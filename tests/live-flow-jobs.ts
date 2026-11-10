@@ -599,7 +599,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 			expect(organized.organized,).toBe(true,);
 			expect(organized.topologyUnchanged,).toBe(true,);
 			expect(organized.created.map((zone,) => zone.name),).toEqual([ZONE_NAME,],);
-			const zoneId = organized.created[0]!.id;
+			const zoneId = organized.created[0].id;
 			expect(organized.moved,).toEqual([
 				expect.objectContaining({
 					zoneId,
@@ -621,7 +621,7 @@ export async function exerciseFlowJobs(ctx: LiveContext,): Promise<void> {
 				expect(byName.map((zone,) => zone.id),).toEqual([zoneId,],);
 				// recipe.clone inherits the source recipe's zone, so the zone may
 				// hold more than the two planned objects; assert containment.
-				const itemIds = byName[0]!.items.map((item,) => item.objectId);
+				const itemIds = byName[0].items.map((item,) => item.objectId);
 				expect(itemIds,).toEqual(expect.arrayContaining([ORDERS, SYNC_RECIPE,],),);
 				const byDataset = await run<Array<{ id: string; containsMatchingObject: boolean; }>>([
 					"flow-zone",

@@ -30,7 +30,7 @@ export async function startDocumentation(
 	}
 	if (template.kind === "folder") {
 		const query = new URLSearchParams({ folderId: template.folderId, path: template.path, },);
-		return dssTask(await client.post<unknown>(`${routes.folder}?${query}`,), operation,);
+		return dssTask(await client.post(`${routes.folder}?${query}`,), operation,);
 	}
-	return dssTask(await client.post<unknown>(routes.default,), operation,);
+	return dssTask(await client.post(routes.default,), operation,);
 }

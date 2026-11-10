@@ -663,7 +663,7 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 			requireContentSource(f, CONTENTS_PUT_USAGE,);
 			if (executionMode(f,).dryRun) {
 				const source = typeof f["file"] === "string"
-					? { contentSource: "file", file: f["file"] as string, }
+					? { contentSource: "file", file: f["file"], }
 					: typeof f["content"] === "string"
 					? { contentSource: "flag", }
 					: { contentSource: "stdin", };
@@ -675,10 +675,10 @@ export const pluginCommands: Record<string, CommandMeta> = withUsage("plugin", {
 				},);
 			}
 			const content = typeof f["file"] === "string"
-				? await readFile(f["file"] as string,)
+				? await readFile(f["file"],)
 				: typeof f["content"] === "string"
-				? f["content"] as string
-				: await readStdinText();
+				? f["content"]
+				: readStdinText();
 			await c.plugins.putFile(pluginId, path, content,);
 			const bytes = typeof content === "string" ? Buffer.byteLength(content, "utf8",) : content.length;
 			return { written: path, pluginId, bytes, sha256: sha256Hex(content,), };
@@ -873,7 +873,7 @@ export function readSettingsInput(
 	if (!isRecord(parsed,)) {
 		throw new UsageError("Plugin settings must be a JSON object.", "validation_failed",);
 	}
-	return parsed as SettingsPayload;
+	return parsed;
 }
 
 /** Plan payload for `plugin settings-set`: the config keys and code env, never the values. */

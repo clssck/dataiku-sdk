@@ -318,7 +318,7 @@ function unitServer(
 					color: "#0ea5e9",
 					position: newZonePosition,
 					tags: ["etl",],
-					items: unitZones[1]!.items,
+					items: unitZones[1].items,
 				},);
 			default:
 				res.statusCode = 500;
@@ -370,7 +370,7 @@ describe("CLI flow-zone organize recipe units and positions", () => {
 				moveItems: [],
 				impliedItems: [{ objectType: "DATASET", objectId: "clean", },],
 			},);
-			expect(preview.planned[1]!.moveItems,).toEqual([
+			expect(preview.planned[1].moveItems,).toEqual([
 				{ objectType: "RECIPE", objectId: "report", },
 				{ objectType: "DATASET", objectId: "summary", },
 			],);
@@ -456,7 +456,7 @@ describe("CLI flow-zone organize recipe units and positions", () => {
 			position: { x: 5, y: 6, },
 		},);
 		expect(bodies[`PUT ${base}/zone-new`],).toMatchObject({ id: "zone-new", tags: ["etl",], },);
-		expect(bodies[`POST ${base}/zone-new/add-items`],).toEqual(unitZones[1]!.items,);
+		expect(bodies[`POST ${base}/zone-new/add-items`],).toEqual(unitZones[1].items,);
 	});
 
 	it("warns when written zone positions will not display", async () => {

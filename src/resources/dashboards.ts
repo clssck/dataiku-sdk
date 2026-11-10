@@ -51,14 +51,14 @@ async function validateInBatches<T,>(
 
 export class DashboardsResource extends BaseResource {
 	async list(projectKey?: string,): Promise<DashboardSummary[]> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/dashboards/`,
 		);
 		return this.client.safeParse(DashboardSummaryArraySchema, raw, "dashboards.list",);
 	}
 
 	async get(dashboardId: string, projectKey?: string,): Promise<DashboardDetails> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/dashboards/${encodeURIComponent(dashboardId,)}/`,
 		);
 		return this.client.safeParse(DashboardDetailsSchema, raw, "dashboards.get",);
@@ -156,7 +156,7 @@ export class DashboardsResource extends BaseResource {
 		await validateInBatches(insightIds, async (insightId,) => {
 			let raw: unknown;
 			try {
-				raw = await this.client.get<unknown>(
+				raw = await this.client.get(
 					`/public/api/projects/${encodeURIComponent(projectKey,)}/insights/${
 						encodeURIComponent(insightId,)
 					}/`,
@@ -217,7 +217,7 @@ export class DashboardsResource extends BaseResource {
 				? datasetSmartName.slice(separatorIndex + 1,)
 				: datasetSmartName;
 			try {
-				await this.client.get<unknown>(
+				await this.client.get(
 					`/public/api/projects/${encodeURIComponent(datasetProjectKey,)}/datasets/${
 						encodeURIComponent(datasetName,)
 					}/`,
@@ -266,7 +266,7 @@ export class DashboardsResource extends BaseResource {
 		if (opts.name !== undefined) next.name = opts.name;
 		if (opts.listed !== undefined) next.listed = opts.listed;
 		await this.validateReferences(next, pk,);
-		await this.client.put<unknown>(
+		await this.client.put(
 			`/public/api/projects/${encodeURIComponent(pk,)}/dashboards/${
 				encodeURIComponent(dashboardId,)
 			}/`,

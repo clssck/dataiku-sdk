@@ -28,7 +28,7 @@ const registry = buildCommandRegistry();
 
 function fullEntry(id: string,): Entry {
 	const [resource, action,] = id.split(".",) as [string, string,];
-	return JSON.parse(JSON.stringify(registry[resource]![action],),) as Entry;
+	return JSON.parse(JSON.stringify(registry[resource][action],),) as Entry;
 }
 
 async function scoped(args: string[],): Promise<Record<string, Entry>> {
@@ -52,7 +52,7 @@ describe("commands run --fields RESOURCE.ACTION compact entries", () => {
 		const result = await scoped(["--fields", REPRESENTATIVE.join(",",),],);
 		expect(Object.keys(result,),).toEqual(REPRESENTATIVE,);
 		for (const id of REPRESENTATIVE) {
-			const entry = result[id]!;
+			const entry = result[id];
 			const full = fullEntry(id,);
 			for (const key of ["usage", "description", "examples", "sideEffect",]) {
 				expect(entry[key], `${id}.${key}`,).toEqual(full[key],);
@@ -134,7 +134,7 @@ describe("commands run --fields RESOURCE.ACTION compact entries", () => {
 			(fullEntry("dataset.get",).schemas as Entry).output,
 		);
 		expect(result["recipe.create.exitCodes"],).toEqual(create.exitCodes,);
-		expect(result["recipe.create"],).toEqual(compactCommandEntry(registry.recipe!.create!,),);
+		expect(result["recipe.create"],).toEqual(compactCommandEntry(registry.recipe.create,),);
 	});
 
 	it("exports full entries to --output and never expands --fields RESOURCE or the summary", async () => {
@@ -158,7 +158,7 @@ describe("commands run --fields RESOURCE.ACTION compact entries", () => {
 			rmSync(directory, { recursive: true, force: true, },);
 		}
 		const resource = await scoped(["--fields", "dataset",],);
-		expect(Object.keys(resource.dataset!.get as Entry,).sort(),).toEqual([
+		expect(Object.keys(resource.dataset.get as Entry,).sort(),).toEqual([
 			"description",
 			"sideEffect",
 			"usage",
@@ -180,7 +180,7 @@ describe("commands run --fields RESOURCE.ACTION compact entries", () => {
 	});
 
 	it("advertises --full in the commands run usage and description", () => {
-		const entry = registry.commands!.run!;
+		const entry = registry.commands.run;
 		expect(entry.usage,).toContain("[--full]",);
 		expect(entry.description,).toContain("--full",);
 		expect(entry.flags.map((flag,) => flag.name),).toContain("full",);
@@ -197,7 +197,7 @@ describe("compactCommandEntry over the whole registry", () => {
 		for (const id of all) {
 			const [resource, action,] = id.split(".",) as [string, string,];
 			const compact = JSON.parse(
-				JSON.stringify(compactCommandEntry(registry[resource]![action]!,),),
+				JSON.stringify(compactCommandEntry(registry[resource][action],),),
 			) as Entry;
 			const full = fullEntry(id,);
 			expect(Object.keys(compact,).length, `${id} is smaller than the full entry`,).toBeLessThan(
@@ -220,7 +220,7 @@ describe("compactCommandEntry over the whole registry", () => {
 	it("keeps side effects, destructiveness, dry-run gaps, async, local files and cleanup visible", () => {
 		for (const id of all) {
 			const [resource, action,] = id.split(".",) as [string, string,];
-			const entry = registry[resource]![action]!;
+			const entry = registry[resource][action];
 			const compact = compactCommandEntry(entry,);
 			expect(compact.sideEffect, id,).toBe(entry.sideEffect,);
 			if (entry.sideEffect === "write") {

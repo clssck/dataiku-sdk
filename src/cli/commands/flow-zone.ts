@@ -175,7 +175,7 @@ export const flowZoneCommands: Record<string, CommandMeta> = withUsage("flow-zon
 					"Exactly one zone name/id or object is required. Use <name>, --object TYPE:ID, --dataset DS, or --recipe R.",
 				);
 			}
-			const object = objects[0]!;
+			const object = objects[0];
 			return zones
 				.filter((zone,) => flowZoneContains(zone, object,))
 				.map((zone,) => flowZoneSummary(zone, object,));

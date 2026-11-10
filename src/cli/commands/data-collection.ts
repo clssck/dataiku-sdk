@@ -43,7 +43,7 @@ export const dataCollectionCommands: Record<string, CommandMeta> = withUsage("da
 				},);
 			}
 			return c.dataCollections.create(
-				body as Parameters<typeof c.dataCollections.create>[0],
+				body,
 			);
 		},
 		description: "Create a collection (creator becomes admin; requires mayCreateDataCollections).",

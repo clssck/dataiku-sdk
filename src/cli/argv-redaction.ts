@@ -80,7 +80,7 @@ function redactInlineJson(value: string, resource: string | undefined,): string 
 		return value;
 	}
 	const sanitizer = resource !== undefined && Object.hasOwn(RESOURCE_SECRET_SANITIZERS, resource,)
-		? RESOURCE_SECRET_SANITIZERS[resource]!()
+		? RESOURCE_SECRET_SANITIZERS[resource]()
 		: undefined;
 	// Re-serialize only when the domain sanitizer changed something, so clean
 	// values keep their original spelling.
@@ -100,7 +100,7 @@ export function redactArgv(argv: string[],): string[] {
 			: value;
 	const redacted: string[] = [];
 	for (let index = 0; index < argv.length; index++) {
-		const arg = argv[index]!;
+		const arg = argv[index];
 		if (arg === "--") {
 			redacted.push(...argv.slice(index,),);
 			break;

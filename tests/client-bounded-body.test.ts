@@ -354,6 +354,58 @@ describe("DataikuClient bounded response bodies", () => {
 		});
 	}
 
+	for (const method of ["stream", "postStream",] as const) {
+		it(`readBoundedBytes returns a multi-chunk ${method} body byte for byte`, async () => {
+			const payload = Uint8Array.from({ length: 300, }, (_, index,) => index % 256,);
+			await withDataikuServer(async (_req, res,) => {
+				res.writeHead(200, { "Content-Type": "application/octet-stream", },);
+				const flushed = Promise.withResolvers<void>();
+				res.write(payload.subarray(0, 100,), () => flushed.resolve(),);
+				await flushed.promise;
+				res.end(payload.subarray(100,),);
+			}, async (client,) => {
+				const bytes = await client.readBoundedBytes(await client[method]("/binary",),);
+				expect(Array.from(bytes,),).toEqual(Array.from(payload,),);
+			}, { maxResponseBodyBytes: 300, },);
+		});
+
+		it(`readBoundedBytes rejects an oversized ${method} body with Response Too Large`, async () => {
+			await withDataikuServer((_req, res,) => {
+				res.writeHead(200, { "Content-Type": "application/octet-stream", },);
+				res.end(Buffer.alloc(2_000, 7,),);
+			}, async (client,) => {
+				const failure = await client.readBoundedBytes(await client[method]("/big",),).catch((
+					error: unknown,
+				) => error);
+				expect(failure,).toBeInstanceOf(DataikuError,);
+				expect((failure as DataikuError).statusText,).toBe(RESPONSE_TOO_LARGE_STATUS_TEXT,);
+				expect((failure as Error).message,).toContain("exceeded the 512-byte limit",);
+			}, { maxResponseBodyBytes: 512, },);
+		});
+
+		it(`readBoundedBytes rejects a stalled ${method} body after headers`, async () => {
+			await withDataikuServer((_req, res,) => {
+				res.writeHead(200, { "Content-Type": "application/octet-stream", },);
+				res.write("first chunk",);
+			}, async (client,) => {
+				const res = await client[method]("/stalled",);
+				const failure = await client.readBoundedBytes(res,).catch((error: unknown,) => error);
+				expect(failure,).toBeInstanceOf(DataikuError,);
+				expect((failure as DataikuError).status,).toBe(0,);
+			}, { requestTimeoutMs: 500, },);
+		});
+	}
+
+	it("readBoundedBytes accepts a body exactly at the cap and returns empty bytes for no body", async () => {
+		await withDataikuServer((req, res,) => {
+			res.writeHead(200, { "Content-Type": "application/octet-stream", },);
+			res.end(req.url === "/empty" ? "" : Buffer.alloc(64, 1,),);
+		}, async (client,) => {
+			expect((await client.readBoundedBytes(await client.stream("/exact",),)).byteLength,).toBe(64,);
+			expect((await client.readBoundedBytes(await client.stream("/empty",),)).byteLength,).toBe(0,);
+		}, { maxResponseBodyBytes: 64, },);
+	});
+
 	it("streams a healthy transfer beyond the timeout without buffering or truncation", async () => {
 		await withDataikuServer(async (_req, res,) => {
 			res.writeHead(206, { "Content-Type": "application/octet-stream", "X-Stream": "intact", },);
@@ -413,8 +465,8 @@ describe("DataikuClient bounded response bodies", () => {
 	});
 
 	// Real-socket integration (fake timers cannot model a trickling TCP body):
-	// each chunk beats the 150ms stall deadline by a wide margin, but the body
-	// keeps trickling past the 10x total budget (1500ms).
+	// each chunk beats the 300ms stall deadline by a wide margin even on a loaded
+	// machine, but the body keeps trickling past the 10x total budget (3000ms).
 	it("getTextTailLimited caps a body that never stops trickling and names the total limit", async () => {
 		await withDataikuServer(async (_req, res,) => {
 			res.writeHead(200, { "Content-Type": "text/plain", },);
@@ -428,10 +480,10 @@ describe("DataikuClient bounded response bodies", () => {
 				error: unknown,
 			) => error);
 			expect(failure,).toBeInstanceOf(DataikuError,);
-			expect((failure as Error).message,).toContain("still arriving after 1500ms",);
+			expect((failure as Error).message,).toContain("still arriving after 3000ms",);
 			expect((failure as Error).message,).toContain("10x --request-timeout",);
-			expect(Date.now() - started,).toBeLessThan(3000,);
-		}, { requestTimeoutMs: 150, },);
+			expect(Date.now() - started,).toBeLessThan(6000,);
+		}, { requestTimeoutMs: 300, },);
 	});
 
 	it("Git requests reject a 2xx body that stalls after headers", async () => {

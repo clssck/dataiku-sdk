@@ -11,9 +11,9 @@ import { buildMutationPlan, } from "../../src/cli/plans.js";
 import { DataikuClient, } from "../../src/client.js";
 import { DataikuError, } from "../../src/errors.js";
 
-const USER = commands["user"]!;
-const GROUP = commands["group"]!;
-const CONNECTION = commands["connection"]!;
+const USER = commands["user"];
+const GROUP = commands["group"];
+const CONNECTION = commands["connection"];
 
 function plan(
 	resource: string,
@@ -21,7 +21,7 @@ function plan(
 	args: string[],
 	flags: Record<string, string | boolean>,
 ): Record<string, unknown> {
-	return buildMutationPlan(resource, action, commands[resource]![action]!, args, flags,);
+	return buildMutationPlan(resource, action, commands[resource][action], args, flags,);
 }
 
 function cliSecret(): string {
@@ -185,62 +185,62 @@ describe("CLI user/group/connection actions", () => {
 			projectKey: "TEST",
 		},);
 		try {
-			const createResult = await commands["user"]!["create"]!.handler(c, [], {
+			const createResult = await commands["user"]["create"].handler(c, [], {
 				data: '{"login":"X","password":"PW-SECRET"}',
 				"dry-run": true,
 			},) as Record<string, unknown>;
 			expect(createResult["dryRun"],).toBe(true,);
 			expect(JSON.stringify(createResult,),).not.toContain("PW-SECRET",);
 
-			const updateResult = await commands["user"]!["update"]!.handler(c, ["UserA",], {
+			const updateResult = await commands["user"]["update"].handler(c, ["UserA",], {
 				data: '{"displayName":"N"}',
 				"dry-run": true,
 			},) as Record<string, unknown>;
 			expect(updateResult["dryRun"],).toBe(true,);
 
-			const deleteResult = await commands["user"]!["delete"]!.handler(c, ["UserA",], {
+			const deleteResult = await commands["user"]["delete"].handler(c, ["UserA",], {
 				"dry-run": true,
 				"if-exists": true,
 			},) as Record<string, unknown>;
 			expect(deleteResult["dryRun"],).toBe(true,);
 
-			const resyncMulti = await commands["user"]!["resync-multi"]!.handler(c, [], {
+			const resyncMulti = await commands["user"]["resync-multi"].handler(c, [], {
 				logins: "a,b",
 				"dry-run": true,
 			},) as Record<string, unknown>;
 			expect(resyncMulti["dryRun"],).toBe(true,);
 
-			const provision = await commands["user"]!["provision"]!.handler(c, [], {
+			const provision = await commands["user"]["provision"].handler(c, [], {
 				data: '{"userSourceType":"AZURE_AD","users":[]}',
 				"dry-run": true,
 			},) as Record<string, unknown>;
 			expect(provision["dryRun"],).toBe(true,);
 
-			const groupUpdate = await commands["group"]!["update"]!.handler(c, ["g",], {
+			const groupUpdate = await commands["group"]["update"].handler(c, ["g",], {
 				data: '{"name":"g"}',
 				"dry-run": true,
 			},) as Record<string, unknown>;
 			expect(groupUpdate["dryRun"],).toBe(true,);
 
-			const connCreate = await commands["connection"]!["create"]!.handler(c, [], {
+			const connCreate = await commands["connection"]["create"].handler(c, [], {
 				data: '{"name":"c","params":{"password":"CPW"}}',
 				"dry-run": true,
 			},) as Record<string, unknown>;
 			expect(connCreate["dryRun"],).toBe(true,);
 			expect(JSON.stringify(connCreate,),).not.toContain("CPW",);
 
-			const connDelete = await commands["connection"]!["delete"]!.handler(c, ["c",], {
+			const connDelete = await commands["connection"]["delete"].handler(c, ["c",], {
 				"dry-run": true,
 			},) as Record<string, unknown>;
 			expect(connDelete["dryRun"],).toBe(true,);
 
-			const prepare = await commands["connection"]!["prepare-import"]!.handler(c, [], {
+			const prepare = await commands["connection"]["prepare-import"].handler(c, [], {
 				data: '{"keys":[{"connectionName":"pg","name":"t"}]}',
 				"dry-run": true,
 			},) as Record<string, unknown>;
 			expect(prepare["dryRun"],).toBe(true,);
 
-			const execute = await commands["connection"]!["execute-import"]!.handler(c, [], {
+			const execute = await commands["connection"]["execute-import"].handler(c, [], {
 				data: '{"sqlImportCandidates":[{"connectionName":"pg","table":"t"}]}',
 				"dry-run": true,
 			},) as Record<string, unknown>;
@@ -299,12 +299,12 @@ describe("CLI user/group/connection actions", () => {
 		const { port, } = server.address() as AddressInfo;
 		const c = new DataikuClient({ url: `http://127.0.0.1:${String(port,)}`, apiKey: "k", },);
 		try {
-			const info = await CONNECTION["info"]!.handler(c, ["s3 main",], {},) as Record<string, unknown>;
+			const info = await CONNECTION["info"].handler(c, ["s3 main",], {},) as Record<string, unknown>;
 			expect(info,).toMatchObject({ type: "EC2", params: { chbucket: "bucket", }, },);
 			const json = JSON.stringify(info,);
 			for (const leak of ["AK-LEAK", "SK-LEAK", "ST-LEAK",]) expect(json,).not.toContain(leak,);
 
-			const failure = await Promise.resolve(CONNECTION["get"]!.handler(c, ["s3 main",], {},),).then(
+			const failure = await Promise.resolve(CONNECTION["get"].handler(c, ["s3 main",], {},),).then(
 				() => undefined,
 				(error: unknown,) => error,
 			);

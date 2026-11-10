@@ -29,17 +29,19 @@ function json(res: ServerResponse, body: unknown, status = 200,): void {
 function buildFakeDss() {
 	const routes = new Map<string, Handler>();
 	const misses: string[] = [];
-	const server = createServer(async (req, res,) => {
-		const url = new URL(req.url ?? "/", "http://localhost",);
-		const key = `${req.method ?? "GET"} ${url.pathname}`;
-		const route = routes.get(key,);
-		if (!route) {
-			misses.push(key,);
-			json(res, { reason: "no route", key, }, 404,);
-			return;
-		}
-		await route(req, res,);
-	},);
+	const server = createServer((req, res,) =>
+		void (async () => {
+			const url = new URL(req.url ?? "/", "http://localhost",);
+			const key = `${req.method ?? "GET"} ${url.pathname}`;
+			const route = routes.get(key,);
+			if (!route) {
+				misses.push(key,);
+				json(res, { reason: "no route", key, }, 404,);
+				return;
+			}
+			await route(req, res,);
+		})()
+	);
 	return {
 		routes,
 		misses,
@@ -161,7 +163,7 @@ describe("PluginsResource against a fake DSS (all documented endpoints)", () => 
 					json(res, { errorType: "InvalidGitSource", }, 400,);
 					return;
 				}
-				installed[0]!.version = "2.0.0";
+				installed[0].version = "2.0.0";
 				res.statusCode = 204;
 				res.end();
 			},);

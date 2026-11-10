@@ -39,7 +39,7 @@ function validateGroupBody(body: unknown, method: string,): Record<string, unkno
 export class GroupsResource extends BaseResource {
 	/** Retrieves the list of DSS groups (Admin required). */
 	async list(): Promise<DssGroup[]> {
-		const raw = await this.client.get<unknown>("/public/api/admin/groups",);
+		const raw = await this.client.get("/public/api/admin/groups",);
 		return requireArrayResponse<DssGroup>(raw, "groups.list",);
 	}
 

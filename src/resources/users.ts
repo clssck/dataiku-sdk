@@ -91,7 +91,7 @@ export class UsersResource extends BaseResource {
 		const params = new URLSearchParams();
 		if (opts?.connected !== undefined) params.set("connected", String(opts.connected,),);
 		const query = params.toString();
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/admin/users/${query ? `?${query}` : ""}`,
 		);
 		return requireArrayResponse<DssUser>(raw, "users.list",);
@@ -147,7 +147,7 @@ export class UsersResource extends BaseResource {
 	 */
 	async resync(login: string,): Promise<FutureState> {
 		const enc = requireNonEmpty(login, "login",).trim();
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`/public/api/admin/users/${encodeURIComponent(enc,)}/actions/resync`,
 		);
 		return this.client.safeParse(FutureStateSchema, raw, "users.resync",);
@@ -166,7 +166,7 @@ export class UsersResource extends BaseResource {
 				"users.resyncMulti: logins must be a non-empty array of logins.",
 			);
 		}
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			"/public/api/admin/users/actions/resync-multi",
 			logins,
 		);
@@ -180,7 +180,7 @@ export class UsersResource extends BaseResource {
 	 * `hasResult` is false.
 	 */
 	async externalUsers(): Promise<FutureState> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			"/public/api/admin/users/actions/external-users",
 		);
 		return this.client.safeParse(FutureStateSchema, raw, "users.externalUsers",);
@@ -192,7 +192,7 @@ export class UsersResource extends BaseResource {
 	 * `client.futures` when `hasResult` is false.
 	 */
 	async externalGroups(): Promise<FutureState> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			"/public/api/admin/users/actions/external-groups",
 		);
 		return this.client.safeParse(FutureStateSchema, raw, "users.externalGroups",);
@@ -213,7 +213,7 @@ export class UsersResource extends BaseResource {
 		if (!Array.isArray(body.users,)) {
 			throw new ClientValidationError("users.provision: body.users must be an array.",);
 		}
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			"/public/api/admin/users/actions/provision",
 			body,
 		);
@@ -222,7 +222,7 @@ export class UsersResource extends BaseResource {
 
 	/** Gets the last activity timestamps for all users (Admin required). */
 	async activityAll(): Promise<UserActivity[]> {
-		const raw = await this.client.get<unknown>("/public/api/admin/users-activity",);
+		const raw = await this.client.get("/public/api/admin/users-activity",);
 		return requireArrayResponse<UserActivity>(raw, "users.activityAll",);
 	}
 

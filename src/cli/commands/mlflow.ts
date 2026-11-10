@@ -89,14 +89,14 @@ export function experimentsDatasetOptionsFromFlags(
 export const mlflowCommands: Record<string, CommandMeta> = withUsage("mlflow", {
 	"list-models": {
 		handler: (c, a, f,) =>
-			c.mlflowExtension.listModels(a[0]!, f["project-key"] as string | undefined,),
+			c.mlflowExtension.listModels(a[0], f["project-key"] as string | undefined,),
 		description: "List the models an MLflow experiment-tracking run logged ({runId, artifactPath}).",
 		examples: ["dss mlflow list-models RUN_ID",],
 	},
 	"set-inference-info": {
 		handler: async (c, a, f,) => {
 			await c.mlflowExtension.setRunInferenceInfo(
-				inferenceInfoFromFlags(a[0]!, f,),
+				inferenceInfoFromFlags(a[0], f,),
 				f["project-key"] as string | undefined,
 			);
 			return { updated: a[0], resource: "mlflow", };
@@ -110,7 +110,7 @@ export const mlflowCommands: Record<string, CommandMeta> = withUsage("mlflow", {
 	"deploy-run": {
 		handler: (c, a, f,) =>
 			c.mlflowExtension.deployRun(
-				deployRunOptionsFromFlags(a[0]!, a[1]!, f,),
+				deployRunOptionsFromFlags(a[0], a[1], f,),
 				f["project-key"] as string | undefined,
 			),
 		description:
@@ -122,7 +122,7 @@ export const mlflowCommands: Record<string, CommandMeta> = withUsage("mlflow", {
 	"create-experiments-dataset": {
 		handler: async (c, a, f,) => {
 			await c.mlflowExtension.createExperimentsDataset(
-				experimentsDatasetOptionsFromFlags(a[0]!, f,),
+				experimentsDatasetOptionsFromFlags(a[0], f,),
 				f["project-key"] as string | undefined,
 			);
 			return { created: a[0], resource: "mlflow", };

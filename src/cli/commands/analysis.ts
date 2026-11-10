@@ -73,7 +73,7 @@ export const analysisCommands: Record<string, CommandMeta> = withUsage("analysis
 				f,
 				"The analysis definition is required via --data, --data-file, or --stdin (dss analysis get, edited).",
 			);
-			await c.analyses.update(a[0]!, definition, f["project-key"] as string | undefined,);
+			await c.analyses.update(a[0], definition, f["project-key"] as string | undefined,);
 			return { updated: a[0], resource: "analysis", };
 		},
 		description:
@@ -83,7 +83,7 @@ export const analysisCommands: Record<string, CommandMeta> = withUsage("analysis
 	"list-ml-tasks": {
 		handler: (c, a, f,) => {
 			requireArgs(a, 1, commandUsage("analysis", "list-ml-tasks",),);
-			return c.analyses.listMlTasks(a[0]!, f["project-key"] as string | undefined,);
+			return c.analyses.listMlTasks(a[0], f["project-key"] as string | undefined,);
 		},
 		description: "List the ML tasks of one visual analysis (whole project: dss ml-task list).",
 		examples: ["dss analysis list-ml-tasks ANALYSIS_ID",],

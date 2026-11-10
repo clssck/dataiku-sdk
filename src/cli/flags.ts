@@ -9,7 +9,7 @@ import { unknownFlagError, unsupportedHelpFlag, UsageError, } from "./usage.js";
 export function rawPositionals(argv: string[],): string[] {
 	const positionals: string[] = [];
 	for (let index = 0; index < argv.length; index++) {
-		const arg = argv[index]!;
+		const arg = argv[index];
 		if (arg === "--") {
 			positionals.push(...argv.slice(index + 1,),);
 			break;
@@ -21,7 +21,7 @@ export function rawPositionals(argv: string[],): string[] {
 			continue;
 		}
 		if (arg.length === 2 && arg[0] === "-" && arg[1] !== "-") {
-			const long = SHORT_FLAGS[arg[1]!];
+			const long = SHORT_FLAGS[arg[1]];
 			if (long && VALUE_FLAGS.has(long,)) index++;
 			continue;
 		}
@@ -490,7 +490,7 @@ export function parseArgs(argv: string[],): ParsedArgs {
 				}
 			}
 		} else if (arg.length === 2 && arg[0] === "-" && arg[1] !== "-") {
-			const long = SHORT_FLAGS[arg[1]!];
+			const long = SHORT_FLAGS[arg[1]];
 			if (long) {
 				if (BOOLEAN_FLAGS.has(long,)) {
 					flags[long] = true;

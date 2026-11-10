@@ -27,7 +27,7 @@ export const metricsCommands: Record<string, CommandMeta> = withUsage("metrics",
 			if (data !== undefined && !Array.isArray(checks,)) {
 				throw new UsageError('--data must be {"checks": [...]}.', "validation_failed",);
 			}
-			return c.metrics.runDatasetChecks(a[0]!, {
+			return c.metrics.runDatasetChecks(a[0], {
 				projectKey: f["project-key"] as string | undefined,
 				partitions: f["partitions"] as string | undefined,
 				...(Array.isArray(checks,) ? { checks, } : {}),

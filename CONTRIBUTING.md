@@ -41,7 +41,7 @@ Before opening a pull request, all of these must be green:
 
 1. `bun run verify` — TypeScript is clean (no errors) and generated files are current
 2. `bun run format:check` — dprint formatting is applied
-3. `bun run lint` — oxlint reports no errors
+3. `bun run lint` — oxlint (type-aware, through the pinned `oxlint-tsgolint`) reports no errors and no warnings; warnings fail the script
 4. `bun run test` — the unit suite passes
 5. `bun run test:platform` — the packed artifact runs under Bun, preserves JSON errors, and installs the skill
 

@@ -192,7 +192,7 @@ export function trainedModelCommands(
 			handler: async (c, a, f,) => {
 				requireArgs(a, 1, commandUsage(resource, "download-documentation",),);
 				const out = requiredOutput(f,);
-				const res = await spec.downloadDocumentation(c, a[0]!, f["project-key"] as string | undefined,);
+				const res = await spec.downloadDocumentation(c, a[0], f["project-key"] as string | undefined,);
 				return writeExport(res, out, "Model documentation download",);
 			},
 			description:

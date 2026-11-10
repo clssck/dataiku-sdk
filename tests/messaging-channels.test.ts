@@ -80,8 +80,8 @@ describe("MessagingChannelsResource", () => {
 					"PUT /public/api/messaging-channels/my%2Fchannel/permissions",
 					"DELETE /public/api/messaging-channels/my%2Fchannel",
 				],);
-				expect(JSON.parse(seen[2]!.body,),).toEqual({ sender: "a@example.com", },);
-				expect(JSON.parse(seen[4]!.body,),).toEqual([{ group: "g", canUse: true, },],);
+				expect(JSON.parse(seen[2].body,),).toEqual({ sender: "a@example.com", },);
+				expect(JSON.parse(seen[4].body,),).toEqual([{ group: "g", canUse: true, },],);
 			},
 		);
 	});
@@ -126,18 +126,18 @@ describe("MessagingChannelsResource", () => {
 					},
 				);
 				expect(seen.length,).toBe(1,);
-				expect(seen[0]!.path,).toBe(
+				expect(seen[0].path,).toBe(
 					"/public/api/messaging-channels/smtp/actions/send?projectKey=PROJ&sendAsSingleMessage=true",
 				);
-				expect(seen[0]!.type,).toStartWith("multipart/form-data",);
-				expect(seen[0]!.body,).toMatch(
+				expect(seen[0].type,).toStartWith("multipart/form-data",);
+				expect(seen[0].body,).toMatch(
 					/name="message"; filename="send-payload\.json"\r\nContent-Type: application\/json/,
 				);
-				expect(seen[0]!.body,).toMatch(/name="attachments"; filename="a\.csv"/,);
-				expect(seen[0]!.body,).toMatch(/name="attachments"; filename="renamed\.txt"/,);
-				expect(seen[0]!.body,).toContain("x,y\n1,2\n",);
-				expect(seen[0]!.body,).toContain("hello",);
-				expect(seen[0]!.body,).toContain(JSON.stringify(mailMessagePayload({
+				expect(seen[0].body,).toMatch(/name="attachments"; filename="a\.csv"/,);
+				expect(seen[0].body,).toMatch(/name="attachments"; filename="renamed\.txt"/,);
+				expect(seen[0].body,).toContain("x,y\n1,2\n",);
+				expect(seen[0].body,).toContain("hello",);
+				expect(seen[0].body,).toContain(JSON.stringify(mailMessagePayload({
 					to: ["a@example.com",],
 					subject: "S",
 					body: "<b>B</b>",
@@ -166,7 +166,7 @@ describe("MessagingChannelsResource", () => {
 			);
 			await channels.send("c", { to: ["a@example.com",], subject: "s", body: "b", },);
 		},);
-		expect(seen[0]!.path,).toBe(
+		expect(seen[0].path,).toBe(
 			"/public/api/messaging-channels/c/actions/send?projectKey=DEFAULT&sendAsSingleMessage=false",
 		);
 	});

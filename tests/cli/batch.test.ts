@@ -31,7 +31,7 @@ describe("CLI batch command", () => {
 			steps: Array<{ runnable: boolean; }>;
 		};
 		expect(okReport.dryRun,).toBe(true,);
-		expect(okReport.steps[0]!.runnable,).toBe(true,);
+		expect(okReport.steps[0].runnable,).toBe(true,);
 
 		const bad = await dssFailure(["batch", "--data", '[["dataset","frobnicate"]]', "--dry-run",], {
 			env: hermetic,
@@ -39,7 +39,7 @@ describe("CLI batch command", () => {
 		expect(bad.code,).toBe(1,);
 		expect(bad.stderr,).toBe("",);
 		const badReport = JSON.parse(bad.stdout,) as { steps: Array<{ runnable: boolean; }>; };
-		expect(badReport.steps[0]!.runnable,).toBe(false,);
+		expect(badReport.steps[0].runnable,).toBe(false,);
 	});
 	it("preserves dotted command-registry projections in batch results", async () => {
 		const { stdout, stderr, } = await dss([
@@ -87,7 +87,7 @@ describe("CLI batch command", () => {
 		const rejectedReport = JSON.parse(rejected.stdout,) as {
 			steps: Array<{ runnable: boolean; }>;
 		};
-		expect(rejectedReport.steps[0]!.runnable,).toBe(false,);
+		expect(rejectedReport.steps[0].runnable,).toBe(false,);
 	});
 
 	it("plans cleanup and batch meta commands without reading ledgers or contacting DSS", async () => {
@@ -160,10 +160,10 @@ describe("CLI batch command", () => {
 			};
 			expect(report.ok,).toBe(false,);
 			expect(report.completed,).toBe(1,);
-			expect(report.steps[0]!.ok,).toBe(false,);
-			expect(report.steps[0]!.error?.code,).toBe("not_found",);
-			expect(report.steps[1]!.ok,).toBe(null,);
-			expect(report.steps[1]!.skipped,).toBe(true,);
+			expect(report.steps[0].ok,).toBe(false,);
+			expect(report.steps[0].error?.code,).toBe("not_found",);
+			expect(report.steps[1].ok,).toBe(null,);
+			expect(report.steps[1].skipped,).toBe(true,);
 		},);
 	});
 
@@ -188,9 +188,9 @@ describe("CLI batch command", () => {
 			const report = JSON.parse(failure.stdout,) as {
 				steps: Array<{ ok: boolean | null; result?: unknown; }>;
 			};
-			expect(report.steps[0]!.ok,).toBe(false,);
-			expect(report.steps[1]!.ok,).toBe(true,);
-			expect(report.steps[1]!.result,).toEqual([{ projectKey: "TEST", },],);
+			expect(report.steps[0].ok,).toBe(false,);
+			expect(report.steps[1].ok,).toBe(true,);
+			expect(report.steps[1].result,).toEqual([{ projectKey: "TEST", },],);
 		},);
 	});
 
@@ -283,8 +283,8 @@ describe("CLI batch command", () => {
 			steps: Array<{ ok: boolean; args: string[]; result: Record<string, unknown>; }>;
 		};
 		expect(report.ok,).toBe(true,);
-		expect(report.steps[0]!.ok,).toBe(true,);
-		expect(report.steps[0]!.result,).toMatchObject({
+		expect(report.steps[0].ok,).toBe(true,);
+		expect(report.steps[0].result,).toMatchObject({
 			plan: true,
 			action: "delete",
 			resource: "project",
@@ -368,7 +368,7 @@ describe("CLI batch command", () => {
 			expect(step.error?.code,).toBe("usage_error",);
 			expect(step.error?.error,).toContain("--api-key",);
 		}
-		expect(report.steps[0]!.args,).toEqual([
+		expect(report.steps[0].args,).toEqual([
 			"dataset",
 			"update",
 			"orders",
@@ -377,9 +377,9 @@ describe("CLI batch command", () => {
 			"--api-key",
 			"***",
 		],);
-		expect(report.steps[1]!.args,).toEqual(["dataset", "get", "orders", "--api-key=***",],);
-		expect(report.steps[2]!.args,).toEqual(["dataset", "get", "orders", "--api-key", "***",],);
-		expect(report.steps[3]!.args,).toEqual(["dataset", "get", "orders", "--api-key", "***",],);
+		expect(report.steps[1].args,).toEqual(["dataset", "get", "orders", "--api-key=***",],);
+		expect(report.steps[2].args,).toEqual(["dataset", "get", "orders", "--api-key", "***",],);
+		expect(report.steps[3].args,).toEqual(["dataset", "get", "orders", "--api-key", "***",],);
 	});
 	it("redacts Project Git repository values from batch output", async () => {
 		const secret = "https://user:SUPERSECRET_REMOTE@git.example.com/repo.git";
@@ -408,8 +408,8 @@ describe("CLI batch command", () => {
 		},);
 		expect(stdout,).not.toContain("SUPERSECRET_REMOTE",);
 		const report = JSON.parse(stdout,) as { steps: Array<{ args: string[]; }>; };
-		expect(report.steps[0]!.args,).toContain("***",);
-		expect(report.steps[1]!.args,).toContain("--repository=***",);
+		expect(report.steps[0].args,).toContain("***",);
+		expect(report.steps[1].args,).toContain("--repository=***",);
 	});
 
 	it("redacts --api-key values from batch --plan output and rejects them inside live steps", async () => {
@@ -457,7 +457,7 @@ describe("CLI batch command", () => {
 				steps: Array<{ ok: boolean; error?: { code: string; }; }>;
 			};
 			expect(liveReport.ok,).toBe(false,);
-			expect(liveReport.steps[0]!.error?.code,).toBe("usage_error",);
+			expect(liveReport.steps[0].error?.code,).toBe("usage_error",);
 
 			for (
 				const step of [["project-folder", "delete", "",], [
@@ -475,8 +475,8 @@ describe("CLI batch command", () => {
 				const dryReport = JSON.parse(dry.stdout,) as {
 					steps: Array<{ runnable: boolean; error?: { code: string; }; }>;
 				};
-				expect(dryReport.steps[0]!.runnable,).toBe(false,);
-				expect(dryReport.steps[0]!.error?.code,).toBe("usage_error",);
+				expect(dryReport.steps[0].runnable,).toBe(false,);
+				expect(dryReport.steps[0].error?.code,).toBe("usage_error",);
 			}
 		},);
 		expect(requestCount,).toBe(0,);
@@ -519,8 +519,8 @@ describe("CLI batch command", () => {
 					steps: Array<{ runnable: boolean; error?: { code: string; }; }>;
 				};
 				expect(report.steps.map((step,) => step.runnable),).toEqual([true, false, false,],);
-				expect(report.steps[1]!.error?.code,).toBe("usage_error",);
-				expect(report.steps[2]!.error?.code,).toBe("usage_error",);
+				expect(report.steps[1].error?.code,).toBe("usage_error",);
+				expect(report.steps[2].error?.code,).toBe("usage_error",);
 			},);
 		},);
 		expect(requestCount,).toBe(0,);
@@ -557,18 +557,18 @@ describe("CLI batch command", () => {
 		for (const secret of secrets) expect(dryOutput,).not.toContain(secret,);
 		// The unparseable --data is unrunnable, but its value is echoed unchanged.
 		expect(dry.steps.map((step,) => step.runnable),).toEqual([true, true, true, true, false,],);
-		expect(dry.steps[0]!.args.join(" ",),).toContain('"login":"probe"',);
-		expect(dry.steps[1]!.args.join(" ",),).toContain('"login":"probe"',);
-		expect(dry.steps[1]!.args[2],).toStartWith("--data=",);
-		expect(dry.steps[2]!.args.join(" ",),).toContain("db.example.com",);
-		expect(dry.steps[3]!.args,).toEqual([
+		expect(dry.steps[0].args.join(" ",),).toContain('"login":"probe"',);
+		expect(dry.steps[1].args.join(" ",),).toContain('"login":"probe"',);
+		expect(dry.steps[1].args[2],).toStartWith("--data=",);
+		expect(dry.steps[2].args.join(" ",),).toContain("db.example.com",);
+		expect(dry.steps[3].args,).toEqual([
 			"dataset",
 			"update",
 			"orders",
 			"--data",
 			'{"description":"x"}',
 		],);
-		expect(dry.steps[4]!.args[4],).toBe("not json",);
+		expect(dry.steps[4].args[4],).toBe("not json",);
 
 		const plan = (await dss(["batch", "--plan", "--data", JSON.stringify(steps,),], {
 			env: hermetic,
@@ -606,8 +606,8 @@ describe("CLI batch command", () => {
 			const report = JSON.parse(failure.stdout,) as {
 				steps: Array<{ error?: { projectKey?: string; }; }>;
 			};
-			expect(report.steps[0]!.error?.projectKey,).toBe("CHILD",);
-			expect(report.steps[1]!.error?.projectKey,).toBe("PARENT",);
+			expect(report.steps[0].error?.projectKey,).toBe("CHILD",);
+			expect(report.steps[1].error?.projectKey,).toBe("PARENT",);
 		},);
 	});
 
@@ -621,12 +621,12 @@ describe("CLI batch command", () => {
 				(await dss(["batch", "--data", steps,], { env: hermetic, },)).stdout,
 			) as { ok: boolean; steps: Array<{ ok: boolean; result?: { filePath?: string; }; }>; };
 			expect(live.ok,).toBe(true,);
-			expect(live.steps[0]!.result?.filePath,).toBe(archive,);
+			expect(live.steps[0].result?.filePath,).toBe(archive,);
 
 			const dry = JSON.parse(
 				(await dss(["batch", "--dry-run", "--data", steps,], { env: hermetic, },)).stdout,
 			) as { steps: Array<{ runnable: boolean; }>; };
-			expect(dry.steps[0]!.runnable,).toBe(true,);
+			expect(dry.steps[0].runnable,).toBe(true,);
 
 			const plan = JSON.parse(
 				(await dss(["batch", "--plan", "--data", steps,], { env: hermetic, },)).stdout,
@@ -785,7 +785,7 @@ describe("CLI batch cleanup ledger parity", () => {
 				);
 				const report = JSON.parse(stdout,) as { ok: boolean; steps: Array<{ ok: boolean; }>; };
 				expect(report.ok,).toBe(true,);
-				expect(report.steps[0]!.ok,).toBe(true,);
+				expect(report.steps[0].ok,).toBe(true,);
 			},);
 			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as Record<string, unknown>;
 			expect(entry,).toMatchObject({
@@ -827,8 +827,8 @@ describe("CLI batch cleanup ledger parity", () => {
 						steps: Array<{ ok: boolean | null; error?: { exitCode: number; }; }>;
 					};
 					expect(report.ok,).toBe(false,);
-					expect(report.steps[0]!.ok,).toBe(false,);
-					expect(report.steps[0]!.error?.exitCode,).toBe(4,);
+					expect(report.steps[0].ok,).toBe(false,);
+					expect(report.steps[0].error?.exitCode,).toBe(4,);
 				},
 			);
 			const entry = JSON.parse(readFileSync(ledger, "utf-8",),) as Record<string, unknown>;
@@ -884,7 +884,7 @@ describe("CLI batch cleanup ledger parity", () => {
 				);
 				const report = JSON.parse(stdout,) as { ok: boolean; steps: Array<{ ok: boolean; }>; };
 				expect(report.ok,).toBe(true,);
-				expect(report.steps[0]!.ok,).toBe(true,);
+				expect(report.steps[0].ok,).toBe(true,);
 			},);
 			expect(readFileExists(ledger,),).toBe(false,);
 		} finally {

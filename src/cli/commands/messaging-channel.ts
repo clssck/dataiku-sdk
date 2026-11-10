@@ -56,7 +56,7 @@ function channelEndpoint(channelId: string,): string {
 
 function channelIdArg(args: string[], usage: string,): string {
 	requireArgs(args, 1, usage,);
-	const channelId = args[0]!.trim();
+	const channelId = args[0].trim();
 	if (channelId.length === 0) {
 		throw new UsageError(
 			`channel id must be a non-empty string.\nUsage: ${usage}`,

@@ -424,7 +424,7 @@ function jobBuildPayload(
 	}
 	const payload: Record<string, unknown> = {
 		outputs: [output,],
-		type: (flags["build-mode"] as string | undefined) ?? "NON_RECURSIVE_FORCED_BUILD",
+		type: (flags["build-mode"]) ?? "NON_RECURSIVE_FORCED_BUILD",
 	};
 	if (flags["auto-update-schema"] === true && targetType === "DATASET") {
 		payload.autoUpdateSchemaBeforeEachRecipeRun = true;
@@ -722,12 +722,12 @@ export function commandPlanShape(
 					args[0],
 					`/actions/compute-rules${
 						querySuffix({
-							partition: (flags["partition"] as string | undefined) ?? "NP",
-							ruleId: flags["rule-id"] as string | undefined,
+							partition: (flags["partition"]) ?? "NP",
+							ruleId: flags["rule-id"],
 						},)
 					}`,
 				),
-				identifiers: { dataset: args[0], ruleId: flags["rule-id"] as string | undefined, },
+				identifiers: { dataset: args[0], ruleId: flags["rule-id"], },
 				wait: flags["wait"] === true,
 			};
 		case "data-quality.delete-history": {
@@ -736,7 +736,7 @@ export function commandPlanShape(
 				method: "DELETE",
 				endpoint: dataQualityEndpoint(
 					projectKey!,
-					args[0]!,
+					args[0],
 					`/history/${encodeURIComponent(partition,)}`,
 				),
 				identifiers: { dataset: args[0], partition, },
@@ -773,15 +773,15 @@ export function commandPlanShape(
 		case "workspace.remove-object":
 			return {
 				method: "DELETE",
-				endpoint: `/public/api/workspaces/${encodeURIComponent(args[0]!,)}/objects/${
-					encodeURIComponent(args[1]!,)
+				endpoint: `/public/api/workspaces/${encodeURIComponent(args[0],)}/objects/${
+					encodeURIComponent(args[1],)
 				}`,
 				identifiers: { workspaceKey: args[0], workspaceObjectId: args[1], },
 			};
 		case "discussion.update": {
 			const endpoint = projectEndpoint(
-				`/discussions/${encodeURIComponent(args[0]!,)}/${encodeURIComponent(args[1]!,)}/${
-					encodeURIComponent(args[2]!,)
+				`/discussions/${encodeURIComponent(args[0],)}/${encodeURIComponent(args[1],)}/${
+					encodeURIComponent(args[2],)
 				}`,
 			);
 			const body = jsonInput(flags,);
@@ -856,10 +856,10 @@ export function commandPlanShape(
 				method: "POST",
 				endpoint: "/public/api/api/2.0/mlflow/extension/set-run-inference-info",
 				identifiers: { runId: id, trackingProjectKey: requiredProjectKey(), },
-				payload: inferenceInfoBody(inferenceInfoFromFlags(id!, flags,),),
+				payload: inferenceInfoBody(inferenceInfoFromFlags(id, flags,),),
 			};
 		case "mlflow.deploy-run": {
-			const options = deployRunOptionsFromFlags(id!, args[1]!, flags,);
+			const options = deployRunOptionsFromFlags(id, args[1], flags,);
 			const query = deployRunQuery(
 				{ ...options, versionId: options.versionId ?? "<timestamp>", },
 				requiredProjectKey(),
@@ -881,7 +881,7 @@ export function commandPlanShape(
 				method: "POST",
 				endpoint: "/public/api/api/2.0/mlflow/extension/create-project-experiments-dataset",
 				identifiers: { dataset: id, trackingProjectKey: requiredProjectKey(), },
-				payload: experimentsDatasetBody(experimentsDatasetOptionsFromFlags(id!, flags,),),
+				payload: experimentsDatasetBody(experimentsDatasetOptionsFromFlags(id, flags,),),
 			};
 		case "mlflow.garbage-collect":
 			return {
@@ -904,7 +904,7 @@ export function commandPlanShape(
 				identifiers: { dataset: args[0], },
 				payload: schemaPropagationBody(
 					projectKey!,
-					args[0]!,
+					args[0],
 					schemaPropagationOptionsFromFlags(flags,),
 				),
 				wait: flags["wait"] === true,
@@ -1659,7 +1659,7 @@ export function commandPlanShape(
 			return {
 				method: "DELETE",
 				endpoint: `/public/api/project-deployer/projects/${encodeURIComponent(id,)}/bundles/${
-					encodeURIComponent(args[1]!,)
+					encodeURIComponent(args[1],)
 				}`,
 				identifiers: { publishedProjectKey: id, bundleId: args[1], },
 			};
@@ -1667,7 +1667,7 @@ export function commandPlanShape(
 			const archivePath = flags["archive-path"];
 			const query = querySuffix({
 				archivePath: typeof archivePath === "string" ? archivePath : undefined,
-				projectFolderId: flags["project-folder"] as string | undefined,
+				projectFolderId: flags["project-folder"],
 			},);
 			const file = flags["file"];
 			return typeof file === "string"
@@ -1919,7 +1919,7 @@ export function commandPlanShape(
 			const payload = requiredPlanJsonInput(flags, entry.usage,);
 			const cid = id
 				?? (typeof payload["dataCollectionId"] === "string"
-					? payload["dataCollectionId"] as string
+					? payload["dataCollectionId"]
 					: undefined);
 			if (!cid) throw new UsageError(`Usage: ${entry.usage}`,);
 			const reference = { ...payload, };
@@ -2189,7 +2189,7 @@ export function commandPlanShape(
 			return {
 				method: "POST",
 				endpoint: projectEndpoint(
-					`/models/lab/${encodeURIComponent(id!,)}/${encodeURIComponent(args[1]!,)}/guess${
+					`/models/lab/${encodeURIComponent(id,)}/${encodeURIComponent(args[1],)}/guess${
 						query.size > 0 ? `?${query}` : ""
 					}`,
 				),
@@ -2200,8 +2200,8 @@ export function commandPlanShape(
 			return {
 				method: "POST",
 				endpoint: projectEndpoint(
-					`/models/lab/${encodeURIComponent(id!,)}/${
-						encodeURIComponent(args[1]!,)
+					`/models/lab/${encodeURIComponent(id,)}/${
+						encodeURIComponent(args[1],)
 					}/reguess-with-forecasting-params`,
 				),
 				identifiers: { analysisId: id, mlTaskId: args[1], },
@@ -2220,7 +2220,7 @@ export function commandPlanShape(
 		case "analysis.update":
 			return {
 				method: "PUT",
-				endpoint: projectEndpoint(`/lab/${encodeURIComponent(id!,)}/`,),
+				endpoint: projectEndpoint(`/lab/${encodeURIComponent(id,)}/`,),
 				identifiers: { analysisId: id, },
 				payload: requiredPlanJsonInput(flags, entry.usage,),
 			};
@@ -2451,7 +2451,7 @@ export function commandPlanShape(
 			};
 			return {
 				method: "POST",
-				endpoint: pluginActionEndpoint(id, actionMap[`${resource}.${action}`]!,),
+				endpoint: pluginActionEndpoint(id, actionMap[`${resource}.${action}`],),
 				identifiers: { pluginId: id, },
 			};
 		}
@@ -3276,7 +3276,7 @@ export function commandPlanShape(
 					method: "POST",
 					endpoint: `${packageEndpoint}/publish${
 						querySuffix({
-							publishedServiceId: flags["published-service-id"] as string | undefined,
+							publishedServiceId: flags["published-service-id"],
 						},)
 					}`,
 					identifiers: { serviceId, packageId, },
@@ -3285,7 +3285,7 @@ export function commandPlanShape(
 			return {
 				method: "POST",
 				endpoint: packageEndpoint + querySuffix({
-					releaseNotes: flags["release-notes"] as string | undefined,
+					releaseNotes: flags["release-notes"],
 				},),
 				identifiers: { serviceId, packageId, },
 			};
@@ -3299,7 +3299,7 @@ export function commandPlanShape(
 				method: "PUT",
 				endpoint: `${projectEndpoint(`/bundles/exported/${encodeURIComponent(id,)}`,)}${
 					querySuffix({
-						releaseNotes: flags["release-notes"] as string | undefined,
+						releaseNotes: flags["release-notes"],
 						evaluateProjectStandardsChecks,
 					},)
 				}`,
@@ -3311,7 +3311,7 @@ export function commandPlanShape(
 				method: "POST",
 				endpoint: `${projectEndpoint(`/bundles/${encodeURIComponent(id,)}/publish`,)}${
 					querySuffix({
-						publishedProjectKey: flags["published-project-key"] as string | undefined,
+						publishedProjectKey: flags["published-project-key"],
 					},)
 				}`,
 				identifiers: { bundleId: id, },
@@ -3528,7 +3528,7 @@ export function commandPlanShape(
 			return {
 				method: "POST",
 				endpoint: `${codeEnvEndpoint("/images",)}${
-					querySuffix({ envVersion: flags["env-version"] as string | undefined, wait, },)
+					querySuffix({ envVersion: flags["env-version"], wait, },)
 				}`,
 				identifiers: { lang: codeEnvLang(args[0], entry.usage,), name: args[1], },
 				wait,
@@ -4043,7 +4043,7 @@ export function commandPlanShape(
 					projectKey,
 					`/actions/pullRebase${
 						querySuffix({
-							branchName: flags["branch"] as string | undefined,
+							branchName: flags["branch"],
 						},)
 					}`,
 				),
@@ -4058,7 +4058,7 @@ export function commandPlanShape(
 					projectKey,
 					`/actions/push${
 						querySuffix({
-							branchName: flags["branch"] as string | undefined,
+							branchName: flags["branch"],
 						},)
 					}`,
 				),

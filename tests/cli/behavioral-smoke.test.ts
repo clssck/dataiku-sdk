@@ -1529,7 +1529,9 @@ describe("CLI command behavioral smoke coverage", () => {
 				&& url.pathname === "/public/api/projects/TEST/datasets/orders/data-quality/rules/rule-1"
 			) {
 				updateRuleBody = JSON.parse(await readBody(req,),) as Record<string, unknown>;
-				ruleName = String(updateRuleBody.displayName ?? ruleName,);
+				ruleName = typeof updateRuleBody.displayName === "string"
+					? updateRuleBody.displayName
+					: ruleName;
 				res.statusCode = 204;
 				res.end();
 				return;

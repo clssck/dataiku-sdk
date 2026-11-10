@@ -155,7 +155,7 @@ try {
 			"packaged dataset list output is invalid",
 		);
 	} finally {
-		server.stop(true,);
+		await server.stop(true,);
 	}
 
 	const failure = Bun.spawnSync([process.execPath, "--no-env-file", cli, "not-a-resource",], {

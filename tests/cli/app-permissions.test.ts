@@ -503,7 +503,7 @@ describe("app permissions diff", () => {
 				const saved = JSON.parse(readFileSync(out, "utf-8",),) as {
 					permissions: { projectPermissions: Array<{ mode: string; }>; };
 				};
-				saved.permissions.projectPermissions[0]!.mode = "EVIL";
+				saved.permissions.projectPermissions[0].mode = "EVIL";
 				writeFileSync(out, `${JSON.stringify(saved, null, 2,)}\n`,);
 				const failure = await dssFailure(
 					["app", "permissions-diff", "--file", out,],

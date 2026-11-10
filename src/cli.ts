@@ -155,7 +155,7 @@ async function runCleanup(flags: Record<string, string | boolean>,): Promise<{
 		);
 	}
 	const ordered: CleanupLedgerEntry[] = [];
-	for (let index = entries.length - 1; index >= 0; index--) ordered.push(entries[index]!,);
+	for (let index = entries.length - 1; index >= 0; index--) ordered.push(entries[index],);
 	const steps = ordered.map((entry, index,) => ({
 		index,
 		resource: entry.resource,
@@ -343,7 +343,7 @@ function parseBatchSteps(payload: unknown,): string[][] {
 				contract.BATCH_HINT,
 			);
 		}
-		return step as string[];
+		return step;
 	},);
 }
 
@@ -640,7 +640,7 @@ function batchStepNeedsClient(argv: string[],): boolean {
 		if (META_COMMAND_RESOURCES[resource] === true) return false;
 		const action = positional[1];
 		const localHandler = Object.hasOwn(commands, resource,) && action !== undefined
-			? commands[resource]![action]?.localHandler
+			? commands[resource][action]?.localHandler
 			: undefined;
 		return localHandler === undefined;
 	} catch {
@@ -750,9 +750,9 @@ function validateBatchStepOutputFlag(argv: string[], index: number,): void {
 
 function validateBatchSteps(steps: string[][],): void {
 	for (let index = 0; index < steps.length; index++) {
-		validateBatchStepConnectionFlags(steps[index]!, index,);
-		validateBatchStepOutputFlag(steps[index]!, index,);
-		validateBatchStepMode(steps[index]!, index,);
+		validateBatchStepConnectionFlags(steps[index], index,);
+		validateBatchStepOutputFlag(steps[index], index,);
+		validateBatchStepMode(steps[index], index,);
 	}
 }
 
@@ -925,7 +925,7 @@ async function runMetaCommand(
 		}
 		case "auth":
 			if (plan) return { action, result: authLoginPlan(flags,), exitCode: 0, };
-			return { action, result: await contract.AUTH_ACTIONS[action]!.handler(flags,), exitCode: 0, };
+			return { action, result: await contract.AUTH_ACTIONS[action].handler(flags,), exitCode: 0, };
 		case "install-skill":
 			return { action, result: await runInstallSkill(flags,), exitCode: 0, };
 		case "agent":
@@ -1014,7 +1014,7 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 	const unknownNames = Object.keys(unknownSelectors,);
 	if (unknownNames.length > 0) {
 		if (knownSelectors.length === 0 && selectors.length > 0) {
-			const { error, suggestions, } = unknownSelectors[unknownNames[0]!]!;
+			const { error, suggestions, } = unknownSelectors[unknownNames[0]];
 			// The shared error suggests `dss resource action` commands; here the fix is a selector.
 			const hint = suggestions.length === 0
 				? COMMANDS_RUN_HINT
@@ -1032,8 +1032,8 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 			fields: unknownNames,
 			suggestions: Object.fromEntries(
 				unknownNames.flatMap((name,) =>
-					unknownSelectors[name]!.suggestions.length > 0
-						? [[name, unknownSelectors[name]!.suggestions,],]
+					unknownSelectors[name].suggestions.length > 0
+						? [[name, unknownSelectors[name].suggestions,],]
 						: []
 				),
 			),
@@ -1065,14 +1065,14 @@ async function commandsRunResult(flags: Record<string, string | boolean>,): Prom
 			const [selectedResource, selectedAction, ...path] = selector.split(".",);
 			if (path.length > 0) continue;
 			selectedRegistry[selector] = contract.compactCommandEntry(
-				registry[selectedResource!]![selectedAction!]!,
+				registry[selectedResource][selectedAction],
 			);
 		}
 	}
 	for (const resource of knownSelectors) {
 		if (fullSelectors.includes(resource,)) continue;
 		selectedRegistry[resource] = Object.fromEntries(
-			Object.entries(registry[resource]!,).map(([action, entry,],) => [
+			Object.entries(registry[resource],).map(([action, entry,],) => [
 				action,
 				{ usage: entry.usage, description: entry.description, sideEffect: entry.sideEffect, },
 			]),
@@ -1373,7 +1373,7 @@ async function runBatch(flags: Record<string, string | boolean>,): Promise<{
 	let firstFailureExit: number | undefined;
 
 	for (let index = 0; index < steps.length; index++) {
-		const argv = steps[index]!;
+		const argv = steps[index];
 		const context = batchStepCommandContext(argv,);
 		let resource = context.resource;
 		let action = context.action;
@@ -1968,7 +1968,7 @@ async function main(): Promise<void> {
 
 	if (positional.length === 0) throw noCommandError();
 
-	const resource = positional[0]!;
+	const resource = positional[0];
 	Object.assign(currentCommandContext, {
 		resource,
 		action: positional[1],
@@ -1987,7 +1987,7 @@ async function main(): Promise<void> {
 
 	// Resource and action recovery require only this resource's definitions.
 	if (!RESOURCE_NAMES.includes(resource,)) throw unknownResourceError(resource, positional[1],);
-	const resourceActions = commands[resource]!;
+	const resourceActions = commands[resource];
 	if (positional.length === 1) {
 		throw missingActionError(
 			resource,
@@ -1996,7 +1996,7 @@ async function main(): Promise<void> {
 		);
 	}
 
-	const action = positional[1]!;
+	const action = positional[1];
 	currentCommandContext.action = action;
 	const actionMeta = resourceActions[action];
 	if (!actionMeta) throw unknownActionError(resource, action, Object.keys(resourceActions,),);

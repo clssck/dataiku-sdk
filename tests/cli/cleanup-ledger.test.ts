@@ -482,9 +482,9 @@ describe("--record-cleanup registry coherence", () => {
 			const entry = cleanupLedgerEntry(
 				resource,
 				action,
-				sample!.args,
-				sample!.flags,
-				sample!.result,
+				sample.args,
+				sample.flags,
+				sample.result,
 				"AMBIENT",
 			);
 			expect(entry, `cleanup entry for ${key}`,).toBeDefined();

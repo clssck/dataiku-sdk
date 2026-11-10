@@ -11,7 +11,6 @@ import {
 	type ServerResponse,
 	withCliServer,
 } from "./cli/_harness.js";
-import type { LiveCaseId, } from "./live-cases.js";
 import {
 	assertLiveCommandScope,
 	initializeLiveManifest,
@@ -97,7 +96,7 @@ describe("live sandbox ownership", () => {
 		const queries: unknown[] = [];
 		await withCliServer(async (req, res,) => {
 			if (req.url?.startsWith("/public/api/projects/",)) {
-				sendJson(res, details(req.url.match(/\/projects\/([^/]+)/,)![1]!, 1,),);
+				sendJson(res, details(req.url.match(/\/projects\/([^/]+)/,)![1], 1,),);
 				return;
 			}
 			if (req.method === "POST" && req.url === "/public/api/sql/queries/") {
@@ -168,7 +167,7 @@ describe("live sandbox ownership", () => {
 						"delete",
 						ctx.projectKey,
 						"--expect-project-incarnation",
-						ctx.manifest.projects[0]!.incarnation!,
+						ctx.manifest.projects[0].incarnation!,
 						"--plan",
 					],
 					ctx.manifest,
@@ -210,7 +209,7 @@ describe("live sandbox ownership", () => {
 				await stopLiveCommands();
 				expect(await result,).toBe(true,);
 				const manifest = await loadLiveManifest(ctx.manifestPath,);
-				expect(manifest.commands[0]!.exitCode,).not.toBe(0,);
+				expect(manifest.commands[0].exitCode,).not.toBe(0,);
 				expect(JSON.stringify(manifest,),).not.toContain(ctx.credentials.apiKey,);
 			},);
 		},);
@@ -266,7 +265,7 @@ describe("live sandbox ownership", () => {
 		const methods: string[] = [];
 		await withCliServer((req, res,) => {
 			methods.push(req.method!,);
-			const key = decodeURIComponent(req.url!.split("/",)[4]!,);
+			const key = decodeURIComponent(req.url!.split("/",)[4],);
 			sendJson(res, details(key, 2,),);
 		}, async url => {
 			await fixture(url, async ctx => {
@@ -280,7 +279,7 @@ describe("live sandbox ownership", () => {
 		const methods: string[] = [];
 		await withCliServer((req, res,) => {
 			methods.push(req.method!,);
-			const key = decodeURIComponent(req.url!.split("/",)[4]!,);
+			const key = decodeURIComponent(req.url!.split("/",)[4],);
 			sendJson(res, details(key, 2,),);
 		}, async url => {
 			await fixture(url, async ctx => {
@@ -291,8 +290,8 @@ describe("live sandbox ownership", () => {
 					},)
 				).toThrow();
 				await expect(ctx.cleanup(),).rejects.toThrow();
-				ctx.manifest.projects[0]!.state = "pending";
-				delete ctx.manifest.projects[0]!.incarnation;
+				ctx.manifest.projects[0].state = "pending";
+				delete ctx.manifest.projects[0].incarnation;
 				await expect(ctx.cleanup(),).rejects.toThrow();
 				expect(methods,).toEqual(["GET", "GET",],);
 				expect(ctx.manifest.cleanup.status,).toBe("failed",);
@@ -303,7 +302,7 @@ describe("live sandbox ownership", () => {
 		let present = true;
 		let deletes = 0;
 		await withCliServer((req, res,) => {
-			const key = decodeURIComponent(req.url!.split("/",)[4]!.split("?",)[0]!,);
+			const key = decodeURIComponent(req.url!.split("/",)[4].split("?",)[0],);
 			if (req.method === "DELETE") {
 				present = false;
 				deletes++;
@@ -321,7 +320,7 @@ describe("live sandbox ownership", () => {
 				await resumed.cleanup();
 				expect(present,).toBe(false,);
 				expect(deletes,).toBe(1,);
-				expect((await loadLiveManifest(ctx.manifestPath,)).projects[0]!.state,).toBe("deleted",);
+				expect((await loadLiveManifest(ctx.manifestPath,)).projects[0].state,).toBe("deleted",);
 			},);
 		},);
 	});
@@ -341,7 +340,7 @@ describe("live sandbox ownership", () => {
 					() => selected.deleteProject(selected.projectKey,),
 				);
 				expect(methods,).toEqual([],);
-				expect(selected.manifest.projects[0]!.state,).toBe("bound",);
+				expect(selected.manifest.projects[0].state,).toBe("bound",);
 			},);
 		},);
 	});
@@ -374,7 +373,7 @@ describe("live sandbox ownership", () => {
 					.rejects.toThrow();
 				await expect(ctx.deleteGlobal("group", "SDK_LIVE_X_GROUP_GROUP_0",),).rejects.toThrow();
 				expect(updates,).toEqual([],);
-				expect(ctx.manifest.globals[0]!.state,).toBe("bound",);
+				expect(ctx.manifest.globals[0].state,).toBe("bound",);
 			},);
 		},);
 	});
@@ -405,7 +404,7 @@ describe("live sandbox ownership", () => {
 						],
 					),
 				).rejects.toThrow();
-				expect(ctx.manifest.globals[0]!.state,).toBe("unconfirmed",);
+				expect(ctx.manifest.globals[0].state,).toBe("unconfirmed",);
 			},);
 		},);
 	});
@@ -427,10 +426,10 @@ describe("live sandbox ownership", () => {
 						JSON.stringify({ name, description: `x ${ctx.markerFor("group", name,)}`, },),
 					],),
 				).rejects.toThrow();
-				expect(ctx.manifest.globals[0]!.state,).toBe("conflict",);
+				expect(ctx.manifest.globals[0].state,).toBe("conflict",);
 				// Cleanup never deletes a conflict entry.
 				await expect(ctx.cleanup(),).rejects.toThrow();
-				expect(ctx.manifest.globals[0]!.state,).toBe("conflict",);
+				expect(ctx.manifest.globals[0].state,).toBe("conflict",);
 				expect(ctx.manifest.cleanup.errors.join(" ",),).toContain("conflicts with a pre-existing",);
 			},);
 		},);
@@ -619,9 +618,9 @@ describe("live sandbox ownership", () => {
 				// No plugin.json write was ever issued; the entry is never adopted
 				// into a deletable state despite the ledger recording it.
 				expect(requests.filter(r => r.includes("plugin.json",)),).toEqual([],);
-				expect(ctx.manifest.globals[0]!.state,).toBe("unconfirmed",);
+				expect(ctx.manifest.globals[0].state,).toBe("unconfirmed",);
 				await expect(
-					ctx.deleteGlobal("plugin", ctx.manifest.globals[0]!.name,),
+					ctx.deleteGlobal("plugin", ctx.manifest.globals[0].name,),
 				).rejects.toThrow();
 			},);
 		},);
@@ -637,7 +636,7 @@ describe("live sandbox ownership", () => {
 						(name,) => JSON.stringify({ id: name, meta: { description: "no marker", }, },),
 					),
 				).rejects.toThrow(/must embed the lab marker/,);
-				expect(ctx.manifest.globals[0]!.state,).toBe("unconfirmed",);
+				expect(ctx.manifest.globals[0].state,).toBe("unconfirmed",);
 			},);
 		},);
 	});
@@ -652,7 +651,7 @@ describe("live sandbox ownership", () => {
 				created = true;
 				// The create URL carries the reserved env name; the receipt
 				// echoes it (the tightened verifier requires the EXACT name).
-				requestedName = decodeURIComponent(req.url!.split("/",)[6]!.split("?",)[0]!,);
+				requestedName = decodeURIComponent(req.url!.split("/",)[6].split("?",)[0],);
 				sendJson(res, { envName: requestedName, envLang: "PYTHON", },);
 				return;
 			}
@@ -720,7 +719,7 @@ describe("live sandbox ownership", () => {
 		await withCliServer((req, res,) => {
 			if (req.method === "GET" && req.url?.startsWith("/public/api/admin/code-envs/",)) {
 				// The generated env exists: the exact definition answers 200.
-				const name = decodeURIComponent(req.url.split("/",)[6]!.split("?",)[0]!,);
+				const name = decodeURIComponent(req.url.split("/",)[6].split("?",)[0],);
 				sendJson(res, {
 					envName: name,
 					envLang: "PYTHON",
@@ -762,7 +761,7 @@ describe("live sandbox ownership", () => {
 					return;
 				}
 				// Bind readback: exact generated identity + plugin deployment mode.
-				const name = decodeURIComponent(req.url.split("/",)[6]!.split("?",)[0]!,);
+				const name = decodeURIComponent(req.url.split("/",)[6].split("?",)[0],);
 				sendJson(res, {
 					envName: name,
 					envLang: "PYTHON",
@@ -821,7 +820,7 @@ describe("live sandbox ownership", () => {
 			await fixture(url, async ctx => {
 				const name = await ctx.reserveGlobal("code-env", "env",);
 				await expect(ctx.bindGlobal("code-env", name, `PYTHON/${name}`,),).rejects.toThrow();
-				expect(ctx.manifest.globals[0]!.state,).toBe("unconfirmed",);
+				expect(ctx.manifest.globals[0].state,).toBe("unconfirmed",);
 			},);
 		},);
 	});
@@ -836,7 +835,7 @@ describe("live sandbox ownership", () => {
 				probed += 1;
 				// DSS quotes the REQUESTED id in the absence message; the fixture
 				// must echo the exact requested name, not a hardcoded one.
-				requestedName = decodeURIComponent(req.url!.split("/",)[5]!.split("?",)[0]!,);
+				requestedName = decodeURIComponent(req.url!.split("/",)[5].split("?",)[0],);
 				sendJson(res, {
 					errorType: "BadRequest",
 					status: 400,
@@ -852,7 +851,7 @@ describe("live sandbox ownership", () => {
 				const name = await ctx.reserveGlobal("connection", "connection",);
 				expect(name,).toBe(requestedName,);
 				expect(probed,).toBeGreaterThanOrEqual(1,);
-				expect(ctx.manifest.globals[0]!.state,).toBe("pending",);
+				expect(ctx.manifest.globals[0].state,).toBe("pending",);
 			},);
 		},);
 	});
@@ -982,7 +981,7 @@ describe("live sandbox ownership", () => {
 					),
 				).rejects.toThrow();
 				expect(installs,).toEqual([],);
-				expect(ctx.manifest.globals[0]!.state,).toBe("pending",);
+				expect(ctx.manifest.globals[0].state,).toBe("pending",);
 			},);
 		},);
 	});
@@ -1043,9 +1042,9 @@ describe("live sandbox ownership", () => {
 				).rejects.toThrow();
 				// The mismatched readback never confers ownership: no adoption,
 				// no deletable state.
-				expect(ctx.manifest.globals[0]!.state,).toBe("unconfirmed",);
+				expect(ctx.manifest.globals[0].state,).toBe("unconfirmed",);
 				await expect(
-					ctx.deleteGlobal("project-deployer-infra", ctx.manifest.globals[0]!.name,),
+					ctx.deleteGlobal("project-deployer-infra", ctx.manifest.globals[0].name,),
 				).rejects.toThrow();
 			},);
 		},);
@@ -1059,7 +1058,7 @@ describe("live sandbox ownership", () => {
 					sendJson(res, { errorType: "NotFound", message: "missing", }, 404,);
 					return;
 				}
-				const id = decodeURIComponent(req.url.split("/",)[5]!.split("?",)[0]!,);
+				const id = decodeURIComponent(req.url.split("/",)[5].split("?",)[0],);
 				sendJson(res, { infraBasicInfo: { id, }, },);
 				return;
 			}
@@ -1085,7 +1084,7 @@ describe("live sandbox ownership", () => {
 				// The reservation id carries the full nonce and the readback id
 				// matched it exactly before binding.
 				expect(entry.state,).toBe("bound",);
-				expect(entry.name.endsWith(`_${ctx.manifest.globals[0]!.nonce!.toUpperCase()}`,),).toBe(true,);
+				expect(entry.name.endsWith(`_${ctx.manifest.globals[0].nonce!.toUpperCase()}`,),).toBe(true,);
 				await ctx.deleteGlobal("project-deployer-infra", entry.id!,);
 				expect(entry.state,).toBe("deleted",);
 				expect(deletes.length,).toBe(1,);
@@ -1143,7 +1142,7 @@ describe("live sandbox ownership", () => {
 		}, async url => {
 			await fixture(url, async ctx => {
 				await ctx.reserveGlobal("project-folder", "folder",);
-				const entry = ctx.manifest.globals[0]!;
+				const entry = ctx.manifest.globals[0];
 				entry.id = "FOLDER_GEN_OK";
 				entry.state = "bound";
 				entry.identity = "snapshot";
@@ -1341,7 +1340,7 @@ describe("live sandbox ownership", () => {
 			}
 			if (req.method === "GET" && req.url?.startsWith("/public/api/admin/code-envs/",)) {
 				// Absent getDefinition answers 500 "Not a file" on DSS.
-				requested = decodeURIComponent(req.url.split("/",)[6]!.split("?",)[0]!,);
+				requested = decodeURIComponent(req.url.split("/",)[6].split("?",)[0],);
 				sendJson(res, { errorType: "InternalError", message: "Not a file", }, 500,);
 				return;
 			}
@@ -1351,7 +1350,7 @@ describe("live sandbox ownership", () => {
 				const name = await ctx.reserveGlobal("code-env", "env",);
 				// The absence was proven by the list, so the reservation is legal.
 				expect(name,).toBe(requested,);
-				expect(ctx.manifest.globals[0]!.state,).toBe("pending",);
+				expect(ctx.manifest.globals[0].state,).toBe("pending",);
 			},);
 		},);
 	});
@@ -1364,7 +1363,7 @@ describe("live sandbox ownership", () => {
 				return;
 			}
 			if (req.method === "GET" && req.url?.startsWith("/public/api/admin/code-envs/",)) {
-				requested = decodeURIComponent(req.url.split("/",)[6]!.split("?",)[0]!,);
+				requested = decodeURIComponent(req.url.split("/",)[6].split("?",)[0],);
 				sendJson(res, { errorType: "InternalError", message: "Not a file", }, 500,);
 				return;
 			}
@@ -1419,7 +1418,7 @@ describe("live owned host receipts", () => {
 				},);
 				await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(Error,);
 			}
-			ctx.manifest.projects[0]!.state = "deleted";
+			ctx.manifest.projects[0].state = "deleted";
 			await writeLiveJson(ctx.manifestPath, { ...ctx.manifest, ownedDirectories: [directory,], },);
 			await expect(loadLiveManifest(ctx.manifestPath,),).rejects.toThrow(Error,);
 		},);
@@ -1534,7 +1533,7 @@ describe("live app-create reservation safety", () => {
 				);
 				await ctx.save();
 				await ctx.check(
-					"applications.app.instance-ops" as LiveCaseId,
+					"applications.app.instance-ops",
 					["app.create-instance",],
 					async () => {
 						await ctx.run([
@@ -1667,7 +1666,7 @@ describe("live app-create reservation safety", () => {
 				{ expected: "failed", result: null, },
 			] as const;
 			for (const [index, sample,] of samples.entries()) {
-				await ctx.check("applications.app.instance-ops" as LiveCaseId, [], async () => {
+				await ctx.check("applications.app.instance-ops", [], async () => {
 					throw new LiveCommandError(`sample ${index}`, 1, sample.result,);
 				},);
 			}
@@ -1812,7 +1811,7 @@ describe("live app delete bookkeeping", () => {
 				// it: a later probe would only ever see the masked 403.
 				expect(
 					requests.filter(request => request.startsWith("DELETE",))
-						.map(request => request.split("?",)[0]!),
+						.map(request => request.split("?",)[0]),
 				).toEqual([
 					`DELETE /public/api/projects/${key}`,
 				],);
@@ -1864,7 +1863,7 @@ describe("live app delete bookkeeping", () => {
 					await ctx.deleteProject(key,);
 					expect(
 						requests.filter(request => request.startsWith("DELETE",))
-							.map(request => request.split("?",)[0]!),
+							.map(request => request.split("?",)[0]),
 					).toEqual([
 						`DELETE /public/api/projects/${key}`,
 						`DELETE /public/api/projects/${key}`,

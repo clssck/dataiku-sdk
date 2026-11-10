@@ -46,7 +46,7 @@ export async function exerciseProjectLifecycle(ctx: LiveContext,): Promise<void>
 			errors.push(error,);
 		} finally {
 			for (let index = projects.length - 1; index >= 0; index--) {
-				const key = projects[index]!;
+				const key = projects[index];
 				try {
 					await ctx.deleteProject(key,);
 				} catch (error) {

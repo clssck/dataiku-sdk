@@ -94,7 +94,7 @@ export function parseLiveSuiteArgs(argv: string[],): LiveSuiteOptions {
 	let stateDir: string | undefined;
 	let help = false;
 	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i]!;
+		const arg = argv[i];
 		const value = (): string => {
 			const next = argv[i + 1];
 			if (next === undefined) throw new UsageRequestError(`Option ${arg} requires a value`,);
@@ -460,7 +460,7 @@ async function probeLiveCapabilities(
 
 	// Connectivity snapshot with server version headers.
 	try {
-		const meta = await client.getWithMetadata<unknown>("/public/api/projects/",);
+		const meta = await client.getWithMetadata("/public/api/projects/",);
 		capabilities["dssVersion"] = meta.meta.dssVersion;
 		capabilities["dssApiVersion"] = meta.meta.dssApiVersion;
 		probes.push({ name: "connectivity", ok: true, },);

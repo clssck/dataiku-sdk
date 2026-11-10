@@ -597,7 +597,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 			).flatMap((role,) => role.items ?? []).filter((item,) => typeof item.ref === "string");
 			const plannedOutputRewrites = { ...outputRewrites, };
 			if (opts.outputDataset !== undefined && outputItems.length === 1) {
-				plannedOutputRewrites[outputItems[0]!.ref!] = opts.outputDataset;
+				plannedOutputRewrites[outputItems[0].ref!] = opts.outputDataset;
 			}
 			if (
 				opts.copyOutputSettings === true
@@ -689,7 +689,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 			const pk = f["project-key"] as string | undefined;
 			if (executionMode(f,).dryRun) {
 				const current = await c.recipes.get(a[0], { projectKey: pk, includePayload: true, },);
-				const next = buildRecipeUpdate(current as Record<string, unknown>, data,);
+				const next = buildRecipeUpdate(current, data,);
 				return { dryRun: true, action: "update", resource: "recipe", name: a[0], current, next, };
 			}
 			await c.recipes.update(a[0], data, pk,);
@@ -944,7 +944,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 					next,
 				};
 			}
-			await c.recipes.replace(a[0], next as Record<string, unknown>, pk,);
+			await c.recipes.replace(a[0], next, pk,);
 			return {
 				restored: a[0],
 				resource: "recipe",

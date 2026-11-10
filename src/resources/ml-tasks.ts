@@ -343,7 +343,7 @@ export class MlTasksResource extends BaseResource {
 					state: "RUNNING",
 					elapsedMs: elapsedBeforeMs,
 					pollCount,
-				} as MlTaskTrainResult;
+				};
 			}
 			pollCount += 1;
 			// Requests issued while budget remains are bounded by the remaining

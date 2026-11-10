@@ -6,18 +6,23 @@ import { DataikuClient, } from "../src/client.js";
 describe("remaining DSS 15 endpoints", () => {
 	it("call the documented method, path, query, and body", async () => {
 		const seen: Array<{ request: string; body: unknown; }> = [];
-		const server = createServer(async (req, res,) => {
-			let text = "";
-			for await (const chunk of req) text += chunk.toString();
-			seen.push({ request: `${req.method} ${req.url}`, body: text ? JSON.parse(text,) : undefined, },);
-			if (req.url?.startsWith("/public/api/futures",)) {
+		const server = createServer((req, res,) =>
+			void (async () => {
+				let text = "";
+				for await (const chunk of req) text += chunk.toString();
+				seen.push({
+					request: `${req.method} ${req.url}`,
+					body: text ? JSON.parse(text,) : undefined,
+				},);
+				if (req.url?.startsWith("/public/api/futures",)) {
+					res.setHeader("Content-Type", "application/json",);
+					res.end("[]",);
+					return;
+				}
 				res.setHeader("Content-Type", "application/json",);
-				res.end("[]",);
-				return;
-			}
-			res.setHeader("Content-Type", "application/json",);
-			res.end("{}",);
-		},);
+				res.end("{}",);
+			})()
+		);
 		const listening = Promise.withResolvers<void>();
 		server.listen(0, "127.0.0.1", () => listening.resolve(),);
 		await listening.promise;

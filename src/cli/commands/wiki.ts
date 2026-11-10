@@ -95,7 +95,7 @@ export const wikiCommands: Record<string, CommandMeta> = withUsage("wiki", {
 				if (name !== undefined) {
 					next.article = {
 						...((next.article && typeof next.article === "object" && !Array.isArray(next.article,))
-							? next.article as Record<string, unknown>
+							? next.article
 							: {}),
 						name,
 					};

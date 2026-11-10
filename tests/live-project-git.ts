@@ -372,7 +372,7 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 			await ctx.withOwnedHostDirectory("git_remote", async directory => {
 				const repo = await provisionGit(ctx, directory,);
 				await ctx.withOwnedGitScope({ kind: "project", key, }, directory, [repo,], async urls => {
-					const url = urls[0]!;
+					const url = urls[0];
 					try {
 						await commitMarker(ctx, key, `remote_${directory.nonce}`,);
 						const { branch, } = await ctx.run<{ branch: string | null; }>([
@@ -445,7 +445,7 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 							"add-library",
 							target,
 							"--repository",
-							urls[0]!,
+							urls[0],
 							"--checkout",
 							"main",
 							"--no-add-to-python-path",
@@ -456,7 +456,7 @@ export async function exerciseProjectGit(ctx: LiveContext,): Promise<void> {
 							"set-library",
 							target,
 							"--repository",
-							urls[0]!,
+							urls[0],
 							"--checkout",
 							"alternate",
 						], { projectKey: key, },);

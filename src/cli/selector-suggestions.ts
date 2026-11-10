@@ -12,11 +12,11 @@ function editDistance(a: string, b: string,): number {
 		const current = [i,];
 		for (let j = 1; j <= b.length; j++) {
 			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-			current.push(Math.min(previous[j]! + 1, current[j - 1]! + 1, previous[j - 1]! + cost,),);
+			current.push(Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost,),);
 		}
 		previous = current;
 	}
-	return previous[b.length]!;
+	return previous[b.length];
 }
 
 /** Names close to `name`: a typo (distance <= 2, <= 1 for short names) or one containing it. */
@@ -47,7 +47,7 @@ export function suggestSelectors(
 	const resources = Object.keys(actionsByResource,);
 	const sameActionElsewhere = action === undefined
 		? []
-		: resources.filter((other,) => other !== resource && actionsByResource[other]!.includes(action,))
+		: resources.filter((other,) => other !== resource && actionsByResource[other].includes(action,))
 			.map((
 				other,
 			) => `${other}.${action}${suffix}`);
@@ -55,7 +55,7 @@ export function suggestSelectors(
 	if (Object.hasOwn(actionsByResource, resource,)) {
 		const closeActions = action === undefined
 			? []
-			: closeNames(action, actionsByResource[resource]!,).map((close,) =>
+			: closeNames(action, actionsByResource[resource],).map((close,) =>
 				`${resource}.${close}${suffix}`
 			);
 		suggestions = [...sameActionElsewhere, ...closeActions,];

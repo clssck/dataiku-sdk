@@ -135,7 +135,7 @@ export const webappCommands: Record<string, CommandMeta> = withUsage("webapp", {
 	},
 	trust: {
 		handler: (c, a, f,) =>
-			c.webapps.trust(a[0]!, {
+			c.webapps.trust(a[0], {
 				projectKey: f["project-key"] as string | undefined,
 				...(f["for-everybody"] === true ? { trustForEverybody: true, } : {}),
 			},),

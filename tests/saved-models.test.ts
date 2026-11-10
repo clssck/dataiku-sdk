@@ -208,7 +208,7 @@ describe("SavedModelsResource", () => {
 		expect(partMatch,).not.toBeNull();
 		// The part body is empty: after the header terminator comes a CRLF then
 		// the closing boundary — i.e. zero content bytes were sent.
-		const afterPart = bodyText.slice(bodyText.indexOf(partMatch![0]!,) + partMatch![0]!.length,);
+		const afterPart = bodyText.slice(bodyText.indexOf(partMatch![0],) + partMatch![0].length,);
 		expect(afterPart.startsWith("\r\n--",),).toBe(true,);
 	});
 

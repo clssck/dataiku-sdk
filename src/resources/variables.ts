@@ -6,7 +6,7 @@ import { BaseResource, } from "./base.js";
 export class VariablesResource extends BaseResource {
 	async get(projectKey?: string,): Promise<ProjectVariables> {
 		const enc = this.enc(projectKey,);
-		const raw = await this.client.get<unknown>(`/public/api/projects/${enc}/variables/`,);
+		const raw = await this.client.get(`/public/api/projects/${enc}/variables/`,);
 		return this.client.safeParse(ProjectVariablesSchema, raw, "variables.get",);
 	}
 

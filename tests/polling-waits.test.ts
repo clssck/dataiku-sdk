@@ -455,7 +455,7 @@ describe("wait request limits", () => {
 				await expect(c.futures.wait("F", { timeoutMs: 1000, },),).rejects.toBeInstanceOf(DataikuError,);
 				expect(Date.now() - started,).toBeLessThan(750,);
 			} finally {
-				server.stop(true,);
+				await server.stop(true,);
 			}
 		});
 	}
@@ -484,7 +484,7 @@ describe("wait request limits", () => {
 				timedOut: true,
 			},);
 		} finally {
-			server.stop(true,);
+			await server.stop(true,);
 		}
 	});
 });

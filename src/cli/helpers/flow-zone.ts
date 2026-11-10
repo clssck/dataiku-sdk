@@ -585,7 +585,7 @@ export function applyFlowZoneUnits(
 		if (indexes.size > 1) {
 			const byZone: Record<string, string[]> = {};
 			for (const member of planned) {
-				const label = flowZonePlanLabel(plan.zones[zoneIndexById.get(member,)!]!,);
+				const label = flowZonePlanLabel(plan.zones[zoneIndexById.get(member,)!],);
 				(byZone[label] ??= []).push(member,);
 			}
 			conflicts.push({ recipe, zones: byZone, },);
@@ -596,7 +596,7 @@ export function applyFlowZoneUnits(
 			if (zoneIndexById.has(member,)) continue;
 			const node = nodeById.get(member,);
 			const objectType = node ? flowNodeObjectType(node, knownTypes,) : undefined;
-			if (objectType) implied[index!]!.push({ objectType, objectId: member, },);
+			if (objectType) implied[index].push({ objectType, objectId: member, },);
 		}
 	}
 	if (conflicts.length > 0) {
@@ -610,11 +610,11 @@ export function applyFlowZoneUnits(
 	return {
 		...plan,
 		zones: plan.zones.map((zonePlan, index,) =>
-			implied[index]!.length === 0
+			implied[index].length === 0
 				? zonePlan
 				: {
 					...zonePlan,
-					items: [...zonePlan.items, ...implied[index]!,],
+					items: [...zonePlan.items, ...implied[index],],
 					impliedItems: implied[index],
 				}
 		),

@@ -246,7 +246,7 @@ describe("CLI command registry discovery", () => {
 			}
 		>;
 		// Global flags are listed once in the agent contract, not in every entry.
-		const projectFlags = registry["project.list"]!.flags?.map((flag,) => flag.name) ?? [];
+		const projectFlags = registry["project.list"].flags?.map((flag,) => flag.name) ?? [];
 		expect(projectFlags,).not.toContain("verbose",);
 		expect(projectFlags,).not.toContain("help",);
 		expect(projectFlags,).not.toContain("report-json",);
@@ -258,9 +258,9 @@ describe("CLI command registry discovery", () => {
 		expect(contract["commands.globalFlags"].map((flag,) => flag.name),).toEqual(
 			expect.arrayContaining(["verbose", "fields", "url", "api-key",],),
 		);
-		expect(registry["recipe.get-payload"]!.action,).toBe("get-payload",);
-		expect(registry["recipe.set-payload"]!.action,).toBe("set-payload",);
-		expect(registry["agent.contract"]!.agentContractVersion,).toBe(8,);
+		expect(registry["recipe.get-payload"].action,).toBe("get-payload",);
+		expect(registry["recipe.set-payload"].action,).toBe("set-payload",);
+		expect(registry["agent.contract"].agentContractVersion,).toBe(8,);
 	});
 });
 
@@ -269,7 +269,7 @@ describe("CLI command registry short flags", () => {
 		const { stdout, stderr, } = await dss(["commands", "run", "--fields", "project.get", "--full",],);
 		expect(stderr,).toBe("",);
 		const registry = JSON.parse(stdout,) as Record<string, { flags?: Array<{ name: string; }>; }>;
-		const projectFlags = registry["project.get"]!.flags?.map((flag,) => flag.name) ?? [];
+		const projectFlags = registry["project.get"].flags?.map((flag,) => flag.name) ?? [];
 		expect(projectFlags,).toContain("project-key",);
 		expect(projectFlags,).not.toContain("help",);
 	});

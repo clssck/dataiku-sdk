@@ -147,7 +147,7 @@ export const userCommands: Record<string, CommandMeta> = withUsage("user", {
 						"PUT replaces the whole User object; the body must come from `dss user get`. No GET was issued in dry-run.",
 				};
 			}
-			const result = await c.users.update(login, body as Parameters<typeof c.users.update>[1],);
+			const result = await c.users.update(login, body,);
 			return sanitizeUserSecrets(result, userSecretsFromBody(body,),);
 		},
 		description:

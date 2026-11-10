@@ -37,7 +37,7 @@ function firstEntryOf(stdout: string,): InstalledEntry {
 	if (typeof parsed !== "object" || parsed === null || !("installed" in parsed)) {
 		throw new Error("install-skill output has no installed array",);
 	}
-	const installed: unknown = (parsed as { installed: unknown; }).installed;
+	const installed: unknown = parsed.installed;
 	if (!Array.isArray(installed,) || installed.length === 0) {
 		throw new Error("install-skill installed array is empty",);
 	}
@@ -212,10 +212,10 @@ describe("CLI install-skill command", () => {
 			expect(result.scope,).toBe("project",);
 			expect(result.installed,).toHaveLength(1,);
 			expect(result.installed[0],).toMatchObject({ agent: "claude", via: "flag", },);
-			expect(result.installed[0]!.path,).toEndWith(
+			expect(result.installed[0].path,).toEndWith(
 				join(".claude", "skills", "dataiku-dss", "SKILL.md",),
 			);
-			const skillPath = result.installed[0]!.path;
+			const skillPath = result.installed[0].path;
 
 			const content = readFileSync(skillPath, "utf-8",);
 			const canonicalSkill = readFileSync(
@@ -387,8 +387,8 @@ describe("CLI install-skill command", () => {
 			const args = ["install-skill", "--agent", "claude", "--target", tmpDir,];
 			const first = firstEntryOf((await dss(args,)).stdout,);
 			const references = first.files.filter((file,) => file.relativePath.startsWith("references/",));
-			const stale = references[0]!;
-			const missing = references[1]!;
+			const stale = references[0];
+			const missing = references[1];
 			writeFileSync(stale.path, "outdated reference",);
 			rmSync(missing.path,);
 			const userFile = join(tmpDir, ".claude", "skills", "dataiku-dss", "notes.txt",);
@@ -422,7 +422,7 @@ describe("CLI install-skill command", () => {
 			}
 			const installedSkill = readFileSync(first.path, "utf-8",);
 			for (const match of installedSkill.matchAll(/\]\((references\/[^)]+)\)/g,)) {
-				expect(readFileExists(join(tmpDir, ".claude", "skills", "dataiku-dss", match[1]!,),),).toBe(
+				expect(readFileExists(join(tmpDir, ".claude", "skills", "dataiku-dss", match[1],),),).toBe(
 					true,
 				);
 			}

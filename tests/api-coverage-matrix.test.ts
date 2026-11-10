@@ -44,7 +44,7 @@ it("keeps the coverage matrix counts, CLI actions, and SDK methods real", () => 
 	const exported = sdk as unknown as Record<string, { prototype?: Record<string, unknown>; }>;
 	const unknownSdk = rows.flatMap((row,) => row.sdk).filter((method,) => {
 		const [className, name,] = method.split(".",);
-		return typeof exported[className!]?.prototype?.[name!] !== "function";
+		return typeof exported[className]?.prototype?.[name] !== "function";
 	},);
 	expect([...new Set(unknownSdk,),],).toEqual([],);
 

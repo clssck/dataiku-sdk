@@ -22,7 +22,7 @@ describe("SDK response and identifier boundaries", () => {
 			response = [];
 			for (const read of reads) await expect(read(),).resolves.toEqual([],);
 		} finally {
-			server.stop(true,);
+			await server.stop(true,);
 		}
 	});
 
@@ -60,7 +60,7 @@ describe("SDK response and identifier boundaries", () => {
 				cancelled: false,
 			},);
 		} finally {
-			server.stop(true,);
+			await server.stop(true,);
 		}
 	});
 
@@ -90,7 +90,7 @@ describe("SDK response and identifier boundaries", () => {
 			}
 			expect(requests,).toBe(0,);
 		} finally {
-			server.stop(true,);
+			await server.stop(true,);
 		}
 	});
 });

@@ -160,7 +160,7 @@ async function probe(argv: string[], home: string,): Promise<Outcome> {
 			? { kind: "compared", payload: true, }
 			: { kind: "failed", detail: `payload ${plannedPayload} != ${actual}`, };
 	} finally {
-		server.stop(true,);
+		await server.stop(true,);
 	}
 }
 
@@ -209,7 +209,7 @@ it("--plan matches the sent request for every documented write example", async (
 		let next = 0;
 		await Promise.all(Array.from({ length: 8, }, async () => {
 			while (next < jobs.length) {
-				const job = jobs[next++]!;
+				const job = jobs[next++];
 				const outcome = await probe(job.argv, home,);
 				if (outcome.kind === "failed") {
 					failures.push(`${job.argv.join(" ",)}: ${outcome.detail}`,);

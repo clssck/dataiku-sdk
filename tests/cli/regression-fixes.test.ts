@@ -44,7 +44,7 @@ describe("CLI regression fixes", () => {
 			let next = 0;
 			await Promise.all(Array.from({ length: 8, }, async () => {
 				while (next < targets.length) {
-					const entry = targets[next++]!;
+					const entry = targets[next++];
 					const failure = await dssFailure([entry.resource, entry.action,], { env, },);
 					const report: unknown = JSON.parse(failure.stdout,);
 					const code = report && typeof report === "object" && "code" in report
@@ -701,7 +701,7 @@ describe("CLI regression fixes", () => {
 			resource: "version",
 			action: "run",
 		},);
-		expect(metaReport.steps[0]!.result.version,).toEqual(expect.any(String,),);
+		expect(metaReport.steps[0].result.version,).toEqual(expect.any(String,),);
 
 		const dryRunFailure = await dssFailure([
 			"batch",
@@ -721,12 +721,12 @@ describe("CLI regression fixes", () => {
 			runnable: false,
 			error: { code: "missing_required_arg", exitCode: 1, },
 		},);
-		expect(dryRunReport.steps[0]!.error?.error,).toContain("dss dataset get <name>",);
+		expect(dryRunReport.steps[0].error?.error,).toContain("dss dataset get <name>",);
 		expect(dryRunReport.steps[1],).toMatchObject({
 			runnable: false,
 			error: { code: "missing_required_flag", exitCode: 1, },
 		},);
-		expect(dryRunReport.steps[1]!.error?.error,).toContain(
+		expect(dryRunReport.steps[1].error?.error,).toContain(
 			"One of --connection or --dataset is required",
 		);
 	});
@@ -1115,7 +1115,7 @@ describe("CLI regression fixes", () => {
 			category: "usage",
 			exitCode: 1,
 		},);
-		const hint = String(report.hint ?? "",);
+		const hint = typeof report.hint === "string" ? report.hint : "";
 		expect(hint,).toContain("--project-key",);
 		expect(hint,).toContain("DATAIKU_PROJECT_KEY",);
 	});

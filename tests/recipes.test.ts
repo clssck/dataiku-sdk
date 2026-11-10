@@ -600,7 +600,7 @@ describe("RecipesResource", () => {
 			process.chdir(tempDir,);
 			await withRecipeServer((req, res,) => {
 				requestedPaths.push(req.url ?? "",);
-				const recipeName = decodeURIComponent((req.url ?? "").split("/",).pop()!.split("?",)[0]!,);
+				const recipeName = decodeURIComponent((req.url ?? "").split("/",).pop()!.split("?",)[0],);
 				const recipe = payloadByRecipeName[recipeName];
 				if (!recipe) {
 					res.statusCode = 404;

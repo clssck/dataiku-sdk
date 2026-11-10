@@ -74,7 +74,7 @@ export function projectLibraryPutPayload(
 ): ProjectLibraryPutPayload {
 	const expectSha256 = expectSha256FromFlags(flags,);
 	if (typeof flags["content"] === "string") {
-		const text = flags["content"] as string;
+		const text = flags["content"];
 		return {
 			contentSource: "flag",
 			bytes: Buffer.byteLength(text, "utf8",),
@@ -83,10 +83,10 @@ export function projectLibraryPutPayload(
 		};
 	}
 	if (typeof flags["file"] === "string") {
-		const bytes = fs.readFileSync(flags["file"] as string,);
+		const bytes = fs.readFileSync(flags["file"],);
 		return {
 			contentSource: "file",
-			file: flags["file"] as string,
+			file: flags["file"],
 			bytes: bytes.length,
 			sha256: sha256Hex(bytes,),
 			...(expectSha256 ? { expectSha256, } : {}),
@@ -236,10 +236,10 @@ export const projectLibraryCommands: Record<string, CommandMeta> = withUsage("pr
 				},);
 			}
 			const content = typeof f["content"] === "string"
-				? f["content"] as string
+				? f["content"]
 				: typeof f["file"] === "string"
-				? await fs.promises.readFile(f["file"] as string,)
-				: await readStdinText();
+				? await fs.promises.readFile(f["file"],)
+				: readStdinText();
 			const result = await c.projectLibrary.addOrUpdateFile(
 				a[0],
 				content,
@@ -272,10 +272,10 @@ export const projectLibraryCommands: Record<string, CommandMeta> = withUsage("pr
 			requireContentSource(f, commandUsage("project-library", "diff",),);
 			const maxLines = numFlag(f, ["max-lines",],);
 			const local: string | Uint8Array = typeof f["content"] === "string"
-				? f["content"] as string
+				? f["content"]
 				: typeof f["file"] === "string"
-				? await fs.promises.readFile(f["file"] as string,)
-				: await readStdinText();
+				? await fs.promises.readFile(f["file"],)
+				: readStdinText();
 			return c.projectLibrary.diffFile(
 				a[0],
 				local,

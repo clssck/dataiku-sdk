@@ -643,7 +643,7 @@ function differingLeafPaths(expected: unknown, actual: unknown, path: string,): 
 export class ScenariosResource extends BaseResource {
 	/** List all scenarios in a project. */
 	async list(projectKey?: string,): Promise<ScenarioSummary[]> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/scenarios/`,
 		);
 		return this.client.safeParse(ScenarioSummaryArraySchema, raw, "scenarios.list",);
@@ -652,7 +652,7 @@ export class ScenariosResource extends BaseResource {
 	/** Get full scenario details. */
 	async get(scenarioId: string, opts?: { projectKey?: string; },): Promise<ScenarioDetails> {
 		const scEnc = encodeURIComponent(scenarioId,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/`,
 		);
 		return this.client.safeParse(ScenarioDetailsSchema, raw, "scenarios.get",);
@@ -708,7 +708,7 @@ export class ScenariosResource extends BaseResource {
 	/** Get the light/status view of a scenario. */
 	async status(scenarioId: string, projectKey?: string,): Promise<ScenarioStatus> {
 		const scEnc = encodeURIComponent(scenarioId,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/scenarios/${scEnc}/light/`,
 		);
 		return this.client.safeParse(ScenarioStatusSchema, raw, "scenarios.status",);
@@ -962,7 +962,7 @@ export class ScenariosResource extends BaseResource {
 		if (opts?.limit !== undefined) query.set("limit", String(opts.limit,),);
 		if (opts?.onlyFinished === true) query.set("onlyFinishedRuns", "true",);
 		const suffix = query.size > 0 ? `?${query}` : "";
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(opts?.projectKey,)}/scenarios/${scEnc}/get-last-runs/${suffix}`,
 		);
 		return requireArrayResponse<unknown>(raw, "scenarios.getLastRuns",).map(
@@ -988,7 +988,7 @@ export class ScenariosResource extends BaseResource {
 				"to",
 			),
 		},);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(opts.projectKey,)}/scenarios/${
 				encodeURIComponent(requireNonEmpty(scenarioId, "scenarioId",),)
 			}/get-runs-by-date?${query}`,
@@ -1252,7 +1252,7 @@ export class ScenariosResource extends BaseResource {
 		}/`;
 		const current = await this.client.get<Record<string, unknown>>(path,);
 		const { runAsUser: previous, ...withoutRunAs } = current;
-		await this.client.put<unknown>(
+		await this.client.put(
 			path,
 			user === null ? withoutRunAs : { ...withoutRunAs, runAsUser: user, },
 		);

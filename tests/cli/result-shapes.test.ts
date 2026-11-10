@@ -889,8 +889,8 @@ describe("dry-run change description", () => {
 		const shaped = describeChange(dryRun(current, next,),);
 		const changes = shaped["changes"] as Array<{ path: string; }>;
 		expect(changes,).toHaveLength(50,);
-		expect(changes[0]!.path,).toBe("k0",);
-		expect(changes[49]!.path,).toBe("k49",);
+		expect(changes[0].path,).toBe("k0",);
+		expect(changes[49].path,).toBe("k49",);
 		expect(shaped["changeCount"],).toBe(60,);
 		expect(shaped["changesTruncated"],).toBe(true,);
 	});
@@ -909,7 +909,7 @@ describe("dry-run change description", () => {
 			beforeBytes: Buffer.byteLength(current,),
 			afterBytes: Buffer.byteLength(next,),
 		},);
-		const diff = (change!["diff"] as string).split("\n",);
+		const diff = (change["diff"] as string).split("\n",);
 		expect(diff.slice(0, 3,),).toEqual(["--- a/payload", "+++ b/payload", "@@ -18,7 +18,7 @@",],);
 		expect(diff,).toContain("-line 20",);
 		expect(diff,).toContain("+line 20 changed",);
@@ -925,7 +925,7 @@ describe("dry-run change description", () => {
 		)["changes"] as Array<
 			Record<string, unknown>
 		>;
-		const diff = change!["diff"] as string;
+		const diff = change["diff"] as string;
 		expect(diff.endsWith("…\n",),).toBe(true,);
 		expect(diff.trimEnd().split("\n",).length,).toBe(60,);
 	});
@@ -1058,12 +1058,12 @@ describe("CLI recipe set-payload --dry-run", () => {
 				expect(change,).toMatchObject({ path: "payload", },);
 				expect(change,).not.toHaveProperty("before",);
 				expect(change,).not.toHaveProperty("after",);
-				const diff = (change!["diff"] as string).split("\n",);
+				const diff = (change["diff"] as string).split("\n",);
 				expect(diff,).toContain("-step_15 = compute(15)",);
 				expect(diff,).toContain("+step_15 = compute(150)",);
 				const rawResult = JSON.parse(raw.stdout,) as Record<string, Record<string, unknown>>;
-				expect(rawResult["current"]!["payload"],).toBe(original,);
-				expect(rawResult["next"]!["payload"],).toBe(updated,);
+				expect(rawResult["current"]["payload"],).toBe(original,);
+				expect(rawResult["next"]["payload"],).toBe(updated,);
 				expect(JSON.stringify(result,).length * 3,).toBeLessThan(
 					JSON.stringify(rawResult,).length,
 				);

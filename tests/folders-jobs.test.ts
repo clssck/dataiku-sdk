@@ -1225,7 +1225,7 @@ describe("JobsResource.wait zero-activity builds", () => {
 				pollIntervalMs: 1,
 				timeoutMs: 5_000,
 			},);
-			check(result as unknown as Record<string, unknown>, requests,);
+			check(result, requests,);
 		},);
 	}
 

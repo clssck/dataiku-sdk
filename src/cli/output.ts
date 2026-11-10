@@ -67,7 +67,7 @@ function availableFieldsFor(
 			? record
 			: resolveFieldPath(record, parentPath,).value;
 		if (parent === null || typeof parent !== "object" || Array.isArray(parent,)) continue;
-		for (const key of Object.keys(parent as Record<string, unknown>,)) {
+		for (const key of Object.keys(parent,)) {
 			keys.add(parentPath === "" ? key : `${parentPath}.${key}`,);
 		}
 	}
@@ -351,6 +351,7 @@ export function commandFailureMessage(result: unknown,): string {
 		if (
 			record.timedOut === true && typeof record.jobId === "string"
 			&& typeof record.progress === "object" && typeof record.state === "string"
+			&& typeof record.elapsedMs === "number"
 		) {
 			// A job wait result: the timeout only stopped polling, the DSS job is
 			// still running (and was not cancelled).

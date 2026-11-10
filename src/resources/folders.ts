@@ -37,7 +37,7 @@ export class FoldersResource extends BaseResource {
 				"filesystem_folders",
 			)
 			?? "filesystem_folders";
-		const raw = await this.client.post<unknown>(
+		const raw = await this.client.post(
 			`/public/api/projects/${encodeURIComponent(pk,)}/managedfolders/`,
 			{
 				name: opts.name,
@@ -54,7 +54,7 @@ export class FoldersResource extends BaseResource {
 	}
 
 	async list(projectKey?: string,): Promise<FolderSummary[]> {
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/managedfolders/`,
 		);
 		return this.client.safeParse(FolderSummaryArraySchema, raw, "folders.list",);
@@ -71,7 +71,7 @@ export class FoldersResource extends BaseResource {
 
 	async get(folderId: string, projectKey?: string,): Promise<FolderDetails> {
 		const fEnc = encodeURIComponent(folderId,);
-		const raw = await this.client.get<unknown>(
+		const raw = await this.client.get(
 			`/public/api/projects/${this.enc(projectKey,)}/managedfolders/${fEnc}`,
 		);
 		return this.client.safeParse(FolderDetailsSchema, raw, "folders.get",);
@@ -96,7 +96,7 @@ export class FoldersResource extends BaseResource {
 
 	async contents(folderId: string, opts?: { projectKey?: string; },): Promise<FolderItem[]> {
 		const fEnc = encodeURIComponent(folderId,);
-		const response = await this.client.get<unknown>(
+		const response = await this.client.get(
 			`/public/api/projects/${this.enc(opts?.projectKey,)}/managedfolders/${fEnc}/contents/`,
 		);
 		const items = (response as Record<string, unknown>).items ?? [];
