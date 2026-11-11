@@ -1064,7 +1064,8 @@ describe("CLI recipe set-payload --dry-run", () => {
 				const rawResult = JSON.parse(raw.stdout,) as Record<string, Record<string, unknown>>;
 				expect(rawResult["current"]["payload"],).toBe(original,);
 				expect(rawResult["next"]["payload"],).toBe(updated,);
-				expect(JSON.stringify(result,).length * 3,).toBeLessThan(
+				// The changes, not the whole result: backupPath is as long as the temp directory.
+				expect(JSON.stringify(result["changes"],).length * 3,).toBeLessThan(
 					JSON.stringify(rawResult,).length,
 				);
 			},);

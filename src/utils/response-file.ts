@@ -1,5 +1,5 @@
 import { chmod, type FileHandle, mkdir, open, rename, rm, stat, } from "node:fs/promises";
-import { basename, dirname, join, } from "node:path";
+import { basename, dirname, join, resolve, } from "node:path";
 
 /** Stream with backpressure; publish only a complete download, preserving existing output on failure. */
 export async function writeResponseToFile(
@@ -22,7 +22,9 @@ export async function writeResponseToFile(
 	// on Windows, Bun 1.4.3 let the process exit 0 mid-copy with nothing written.
 	let handle: FileHandle;
 	try {
-		await mkdir(dirname(path,), { recursive: true, },);
+		// Resolved: for a bare file name the parent is ".", and Bun 1.4.3 on Windows
+		// rejects mkdir(".", { recursive: true }) with EEXIST.
+		await mkdir(resolve(dirname(path,),), { recursive: true, },);
 		handle = await open(temporaryPath, "wx", 0o600,);
 	} catch (error) {
 		// Nothing will read the body; release the connection before surfacing the error.
