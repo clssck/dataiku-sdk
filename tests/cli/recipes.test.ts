@@ -1326,3 +1326,267 @@ describe("recipe set-payload backup hardening", () => {
 		expect(() => ensureRecipeBackupDir("/",),).toThrow(/filesystem root/,);
 	});
 });
+
+/** Run `set-payload my_recipe ARGS` against a recipe holding `payload`; `put` is what DSS was asked to store. */
+async function edit(
+	payload: string,
+	args: string[],
+): Promise<{ code: number | null; result: Record<string, unknown>; put?: string; }> {
+	let put: string | undefined;
+	let outcome: { code: number | null; stdout: string; } = { code: 0, stdout: "", };
+	await withCliServer(async (req, res,) => {
+		if (req.method === "PUT") {
+			const body = JSON.parse(await readBody(req,),) as { payload: string; };
+			put = body.payload;
+			sendJson(res, {},);
+			return;
+		}
+		sendJson(res, { recipe: { type: "python", name: "my_recipe", }, payload, },);
+	}, async (url,) => {
+		const argv = ["recipe", "set-payload", "my_recipe", ...args, "--no-backup",];
+		try {
+			outcome = { code: 0, stdout: (await dss(argv, { env: cliEnv(url,), },)).stdout, };
+		} catch (error) {
+			outcome = error as { code: number | null; stdout: string; };
+		}
+	},);
+	return {
+		code: outcome.code,
+		result: JSON.parse(outcome.stdout,) as Record<string, unknown>,
+		...(put === undefined ? {} : { put, }),
+	};
+}
+
+describe("recipe set-payload --old/--new", () => {
+	const CODE = 'out = df.groupby("country")["amount_euro"].sum()\nout.columns = ["revenue"]\n';
+
+	it("replaces the single occurrence in the payload DSS holds, with no local file", async () => {
+		const { code, result, put, } = await edit(CODE, [
+			"--old",
+			"amount_euro",
+			"--new",
+			"amount_eur",
+		],);
+		expect(code,).toBe(0,);
+		expect(put,).toBe(CODE.replace("amount_euro", "amount_eur",),);
+		expect(result,).toMatchObject({ updated: "my_recipe", replacements: 1, backupCreated: false, },);
+		expect(result,).not.toHaveProperty("file",);
+	});
+
+	it("writes nothing when --old is absent or ambiguous, and replaces every occurrence with --all", async () => {
+		const twice = `${CODE}print("amount_euro")\n`;
+		const absent = await edit(CODE, ["--old", "amount_usd", "--new", "amount_eur",],);
+		expect(absent,).toMatchObject({ code: 1, result: { code: "not_found", }, },);
+		expect(absent,).not.toHaveProperty("put",);
+		const ambiguous = await edit(twice, ["--old", "amount_euro", "--new", "amount_eur",],);
+		expect(ambiguous,).toMatchObject({ code: 1, result: { code: "validation_failed", }, },);
+		expect(String(ambiguous.result["error"],),).toContain("2 times",);
+		expect(ambiguous,).not.toHaveProperty("put",);
+		const all = await edit(twice, ["--old", "amount_euro", "--new", "amount_eur", "--all",],);
+		expect(all.result,).toMatchObject({ replacements: 2, },);
+		expect(all.put,).toBe(twice.replaceAll("amount_euro", "amount_eur",),);
+	});
+
+	it("takes the new text literally and deletes with an empty --new", async () => {
+		const literal = await edit("total = x\n", ["--old", "x", "--new", "$&[$1]$$",],);
+		expect(literal.put,).toBe("total = $&[$1]$$\n",);
+		const deleted = await edit("x = 1  # tmp\n", ["--old", "  # tmp", "--new", "",],);
+		expect(deleted.put,).toBe("x = 1\n",);
+	});
+
+	it("matches multi-line LF text against a CRLF payload and keeps its line endings", async () => {
+		const { put, } = await edit("a = 1\r\nb = 2\r\nc = 3\r\n", [
+			"--old",
+			"a = 1\nb = 2",
+			"--new",
+			"a = 1\nb = 20",
+		],);
+		expect(put,).toBe("a = 1\r\nb = 20\r\nc = 3\r\n",);
+	});
+
+	it("previews the edit with --dry-run as one payload change", async () => {
+		const { result, put, } = await edit(CODE, [
+			"--old",
+			"amount_euro",
+			"--new",
+			"amount_eur",
+			"--dry-run",
+		],);
+		expect(put,).toBeUndefined();
+		expect(result,).toMatchObject({
+			dryRun: true,
+			replacements: 1,
+			changeCount: 1,
+			changes: [{
+				path: "payload",
+				before: CODE,
+				after: CODE.replace("amount_euro", "amount_eur",),
+			},],
+		},);
+	});
+
+	it("rejects --file together with --old, and an edit with nothing to change, before any request", async () => {
+		const env = cliEnv("http://127.0.0.1:1",);
+		const both = await dssFailure(
+			["recipe", "set-payload", "r", "--file", "code.py", "--old", "a", "--new", "b",],
+			{ env, },
+		);
+		expect(JSON.parse(both.stdout,),).toMatchObject({ code: "conflicting_input_sources", },);
+		const same = await dssFailure(["recipe", "set-payload", "r", "--old", "a", "--new", "a",], {
+			env,
+		},);
+		expect(JSON.parse(same.stdout,),).toMatchObject({ code: "invalid_flag_value", },);
+		const half = await dssFailure(["recipe", "set-payload", "r", "--old", "a",], { env, },);
+		expect(JSON.parse(half.stdout,),).toMatchObject({ code: "missing_required_flag", },);
+	});
+
+	it("plans an edit as a non-exact PUT that names the replacement", async () => {
+		const { stdout, } = await dss([
+			"recipe",
+			"set-payload",
+			"r",
+			"--old",
+			"a",
+			"--new",
+			"b",
+			"--no-backup",
+			"--plan",
+			"--project-key",
+			"TEST",
+		], { env: cliEnv("http://127.0.0.1:1",), },);
+		expect(JSON.parse(stdout,),).toMatchObject({
+			exact: false,
+			method: "PUT",
+			payload: { replace: { old: "a", new: "b", all: false, }, },
+		},);
+	});
+});
+
+function serveCreateAndBuild(state: "DONE" | "FAILED", requests: string[],) {
+	return async (req: IncomingMessage, res: ServerResponse,): Promise<void> => {
+		const url = new URL(req.url ?? "/", "http://localhost",);
+		requests.push(`${req.method} ${url.pathname}`,);
+		if (req.method === "POST" && url.pathname.endsWith("/recipes/",)) {
+			await readBody(req,);
+			sendJson(res, { name: "py_out", },);
+		} else if (req.method === "POST" && url.pathname.endsWith("/jobs/",)) {
+			const body = JSON.parse(await readBody(req,),) as Record<string, unknown>;
+			requests.push(`build ${String(body["type"],)}`,);
+			sendJson(res, { id: "JOB1", },);
+		} else if (url.pathname.endsWith("/jobs/JOB1/log/",)) {
+			res.setHeader("content-type", "text/plain",);
+			res.end("line\n",);
+		} else if (url.pathname.endsWith("/jobs/JOB1/",)) {
+			sendJson(res, {
+				baseStatus: { def: { id: "JOB1", type: "RECURSIVE_BUILD", }, state, },
+				globalState: { done: state === "DONE" ? 1 : 0, failed: state === "DONE" ? 0 : 1, total: 1, },
+			},);
+		} else {
+			sendJson(res, { columns: [{ name: "a", type: "string", },], userModified: false, },);
+		}
+	};
+}
+
+describe("recipe create --build", () => {
+	const createArgs = [
+		"recipe",
+		"create",
+		"--type",
+		"python",
+		"--input",
+		"in_ds",
+		"--output",
+		"out",
+		"--name",
+		"py_out",
+		"--build",
+		"--project-key",
+		"TEST",
+	];
+
+	it("creates the recipe, then builds its output recursively and reports the job", async () => {
+		const requests: string[] = [];
+		await withCliServer(serveCreateAndBuild("DONE", requests,), async (url,) => {
+			const { stdout, } = await dss(createArgs, { env: cliEnv(url,), },);
+			const result = JSON.parse(stdout,) as Record<string, unknown>;
+			expect(result,).toMatchObject({
+				created: "py_out",
+				build: { jobId: "JOB1", state: "DONE", success: true, },
+			},);
+			expect(result,).not.toHaveProperty("next",);
+		},);
+		expect(requests.indexOf("build RECURSIVE_BUILD",),).toBeGreaterThan(
+			requests.indexOf("POST /public/api/projects/TEST/recipes/",),
+		);
+	});
+
+	it("exits 4 with the created recipe and the failed job when the build fails", async () => {
+		await withCliServer(serveCreateAndBuild("FAILED", [],), async (url,) => {
+			const failure = await dssFailure(createArgs, { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(4,);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				code: "long_running_failure",
+				details: {
+					result: { created: "py_out", build: { jobId: "JOB1", state: "FAILED", success: false, }, },
+				},
+			},);
+		},);
+	});
+
+	it("reports a build DSS refuses to start with the command that retries it", async () => {
+		await withCliServer(async (req, res,) => {
+			await readBody(req,);
+			if (req.method === "POST" && (req.url ?? "").includes("/recipes/",)) {
+				sendJson(res, { name: "py_out", },);
+				return;
+			}
+			sendJson(res, { message: "Dataset out cannot be built", }, 400,);
+		}, async (url,) => {
+			const failure = await dssFailure(createArgs, { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(4,);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({
+				details: {
+					result: {
+						created: "py_out",
+						build: { success: false, error: expect.stringContaining("cannot be built",), },
+						next: [[
+							"dss",
+							"job",
+							"build-and-wait",
+							"out",
+							"--build-mode",
+							"RECURSIVE_BUILD",
+							"--summary",
+							"--project-key",
+							"TEST",
+						],],
+					},
+				},
+			},);
+		},);
+	});
+
+	it("rejects --build for a folder output and --timeout without --build before any request", async () => {
+		const env = cliEnv("http://127.0.0.1:1",);
+		const folder = await dssFailure([
+			"recipe",
+			"create",
+			"--type",
+			"python",
+			"--output-folder",
+			"F1",
+			"--output-connection",
+			"fs",
+			"--build",
+		], { env, },);
+		expect(folder.code,).toBe(1,);
+		expect(JSON.parse(folder.stdout,),).toMatchObject({
+			error: expect.stringContaining("--build",),
+		},);
+		const timeout = await dssFailure(
+			["recipe", "create", "--type", "sync", "--output", "out", "--timeout", "5",],
+			{ env, },
+		);
+		expect(timeout.code,).toBe(1,);
+	});
+});

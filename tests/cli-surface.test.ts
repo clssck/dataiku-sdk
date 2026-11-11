@@ -800,7 +800,9 @@ describe("CLI command surface", () => {
 					usage: 1,
 					error: 2,
 					transient: 3,
+					// `recipe create --build` waits for the build of its output.
 					...(meta?.async !== "none" || (resource === "batch" && action === "run")
+							|| (resource === "recipe" && action === "create")
 						? { longRunningFailure: 4, }
 						: {}),
 					...((resource === "recipe" && action === "assert-unchanged")

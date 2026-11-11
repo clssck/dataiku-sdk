@@ -51,6 +51,24 @@ export function compactReadOutputSchemas(): Record<string, Record<string, unknow
 			recipe: STRING,
 			inputs: { type: "array", items: { type: "string", }, },
 			message: STRING,
+			payload: {
+				description:
+					"The failed recipe's payload: code as a string, a visual recipe's JSON as an object. Absent when unreadable or large; `next` then has the command.",
+				type: ["string", "object", "array",],
+			},
+			inputSchemas: {
+				type: "object",
+				description: "Columns of the failed recipe's inputs, by input name.",
+				additionalProperties: {
+					type: "array",
+					items: {
+						type: "object",
+						additionalProperties: false,
+						required: ["name", "type",],
+						properties: { name: STRING, type: STRING, },
+					},
+				},
+			},
 		},
 	};
 	const nextSchema = {

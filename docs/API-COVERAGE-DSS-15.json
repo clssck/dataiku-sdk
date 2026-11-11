@@ -1843,6 +1843,7 @@
 					"ScenariosResource.getLastRuns"
 				],
 				"cli": [
+					"dss scenario get-run",
 					"dss scenario last-runs"
 				],
 				"note": null

@@ -26,6 +26,7 @@ import {
 } from "../coerce.js";
 import { executionMode, } from "../flags.js";
 import { moveCreatedItemsToZone, resolveFlowZoneIdFromFlags, } from "../helpers/flow-zone.js";
+import { warnIfBuiltDatasetHasNoColumns, withWaitResume, } from "../helpers/job.js";
 import {
 	ensureRecipeBackupDir,
 	readRecipeBackup,
@@ -34,6 +35,7 @@ import {
 	recipeCodeEnv,
 	recipeGraph,
 	recipeInputItemRef,
+	recipePayloadValue,
 	recipeRoleInputItems,
 	recipeRunShouldWait,
 	writeRecipeBackup,
@@ -43,23 +45,6 @@ import { isCommandSafeId, } from "../result-shapes.js";
 import { commandUsage, withUsage, } from "../syntax.js";
 import type { CommandMeta, } from "../types.js";
 import { requireArgs, UsageError, } from "../usage.js";
-
-const JSON_CONTAINER_START = /^\s*[[{]/;
-
-/**
- * Stdout form of a recipe payload: the parsed value when the text is a JSON object or array
- * (visual recipes), else the text itself (code, empty, or JSON scalars). `--output` keeps the
- * exact bytes for editing.
- */
-function recipePayloadValue(payload: string,): string | object {
-	if (!JSON_CONTAINER_START.test(payload,)) return payload;
-	try {
-		const parsed: unknown = JSON.parse(payload,);
-		return typeof parsed === "object" && parsed !== null ? parsed : payload;
-	} catch {
-		return payload;
-	}
-}
 
 /** Read a local recipe file before any DSS request, mapping read failures to usage validation. */
 async function readRecipeFile(filePath: string, flagName: string,): Promise<string> {
@@ -87,6 +72,103 @@ function readRecipeBackupFile(backupPath: string,): Record<string, unknown> {
 			"Verify the backup file path and that it is readable.",
 		);
 	}
+}
+
+/** One exact text replacement in the current payload (`set-payload --old/--new`). */
+interface RecipePayloadEdit {
+	old: string;
+	new: string;
+	all: boolean;
+}
+
+/**
+ * The `set-payload --old/--new` edit, validated before any DSS request; undefined
+ * when `--file` is the source. Shared by the handler and `--plan`.
+ */
+export function recipePayloadEditFromFlags(
+	f: Record<string, string | boolean>,
+): RecipePayloadEdit | undefined {
+	const file = f["file"];
+	const oldText = f["old"];
+	const newText = f["new"];
+	if (typeof file === "string" && file.length > 0) {
+		if (oldText !== undefined || newText !== undefined || f["all"] === true) {
+			throw new UsageError(
+				"--file replaces the whole payload and --old/--new/--all edit the current one: pass one or the other.",
+				"conflicting_input_sources",
+			);
+		}
+		return undefined;
+	}
+	if (typeof oldText !== "string" || typeof newText !== "string") {
+		throw new UsageError(
+			`--file is required, or --old with --new to edit the current payload. Usage: ${
+				commandUsage("recipe", "set-payload",)
+			}`,
+			"missing_required_flag",
+		);
+	}
+	if (oldText.length === 0) throw new UsageError("--old must not be empty.", "invalid_flag_value",);
+	if (oldText === newText) {
+		throw new UsageError("--old and --new are identical: nothing to change.", "invalid_flag_value",);
+	}
+	return { old: oldText, new: newText, all: f["all"] === true, };
+}
+
+/** Resolve the `set-payload` input: the edit, or the content of `--file`. */
+async function recipePayloadSource(
+	f: Record<string, string | boolean>,
+): Promise<RecipePayloadEdit | { file: string; content: string; }> {
+	const edit = recipePayloadEditFromFlags(f,);
+	if (edit) return edit;
+	const file = f["file"] as string;
+	return { file, content: await readRecipeFile(file, "--file",), };
+}
+
+function countOccurrences(text: string, needle: string,): number {
+	let count = 0;
+	for (
+		let index = text.indexOf(needle,);
+		index !== -1;
+		index = text.indexOf(needle, index + needle.length,)
+	) count++;
+	return count;
+}
+
+/**
+ * Replace exact text in a recipe payload. The text must occur once unless
+ * `all` is set, so an edit never lands somewhere the caller did not look. A
+ * payload stored with CRLF line endings also matches multi-line text given with LF.
+ */
+function replacePayloadText(
+	recipeName: string,
+	payload: string,
+	edit: { old: string; new: string; all: boolean; },
+): { content: string; origin: { replacements: number; }; } {
+	let oldText = edit.old;
+	let newText = edit.new;
+	let replacements = countOccurrences(payload, oldText,);
+	if (replacements === 0 && payload.includes("\r\n",) && oldText.includes("\n",)) {
+		oldText = normalizeLineEndings(oldText,).replaceAll("\n", "\r\n",);
+		newText = normalizeLineEndings(newText,).replaceAll("\n", "\r\n",);
+		replacements = countOccurrences(payload, oldText,);
+	}
+	if (replacements === 0) {
+		throw new UsageError(
+			`--old text does not occur in the payload of recipe ${recipeName}.`,
+			"not_found",
+			"Copy the exact text, indentation included, from `dss recipe cat`.",
+		);
+	}
+	if (replacements > 1 && !edit.all) {
+		throw new UsageError(
+			`--old text occurs ${replacements} times in the payload of recipe ${recipeName}.`,
+			"validation_failed",
+			"Extend --old with surrounding text until it is unique, or pass --all to replace every occurrence.",
+		);
+	}
+	// A replacer function keeps `$&`-style sequences in the new text literal.
+	return { content: payload.replaceAll(oldText, () => newText,), origin: { replacements, }, };
 }
 
 /**
@@ -202,6 +284,36 @@ export function enqueueRecipeCreateWarnings(
 	for (const warning of recipeCreateWarnings(options,)) enqueueCliWarning(warning,);
 }
 
+/**
+ * `recipe create --build`: build the new recipe's output and wait, recursively
+ * so the outputs of recipes created just before are built too. The recipe
+ * exists by now, so a build that cannot be started or followed is reported in
+ * the result (`success: false`, `error`) rather than thrown.
+ */
+async function buildCreatedOutput(
+	c: DataikuClient,
+	output: string,
+	timeoutMs: number | undefined,
+	projectKey: string | undefined,
+) {
+	try {
+		const result = withWaitResume(
+			await c.jobs.buildAndWait(output, {
+				buildMode: "RECURSIVE_BUILD",
+				summary: true,
+				timeoutMs,
+				projectKey,
+			},),
+			projectKey,
+		);
+		await warnIfBuiltDatasetHasNoColumns(c, output, "DATASET", result.success, projectKey,);
+		return result;
+	} catch (error) {
+		if (!(error instanceof DataikuError || error instanceof ClientValidationError)) throw error;
+		return { success: false, error: error.message.split("\n",)[0], };
+	}
+}
+
 /** Maps `recipe create` flags to SDK options; shared by the handler and `--plan`. */
 export function recipeCreateOptionsFromFlags(f: Record<string, string | boolean>,) {
 	const type = f["type"] as string;
@@ -222,6 +334,14 @@ export function recipeCreateOptionsFromFlags(f: Record<string, string | boolean>
 	}
 	if (outputFolder && !f["output-connection"]) {
 		throw new UsageError("--output-connection is required when using --output-folder.",);
+	}
+	if (f["build"] === true && !outputDataset) {
+		throw new UsageError(
+			"--build builds the --output dataset; it does not apply to --output-folder.",
+		);
+	}
+	if (f["build"] !== true && f["timeout"] !== undefined) {
+		throw new UsageError("--timeout is the wait limit of --build; pass --build.",);
 	}
 	const name = f["name"] as string | undefined;
 	const pk = f["project-key"] as string | undefined;
@@ -454,6 +574,10 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 			enqueueRecipeCreateWarnings(payload,);
 			const name = payload.name;
 			const pk = payload.projectKey;
+			const buildTimeoutMs = num(f["timeout"], "--timeout",);
+			const buildPreview = f["build"] === true
+				? { build: { target: payload.outputDataset, buildMode: "RECURSIVE_BUILD", wait: true, }, }
+				: {};
 			const zoneId = await resolveFlowZoneIdFromFlags(c, f, pk,);
 			const zoneMove = zoneId && name
 				? [{ objectId: name, objectType: "RECIPE" as const, },]
@@ -472,6 +596,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 						name,
 						payload,
 						...(zoneId ? { zoneId, zoneMove, } : {}),
+						...buildPreview,
 						...(existing ? { current: existing, } : {}),
 					};
 				}
@@ -483,6 +608,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 					resource: "recipe",
 					payload,
 					...(zoneId ? { zoneId, zoneMove, } : {}),
+					...buildPreview,
 				};
 			}
 			const created = await c.recipes.create(payload,);
@@ -522,34 +648,35 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 						: {}),
 				},);
 			}
-			// A visual recipe whose payload came from flags is ready to run: point at the build
-			// (recursive, so outputs of recipes created just before are built too).
+			// A visual recipe whose payload came from flags is ready to run: build it now with
+			// --build, else point at the build (recursive, so outputs of recipes created just
+			// before are built too).
 			const output = f["output"];
-			const next = typeof output === "string" && (created.payloadConfigured || created.joinConfigured)
-				? [[
-					"dss",
-					"job",
-					"build-and-wait",
-					output,
-					"--build-mode",
-					"RECURSIVE_BUILD",
-					"--summary",
-					...(pk ? ["--project-key", pk,] : []),
-				],]
-				: undefined;
-			return {
-				created: createdName,
-				resource: "recipe",
-				...created,
-				...moved,
-				...(next ? { next, } : {}),
-			};
+			const result = { created: createdName, resource: "recipe", ...created, ...moved, };
+			if (typeof output !== "string") return result;
+			const buildArgv = [
+				"dss",
+				"job",
+				"build-and-wait",
+				output,
+				"--build-mode",
+				"RECURSIVE_BUILD",
+				"--summary",
+				...(pk ? ["--project-key", pk,] : []),
+			];
+			if (f["build"] === true) {
+				const build = await buildCreatedOutput(c, output, buildTimeoutMs, pk,);
+				return { ...result, build, ...("error" in build ? { next: [buildArgv,], } : {}), };
+			}
+			return created.payloadConfigured || created.joinConfigured
+				? { ...result, next: [buildArgv,], }
+				: result;
 		},
 		description:
-			"Create a recipe; missing outputs become managed datasets on --output-connection. Join, grouping (--group-by/--aggregate: keys plus those aggregates, no implicit count) and prepare (--rename/--formula/--filter/...) payloads come from flags, then `next` is the build. Visual outputs get the DSS-computed schema.",
+			"Create a recipe; missing outputs become managed datasets on --output-connection. Join, grouping (--group-by/--aggregate: keys plus those aggregates, no implicit count) and prepare (--rename/--formula/--filter/...) payloads come from flags. --build then builds --output and waits; else `next` is the build. Visual outputs get the DSS-computed schema.",
 		examples: [
 			"dss recipe create --type python --input raw_orders,lookup --output orders_clean",
-			"dss recipe create --type grouping --input orders --output orders_by_cat --group-by category --aggregate amount:sum+avg,name:first --order-by day",
+			"dss recipe create --type grouping --input orders --output orders_by_cat --group-by category --aggregate amount:sum+avg,name:first --order-by day --build",
 			"dss recipe create --type prepare --input orders --output orders_prep --rename name=label --formula 'total=amount * 2' --filter 'amount > 0'",
 		],
 	},
@@ -843,9 +970,7 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 	"set-payload": {
 		handler: async (c, a, f,) => {
 			requireArgs(a, 1, commandUsage("recipe", "set-payload",),);
-			const filePath = f["file"] as string;
-			if (!filePath) throw new UsageError("--file is required.",);
-			const content = await readRecipeFile(filePath, "--file",);
+			const source = await recipePayloadSource(f,);
 			const pk = f["project-key"] as string | undefined;
 			const shouldBackup = f["no-backup"] !== true;
 			const backupDir = shouldBackup
@@ -856,13 +981,17 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 				projectKey: pk,
 				includePayload: true,
 			},);
+			// The new payload and what produced it: the uploaded file, or the number of replacements made.
+			const { content, origin, } = "file" in source
+				? { content: source.content, origin: { file: source.file, }, }
+				: replacePayloadText(a[0], current.payload ?? "", source,);
 			if (executionMode(f,).dryRun) {
 				return {
 					dryRun: true,
 					action: "set-payload",
 					resource: "recipe",
 					name: a[0],
-					file: filePath,
+					...origin,
 					current,
 					next: { ...current, payload: content, },
 					...(backupPath ? { backupPath, } : {}),
@@ -885,18 +1014,17 @@ export const recipeCommands: Record<string, CommandMeta> = withUsage("recipe", {
 			return {
 				updated: a[0],
 				resource: "recipe",
-				file: filePath,
+				...origin,
 				backupCreated: backupPath !== undefined,
 				...(backupPath ? { backupPath, } : {}),
 				...schema,
 			};
 		},
 		description:
-			"Upload recipe code from a local file, backing up payload, graph, settings, and version metadata by default. For visual and SQL query recipes, outputs whose schema was empty or matched the DSS-computed one before the upload get the newly computed schema (outputSchemaUpdated); hand-edited output schemas are kept and reported in a recipe_output_schema_outdated warning.",
+			"Replace recipe code from --file, or edit the current payload in one call: --old TEXT --new TEXT (must occur once; --all: every occurrence). Backs up the recipe by default. Visual and SQL query recipes: outputs with an empty or DSS-computed schema get the new computed schema (outputSchemaUpdated); hand-edited ones are kept (recipe_output_schema_outdated warning).",
 		examples: [
+			"dss recipe set-payload compute_orders --old amount_euro --new amount_eur",
 			"dss recipe set-payload compute_orders --file code.py --dry-run",
-			"dss recipe set-payload compute_orders --file code.py --backup-dir ./backups",
-			"dss recipe set-payload compute_orders --file code.py --no-backup",
 		],
 	},
 	"update-schema": {

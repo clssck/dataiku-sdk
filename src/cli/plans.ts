@@ -56,7 +56,11 @@ import {
 	readSettingsInput,
 } from "./commands/plugin.js";
 import { projectLibraryPutPayload, } from "./commands/project-library.js";
-import { enqueueRecipeCreateWarnings, recipeCreateOptionsFromFlags, } from "./commands/recipe.js";
+import {
+	enqueueRecipeCreateWarnings,
+	recipeCreateOptionsFromFlags,
+	recipePayloadEditFromFlags,
+} from "./commands/recipe.js";
 import {
 	scenarioReporterFromFlags,
 	scenarioRunParams,
@@ -1181,21 +1185,33 @@ export function commandPlanShape(
 			const recipePath = projectEndpoint(
 				`/recipes/${encodeURIComponent(recipePrototype.name as string,)}`,
 			);
+			const create = { method: "POST", endpoint, payload: { recipePrototype, creationSettings, }, };
+			// Grouping keys/aggregates and prepare steps are written into the payload DSS creates;
+			// --build then starts the recursive build of the output and waits for it.
+			const followUps = [
+				...(edits
+					? [
+						{ method: "GET", endpoint: recipePath, },
+						{ method: "PUT", endpoint: recipePath, payloadEdits: edits, },
+					]
+					: []),
+				...(flags["build"] === true && outputDataset
+					? [{
+						method: "POST",
+						endpoint: projectEndpoint("/jobs/",),
+						payload: jobBuildPayload(outputDataset, projectKey!, {
+							"build-mode": "RECURSIVE_BUILD",
+						},),
+					},]
+					: []),
+			];
 			return {
 				method: "POST",
 				endpoint,
 				identifiers: { name: recipePrototype.name as string, },
-				payload: { recipePrototype, creationSettings, },
-				// Grouping keys/aggregates and prepare steps are written into the payload DSS creates.
-				...(edits
-					? {
-						requests: [
-							{ method: "POST", endpoint, payload: { recipePrototype, creationSettings, }, },
-							{ method: "GET", endpoint: recipePath, },
-							{ method: "PUT", endpoint: recipePath, payloadEdits: edits, },
-						],
-					}
-					: {}),
+				payload: create.payload,
+				...(followUps.length > 0 ? { requests: [create, ...followUps,], } : {}),
+				...(flags["build"] === true ? { wait: true, } : {}),
 			};
 		}
 		case "recipe.run":
@@ -1297,19 +1313,26 @@ export function commandPlanShape(
 			};
 		}
 		case "recipe.set-payload": {
-			const file = requiredPlanFlag(flags, "file", entry.usage,);
+			const edit = recipePayloadEditFromFlags(flags,);
 			const backupDir = flags["no-backup"] === true
 				? undefined
 				: (flags["backup-dir"] as string | undefined)
 					?? path.join(process.cwd(), ".dss-backups", "recipes",);
 			const backupPath = backupDir ? recipeBackupPath(id, backupDir,) : undefined;
 			return {
+				// An edit is applied to the payload DSS holds, which a local plan cannot read.
+				...(edit
+					? {
+						exact: false,
+						reason:
+							"The new payload is the current one with --old replaced by --new; use --dry-run for the resulting diff.",
+					}
+					: {}),
 				method: "PUT",
 				endpoint: projectEndpoint(`/recipes/${encodeURIComponent(id,)}`,),
 				identifiers: { name: id, },
 				payload: {
-					file,
-					content: textInput(flags,),
+					...(edit ? { replace: edit, } : { file: flags["file"], content: textInput(flags,), }),
 					...(backupPath ? { backupPath, } : {}),
 				},
 				...(backupPath

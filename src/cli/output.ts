@@ -1,5 +1,6 @@
 import type { DataikuClient, } from "../client.js";
 import { DataikuError, type StableErrorCode, } from "../errors.js";
+import { isRecord, } from "../utils/records.js";
 import { writeResponseToFile, } from "../utils/response-file.js";
 import { stdoutJsonMode, } from "./env.js";
 
@@ -279,8 +280,22 @@ function isNestedAssertionFailureResult(result: unknown,): boolean {
 	return false;
 }
 
+/**
+ * The failed build of a `recipe create --build` result: the recipe was created
+ * and its `build` (a job wait result, or `{ success: false, error }` when the
+ * build could not be started or followed) did not succeed.
+ */
+function failedCreatedBuild(result: unknown,): Record<string, unknown> | undefined {
+	if (!isRecord(result,) || typeof result["created"] !== "string") return undefined;
+	const build = result["build"];
+	return isRecord(build,) && build["success"] === false ? build : undefined;
+}
+
 export function commandFailureExitCode(result: unknown,): number | undefined {
-	if (isFailedWaitResult(result,) || isAssertionFailureResult(result,)) return 4;
+	if (
+		isFailedWaitResult(result,) || isAssertionFailureResult(result,)
+		|| failedCreatedBuild(result,) !== undefined
+	) return 4;
 	return undefined;
 }
 
@@ -314,6 +329,15 @@ export class CommandResultFailure extends Error {
 }
 
 export function commandFailureMessage(result: unknown,): string {
+	const build = failedCreatedBuild(result,);
+	if (build) {
+		const reason = isFailedWaitResult(build,)
+			? commandFailureMessage(build,)
+			: typeof build["error"] === "string"
+			? build["error"]
+			: "the build could not be started.";
+		return `The recipe was created, but the build of its output failed: ${reason}`;
+	}
 	if (isFailedWaitResult(result,)) {
 		const record = result as Record<string, unknown>;
 		const failure = record.failure;

@@ -111,6 +111,7 @@ export const BOOLEAN_FLAGS = new Set([
 	"partitioning-folder",
 	"plain-text",
 	"single-message",
+	"build",
 ],);
 
 export const SHORT_FLAGS: Record<string, string> = {
@@ -365,6 +366,8 @@ export const VALUE_FLAGS = new Set([
 	"permissions",
 	"automation-node-id",
 	"id",
+	"old",
+	"new",
 ],);
 
 export const REPEATABLE_VALUE_FLAGS = new Set([

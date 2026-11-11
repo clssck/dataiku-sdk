@@ -42,8 +42,8 @@ Never load the full registry; export it if needed: `dss commands run --output co
 - Bound exploration with `--fields`, `--preview`, row limits, or `--output PATH` (any command).
 - Reads are compact; `--full` returns the DSS object. Follow a result's or error's `next` (argv
   arrays) or `hint` before exploring; a `next` that writes (build, run) follows the write rules.
-  Failed scenario/job: `scenario last-runs ID` → `next` → `scenario get-run` gives `failure`
-  (recipe, inputs, message) and inspection commands.
+  Failed scenario: `scenario get-run ID` (latest run) gives `failure` (recipe, its code, input
+  columns, message) and the fix command in `hint`.
 
 ## References: read on demand
 

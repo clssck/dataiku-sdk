@@ -628,13 +628,16 @@ deletes only that generated scenario unless `--keep` is set.
 
 ```bash
 dss code run --file inspect.py --env py311 --project-key MYPROJ
+dss recipe set-payload prepare_orders --old amount_euro --new amount_eur --project-key MYPROJ
 dss recipe diff prepare_orders --file recipe.py --project-key MYPROJ
 dss recipe set-payload prepare_orders --file recipe.py --dry-run --project-key MYPROJ
 dss recipe set-payload prepare_orders --file recipe.py --backup-dir .dss-backups/recipes --project-key MYPROJ
 dss recipe run prepare_orders --dry-run --project-key MYPROJ
 ```
 
-Recipe payload diffs normalize LF/CRLF. `set-payload` backs up payload, graph, settings, code-env,
+`set-payload --old TEXT --new TEXT` edits the payload DSS holds in one call: TEXT must occur exactly
+once (`--all` replaces every occurrence), so no local copy is needed for a small fix. Recipe payload
+diffs normalize LF/CRLF. `set-payload` backs up payload, graph, settings, code-env,
 and version metadata by default; use `restore --backup FILE --dry-run` before applying a rollback.
 `recipe run --dry-run` performs live output resolution without creating a job; static
 `--plan` reports `exact:false` rather than inventing that live payload.

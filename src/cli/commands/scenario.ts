@@ -28,8 +28,10 @@ import {
 	splitCsvFlag,
 } from "../coerce.js";
 import { executionMode, } from "../flags.js";
+import { recipePayloadValue, } from "../helpers/recipe.js";
 import { encodedProjectEndpoint, enqueueCliWarning, readIfExists, skipResult, } from "../output.js";
 import {
+	DIAGNOSIS_INPUT_LIMIT,
 	type FailedActivity,
 	scenarioRunDiagnosis,
 	shapeCommandResult,
@@ -71,7 +73,69 @@ async function failedActivity(
 	return undefined;
 }
 
-/** Diagnosis of a raw run report, located at the failed recipe when its job names one. */
+/** Largest recipe payload (characters) and widest input schema (columns) a diagnosis inlines. */
+const DIAGNOSIS_PAYLOAD_CHARS = 12_000;
+const DIAGNOSIS_SCHEMA_COLUMNS = 100;
+
+/** The recipe payload for a diagnosis; undefined when unreadable or too large (`next` keeps the command). */
+async function diagnosisPayload(
+	c: DataikuClient,
+	recipe: string,
+	projectKey: string | undefined,
+): Promise<string | object | undefined> {
+	try {
+		const text = await c.recipes.getPayload(recipe, { projectKey, },);
+		return text.length <= DIAGNOSIS_PAYLOAD_CHARS ? recipePayloadValue(text,) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** `[input, columns]` for a diagnosis; undefined when unreadable or too wide (`next` keeps the command). */
+async function diagnosisInputSchema(
+	c: DataikuClient,
+	input: string,
+	projectKey: string | undefined,
+): Promise<[string, unknown[],] | undefined> {
+	try {
+		const { columns, } = await c.datasets.schema(input, projectKey,);
+		return columns.length <= DIAGNOSIS_SCHEMA_COLUMNS
+			? [input, columns.map(({ name, type, },) => ({ name, type, }),),]
+			: undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * What an agent reads next after a located failure, fetched in parallel so it
+ * arrives with the diagnosis: the failed recipe's payload and the columns of
+ * its first inputs. A diagnosis aid only: whatever cannot be read, or is too
+ * large to inline, is left out and stays a command in `next`.
+ */
+async function withFailureEvidence(
+	c: DataikuClient,
+	activity: FailedActivity,
+	projectKey: string | undefined,
+): Promise<FailedActivity> {
+	const [payload, ...schemas] = await Promise.all([
+		diagnosisPayload(c, activity.recipe, projectKey,),
+		...activity.inputs.slice(0, DIAGNOSIS_INPUT_LIMIT,).map((input,) =>
+			diagnosisInputSchema(c, input, projectKey,),
+		),
+	],);
+	const inputSchemas = schemas.filter((entry,) => entry !== undefined,);
+	return {
+		...activity,
+		...(payload === undefined ? {} : { payload, }),
+		...(inputSchemas.length > 0 ? { inputSchemas: Object.fromEntries(inputSchemas,), } : {}),
+	};
+}
+
+/**
+ * Diagnosis of a raw run report, located at the failed recipe when its job
+ * names one, with that recipe's code and input columns.
+ */
 async function locatedDiagnosis(
 	c: DataikuClient,
 	details: unknown,
@@ -82,7 +146,26 @@ async function locatedDiagnosis(
 		?.["projectKey"];
 	const pk = projectKey ?? (typeof runProject === "string" ? runProject : undefined);
 	const activity = await failedActivity(c, plain.failure?.["jobId"], pk,);
-	return activity ? scenarioRunDiagnosis(details, activity,) : plain;
+	return activity
+		? scenarioRunDiagnosis(details, await withFailureEvidence(c, activity, pk,),)
+		: plain;
+}
+
+/** The most recent run of a scenario, for `get-run` without a run id. */
+async function latestRunId(
+	c: DataikuClient,
+	scenarioId: string,
+	projectKey: string | undefined,
+): Promise<string> {
+	const runs = await c.scenarios.getLastRuns(scenarioId, { limit: 1, projectKey, },);
+	if (runs.length === 0) {
+		throw new UsageError(
+			`Scenario ${scenarioId} has no runs.`,
+			"not_found",
+			"Start one with dss scenario run-and-wait.",
+		);
+	}
+	return runs[0].runId;
 }
 
 /**
@@ -627,19 +710,23 @@ export const scenarioCommands: Record<string, CommandMeta> = withUsage("scenario
 	},
 	"get-run": {
 		handler: async (c, a, f,) => {
-			requireArgs(a, 2, commandUsage("scenario", "get-run",),);
+			requireArgs(a, 1, commandUsage("scenario", "get-run",),);
 			const projectKey = f["project-key"] as string | undefined;
-			const details = await c.scenarios.getRunDetails(a[0], a[1], { projectKey, },);
+			const runId = a.length > 1 ? a[1] : await latestRunId(c, a[0], projectKey,);
+			const details = await c.scenarios.getRunDetails(a[0], runId, { projectKey, },);
 			if (f["full"] === true || typeof f["fields"] === "string") return details;
-			// Compact view, located at the failed recipe (one extra job read, only on failure).
+			// Compact view, located at the failed recipe (the job, its recipe and inputs are read only on failure).
 			// The shaped object has no `scenarioRun`, so the dispatcher's shaping passes it through.
 			const shaped = asRecord(shapeCommandResult("scenario", "get-run", details, f,),);
 			if (!shaped?.["failure"]) return shaped ?? details;
 			return { ...shaped, ...await locatedDiagnosis(c, details, projectKey,), };
 		},
 		description:
-			"Get a scenario run: outcome, timing, trigger, per-step datasets and jobs, plus `failure` {stepId, jobId, dataset, recipe, inputs, message} and `next` argv (recipe code, input schemas, job errors) for the first failure (compact by default; --full returns the raw DSS run report).",
-		examples: ["dss scenario get-run my_scenario 2024-09-01-01-02-03-123",],
+			"Get a scenario run (the latest without a run id): outcome, timing, trigger, per-step datasets and jobs. A failed run adds `failure` {stepId, jobId, dataset, recipe, inputs, message, payload: the recipe's code, inputSchemas: input columns}, `next` argv and the fix command in `hint`. --full: the raw DSS report.",
+		examples: [
+			"dss scenario get-run my_scenario",
+			"dss scenario get-run my_scenario 2024-09-01-01-02-03-123",
+		],
 	},
 	log: {
 		handler: async (c, a, f,) => {

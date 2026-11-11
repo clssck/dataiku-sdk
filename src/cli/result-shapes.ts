@@ -316,16 +316,27 @@ function projectKeyArgs(projectKey: unknown,): string[] {
 		: [];
 }
 
-/** The failed activity of a job: the recipe that failed and the datasets it read. */
+/** Inputs of a failed recipe a diagnosis looks at (schemas inlined or named in `next`). */
+export const DIAGNOSIS_INPUT_LIMIT = 3;
+
+/**
+ * The failed activity of a job: the recipe that failed and the datasets it
+ * read, plus what was read from them for the diagnosis.
+ */
 export interface FailedActivity {
 	recipe: string;
 	inputs: string[];
+	/** The recipe payload (code, or the JSON of a visual recipe) when it was read and is small enough to inline. */
+	payload?: string | object;
+	/** Columns (`{ name, type }`) by input name, for the inputs read and small enough to inline. */
+	inputSchemas?: Record<string, unknown[]>;
 }
 
 /**
  * Next-step argv for a failure. With the failed recipe known: its code and the
- * schemas of its inputs (what a "column not found" or type error needs), then
- * the job's error log; else the job's error log, else the scenario run log.
+ * schemas of its inputs (what a "column not found" or type error needs) unless
+ * the diagnosis already carries them, then the job's error log; else the job's
+ * error log, else the scenario run log.
  */
 function failureNextSteps(
 	failure: Item,
@@ -335,10 +346,13 @@ function failureNextSteps(
 	activity: FailedActivity | undefined,
 ): string[][] | undefined {
 	const pk = projectKeyArgs(projectKey,);
+	const inlined = activity?.inputSchemas ?? {};
 	const inspect = activity
 		? [
-			["dss", "recipe", "cat", activity.recipe, ...pk,],
-			...activity.inputs.slice(0, 3,).map((input,) => ["dss", "dataset", "schema", input, ...pk,],),
+			...(activity.payload === undefined ? [["dss", "recipe", "cat", activity.recipe, ...pk,],] : []),
+			...activity.inputs.slice(0, DIAGNOSIS_INPUT_LIMIT,).filter((input,) =>
+				!Object.hasOwn(inlined, input,),
+			).map((input,) => ["dss", "dataset", "schema", input, ...pk,],),
 		]
 		: [];
 	if (typeof failure["jobId"] === "string") {
@@ -382,8 +396,10 @@ export function isCommandSafeId(value: unknown,): value is string {
 /**
  * Failure diagnosis of a raw `scenario get-run` report: the first failure
  * (`{ stepId, jobId, dataset, message }`) and the next command(s) to run as
- * argv arrays. With the failed recipe known, `hint` names the edit-and-rerun
- * loop, so the agent does not look up the write commands. Empty when the run did not fail.
+ * argv arrays. With the failed recipe known, `failure` also names it and its
+ * inputs and carries the payload and input columns that were read, and `hint`
+ * names the edit-and-rerun commands, so the agent neither fetches them nor
+ * looks up the write commands. Empty when the run did not fail.
  */
 export function scenarioRunDiagnosis(
 	details: unknown,
@@ -404,7 +420,13 @@ export function scenarioRunDiagnosis(
 		const next = failureNextSteps(failure, scenarioId, run["runId"], projectKey, undefined,);
 		return next ? { failure, next, } : { failure, };
 	}
-	const located = { ...failure, recipe: activity.recipe, inputs: activity.inputs, };
+	const located = defined({
+		...failure,
+		recipe: activity.recipe,
+		inputs: activity.inputs,
+		payload: activity.payload,
+		inputSchemas: activity.inputSchemas,
+	},);
 	const next = failureNextSteps(located, scenarioId, run["runId"], projectKey, activity,);
 	const pkSafe = typeof projectKey !== "string" || projectKey === "" || isCommandSafeId(projectKey,);
 	// Server-reported names are placed in command text an agent may execute: omit the text, keep `failure` and `next`.
@@ -416,9 +438,8 @@ export function scenarioRunDiagnosis(
 	const rerun = isCommandSafeId(scenarioId,)
 		? `; rerun: dss scenario run-and-wait ${scenarioId}${suffix}`
 		: "";
-	const hint =
-		`To fix: dss recipe get-payload ${activity.recipe} --output FILE${suffix}, edit FILE, `
-		+ `dss recipe set-payload ${activity.recipe} --file FILE${suffix}${rerun}.`;
+	const hint = `To fix: dss recipe set-payload ${activity.recipe} --old TEXT --new TEXT${suffix}`
+		+ `${rerun}.`;
 	return next ? { failure: located, next, hint, } : { failure: located, hint, };
 }
 

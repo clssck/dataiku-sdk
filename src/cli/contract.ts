@@ -634,11 +634,13 @@ const ALLOW_EMPTY_VALUE_FLAGS: Record<string, true> = {
 /**
  * Empty values accepted by one command only: `code-env set-packages` replaces
  * the requested package list wholesale, so an empty `--packages`/`--package`
- * clears it, and `messaging-channel send` takes `--body ""` as an empty body.
+ * clears it, `messaging-channel send` takes `--body ""` as an empty body, and
+ * `recipe set-payload --new ""` deletes the `--old` text.
  */
 const ALLOW_EMPTY_VALUE_COMMAND_FLAGS: Record<string, readonly string[]> = {
 	"code-env.set-packages": ["packages", "package",],
 	"messaging-channel.send": ["body",],
+	"recipe.set-payload": ["new",],
 };
 
 function allowsEmptyValue(resource: string, action: string, name: string,): boolean {
@@ -1093,6 +1095,7 @@ function inferPayloadSchema(
  * `batch run` is synchronous, yet any step it dispatches may be a long-running
  * lifecycle command (app instance create/delete, job build, scenario run), so a
  * batch can end on 4 as well and must advertise it.
+ * `recipe create --build` waits for the build of its output, so it can end on 4 too.
  * `recipe assert-unchanged` is synchronous: a drift check exits 4 with the
  * stable code `assertion_failed`, advertised as `assertionFailure` and never
  * as a long-running outcome.
@@ -1102,7 +1105,8 @@ function inferExitCodes(
 	action: string,
 	asyncKind: CommandAsyncKind,
 ): CommandExitCodes {
-	const longRunning = asyncKind !== "none" || `${resource}.${action}` === "batch.run";
+	const longRunning = asyncKind !== "none" || `${resource}.${action}` === "batch.run"
+		|| `${resource}.${action}` === "recipe.create";
 	const assertion = `${resource}.${action}` === "recipe.assert-unchanged"
 		|| `${resource}.${action}` === "dataset.assert-count"
 		|| `${resource}.${action}` === "dataset.assert-schema"

@@ -22,6 +22,7 @@ Never pipe mutations into fixed-string printers or stderr-merging helpers: their
 ```text
 dss version
 dss project list
+dss recipe set-payload compute_orders --old amount_euro --new amount_eur --project-key MYPROJ
 dss recipe get-payload compute_orders --output code.py --project-key MYPROJ
 dss recipe diff compute_orders --file code.py --project-key MYPROJ
 dss recipe set-payload compute_orders --file code.py --project-key MYPROJ

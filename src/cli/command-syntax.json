@@ -14279,6 +14279,25 @@
 				"optional": [
 					[
 						{
+							"flag": "build"
+						},
+						{
+							"optional": [
+								[
+									{
+										"flag": "timeout",
+										"value": "MS"
+									}
+								]
+							]
+						}
+					]
+				]
+			},
+			{
+				"optional": [
+					[
+						{
 							"flag": "join-on",
 							"value": "COL|LEFT=RIGHT[,...]"
 						}
@@ -14960,8 +14979,33 @@
 				"arg": "name"
 			},
 			{
-				"flag": "file",
-				"value": "PATH"
+				"oneOf": [
+					[
+						{
+							"flag": "file",
+							"value": "PATH"
+						}
+					],
+					[
+						{
+							"flag": "old",
+							"value": "TEXT"
+						},
+						{
+							"flag": "new",
+							"value": "TEXT"
+						},
+						{
+							"optional": [
+								[
+									{
+										"flag": "all"
+									}
+								]
+							]
+						}
+					]
+				]
 			},
 			{
 				"optional": [
@@ -16320,7 +16364,13 @@
 				"arg": "id"
 			},
 			{
-				"arg": "runId"
+				"optional": [
+					[
+						{
+							"arg": "runId"
+						}
+					]
+				]
 			},
 			{
 				"optional": [
