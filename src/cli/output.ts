@@ -132,67 +132,40 @@ export function projectResultFields(
  */
 export const STDOUT_LINE_BUDGET_BYTES = 760;
 
-function utf8Length(text: string,): number {
-	return Buffer.byteLength(text,);
-}
-
-/** Compact byte length of every container, memoized so each node is measured once. */
-type SizeMemo = Map<object, number>;
-
-function compactSize(node: unknown, memo: SizeMemo,): number {
-	if (typeof node !== "object" || node === null) return utf8Length(JSON.stringify(node,),);
-	const known = memo.get(node,);
-	if (known !== undefined) return known;
-	let size = 2;
-	let count = 0;
-	if (Array.isArray(node,)) {
-		for (const child of node) {
-			size += compactSize(child, memo,);
-			count++;
-		}
-	} else {
-		for (const [key, child,] of Object.entries(node,)) {
-			size += utf8Length(JSON.stringify(key,),) + 1 + compactSize(child, memo,);
-			count++;
-		}
-	}
-	if (count > 1) size += count - 1;
-	memo.set(node, size,);
-	return size;
-}
-
 /**
- * Append `node` as lines: compact when it fits the remaining budget at its
- * position, otherwise one child per line, one space of indent per level.
+ * Append `node`, whose compact JSON is `compact`, as lines: on one line when it
+ * fits the remaining budget at its position, otherwise one child per line with
+ * one space of indent per level. A subtree that fits is stringified once and
+ * never descended, so the cost stays close to a plain `JSON.stringify`.
  */
 function wrapNode(
 	node: unknown,
+	compact: string,
 	depth: number,
 	head: string,
 	trailer: string,
-	memo: SizeMemo,
 	out: string[],
 ): void {
 	const indent = " ".repeat(depth,);
-	const isContainer = typeof node === "object" && node !== null;
-	const entries = !isContainer
+	const remaining = STDOUT_LINE_BUDGET_BYTES - depth - Buffer.byteLength(head,) - trailer.length;
+	const entries = typeof node !== "object" || node === null
 		? undefined
 		: Array.isArray(node,)
 		? node.map((child,) => ["", child,] as const,)
 		: Object.entries(node,).map(([key, child,],) => [`${JSON.stringify(key,)}:`, child,] as const,);
 	if (
 		entries === undefined || entries.length === 0
-		|| depth + utf8Length(head,) + compactSize(node, memo,) + trailer.length
-			<= STDOUT_LINE_BUDGET_BYTES
+		// A string is never shorter in UTF-8 bytes than in UTF-16 units.
+		|| (compact.length <= remaining && Buffer.byteLength(compact,) <= remaining)
 	) {
-		out.push(`${indent}${head}${JSON.stringify(node,)}${trailer}\n`,);
+		out.push(`${indent}${head}${compact}${trailer}\n`,);
 		return;
 	}
 	const [open, close,] = Array.isArray(node,) ? ["[", "]",] : ["{", "}",];
 	out.push(`${indent}${head}${open}\n`,);
 	const last = entries.length - 1;
 	for (const [index, [childHead, child,],] of entries.entries()) {
-		wrapNode(child, depth + 1, childHead, index === last ? "" : ",", memo, out,);
+		wrapNode(child, JSON.stringify(child,), depth + 1, childHead, index === last ? "" : ",", out,);
 	}
 	out.push(`${indent}${close}${trailer}\n`,);
 }
@@ -214,13 +187,13 @@ export function stdoutJson(value: unknown,): string {
 	if (
 		mode === "compact" || compact === undefined
 		|| (compact.length <= STDOUT_LINE_BUDGET_BYTES
-			&& utf8Length(compact,) <= STDOUT_LINE_BUDGET_BYTES)
+			&& Buffer.byteLength(compact,) <= STDOUT_LINE_BUDGET_BYTES)
 	) {
 		return `${compact}\n`;
 	}
 	// Re-parsing applies toJSON, undefined and non-finite handling exactly once.
 	const out: string[] = [];
-	wrapNode(JSON.parse(compact,), 0, "", "", new Map(), out,);
+	wrapNode(JSON.parse(compact,), compact, 0, "", "", out,);
 	return out.join("",);
 }
 
